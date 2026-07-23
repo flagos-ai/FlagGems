@@ -294,6 +294,7 @@ from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
+from flag_gems.ops.igammac_ import igammac_
 from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
@@ -469,6 +470,7 @@ from flag_gems.ops.repeat_interleave import (
 from flag_gems.ops.replication_pad1d import replication_pad1d, replication_pad1d_out
 from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.resize import resize, resize_
+from flag_gems.ops.resize_as import resize_as, resize_as_
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
@@ -610,6 +612,7 @@ from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
+from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -977,6 +980,7 @@ __all__ = [
     "i0",
     "i0_",
     "i0_out",
+    "igammac_",
     "im2col",
     "index",
     "index_add",
@@ -1198,6 +1202,8 @@ __all__ = [
     "replication_pad3d",
     "resize",
     "resize_",
+    "resize_as",
+    "resize_as_",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
@@ -1362,6 +1368,8 @@ __all__ = [
     "uniform_",
     "unique_consecutive",
     "unique_dim",
+    "unsqueeze",
+    "unsqueeze_",
     "upsample_bicubic2d",
     "upsample_linear1d",
     "upsample_linear1d_backward",
