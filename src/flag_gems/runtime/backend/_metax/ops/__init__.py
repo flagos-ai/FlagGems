@@ -30,6 +30,7 @@ from .prod import prod, prod_dim
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
 from .sigmoid import sigmoid
+from .special_hermite_polynomial_he import hermite_polynomial_he
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "full_like",
     "group_norm",
     "hadamard_transform",
+    "hermite_polynomial_he",
     "index",
     "index_put",
     "index_put_",

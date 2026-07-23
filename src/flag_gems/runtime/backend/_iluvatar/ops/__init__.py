@@ -23,6 +23,7 @@ from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
 from .repeat import repeat
 from .scatter_add import scatter_add_
+from .special_hermite_polynomial_he import hermite_polynomial_he
 from .special_modified_bessel_k1 import (
     special_modified_bessel_k1,
     special_modified_bessel_k1_out,
@@ -41,6 +42,7 @@ __all__ = [
     "div_mode",
     "div_mode_",
     "hadamard_transform",
+    "hermite_polynomial_he",
     "linear",
     "matmul_bf16",
     "matmul_int8",
