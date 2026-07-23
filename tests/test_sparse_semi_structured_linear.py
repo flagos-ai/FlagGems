@@ -56,7 +56,7 @@ def test_sparse_semi_structured_linear(M, K, dtype):
 @pytest.mark.sparse_semi_structured_linear
 @pytest.mark.parametrize("M, K", [(32, 64)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test__sparse_semi_structured_linear_with_bias(M, K, dtype):
+def test_sparse_semi_structured_linear_with_bias(M, K, dtype):
     """Test sparse semi-structured linear with bias."""
     N = K
 
