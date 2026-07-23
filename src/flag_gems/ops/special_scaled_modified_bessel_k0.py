@@ -111,8 +111,8 @@ def _scaled_bessel_k0_impl(x):
     return tl.where(use_small, result_small, result3)
 
 
-def scaled_modified_bessel_k0(A: torch.Tensor):
-    logger.debug("GEMS SCALED_MODIFIED_BESSEL_K0")
+def specail_scaled_modified_bessel_k0(A: torch.Tensor):
+    logger.debug("GEMS SPECIAL_SCALED_MODIFIED_BESSEL_K0")
     assert A.dtype in (
         torch.float32,
     ), "special_scaled_modified_bessel_k0 only supports float32"
