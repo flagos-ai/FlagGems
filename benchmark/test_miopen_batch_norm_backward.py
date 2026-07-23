@@ -116,9 +116,9 @@ def test_miopen_batch_norm_backward():
         op_name="miopen_batch_norm_backward",
         torch_op=miopen_batch_norm_backward_reference,
         # MThreads supports only float32 here; NVIDIA uses consts.FLOAT_DTYPES.
-        dtypes=[torch.float32]
-        if base.vendor_name == "mthreads"
-        else consts.FLOAT_DTYPES,
+        dtypes=(
+            [torch.float32] if base.vendor_name == "mthreads" else consts.FLOAT_DTYPES
+        ),
     )
     bench.set_gems(flag_gems.miopen_batch_norm_backward)
     bench.run()
