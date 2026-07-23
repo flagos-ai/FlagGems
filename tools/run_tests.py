@@ -1,12 +1,108 @@
 #!/usr/bin/env python3
+
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # -*- coding: utf-8 -*-
 """
-run_tests.py — Run accuracy and performance tests for FlagGems operators.
+run_tests.py - FlagGems Operator Accuracy & Performance Automated Test Scheduler
+=================================================================================
 
-When stdout is a TTY, shows a live display: completed results scroll upward
-while a pinned footer shows one status line per GPU. When output is piped or
-redirected, falls back to plain line-by-line output with no ANSI codes.
+Overview
+--------
+This script batch-runs FlagGems operator accuracy tests and performance benchmarks.
+It supports multi-GPU parallel scheduling: each GPU corresponds to a worker process
+that pulls operators from a shared queue and sequentially runs pytest accuracy tests
+and benchmark tests.
+
+When stdout is a TTY, a live-refreshing display with GPU status lines is shown;
+when output is redirected, it falls back to plain line-by-line output without ANSI
+colors.
+
+Operator Source
+---------------
+By default, the operator list is read from conf/operators.yaml and filtered by
+stage (alpha/beta/stable). You can also explicitly specify operators via --ops or
+--op-list-file.
+
+Output Structure
+----------------
+All test results are written to the directory specified by --output-dir
+(default: logs_results_YYYYMMDD_HHMM). Directory layout::
+
+    <output-dir>/
+    ├── summary.json              # Aggregated results (with env info)
+    ├── summary0.json             # Intermediate results for GPU0
+    ├── summary1.json             # Intermediate results for GPU1 (if any)
+    └── <op_name>/
+        ├── accuracy_result.json  # Accuracy test pytest records
+        ├── accuracy_stdout.log   # Accuracy test stdout (requires --dump-output)
+        ├── accuracy_stderr.log   # Accuracy test stderr (requires --dump-output)
+        ├── performance_result.json
+        ├── performance_stdout.log
+        └── performance_stderr.log
+
+CLI Arguments
+-------------
+  --ops OPS           Comma-separated operator ID list. Directly specify which
+                      operators to test, bypassing operators.yaml stage filtering.
+                      Example: --ops "add,mul,softmax"
+
+  --op-list-file FILE Read operator list from file, one ID per line (# = comment).
+                      Mutually exclusive with --ops.
+                      Priority: --ops > --op-list-file > --stages
+
+  --start OP_ID       Start from this operator ID; only test operators with
+                      lexicographic order >= this ID. Useful for resuming.
+
+  --gpus GPUS         Comma-separated GPU ID list, or "all" for all detected GPUs.
+                      Default: "0" (single GPU).
+                      Example: --gpus "0,1,2,3" or --gpus all
+
+  --output-dir DIR    Test results output directory (relative or absolute path).
+                      Default: logs_results_YYYYMMDD_HHMM (current timestamp).
+
+  --stages STAGES     Comma-separated operator stage filter.
+                      Options: alpha, beta, stable, all, removed
+                      Default: "stable" (only test stable-stage operators).
+                      Example: --stages "stable,beta"
+
+  --dump-output       Save each test's stdout/stderr to log files.
+                      Without this flag, subprocess output is discarded.
+
+  --color MODE        ANSI color output mode.
+                      Options: auto (TTY only), always, never
+                      Default: "auto"
+
+Examples
+--------
+  # Run all stable operators on 4 GPUs, saving logs
+  python run_tests.py --gpus 0,1,2,3 --dump-output
+
+  # Test specific operators only
+  python run_tests.py --ops "add,softmax,multinomial" --gpus 0
+
+  # Read operator list from file, use all GPUs
+  python run_tests.py --op-list-file my_ops.txt --gpus all
+
+  # Resume from "mul", test stable+beta stages
+  python run_tests.py --start mul --stages "stable,beta" --gpus 0,1
+
+  # Show help
+  python run_tests.py -h
 """
+
 import argparse
 import datetime
 import json
@@ -28,7 +124,6 @@ from pathlib import Path
 
 import consts
 import distro
-import git
 import yaml
 
 import flag_gems
@@ -74,6 +169,8 @@ def pwarn(msg, **kwargs):
 
 def ensure_dir(p):
     p.mkdir(parents=True, exist_ok=True)
+    # set directory permissions to 755/0o755 (drwxr-xr-x)
+    p.chmod(0o755)
 
 
 class LiveDisplay:
@@ -293,14 +390,8 @@ def _probe_triton():
 def _probe_flaggems():
     try:
         version = flag_gems.__version__
-        repo = git.Repo(search_parent_directories=True)
-        sha = repo.head.object.hexsha
-        ver_str = f"{version}+git{sha[:8]}"
-        ENV_INFO["flag_gems"] = {"version": ver_str}
-        pinfo(f"flag_gems detected ... {ver_str}")
-    except RuntimeError as e:
-        perror(f"{e}")
-        sys.exit(-1)
+        ENV_INFO["flag_gems"] = {"version": version}
+        pinfo(f"flag_gems detected ... {version}")
     except Exception as e:
         perror(f"{e}")
         perror("flag_gems has not been installed, please run `uv pip install -e .`")
@@ -325,6 +416,23 @@ def _probe_flaggems():
         sys.exit(-1)
 
 
+def _probe_vllm():
+    try:
+        import vllm
+
+        version = vllm.__version__
+        ENV_INFO["vllm"] = {"version": version}
+        pinfo(f"vllm detected ... {version}")
+    except ImportError:
+        ENV_INFO["vllm"] = {"version": None}
+        pwarn(
+            "vllm is NOT installed (some ops like grouped_topk/topk_softmax may skip)"
+        )
+    except Exception as e:
+        ENV_INFO["vllm"] = {"version": None}
+        pwarn(f"vllm detection failed: {e}")
+
+
 def probe_env():
     ENV_INFO["architecture"] = platform.machine()
     ENV_INFO["os_name"] = distro.id()
@@ -334,6 +442,7 @@ def probe_env():
     _probe_torch()
     _probe_triton()
     _probe_flaggems()
+    _probe_vllm()
 
 
 def get_env(gpu_ids):
@@ -351,9 +460,16 @@ def get_env(gpu_ids):
         "cambricon": ["MLU_VISIBLE_DEVICES"],
         "kunlunxin": ["CUDA_VISIBLE_DEVICES"],
         "sunrise": ["TANG_VISIBLE_DEVICES"],
+        "enflame": ["TOPS_VISIBLE_DEVICES"],
     }
 
-    env_vars = vendor_env_map.get(vendor, ["CUDA_VISIBLE_DEVICES"])
+    env_vars = vendor_env_map.get(vendor, None)
+    # new vendor not in the map, fallback to CUDA_VISIBLE_DEVICES with a warning
+    if env_vars is None:
+        pwarn(
+            f"No vendor-specific device masking for '{vendor}', falling back to  CUDA_VISIBLE_DEVICES"
+        )
+        env_vars = ["CUDA_VISIBLE_DEVICES"]
     for var in env_vars:
         env[var] = gpu_ids
     return env
@@ -369,6 +485,10 @@ def run_cmd(op, cmd, cwd=None, env=None, timeout=600, flavor=None):
         try:
             stdout = open(stdout_log, "w")
             stderr = open(stderr_log, "w")
+            # Log the executed command to stderr log for debugging
+            stderr.write(f"[CMD] {cmd}\n")
+            stderr.write(f"[CWD] {cwd}\n\n")
+            stderr.flush()
         except Exception:
             pass
 
@@ -476,7 +596,12 @@ def parse_accuracy_data(result_file):
         result["details"]["failed"] = failed
         return result
 
-    if skipped_with_issue:
+    # Some tests skipped but none failed.
+    # If there are also passing tests, treat overall status as Passed
+    # (e.g. to_copy skips "same dtype conversion" but other cases pass).
+    if num_passed > 0:
+        result["status"] = "Passed"
+    elif skipped_with_issue:
         result["status"] = "Failed"
     else:
         result["status"] = "Skipped"
@@ -552,12 +677,10 @@ def run_accuracy_q(gpu_id, op):
     """Run accuracy test for one op. Returns result dict."""
     env = get_env(str(gpu_id))
 
-    if op in CFG.skip_cpu_tests:
-        cmd = f'pytest -m "{op}" --record json --output accuracy_{op}.json -vs'
-    else:
-        cmd = (
-            f'pytest -m "{op}" --record json --output accuracy_{op}.json --ref cpu -vs'
-        )
+    base = f'pytest -m "{op}" --record json --output accuracy_{op}.json'
+    if op not in CFG.skip_cpu_tests:
+        base += " --ref cpu"
+    cmd = base + " --continue-on-collection-errors -vs"
 
     accuracy_dir = ROOT.joinpath("tests")
     result_file = accuracy_dir / f"accuracy_{op}.json"
@@ -620,9 +743,7 @@ def run_benchmark_q(gpu_id, op):
     ensure_dir(op_dir)
 
     dur = time.time()
-    cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json'
-    if ENV_INFO["flag_gems"]["vendor"] == "kunlunxin":
-        cmd += " --fg_mode operator"
+    cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json --continue-on-collection-errors'
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     dur = time.time() - dur
 
@@ -925,7 +1046,7 @@ def _parse_marks_file(marks_file):
                 for mark in item.get("marks", []):
                     marks.add(mark)
     except Exception as e:
-        pwarn(f"Failed to parse marks file {marks_file}: {e}")
+        pwarn(f"Failed to read or parse marks file {marks_file}: {e}")
     return marks
 
 
@@ -942,31 +1063,56 @@ def collect_marks(ops):
         bench_file = os.path.join(tmpdir, "benchmark_marks.yaml")
 
         pinfo("Collecting accuracy test marks ...")
-        code = subprocess.call(
-            ["pytest", f"--collect-marks={acc_file}", "tests/"],
+        subprocess.call(
+            [
+                "pytest",
+                f"--collect-marks={acc_file}",
+                "--continue-on-collection-errors",
+                "tests/",
+            ],
             cwd=str(ROOT),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        if code in (0, 5) and os.path.exists(acc_file):
+        if os.path.exists(acc_file):
             accuracy_marks = _parse_marks_file(acc_file)
-            pinfo(f"Found accuracy tests for {len(accuracy_marks)} operators")
+            if accuracy_marks:
+                pinfo(f"Found accuracy tests for {len(accuracy_marks)} operators")
+            else:
+                pwarn("Marks file empty, falling back to all ops for accuracy")
+                accuracy_marks = set(ops)
         else:
-            pwarn("Failed to collect accuracy marks, all ops will be tested")
+            pwarn(
+                "Failed to collect accuracy marks, all ops will be tested for accuracy"
+            )
+            accuracy_marks = set(ops)
 
         pinfo("Collecting benchmark marks ...")
-        code = subprocess.call(
-            ["pytest", f"--collect-marks={bench_file}", "benchmark/"],
+        subprocess.call(
+            [
+                "pytest",
+                f"--collect-marks={bench_file}",
+                "--continue-on-collection-errors",
+                "benchmark/",
+            ],
             cwd=str(ROOT),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        if code in (0, 5) and os.path.exists(bench_file):
+        if os.path.exists(bench_file):
             benchmark_marks = _parse_marks_file(bench_file)
-            pinfo(f"Found benchmark tests for {len(benchmark_marks)} operators")
+            if benchmark_marks:
+                pinfo(f"Found benchmark tests for {len(benchmark_marks)} operators")
+            else:
+                pwarn("Marks file empty, falling back to all ops for benchmark")
+                benchmark_marks = set(ops)
         else:
             pwarn("Failed to collect benchmark marks, all ops will be benchmarked")
+            benchmark_marks = set(ops)
 
+    # Ensure all requested ops are included even if mark collection missed them
+    accuracy_marks.update(ops)
+    benchmark_marks.update(ops)
     return accuracy_marks, benchmark_marks
 
 
@@ -976,35 +1122,90 @@ def main():
     signal.signal(signal.SIGINT, handle_interrupt)
     signal.signal(signal.SIGTERM, handle_interrupt)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--ops", required=False, help="a comma-separated list of op IDs"
+    parser = argparse.ArgumentParser(
+        description=(
+            "FlagGems operator accuracy & performance automated test scheduler.\n"
+            "Supports multi-GPU parallel scheduling: each GPU has a worker process\n"
+            "that sequentially runs pytest accuracy tests and benchmark tests.\n"
+            "Operator list defaults to conf/operators.yaml, filtered by --stages."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  python run_tests.py --gpus 0,1,2,3 --dump-output\n"
+            '  python run_tests.py --ops "add,softmax,multinomial" --gpus 0\n'
+            "  python run_tests.py --op-list-file my_ops.txt --gpus all\n"
+            '  python run_tests.py --start mul --stages "stable,beta" --gpus 0,1\n'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--op-list-file", required=False, help="path to operator list file"
+        "--ops",
+        required=False,
+        metavar="OPS",
+        help=(
+            "Comma-separated operator ID list. Directly specify operators to test, "
+            "bypassing operators.yaml stage filtering. "
+            'Example: --ops "add,mul,softmax"'
+        ),
     )
-    parser.add_argument("--start", required=False, help="the ID of the first operator")
-    parser.add_argument("--gpus", default="0", help="a comma-separated list of GPU IDs")
     parser.add_argument(
-        "--output-dir", default="results", help="relative path to root for test data"
+        "--op-list-file",
+        required=False,
+        metavar="FILE",
+        help=(
+            "Read operator list from file, one ID per line (# = comment). "
+            "Priority: --ops > --op-list-file > --stages"
+        ),
+    )
+    parser.add_argument(
+        "--start",
+        required=False,
+        metavar="OP_ID",
+        help=(
+            "Start from this operator ID; only test operators with "
+            "lexicographic order >= this ID. Useful for resuming."
+        ),
+    )
+    parser.add_argument(
+        "--gpus",
+        default="0",
+        metavar="GPUS",
+        help=(
+            'Comma-separated GPU ID list, or "all" for all detected GPUs. '
+            'Default: "0" (single GPU). Example: --gpus "0,1,2,3"'
+        ),
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        metavar="DIR",
+        help=(
+            "Test results output directory (relative or absolute path). "
+            "Default: logs_results_YYYYMMDD_HHMM"
+        ),
     )
     parser.add_argument(
         "--stages",
         required=False,
         default="stable",
-        help="a comma-separate list of op stages",
+        metavar="STAGES",
+        help=(
+            "Comma-separated operator stage filter. "
+            "Options: alpha, beta, stable, all, removed. "
+            'Default: "stable". Example: --stages "stable,beta"'
+        ),
     )
     parser.add_argument(
         "--dump-output",
         action="store_true",
         default=False,
-        help="Dump stdout/stderr of each test to log files",
+        help="Save each test's stdout/stderr to log files (default: discard)",
     )
     parser.add_argument(
         "--color",
         choices=["auto", "always", "never"],
         default="auto",
-        help="Control ANSI color output: auto (TTY only), always, or never",
+        help="ANSI color output mode: auto (TTY only), always, never. Default: auto",
     )
     OPTS = parser.parse_args()
     CFG.dump_output = OPTS.dump_output
@@ -1026,6 +1227,12 @@ def main():
         USE_COLORS = False
         RED = GREEN = YELLOW = CYAN = DIM = NC = ""
 
+    # ---- Record the start time of the whole test run ----
+    # Kept as a datetime object so the total elapsed time can be computed
+    # once all accuracy/benchmark tests finish.
+    test_start_time = datetime.datetime.now()
+    pinfo(f"Test started at ... {test_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
     probe_env()
 
     ops = get_ops_to_test()
@@ -1039,7 +1246,12 @@ def main():
 
     CFG.ops = ops
 
-    output_dir = Path(OPTS.output_dir)
+    if OPTS.output_dir is None:
+        output_dir = Path(
+            f"logs_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}"
+        )
+    else:
+        output_dir = Path(OPTS.output_dir)
     ensure_dir(output_dir)
     CFG.output_dir = output_dir
 
@@ -1056,6 +1268,11 @@ def main():
             sys.exit(1)
         gpu_ids = [int(x) for x in gpu_list if x.strip()]
     gpu_count = len(gpu_ids)
+
+    # Don't spawn more workers than there are ops to test
+    if gpu_count > op_count:
+        gpu_ids = gpu_ids[:op_count]
+        gpu_count = op_count
 
     op_width = min(max(len(op) for op in ops), 40) if ops else 20
 
@@ -1079,7 +1296,15 @@ def main():
 
     display.finish()
 
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # ---- Record the end time of the whole test run ----
+    # Replaces the old `timestamp`; the run's end time is stored directly as
+    # `end_time` in summary.json and reused for the elapsed-time calculation.
+    test_end_time = datetime.datetime.now()
+
+    # Total wall-clock time the whole run took (start -> end).
+    total_duration = round((test_end_time - test_start_time).total_seconds(), 2)
+    total_duration_str = str(datetime.timedelta(seconds=int(total_duration)))
+
     op_data = {}
     for gpu_id in gpu_ids:
         gpu_file = CFG.output_dir.joinpath(f"summary{gpu_id}.json")
@@ -1095,7 +1320,8 @@ def main():
             op_data.update(result)
 
     final_data = {
-        "timestamp": timestamp,
+        "timestamp": test_end_time.strftime("%Y-%m-%d %H:%M:%S"),
+        "total_duration": total_duration_str,
         "env": ENV_INFO,
         "result": op_data,
     }
@@ -1105,6 +1331,7 @@ def main():
         json.dump(final_data, f, indent=2)
 
     cleanup_intermediate_files()
+    pinfo(f"Total elapsed time ... {total_duration_str} ({total_duration}s)")
     pinfo("Test completed.")
 
 

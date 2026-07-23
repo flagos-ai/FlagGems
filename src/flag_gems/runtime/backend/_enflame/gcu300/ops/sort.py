@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -189,25 +203,26 @@ def sweep(
     m,
     N,
     OUT_N,
-    total_tasks,
-    num_ctas,
+    total_m_tasks,
     TILE_N: tl.constexpr,
     TILE_R: tl.constexpr,
     k_bits: tl.constexpr,
     descending: tl.constexpr,
 ):
     # r: num_bins = 2 ** k_bits
-    # OUT_N: grid_n = cdiv(N, )
+    # OUT_N: grid_n = cdiv(N, TILE_N)
 
     # arr_ptr: (m, N)
     # out_ptr: (m, N)
     # excumsum_bins_ptr: (m, n_passes, r)
-    # flag_ptr: (m, r, OUT_N)
+    # status_ptr: (m, r, OUT_N)
 
-    # grid: (m, grid_r, grid_n)
+    # grid: (grid_n, grid_r, grid_m)
+    # dim0 = N tiles (1:1, no virtualization — required by decoupled lookback)
+    # dim1 = bin groups
+    # dim2 = m batches (virtualized via loop)
 
-    # load data
-    pid = tl.program_id(0)
+    pid_n = tl.program_id(0)
     pid_r = tl.program_id(1)
 
     # bit masks
@@ -216,16 +231,14 @@ def sweep(
     v_mask: tl.constexpr = (1 << 30) - 1
     bfe_mask: tl.constexpr = (1 << k_bits) - 1  # a.k.a. 2 ** k_bits - 1
 
-    # initialize flag to zero-local sum is not ready
     r: tl.constexpr = 2**k_bits
     cta_r_start = pid_r * TILE_R
     cta_r_end = tl.minimum(cta_r_start + TILE_R, r)
 
-    # Loop over all tasks assigned to this CTA
-    for task_id in range(pid, total_tasks, num_ctas):
-        pid_m = task_id % m
-        pid_n = task_id // m
+    pid_m_base = tl.program_id(2)
+    num_programs_m = tl.num_programs(2)
 
+    for pid_m in range(pid_m_base, total_m_tasks, num_programs_m):
         # cumsum for a bin_index
         n_offsets = pid_n * TILE_N + tl.arange(0, TILE_N)  # (TILE_N, )
         mask = n_offsets < N
@@ -233,11 +246,8 @@ def sweep(
         arr_u = convert_to_uint_preverse_order(arr, descending)
         key = (arr_u >> bit_offset) & bfe_mask  # (TILE_N, )
 
-        # since triton can only use scalar as condition, loop by bin_index
-        # status must be pre zero-initialized, or else we have to initialize it
         for bin_index in range(cta_r_start, cta_r_end):
             matches = tl.where(mask, key == bin_index, False)  # (TILE_N, ) bool
-            # cta level cumsum per bin
             # CAUTION: tl.sum in triton 3.2 does not promote type
             local_sum = tl.sum(matches.to(tl.uint32), axis=0)
             pack0 = aggregate_mask | local_sum
@@ -249,7 +259,7 @@ def sweep(
             i_lookback = pid_n - 1
             while i_lookback >= 0:
                 flag_offset_i = pid_m * (r * OUT_N) + bin_index * OUT_N + i_lookback
-                pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)  # uin32
+                pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)
                 while pack1 == 0:
                     pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)
                 exclusive_prefix += pack1 & v_mask
@@ -360,9 +370,11 @@ def radix_sort(arr, k_bits=8, descending=False):
         grid_r = triton.cdiv(num_bins, TILE_R)
         TILE_N = 2048
         grid_n = triton.cdiv(n, TILE_N)
-        total_tasks_sweep = m * grid_n
-        num_ctas_sweep = min(total_tasks_sweep, MAX_GRID_DIM)
-        grid_for_sweep = (num_ctas_sweep, grid_r)
+        while grid_n > MAX_GRID_DIM:
+            TILE_N *= 2
+            grid_n = triton.cdiv(n, TILE_N)
+        grid_m = min(m, MAX_GRID_DIM)
+        grid_for_sweep = (grid_n, grid_r, grid_m)
 
         status = torch.empty(
             (m, num_bins, grid_n), device=arr.device, dtype=torch.uint32
@@ -384,8 +396,7 @@ def radix_sort(arr, k_bits=8, descending=False):
                 m,
                 n,
                 grid_n,
-                total_tasks_sweep,
-                num_ctas_sweep,
+                m,
                 TILE_N,
                 TILE_R,
                 k_bits,
