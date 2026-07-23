@@ -185,7 +185,7 @@ tsingmicro = [
 # Test packages
 test = [
     "distro==1.9.0",
-    "coverage==7.13.5",
+    "coverage==7.15.2",
     "openpyxl==3.1.5",
     "pandas==2.3.3",
     "pytest==9.0.3",
