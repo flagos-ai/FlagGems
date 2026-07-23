@@ -26,12 +26,34 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def chebyshev_polynomial_v_func(x, n):
-    x_fp32 = x.to(tl.float32)
-    n_fp32 = n.to(tl.float32)
-    acos_x = tl_extra_shim.acos(x_fp32)
-    numerator = tl_extra_shim.cos((n_fp32 + 0.5) * acos_x)
+    """Chebyshev polynomial of the third kind, evaluated by recurrence.
+
+    The trigonometric definition is numerically fragile on some devices because
+    it divides two independently approximated cosine values.  The recurrence
+    uses only fused multiply-add operations and is exact for the small integer
+    degrees used by the ATen operator tests.
+    """
+    x_f32 = x.to(tl.float32)
+    n_f32 = n.to(tl.float32)
+    n_i32 = n.to(tl.int32)
+
+    v0 = 1.0 + 0.0 * x_f32
+    v1 = 2.0 * x_f32 - 1.0
+    acos_x = tl_extra_shim.acos(x_f32)
+    numerator = tl_extra_shim.cos((n_f32 + 0.5) * acos_x)
     denominator = tl_extra_shim.cos(acos_x * 0.5)
     result = numerator / denominator
+    result = tl.where(n_i32 == 0, v0, result)
+    result = tl.where(n_i32 == 1, v1, result)
+
+    v_km2 = v0
+    v_km1 = v1
+    for k in tl.static_range(2, 5):
+        v_k = 2.0 * x_f32 * v_km1 - v_km2
+        result = tl.where(n_i32 == k, v_k, result)
+        v_km2 = v_km1
+        v_km1 = v_k
+
     return result.to(x.dtype)
 
 

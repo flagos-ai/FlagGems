@@ -590,18 +590,10 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
     if sort_elem_cnt == 1:
         return inp, torch.zeros_like(inp, dtype=torch.int64)
 
-    if dim < 0:
-        dim = dim + inp.ndim
-    if dim != inp.ndim - 1:
-        inp = torch.movedim(inp, dim, -1).contiguous()
-    else:
-        inp = inp.contiguous()
-
-    dtype = inp.dtype
-    num_bits_per_pass = 1 if dtype == torch.bool else 4
-    out, out_index = radix_sort_low_mem(inp, num_bits_per_pass, descending)
-
-    if dim != inp.ndim - 1:
-        out = torch.movedim(out, -1, dim)
-        out_index = torch.movedim(out_index, -1, dim)
-    return out, out_index
+    # Both Triton radix paths are incompatible with the current P800
+    # compiler/runtime. Keep layout transformation on CPU as well because
+    # making a moved XPU dimension contiguous can hit the vendor copy kernel.
+    cpu_out, cpu_index = torch.sort(
+        inp.cpu(), dim=dim, stable=True, descending=descending
+    )
+    return cpu_out.to(inp.device), cpu_index.to(inp.device)

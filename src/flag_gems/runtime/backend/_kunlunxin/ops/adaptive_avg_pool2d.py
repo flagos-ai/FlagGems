@@ -17,10 +17,14 @@ import logging
 import torch
 
 logger = logging.getLogger(__name__)
+_native_adaptive_avg_pool2d = torch.library.get_kernel(
+    "aten::_adaptive_avg_pool2d", "CUDA"
+)
+_CUDA_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
 
 
 def adaptive_avg_pool2d(input: torch.Tensor, output_size):
     logger.debug("GEMS KUNLUNXIN ADAPTIVE_AVG_POOL2D")
     if isinstance(output_size, int):
         output_size = (output_size, output_size)
-    return torch.ops.aten._adaptive_avg_pool2d(input, output_size)
+    return _native_adaptive_avg_pool2d.call_boxed(_CUDA_KEYSET, input, output_size)
