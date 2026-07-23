@@ -141,7 +141,7 @@ def main():
             our_time, torch_time, speedup = benchmark(shape, indexing)
             all_results.append((shape, indexing, speedup, our_time, torch_time))
         except Exception as e:
-            print(f"  ⚠️  Benchmark failed for {shape}: {e}")
+            print(f"    Benchmark failed for {shape}: {e}")
         print("-" * 70)
 
     # Summary
@@ -158,15 +158,15 @@ def main():
     for shape, indexing, speedup, our_time, torch_time in all_results:
         shape_str = format_shape(shape)
         if speedup >= 1.2:
-            status = "🚀 EXCELLENT"
+            status = " EXCELLENT"
             fast_count += 1
         elif speedup >= 1.05:
-            status = "✅ GOOD"
+            status = " GOOD"
             fast_count += 1
         elif speedup >= 0.95:
-            status = "✅ PASS"
+            status = " PASS"
         else:
-            status = "⚠️  SLOW"
+            status = " SLOW"
         print(f"{shape_str:<15} {indexing:<6} {speedup:>6.2f}x     {status}")
         if speedup > 0.5:
             total_speedup += speedup
