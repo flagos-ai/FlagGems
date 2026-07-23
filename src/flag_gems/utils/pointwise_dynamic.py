@@ -1502,10 +1502,15 @@ class PointwiseDynamicFunction:
         out_tensors = []
         for i in range(schema.num_output_tensors()):
             k = f"out{i}"
-            if k in kwargs:
+            if k in kwargs and kwargs[k] is not None:
                 out_tensors.append(kwargs[k])
             else:
                 outputs_that_need_allocation.append(i)
+
+        # Clean kwargs: only keep valid outN keys, discard mismatched keys
+        # and None values that leaked through caller wrappers.
+        valid_out_keys = {f"out{i}" for i in range(schema.num_output_tensors())}
+        kwargs = {k: v for k, v in kwargs.items() if k in valid_out_keys}
         # input arguments must be passed by position
         if not _skip_tensor_check and schema._is_tensor is not None:
             if not check_tensor_attributes(args, (schema._is_tensor)):
