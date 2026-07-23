@@ -2920,6 +2920,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.3'
+  - id: fft_irfftn
+    description: Computes the N-dimensional inverse of torch.fft.rfftn.
+    for:
+      - fft_irfftn
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: fill_scalar
     description: Fills a scalar with the specified value.
     for:
