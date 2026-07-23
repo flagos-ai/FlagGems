@@ -27,7 +27,7 @@ else:
 @pytest.mark.sparse_semi_structured_linear
 @pytest.mark.parametrize("M, K", SPARSE_LINEAR_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test__sparse_semi_structured_linear(M, K, dtype):
+def test_sparse_semi_structured_linear(M, K, dtype):
     """Test for sparse semi-structured linear layer.
 
     Uses meta tensor filled with ones so no elements are masked,
