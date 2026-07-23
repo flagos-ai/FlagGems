@@ -8724,6 +8724,18 @@ ops:
       - Reduction
     stages:
       - alpha: '5.4'
+  - id: special_softmax
+    description: |
+      Applies the softmax function to an n-dimensional input Tensor.
+    for:
+      - special_softmax
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: split_with_sizes_copy
     description: |
       Splits a tensor into sub-tensors along a given dimension,
