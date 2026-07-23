@@ -1,8 +1,24 @@
 #!/bin/bash
 
-# Configuration
-mem_threshold=30000     # Maximum memory usage limit (MB)
-sleep_time=120             # Wait time (seconds), default is 2 minutes
+
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Configuration parameters
+mem_threshold=30000     # Minimum free memory required (MB)
+sleep_time=120          # Wait time between retries (seconds)
+max_wait=600           # Maximum total wait time (seconds)
 
 export MUSA_INSTALL_PATH=/usr/local/musa
 export PATH=$MUSA_INSTALL_PATH/bin:$PATH
@@ -17,21 +33,17 @@ if [ "$gpu_count" -eq 0 ]; then
 fi
 echo "Detected $gpu_count Moore Threads GPU(s)."
 
+waited_time=0
 while true; do
-    need_wait=false
+    available_gpus=()
 
     printf " GPU  Total (MiB)  Used (MiB)  Free (MiB)\n"
-    # Check the available memory for each GPU
     for ((i=0; i<$gpu_count; i++)); do
-        # Query GPU memory information using mthreads-gmi
         memory_output=$(mthreads-gmi -q -d MEMORY -i $i 2>/dev/null)
 
-        # Parse memory values from "FB Memory Usage" section
-        # Format: "Total                                     :  81920MiB"
         total_i=$(echo "$memory_output" | grep -A 3 "FB Memory Usage" | grep "Total" | grep -oP '\d+' | head -1)
         used_i=$(echo "$memory_output" | grep -A 3 "FB Memory Usage" | grep "Used" | grep -oP '\d+' | head -1)
 
-        # Check if we got valid memory values
         if [ -z "$used_i" ] || [ -z "$total_i" ]; then
             echo "Warning: Failed to query GPU $i memory information."
             continue
@@ -40,18 +52,22 @@ while true; do
         free_i=$((total_i - used_i))
 
         printf "%4d%'13d%'12d%'12d\n" $i ${total_i} ${used_i} ${free_i}
-        if [[ $free_i -lt $mem_threshold ]]; then
-            need_wait=true
-            echo "GPU $i: Used ${used_i}MB / Total ${total}MB (Available: ${free_i}MB < ${mem_threshold}MB)"
-            break
+        if [ $free_i -ge $mem_threshold ]; then
+            available_gpus+=($i)
         fi
     done
 
-    if [ "$need_wait" = "false" ]; then
-        echo "All Moore Threads GPUs have sufficient memory, proceeding with execution."
+    if [ ${#available_gpus[@]} -gt 0 ]; then
+        AVAILABLE_GPUS=$(IFS=,; echo "${available_gpus[*]}")
+        echo "Available GPUs: ${AVAILABLE_GPUS}"
         break
     fi
 
-    echo "GPU memory is insufficient, waiting for $sleep_time seconds before retrying..."
+    echo "No GPU has sufficient memory, waiting for $sleep_time seconds..."
     sleep $sleep_time
+    waited_time=$((waited_time + sleep_time))
+    if [ $waited_time -ge $max_wait ]; then
+        echo "Error: Timed out waiting for available GPU."
+        exit 1
+    fi
 done

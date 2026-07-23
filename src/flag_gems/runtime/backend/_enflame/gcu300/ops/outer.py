@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -12,7 +26,7 @@ logger = logging.getLogger(__name__)
 class Outer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, weight):
-        logger.debug("GEMS OUTER")
+        logger.debug("GEMS_ENFLAME OUTER")
         assert inp.ndim == 1 and weight.ndim == 1, "Invalid input"
         inp1 = inp[:, None]
         weight1 = weight[None, :]
@@ -24,7 +38,7 @@ class Outer(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS OUTER VJP")
+        logger.debug("GEMS_ENFLAME OUTER_VJP")
         assert out_grad.ndim == 2, "invalide out_grad shape"
 
         inp, weight = ctx.saved_tensors
