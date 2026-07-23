@@ -743,3 +743,5 @@ def register_ops(registry):
     registry.register_op("meshgrid", meshgrid, "aten::meshgrid")
 
 # meshgrid ascend backend implementation
+
+# meshgrid ascend backend implementation
