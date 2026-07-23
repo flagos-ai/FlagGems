@@ -530,6 +530,7 @@ _FULL_CONFIG = (
     ("logit_", logit_),
     ("logspace", logspace),
     ("logsumexp", logsumexp),
+    ("lstm", lstm),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
     ("lt_.Scalar", lt_scalar_),
