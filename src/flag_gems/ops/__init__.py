@@ -122,6 +122,9 @@ from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
+from flag_gems.ops.binary_cross_entropy_with_logits import (
+    binary_cross_entropy_with_logits,
+)
 from flag_gems.ops.bincount import bincount
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
@@ -185,6 +188,7 @@ from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.ctc_loss import ctc_loss
+from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
@@ -294,6 +298,7 @@ from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
+from flag_gems.ops.igammac_ import igammac_
 from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
@@ -547,6 +552,7 @@ from flag_gems.ops.special_erfinv import (
     special_erfinv_out,
 )
 from flag_gems.ops.special_gammainc import special_gammainc
+from flag_gems.ops.special_gammaln import special_gammaln, special_gammaln_out
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
@@ -773,6 +779,7 @@ __all__ = [
     "batch_norm_backward",
     "bernoulli",
     "bernoulli_",
+    "binary_cross_entropy_with_logits",
     "bincount",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
@@ -843,6 +850,7 @@ __all__ = [
     "cosh_out",
     "count_nonzero",
     "ctc_loss",
+    "cudnn_batch_norm_backward",
     "cudnn_convolution",
     "cummax",
     "cummin",
@@ -978,6 +986,7 @@ __all__ = [
     "i0",
     "i0_",
     "i0_out",
+    "igammac_",
     "im2col",
     "index",
     "index_add",
@@ -1291,6 +1300,8 @@ __all__ = [
     "special_erfinv_",
     "special_erfinv_out",
     "special_gammainc",
+    "special_gammaln",
+    "special_gammaln_out",
     "special_hermite_polynomial_h",
     "special_i0e",
     "special_i0e_out",
