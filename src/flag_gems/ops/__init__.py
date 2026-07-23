@@ -562,6 +562,7 @@ from flag_gems.ops.special_modified_bessel_k1 import (
     special_modified_bessel_k1,
     special_modified_bessel_k1_out,
 )
+from flag_gems.ops.special_round import special_round, special_round_out
 from flag_gems.ops.special_scaled_modified_bessel_k1 import (
     special_scaled_modified_bessel_k1,
     special_scaled_modified_bessel_k1_out,
@@ -1306,6 +1307,8 @@ __all__ = [
     "special_modified_bessel_k0_out",
     "special_modified_bessel_k1",
     "special_modified_bessel_k1_out",
+    "special_round",
+    "special_round_out",
     "special_scaled_modified_bessel_k1",
     "special_scaled_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_u",

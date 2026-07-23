@@ -768,6 +768,8 @@ _FULL_CONFIG = (
     ("special_modified_bessel_k0.out", special_modified_bessel_k0_out),
     ("special_modified_bessel_k1", special_modified_bessel_k1),
     ("special_modified_bessel_k1.out", special_modified_bessel_k1_out),
+    ("special_round", special_round),
+    ("special_round.out", special_round_out),
     ("special_scaled_modified_bessel_k1", special_scaled_modified_bessel_k1),
     ("special_scaled_modified_bessel_k1.out", special_scaled_modified_bessel_k1_out),
     ("special_shifted_chebyshev_polynomial_u", special_shifted_chebyshev_polynomial_u),
