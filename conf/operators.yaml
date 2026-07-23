@@ -1094,6 +1094,18 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: binary_cross_entropy_with_logits
+    description: Compute the binary cross entropy loss with logits.
+    for:
+      - binary_cross_entropy_with_logits
+    labels:
+      - nn.functional
+      - KernelGen
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: bincount
     description: Count the frequency of each value in an array of non-negative integers.
     for:
@@ -2060,6 +2072,17 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cudnn_batch_norm_backward
+    description: Triton kernel implementation for cudnn_batch_norm_backward.
+    for:
+      - cudnn_batch_norm_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cudnn_convolution
     description: |
       A wrapper for cuDNN convolution backend.
@@ -3362,6 +3385,30 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: fractional_max_pool2d
+    description: |
+      Applies 2D fractional max pooling over an input signal composed of several input planes.
+    for:
+      - fractional_max_pool2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: fractional_max_pool2d_backward
+    description: |
+      Computes the gradient of fractional_max_pool2d.
+    for:
+      - fractional_max_pool2d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
@@ -4085,6 +4132,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: igammac_
+    description: |
+      In-place version of igammac. Computes the regularized upper incomplete gamma function complement.
+    for:
+      - igammac_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: ilshift
     description: Computes the in-place bitwise left shift of `self` by `other` bits.
     for:
@@ -4463,6 +4523,30 @@ ops:
       - Reduction
     stages:
       - stable: '3.0'
+  - id: lcm
+    description: Compute the element-wise least common multiple of input tensors.
+    for:
+      - lcm
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Pointwise
+    stages:
+      - alpha: '5.4'
+  - id: lcm_
+    description: Compute the element-wise least common multiple of input tensors, storing result in-place.
+    for:
+      - lcm_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Pointwise
+    stages:
+      - alpha: '5.4'
   - id: le
     description: Computes that `input` is less than or equal to `other` element-wise.
     for:
@@ -7127,6 +7211,28 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: resize_as
+    description: Triton kernel implementation for resize_as.
+    for:
+      - resize_as
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: resize_as_
+    description: The in-place version of `resize_as()`.
+    for:
+      - resize_as_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: resize_output
     description: |
       Resizes tensor output storage and copies overlapping elements.
@@ -8243,6 +8349,21 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_chebyshev_polynomial_u
+    description: |
+      Computes the Chebyshev polynomial of the second kind U_n(x) for each element
+      of the input tensor.
+    for:
+      - special_chebyshev_polynomial_u
+      - special_chebyshev_polynomial_u.n_scalar
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_chebyshev_polynomial_v
     description: |
       Triton kernel implementation for special_chebyshev_polynomial_v.
@@ -8349,6 +8470,28 @@ ops:
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.
     for:
       - special.gammainc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_gammaln
+    description: Computes the logarithm of the absolute value of the Gamma function on input.
+    for:
+      - special.gammaln
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_gammaln_out
+    description: Out-of-place variant of special_gammaln that writes the result to the out tensor.
+    for:
+      - special.gammaln.out
     labels:
       - aten
       - KernelGen
@@ -8475,6 +8618,28 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_modified_bessel_k1
+    description: Modified Bessel function of the second kind of order 1.
+    for:
+      - special_modified_bessel_k1
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_modified_bessel_k1_out
+    description: A variant of `special_modified_bessel_k1` that allows the output to be assigned to another tensor.
+    for:
+      - special_modified_bessel_k1.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_shifted_chebyshev_polynomial_u
     description: |
       Computes the shifted Chebyshev polynomial of the second kind U_n^*(x)
@@ -8518,6 +8683,17 @@ ops:
     labels:
       - aten
       - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_sinc
+    description: Computes sin(pi * x) / (pi * x) for each element of `input`.
+    for:
+      - special.sinc
+    labels:
+      - aten
       - KernelGen
     kind:
       - Math
@@ -9262,6 +9438,28 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: unsqueeze
+    description: Returns a new tensor with a dimension of size one inserted at the specified position.
+    for:
+      - unsqueeze
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: unsqueeze_
+    description: In-place version of `unsqueeze()`.
+    for:
+      - unsqueeze_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: unsafe_masked_index
     description: Gathers elements from self at given indices where mask is True, filling unmasked positions with a scalar value.
     for:

@@ -122,6 +122,9 @@ from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
+from flag_gems.ops.binary_cross_entropy_with_logits import (
+    binary_cross_entropy_with_logits,
+)
 from flag_gems.ops.bincount import bincount
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
@@ -185,6 +188,7 @@ from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.ctc_loss import ctc_loss
+from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
@@ -253,6 +257,10 @@ from flag_gems.ops.fp8_matmul import fp8_matmul
 from flag_gems.ops.fp8_mqa_logits import fp8_mqa_logits
 from flag_gems.ops.fp8_paged_mqa_logits import fp8_paged_mqa_logits
 from flag_gems.ops.frac_ import frac, frac_
+from flag_gems.ops.fractional_max_pool2d import (
+    fractional_max_pool2d,
+    fractional_max_pool2d_backward,
+)
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
@@ -290,6 +298,7 @@ from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
+from flag_gems.ops.igammac_ import igammac_
 from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
@@ -308,6 +317,7 @@ from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.kron import kron
 from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
+from flag_gems.ops.lcm import lcm, lcm_
 from flag_gems.ops.ldl_factor_ex import ldl_factor_ex
 from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
@@ -464,6 +474,7 @@ from flag_gems.ops.repeat_interleave import (
 from flag_gems.ops.replication_pad1d import replication_pad1d, replication_pad1d_out
 from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.resize import resize, resize_
+from flag_gems.ops.resize_as import resize_as, resize_as_
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
@@ -528,6 +539,7 @@ from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
+from flag_gems.ops.special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
@@ -540,6 +552,7 @@ from flag_gems.ops.special_erfinv import (
     special_erfinv_out,
 )
 from flag_gems.ops.special_gammainc import special_gammainc
+from flag_gems.ops.special_gammaln import special_gammaln, special_gammaln_out
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
@@ -549,6 +562,10 @@ from flag_gems.ops.special_logsumexp import special_logsumexp
 from flag_gems.ops.special_modified_bessel_k0 import (
     special_modified_bessel_k0,
     special_modified_bessel_k0_out,
+)
+from flag_gems.ops.special_modified_bessel_k1 import (
+    special_modified_bessel_k1,
+    special_modified_bessel_k1_out,
 )
 from flag_gems.ops.special_scaled_modified_bessel_k1 import (
     special_scaled_modified_bessel_k1,
@@ -564,6 +581,7 @@ from flag_gems.ops.special_shifted_chebyshev_polynomial_v import (
 from flag_gems.ops.special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
+from flag_gems.ops.special_sinc import special_sinc
 from flag_gems.ops.special_xlog1py import special_xlog1py
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
@@ -598,6 +616,7 @@ from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
+from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -762,6 +781,7 @@ __all__ = [
     "batch_norm_backward",
     "bernoulli",
     "bernoulli_",
+    "binary_cross_entropy_with_logits",
     "bincount",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
@@ -832,6 +852,7 @@ __all__ = [
     "cosh_out",
     "count_nonzero",
     "ctc_loss",
+    "cudnn_batch_norm_backward",
     "cudnn_convolution",
     "cummax",
     "cummin",
@@ -918,6 +939,8 @@ __all__ = [
     "fp8_paged_mqa_logits",
     "frac",
     "frac_",
+    "fractional_max_pool2d",
+    "fractional_max_pool2d_backward",
     "full",
     "full_like",
     "gather",
@@ -965,6 +988,7 @@ __all__ = [
     "i0",
     "i0_",
     "i0_out",
+    "igammac_",
     "im2col",
     "index",
     "index_add",
@@ -988,6 +1012,8 @@ __all__ = [
     "kthvalue",
     "layer_norm",
     "layer_norm_backward",
+    "lcm",
+    "lcm_",
     "ldl_factor",
     "ldl_factor_ex",
     "le",
@@ -1184,6 +1210,8 @@ __all__ = [
     "replication_pad3d",
     "resize",
     "resize_",
+    "resize_as",
+    "resize_as_",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
@@ -1265,6 +1293,7 @@ __all__ = [
     "sort_stable",
     "special_airy_ai",
     "special_airy_ai_out",
+    "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
@@ -1273,6 +1302,8 @@ __all__ = [
     "special_erfinv_",
     "special_erfinv_out",
     "special_gammainc",
+    "special_gammaln",
+    "special_gammaln_out",
     "special_hermite_polynomial_h",
     "special_i0e",
     "special_i0e_out",
@@ -1284,12 +1315,15 @@ __all__ = [
     "special_logsumexp",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
+    "special_modified_bessel_k1",
+    "special_modified_bessel_k1_out",
     "special_scaled_modified_bessel_k1",
     "special_scaled_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
     "special_shifted_chebyshev_polynomial_v",
     "special_shifted_chebyshev_polynomial_w",
+    "special_sinc",
     "special_xlog1py",
     "split_with_sizes_copy",
     "sqrt",
@@ -1342,6 +1376,8 @@ __all__ = [
     "uniform_",
     "unique_consecutive",
     "unique_dim",
+    "unsqueeze",
+    "unsqueeze_",
     "upsample_bicubic2d",
     "upsample_linear1d",
     "upsample_linear1d_backward",
