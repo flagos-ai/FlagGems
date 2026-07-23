@@ -1,4 +1,5 @@
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
+from ._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
@@ -41,6 +42,7 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_nested_view_from_buffer_copy",
+    "_sparse_semi_structured_linear",
     "_unique2",
     "addmm",
     "amax",
