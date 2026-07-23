@@ -32,6 +32,20 @@ else:
 
 random.seed(time.time() // 100)
 
+# Backends that ship their own cumsum copy still carrying the empty-tensor
+# div-by-zero (issue 4602). Skip the empty-input tests there until those
+# backend overrides get the same fix as the generic implementation.
+_EMPTY_CUMSUM_UNFIXED_VENDORS = {
+    "aipu",
+    "arm",
+    "ascend",
+    "cambricon",
+    "kunlunxin",
+    "sunrise",
+    "enflame",
+    "tsingmicro",
+}
+
 
 @pytest.mark.cumsum
 @pytest.mark.parametrize("shape", CUMSUM_SHAPES)
@@ -68,6 +82,35 @@ def test_cumsum(shape, dtype):
         check_dtype = dtype
 
     utils.gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.cumsum
+@pytest.mark.parametrize(
+    "shape, dim",
+    [((0,), 0), ((0, 5), 1), ((3, 0, 4), 2), ((3, 0, 4), 0), ((2, 0), 0)],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
+def test_cumsum_empty(shape, dim, dtype):
+    # Issue 4543: cumsum on an empty tensor must not raise (div-by-zero when a
+    # scanned/leading dim is 0). Output should match torch.cumsum in shape/dtype.
+    if flag_gems.vendor_name in _EMPTY_CUMSUM_UNFIXED_VENDORS:
+        pytest.skip(
+            f"{flag_gems.vendor_name} cumsum override still has the empty-tensor "
+            "div-by-zero (issue 4602)"
+        )
+    if dtype in utils.INT_DTYPES:
+        inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.cumsum(ref_inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.cumsum(inp, dim=dim)
+
+    assert res_out.shape == ref_out.shape
+    assert res_out.dtype == ref_out.dtype
+    assert res_out.numel() == 0
 
 
 @pytest.mark.cumsum_out
