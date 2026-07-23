@@ -34,7 +34,21 @@ jobs:
       - name: Build .deb
         run: bash packaging/debian/build-helpers/build-flaggems.sh
 
+      # Installing cleanly is not the same as working: a bare `Depends:` can
+      # resolve to a too-old distro version, and a subpackage missing an
+      # __init__.py is dropped by find_packages() without any build error.
+      # Both only surface at import time, long after `dpkg -l` says "ii".
+      - name: Smoke test installed package
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work ubuntu:22.04 bash -euc '
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq ./debian-packages/*.deb
+            python3 packaging/verify-installed-package.py
+          '
+
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: flag-gems-amd64-packages
