@@ -69,7 +69,15 @@ def generate_gather_kernel(
 
     code.writeline("def heur_block_m(args):")
     with code.indent():
-        code.writeline('return triton.next_power_of_2(triton.cdiv(args["M"], 12))')
+        # BOUNDED BLOCK_M: the kernel materializes [BLOCK_M, BLOCK_N] int64 offset
+        # tiles (inp_offsets / idx_offsets / cur_idx). The old
+        # next_power_of_2(cdiv(M, 12)) is the UNBOUNDED-BLOCK anti-pattern: for
+        # large M it produces giant int64 tiles (tensor<128x4096xi64> etc.) that
+        # ConvertTritonXPUToLLVM expands per element -> multi-GB IR explosion.
+        # Cap at 8 (matches the original autotune block_m in [1,2,4,8]).
+        code.writeline(
+            'return builtins.min(triton.next_power_of_2(triton.cdiv(args["M"], 12)), 8)'
+        )
 
     code.newline()
 
@@ -223,6 +231,10 @@ def generate_gather_wrapper(
                 code.writeline("inp_dim_size,")
                 code.writeline("M,")
                 code.writeline("N,")
+                # Chunk the [BLOCK_M, BLOCK_N] int64 offset tiles into 2048-element
+                # pieces so the large constexpr tile is not materialized whole
+                # (prevents IR explosion even with a wide BLOCK_N).
+                code.writeline("buffer_size_limit=2048,")
         code.writeline(")")
         code.writeline("return out")
 
