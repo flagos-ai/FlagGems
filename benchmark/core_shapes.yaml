@@ -498,6 +498,14 @@ AttentionBenchmark:
     - [4, 32, 4096, 128]
     - [4, 32, 8192, 128]
 
+ScaledDotProductFusedAttentionOverrideableBenchmark:
+  shapes:
+    - [2, 8, 64, 64]
+    - [4, 8, 128, 64]
+    - [2, 8, 128, 128]
+    - [1, 16, 256, 64]
+  shape_desc: "B, H, S, D"
+
 KronBenchmark:
   shapes:
     - [16, 16]
@@ -537,6 +545,15 @@ index:
     - [[1024, 1024], [[64], [64]]]
     - [[512, 512, 512], [[2, 128]]]
     - [[64, 64, 64], [[2, 8], [2, 8]]]
+
+index_select_backward:
+  shapes:
+    - [16, 64]
+    - [32, 128]
+    - [64, 256]
+    - [16, 16, 64]
+    - [32, 32, 128]
+  shape_desc: "N, M"
 
 FlashMLABenchmark:
   shapes:
@@ -643,6 +660,15 @@ ReshapeAndCacheFlashBenchmark:
     - [21, 4, 80, 16, 10000]
     - [42, 8, 64, 8, 1024]
     - [42, 8, 80, 16, 10000]
+
+FractionalMaxPool2dBenchmark:
+  shapes:
+    - [4, 3, 224, 224]
+    - [16, 64, 56, 56]
+    - [32, 128, 28, 28]
+    - [64, 256, 14, 14]
+    - [128, 512, 7, 7]
+  shape_desc: "N, C, H, W"
 
 pixel_shuffle:
   shapes:

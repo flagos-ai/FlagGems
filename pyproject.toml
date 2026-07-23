@@ -16,7 +16,14 @@
 # setuptools is capped below 77: from 77.0 onward it adopts PEP 639 and emits
 # `License-File`, which bumps the wheel to Metadata-Version 2.4. Some package
 # indexes (e.g. Nexus) reject 2.4; <77 keeps the pure-Python wheel at 2.2.
-requires = ["setuptools>=64.0,<77", "setuptools-scm>=8"]
+#
+# setuptools-scm is capped below 10: the 10.x line added an egg_info
+# file-finder integration (setuptools_scm/_integration/egg_info.py) that reads
+# `ignore_egg_info_in_manifest`, an attribute only present on newer setuptools.
+# Combined with the setuptools<77 pin above, `pip install .` then fails during
+# "Getting requirements to build wheel" with
+# `AttributeError: ignore_egg_info_in_manifest`. 9.x has no such integration.
+requires = ["setuptools>=64.0,<77", "setuptools-scm>=8,<10"]
 
 build-backend = "setuptools.build_meta"
 
@@ -180,6 +187,7 @@ test = [
     "distro==1.9.0",
     "coverage==7.13.5",
     "openpyxl==3.1.5",
+    "pandas==2.3.3",
     "pytest==9.0.3",
     "pytest-md-report==0.8.0",
     "scipy>=1.15.3",
