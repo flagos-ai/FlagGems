@@ -352,6 +352,7 @@ from flag_gems.ops.logical_xor import logical_xor
 from flag_gems.ops.logical_xor_ import logical_xor_
 from flag_gems.ops.logit import logit, logit_out
 from flag_gems.ops.logit_ import logit_
+from flag_gems.ops.logit_backward import logit_backward, logit_backward_out
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lt import lt, lt_scalar
@@ -1067,6 +1068,8 @@ __all__ = [
     "logical_xor_",
     "logit",
     "logit_",
+    "logit_backward",
+    "logit_backward_out",
     "logit_out",
     "logspace",
     "logsumexp",
