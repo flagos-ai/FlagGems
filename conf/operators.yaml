@@ -4705,17 +4705,6 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
-  - id: linalg_vander
-    description: Generates a Vandermonde matrix from an input vector.
-    for:
-      - linalg_vander
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - LinearAlg
-    stages:
-      - alpha: '5.4'
   - id: linalg_cholesky
     description: |-
       Computes the Cholesky decomposition of a symmetric positive-definite matrix A
@@ -4786,6 +4775,17 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_vander
+    description: Generates a Vandermonde matrix from an input vector.
+    for:
+      - linalg_vander
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
     stages:
       - alpha: '5.4'
   - id: linear
