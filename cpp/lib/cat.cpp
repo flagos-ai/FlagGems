@@ -15,10 +15,8 @@
 #include "flag_gems/backend_utils.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
-#include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
-using namespace triton_jit;
 
 namespace {
 
@@ -121,13 +119,6 @@ at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
     storage_offsets.push_back(current_storage_offset);
   }
 
-  const TritonJITFunction& copy_kernel_func =
-      TritonJITFunction::get_instance(std::string(utils::get_triton_src_path() / "cat_copy.py"),
-                                      "strided_copy_kernel");
-  c10::DeviceGuard guard(out.device());
-  backend::StreamType stream = backend::getCurrentStream();
-  backend::RawStreamType raw_stream = backend::getRawStream(stream);
-
   for (size_t i = 0; i < tensors.size(); ++i) {
     const auto& input_tensor = tensors[i];
     if (input_tensor.numel() == 0) continue;
@@ -138,41 +129,7 @@ at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
     }
 
     at::Tensor output_view = at::as_strided(out, src_tensor.sizes(), out.strides(), storage_offsets[i]);
-
-    auto options = torch::TensorOptions().device(src_tensor.device()).dtype(torch::kInt64);
-    at::Tensor in_strides = torch::tensor(src_tensor.strides(), options);
-    at::Tensor out_strides = torch::tensor(output_view.strides(), options);
-    at::Tensor shapes = torch::tensor(src_tensor.sizes(), options);
-
-    int64_t ndim_val = src_tensor.dim();
-    int64_t num_elements = src_tensor.numel();
-
-    constexpr int BLOCK_SIZE = 256;
-    constexpr int MAX_DIMS = 8;
-    TORCH_CHECK(ndim_val <= MAX_DIMS,
-                "Tensor dimension ",
-                ndim_val,
-                " exceeds the maximum supported by the kernel (",
-                MAX_DIMS,
-                ")");
-
-    unsigned int grid_x = (num_elements + BLOCK_SIZE - 1) / BLOCK_SIZE;
-
-    copy_kernel_func(raw_stream,
-                     grid_x,
-                     1,
-                     1,
-                     4,
-                     2,
-                     src_tensor,
-                     output_view,
-                     in_strides,
-                     out_strides,
-                     shapes,
-                     ndim_val,
-                     num_elements,
-                     BLOCK_SIZE,
-                     MAX_DIMS);
+    copy_(output_view, src_tensor, false);
   }
   return out;
 }
