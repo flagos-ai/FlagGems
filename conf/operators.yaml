@@ -4109,6 +4109,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: igamma_
+    description: In-place computation of the regularized lower incomplete gamma function.
+    for:
+      - igamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: igammac_
     description: |
       In-place version of igammac. Computes the regularized upper incomplete gamma function complement.

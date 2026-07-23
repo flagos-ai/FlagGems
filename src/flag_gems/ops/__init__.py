@@ -294,6 +294,7 @@ from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
+from flag_gems.ops.igamma_ import igamma_
 from flag_gems.ops.igammac_ import igammac_
 from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
@@ -979,6 +980,7 @@ __all__ = [
     "i0",
     "i0_",
     "i0_out",
+    "igamma_",
     "igammac_",
     "im2col",
     "index",
