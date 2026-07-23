@@ -6,7 +6,7 @@ import triton.language as tl
 
 
 def register_ops(registry):
-    """注册算子到 PDU"""
+ 
     registry.register_op("meshgrid", meshgrid, "aten::meshgrid")
 
 
