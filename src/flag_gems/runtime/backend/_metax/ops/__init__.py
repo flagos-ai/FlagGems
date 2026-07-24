@@ -7,6 +7,7 @@ from .bmm import bmm
 from .exponential_ import exponential_
 from .full import full
 from .full_like import full_like
+from .grid_sampler_2d import grid_sampler_2d
 from .groupnorm import group_norm
 from .hadamard_transform import hadamard_transform
 from .index import index
@@ -52,6 +53,7 @@ __all__ = [
     "exponential_",
     "full",
     "full_like",
+    "grid_sampler_2d",
     "group_norm",
     "hadamard_transform",
     "index",
