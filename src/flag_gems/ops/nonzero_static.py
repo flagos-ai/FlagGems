@@ -596,7 +596,7 @@ def _nonzero_static_impl(
             )
         return _finish_nonzero_static_out(out, work_out, transpose=out is not None)
 
-    prefix = torch.cumsum(counts, dim=0)
+    prefix = flag_gems.cumsum(counts, dim=0)
 
     with torch_device_fn.device(input.device):
         if use_generic_ndim:
