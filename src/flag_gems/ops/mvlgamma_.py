@@ -105,9 +105,8 @@ def mvlgamma_kernel_(
     tl.store(x_ptr + offsets, result, mask=mask)
 
 
-def mvlgamma_(*args, **kwargs):
-    x = args[0]
-    p = args[1] if len(args) > 1 else kwargs.get("p", 1)
+def mvlgamma_(self, p):
+    x = self
 
     if not isinstance(x, torch.Tensor):
         raise TypeError("mvlgamma_ expects a torch.Tensor as the first argument")

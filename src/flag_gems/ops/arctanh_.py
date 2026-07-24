@@ -47,15 +47,8 @@ def arctanh_kernel_(
     tl.store(x_ptr + offsets, y, mask=mask)
 
 
-def arctanh_(*args, **kwargs):
-    # Extract the input tensor; accept positional or keywords like 'input' or 'self'
-    x = None
-    if len(args) >= 1 and isinstance(args[0], torch.Tensor):
-        x = args[0]
-    else:
-        x = kwargs.get("input", kwargs.get("self", None))
-    if not isinstance(x, torch.Tensor):
-        raise TypeError("arctanh_ expects a single Tensor argument")
+def arctanh_(self):
+    x = self
 
     if not x.is_contiguous():
         raise ValueError("Input tensor must be contiguous")
