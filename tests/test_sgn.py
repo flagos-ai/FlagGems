@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
+
 import pytest
 import torch
 
@@ -37,6 +39,14 @@ def _make_input(shape, dtype):
         return torch.randint(0, 100, shape, dtype=dtype, device=flag_gems.device)
     if dtype in utils.ALL_INT_DTYPES or dtype == torch.int8:
         return torch.randint(-100, 100, shape, dtype=dtype, device=flag_gems.device)
+    if dtype == torch.complex32:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="ComplexHalf support is experimental.*",
+                category=UserWarning,
+            )
+            return torch.randn(shape, dtype=dtype, device=flag_gems.device)
     return torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
 
