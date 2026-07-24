@@ -537,9 +537,7 @@ def test_generic_gemm_te_ref_bias(M, N, K, dtype):
     weight = torch.randn((N, K), dtype=dtype, device="cuda")
     bias = torch.randn((N,), dtype=dtype, device="cuda")
 
-    te_out, te_bias_grad, te_pre_gelu, _ = te_general_gemm(
-        weight, inp, bias=bias
-    )
+    te_out, te_bias_grad, te_pre_gelu, _ = te_general_gemm(weight, inp, bias=bias)
 
     gems_out, gems_bias_grad, gems_pre_gelu, gems_extra = generic_gemm(
         inp, weight, layout="NT", bias=bias
@@ -562,9 +560,7 @@ def test_generic_gemm_te_ref_gelu(M, N, K, dtype):
     inp = torch.randn((M, K), dtype=dtype, device="cuda")
     weight = torch.randn((N, K), dtype=dtype, device="cuda")
 
-    te_out, te_bias_grad, te_pre_gelu, _ = te_general_gemm(
-        weight, inp, gelu=True
-    )
+    te_out, te_bias_grad, te_pre_gelu, _ = te_general_gemm(weight, inp, gelu=True)
 
     gems_out, gems_bias_grad, gems_pre_gelu, gems_extra = generic_gemm(
         inp, weight, layout="NT", gelu=True
