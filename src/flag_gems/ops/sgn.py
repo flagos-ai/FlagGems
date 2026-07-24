@@ -1,0 +1,175 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def sgn_real_kernel(
+    x_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    IS_BOOL: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    x = tl.load(x_ptr + offsets, mask=mask, other=0)
+
+    if IS_BOOL:
+        result = x
+    else:
+        pos = x > 0
+        neg = x < 0
+        result = pos.to(x.dtype) - neg.to(x.dtype)
+
+    tl.store(out_ptr + offsets, result, mask=mask)
+
+
+@triton.jit
+def sgn_complex_kernel(
+    x_ri_ptr,
+    out_ri_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    COMPUTE_IN_FP32: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    base = offsets * 2
+    real = tl.load(x_ri_ptr + base, mask=mask, other=0.0)
+    imag = tl.load(x_ri_ptr + base + 1, mask=mask, other=0.0)
+
+    if COMPUTE_IN_FP32:
+        real_compute = real.to(tl.float32)
+        imag_compute = imag.to(tl.float32)
+    else:
+        real_compute = real
+        imag_compute = imag
+
+    abs_real = tl.abs(real_compute)
+    abs_imag = tl.abs(imag_compute)
+    scale = tl.maximum(abs_real, abs_imag)
+    is_zero = scale == 0.0
+    safe_scale = tl.where(is_zero, 1.0, scale)
+
+    scaled_real = real_compute / safe_scale
+    scaled_imag = imag_compute / safe_scale
+    norm = scale * tl.sqrt(scaled_real * scaled_real + scaled_imag * scaled_imag)
+    safe_norm = tl.where(is_zero, 1.0, norm)
+
+    out_real = tl.where(is_zero, 0.0, real_compute / safe_norm)
+    out_imag = tl.where(is_zero, 0.0, imag_compute / safe_norm)
+
+    tl.store(out_ri_ptr + base, out_real, mask=mask)
+    tl.store(out_ri_ptr + base + 1, out_imag, mask=mask)
+
+
+def _extract_input(args, kwargs):
+    if len(args) >= 1 and isinstance(args[0], torch.Tensor):
+        return args[0]
+    if "input" in kwargs and isinstance(kwargs["input"], torch.Tensor):
+        return kwargs["input"]
+    if "self" in kwargs and isinstance(kwargs["self"], torch.Tensor):
+        return kwargs["self"]
+    return None
+
+
+def _sgn_impl(x: torch.Tensor, out: torch.Tensor):
+    if x.device != out.device:
+        raise RuntimeError("input and out must be on the same device")
+    if x.dtype != out.dtype:
+        raise RuntimeError(f"out must have dtype {x.dtype}, but got {out.dtype}")
+    if out.shape != x.shape:
+        out.resize_(x.shape)
+
+    n_elements = x.numel()
+    if n_elements == 0:
+        return out
+
+    x_contig = x.contiguous()
+    if out.is_contiguous():
+        out_contig = out
+    else:
+        out_contig = torch.empty_like(x, memory_format=torch.contiguous_format)
+
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(x.device):
+        if x.is_complex():
+            x_ri = torch.view_as_real(x_contig).view(-1)
+            out_ri = torch.view_as_real(out_contig).view(-1)
+            sgn_complex_kernel[grid](
+                x_ri,
+                out_ri,
+                n_elements,
+                BLOCK_SIZE=1024,
+                COMPUTE_IN_FP32=x.dtype in (torch.complex32, torch.complex64),
+            )
+        else:
+            sgn_real_kernel[grid](
+                x_contig.view(-1),
+                out_contig.view(-1),
+                n_elements,
+                BLOCK_SIZE=1024,
+                IS_BOOL=x.dtype == torch.bool,
+            )
+
+    if out_contig is not out:
+        out.copy_(out_contig)
+    return out
+
+
+def sgn(*args, **kwargs):
+    logger.debug("GEMS SGN")
+    if len(args) > 1:
+        raise TypeError("sgn expects a single Tensor argument")
+    x = _extract_input(args, kwargs)
+    if x is None:
+        raise TypeError("sgn expects a single Tensor argument")
+
+    out = torch.empty_like(x)
+    return _sgn_impl(x, out)
+
+
+def sgn_out(*args, **kwargs):
+    logger.debug("GEMS SGN_OUT")
+    if len(args) > 2:
+        raise TypeError("sgn_out expects an input Tensor and an out Tensor")
+    x = _extract_input(args, kwargs)
+    out = kwargs.get("out")
+    if len(args) >= 2:
+        if out is not None:
+            raise TypeError("sgn_out got multiple values for out")
+        if isinstance(args[1], torch.Tensor):
+            out = args[1]
+
+    if x is None:
+        raise TypeError("sgn_out expects an input Tensor")
+    if not isinstance(out, torch.Tensor):
+        raise TypeError("sgn_out expects an out Tensor")
+    return _sgn_impl(x, out)
