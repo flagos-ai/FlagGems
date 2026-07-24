@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import os
 
@@ -48,12 +62,22 @@ def eq(A, B):
     return res
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "ALWAYS_BOOL")],
+    config=config_,
+)
 @triton.jit
 def eq_func_scalar(x, y):
-    return x.to(tl.float32) == y.to(tl.float32)
+    return x.to(tl.float32) == y
 
 
 def eq_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN EQ_SCALAR")
+    # Mirror ne_scalar / gt_scalar: the scalar path adds the tuned config_
+    # (kunlunAutoGrid=True + unroll_num=8) which lifts large-shape throughput
+    # ~1.6x (the config-less baseline was stuck ~0.13-0.14 on the 65536-wide
+    # shapes). It must NOT set TRITONXPU_COMPARE_FUSION / TRITONXPU_FP16_FAST:
+    # for tensor-vs-scalar those fusion env vars make the compiler emit an fp16
+    # compare that trips `arith.cmpf same-type` and overflows uni_sram.
     return eq_func_scalar(A, B)

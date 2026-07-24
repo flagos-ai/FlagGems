@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -263,9 +277,11 @@ def _assert_conv_transpose2d_matches(
 @pytest.mark.parametrize(
     "input_shape, weight_shape, use_bias, stride, padding, output_padding, groups, "
     "dilation, dtype",
-    SUPPORTED_CONV_TRANSPOSE2D_CASES[:2]
-    if cfg.QUICK_MODE
-    else SUPPORTED_CONV_TRANSPOSE2D_CASES,
+    (
+        SUPPORTED_CONV_TRANSPOSE2D_CASES[:2]
+        if cfg.QUICK_MODE
+        else SUPPORTED_CONV_TRANSPOSE2D_CASES
+    ),
 )
 def test_accuracy_conv_transpose2d_supported(
     monkeypatch,
@@ -297,9 +313,11 @@ def test_accuracy_conv_transpose2d_supported(
 @pytest.mark.parametrize(
     "input_shape, weight_shape, use_bias, stride, padding, output_padding, groups, "
     "dilation, dtype",
-    ADDITIONAL_CONV_TRANSPOSE2D_CASES[:2]
-    if cfg.QUICK_MODE
-    else ADDITIONAL_CONV_TRANSPOSE2D_CASES,
+    (
+        ADDITIONAL_CONV_TRANSPOSE2D_CASES[:2]
+        if cfg.QUICK_MODE
+        else ADDITIONAL_CONV_TRANSPOSE2D_CASES
+    ),
 )
 def test_accuracy_conv_transpose2d_extended_parameters(
     monkeypatch,
