@@ -4777,6 +4777,28 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_lu_factor
+    description: |
+      Computes a compact representation of the LU factorization with partial pivoting of a matrix.
+    for:
+      - linalg.lu_factor
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_lu_factor_out
+    description: |
+      Out-of-place version of linalg_lu_factor. Supports calling torch.linalg.lu_factor(A, *, pivot=True, out=(LU, pivots)). The out parameter provides pre-allocated output tensors.
+    for:
+      - linalg.lu_factor.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
