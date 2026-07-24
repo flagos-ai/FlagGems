@@ -9896,3 +9896,21 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: meshgrid
+    description: |
+      Creates coordinate grids from coordinate vectors.
+      Supports 'ij' (matrix) or 'xy' (Cartesian) indexing.
+    for:
+      - meshgrid
+      - aten::meshgrid
+    labels:
+      - aten
+      - grid
+    kind:
+      - Math
+    stages:
+      - stable: '1.0'
+
+# meshgrid operator registered
+
+# meshgrid operator registered
