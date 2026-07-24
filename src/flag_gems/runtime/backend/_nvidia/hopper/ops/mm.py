@@ -77,6 +77,51 @@ else:
     TLE_REMOTE_A_SLOTS = 2
 
 
+def _is_tma_safe(t: torch.Tensor) -> bool:
+    """Whether a TMA ``TensorDescriptor`` may legally be built from ``t``.
+
+    The descriptor requires the base address and the outer stride to be 16-byte
+    aligned. ``general_mm`` feeds a row-major operand as-is and a column-major one
+    transposed, so in both cases the descriptor's outer stride is the operand's
+    *non-unit* stride -- for a clean transpose of an (M, K) operand that is M, which
+    ``is_tma_compatible`` never checks (it only validates N and K).
+    """
+    align = 16 // t.element_size()  # elems per 16 bytes: fp16/bf16 -> 8, fp32 -> 4
+    s0, s1 = t.stride()
+    if s1 == 1:
+        outer = s0
+    elif s0 == 1:
+        outer = s1
+    else:
+        return False  # neither dim unit-stride: TMA cannot address it at all
+    return t.data_ptr() % 16 == 0 and outer % align == 0
+
+
+def _tma_safe(t: torch.Tensor) -> torch.Tensor:
+    """Return ``t``, or a contiguous copy of it that a TMA descriptor accepts.
+
+    A gapped view with an unaligned outer stride (e.g. ``as_strided((M, K), (65, 1))``
+    -> 65 * 2B = 130B), a clean transpose whose M is not a multiple of 16 bytes, or any
+    view with an unaligned base (odd ``storage_offset``, e.g. ``weight[:, 1:]``) makes
+    the descriptor illegal ("strides/base must be 16-byte aligned"). A fresh contiguous
+    buffer fixes all three: for a non-empty operand its outer stride is K (resp. N),
+    which ``is_tma_compatible`` has already established is a multiple of 16 bytes, and
+    the allocation is aligned. See issue #2489.
+
+    Neither ``.contiguous()`` nor ``.clone()`` can be used here: both are stride-preserving
+    for an operand that is already stride-contiguous, which includes a misaligned base and
+    -- because a size-1 dim never constrains contiguity -- an ``(1, K)`` operand strided
+    ``(1, 1)``, as ``x.t()`` of a ``(K, 1)`` input produces. ``empty_like`` + ``copy_``
+    normalizes the strides unconditionally.
+
+    Only called on the TMA path, so operands bound for any other kernel keep their layout
+    -- and with it the kernel ``mm`` dispatches them to.
+    """
+    if _is_tma_safe(t):
+        return t
+    return torch.empty_like(t, memory_format=torch.contiguous_format).copy_(t)
+
+
 def is_tma_compatible(a, b, N, K):
     """
     Check if tensors are compatible with TMA (Tensor Memory Accelerator).
@@ -468,6 +513,21 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
     if hasattr(
         triton.tools.tensor_descriptor, "TensorDescriptor"
     ) and is_tma_compatible(a, b, N, K):
+        # A descriptor is only legal for a 16-byte-aligned stride and base (#2489).
+        # Done here, rather than in mm(), so that operands headed for any other kernel
+        # keep their layout -- copying them would flip is_contiguous() and with it the
+        # kernel they dispatch to.
+        a = _tma_safe(a)
+        b = _tma_safe(b)
+        # `c` may be a caller-supplied `out` view; compute into an aligned buffer and
+        # write back, since the result has to land in the caller's storage. Unlike an
+        # operand, `c` is always fed to the descriptor untransposed, so it additionally
+        # has to be row-major -- TMA cannot express a non-unit innermost stride.
+        c_tma = (
+            c
+            if c.stride(1) == 1 and _is_tma_safe(c)
+            else torch.empty_like(c, memory_format=torch.contiguous_format)
+        )
         a_row_major = a.stride(1) == 1
         b_row_major = b.stride(1) == 1
         dummy_block = [1, 1]
@@ -482,7 +542,7 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
             b_desc = TensorDescriptor(b, b.shape, b.stride(), dummy_block)
         else:
             b_desc = TensorDescriptor(b, b.T.shape, b.T.stride(), dummy_block)
-        c_desc = TensorDescriptor(c, c.shape, c.stride(), dummy_block)
+        c_desc = TensorDescriptor(c_tma, c_tma.shape, c_tma.stride(), dummy_block)
 
         input_dtype = a.dtype
         dtype_str = str(input_dtype).split(".")[-1]
@@ -499,12 +559,14 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
                 a.stride(1),
                 b.stride(0),
                 b.stride(1),
-                c.stride(0),
-                c.stride(1),
+                c_tma.stride(0),
+                c_tma.stride(1),
                 A_ROW_MAJOR=a_row_major,
                 B_ROW_MAJOR=b_row_major,
                 dtype=dtype_str,
             )
+        if c_tma is not c:
+            c.copy_(c_tma)
     else:
 
         def alloc_fn(size: int, align: int, stream: Optional[int]):
