@@ -4777,6 +4777,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_lstsq
+    description: |-
+      Computes the least-squares solution (gels driver) to A X = B for full-rank
+      over- or underdetermined systems, including batches, via Householder TSQR.
+    for:
+      - linalg_lstsq
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
