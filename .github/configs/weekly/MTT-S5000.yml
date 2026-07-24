@@ -25,13 +25,10 @@ runner_labels: s5000-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/mthreads-flaggems-test-mtt-s5000:20260701
+container_image: harbor.baai.ac.cn/flaggems/mthreads-flaggems-test-mtt-s5000:20260724
 
 # Container volumes to mount for this backends
 container_volumes:
-  - /usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu
-  - /lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu
-  - /etc/alternatives:/etc/alternatives
   - /etc/localtime:/etc/localtime:ro
   - /data:/data
   - /home:/home
@@ -60,4 +57,4 @@ test_env:
 gpu_check_script: tools/gpu_check_mthreads.sh
 
 # Output base directory for this backends
-output_base_dir: /home/flaggems/weekly
+output_base_dir: /data/flaggems/weekly
