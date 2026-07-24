@@ -36,8 +36,24 @@ from typing_extensions import override
 from .model import PersistantModel
 from .session import RollbackSession
 
+# SQLAlchemy 2.0 introduced ``DeclarativeBase`` and ``mapped_column``; LTS
+# distributions (e.g. Ubuntu 22.04/24.04) still ship SQLAlchemy 1.4, so fall
+# back to the legacy declarative API when they are unavailable.
+_SQLALCHEMY_2 = hasattr(sqlalchemy.orm, "DeclarativeBase")
 
-class Base(sqlalchemy.orm.DeclarativeBase): ...
+if _SQLALCHEMY_2:
+
+    class Base(sqlalchemy.orm.DeclarativeBase): ...
+
+else:
+    Base = sqlalchemy.orm.declarative_base()
+
+    _PY_TYPE_TO_SQL_TYPE: Dict[Type, Type] = {
+        bool: sqlalchemy.Boolean,
+        int: sqlalchemy.Integer,
+        float: sqlalchemy.Float,
+        str: sqlalchemy.String,
+    }
 
 
 class SQLPersistantModel(PersistantModel):
@@ -52,20 +68,34 @@ class SQLPersistantModel(PersistantModel):
         keys: Mapping[str, Union[Any, Type]],
         values: Mapping[str, Union[Any, Type]] = {},
     ) -> Type[Base]:
-        annotations: Dict[str, Type] = {
-            k: sqlalchemy.orm.Mapped[v if isinstance(v, Type) else type(v)]
-            for k, v in chain(keys.items(), values.items())
-        }
-        cols: Dict[str, sqlalchemy.orm.MappedColumn] = {
-            k: sqlalchemy.orm.mapped_column(primary_key=True) for k in keys.keys()
-        } | {k: sqlalchemy.orm.mapped_column(primary_key=False) for k in values.keys()}
+        if _SQLALCHEMY_2:
+            annotations: Dict[str, Type] = {
+                k: sqlalchemy.orm.Mapped[v if isinstance(v, Type) else type(v)]
+                for k, v in chain(keys.items(), values.items())
+            }
+            cols: Dict[str, sqlalchemy.orm.MappedColumn] = {
+                k: sqlalchemy.orm.mapped_column(primary_key=True) for k in keys.keys()
+            } | {
+                k: sqlalchemy.orm.mapped_column(primary_key=False)
+                for k in values.keys()
+            }
+            members: Dict[str, Any] = {"__annotations__": annotations, **cols}
+        else:
+            # SQLAlchemy 1.4 has no annotation-driven mapping; build the
+            # columns explicitly from the python types instead.
+            members = {
+                k: sqlalchemy.Column(
+                    _PY_TYPE_TO_SQL_TYPE[v if isinstance(v, Type) else type(v)],
+                    primary_key=k in keys,
+                )
+                for k, v in chain(keys.items(), values.items())
+            }
         ModelCls: Type[Base] = type(
             name,
             (Base,),
             {
-                "__annotations__": annotations,
                 "__tablename__": name,
-                **cols,
+                **members,
             },
         )
         return ModelCls
