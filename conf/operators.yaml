@@ -1892,6 +1892,17 @@ ops:
     stages:
       - beta: '2.2'
       - stable: '5.3'
+  - id: convert_weight_to_int4pack
+    description: Converts a weight tensor to int4 packed format.
+    for:
+      - _convert_weight_to_int4pack
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: conv_transpose1d
     description: |
       Applies a 1D transposed convolution operator over an input image composed of several input planes.

@@ -27,6 +27,7 @@ from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
 from flag_gems.ops._conj import _conj
+from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
 from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range import (
@@ -667,6 +668,7 @@ __all__ = [
     "_cdist_backward",
     "_conj",
     "_conv_depthwise2d",
+    "_convert_weight_to_int4pack",
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
     "_functional_sym_constrain_range",

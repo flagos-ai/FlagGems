@@ -83,6 +83,7 @@ _FULL_CONFIG = (
     ("_cdist_backward", _cdist_backward),
     ("_conj", _conj),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
     ("_efficient_attention_backward", efficient_attention_backward),
     ("_embedding_bag_dense_backward", _embedding_bag_dense_backward),
     ("_euclidean_dist", _euclidean_dist),
