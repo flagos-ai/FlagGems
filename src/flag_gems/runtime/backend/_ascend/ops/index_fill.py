@@ -33,6 +33,7 @@ _FULL_COVERAGE_HOST_CHECK_MAX_BYTES = 384 * 1024
 _TRANSPOSE_FILL_SMALL_FULL_DIM_MAX_SIZE = 256
 _TRANSPOSE_FILL_SMALL_FULL_DIM_MIN_NUMEL = 1024 * 1024
 
+
 @libentry()
 @triton.jit(
     do_not_specialize=[
@@ -65,9 +66,9 @@ def index_fill_contiguous_scalar_kernel(
     raw_index = tl.load(index + index_coord, mask=m_mask, other=0).to(tl.int64)
     valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
     tl.device_assert((~m_mask) | valid_index, "index out of bounds")
-    normalized_index = tl.where(
-        raw_index < 0, raw_index + dim_size, raw_index
-    ).to(tl.int64)
+    normalized_index = tl.where(raw_index < 0, raw_index + dim_size, raw_index).to(
+        tl.int64
+    )
 
     out_offsets = outer_coord[:, None].to(tl.int64) * dim_size * inner_size
     out_offsets += normalized_index[:, None] * inner_size
@@ -109,9 +110,7 @@ def index_fill_contiguous_scalar_small_inner_kernel(
 
     dim_size_i32 = dim_size.to(tl.int32)
     inner_size_i32 = inner_size.to(tl.int32)
-    index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
-        tl.int32
-    )
+    index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(tl.int32)
     if HAS_NEGATIVE:
         index_values = tl.where(
             index_values < 0, index_values + dim_size_i32, index_values
@@ -124,9 +123,7 @@ def index_fill_contiguous_scalar_small_inner_kernel(
         out_offsets += index_values[:, None] * inner_size_i32
         out_offsets += inner_offsets[None, :]
         store_mask = (
-            outer_mask
-            & index_mask[:, None]
-            & (inner_offsets[None, :] < inner_size_i32)
+            outer_mask & index_mask[:, None] & (inner_offsets[None, :] < inner_size_i32)
         )
         tl.store(out + out_offsets, value, mask=store_mask)
 
@@ -160,21 +157,19 @@ def index_fill_contiguous_scalar_small_inner_blockptr_kernel(
     valid_index = (raw_index >= -dim_size_i32) & (raw_index < dim_size_i32)
     index_value = raw_index
     if HAS_NEGATIVE:
-        index_value = tl.where(
-            index_value < 0, index_value + dim_size_i32, index_value
-        )
+        index_value = tl.where(index_value < 0, index_value + dim_size_i32, index_value)
 
     # Block pointers cannot accept a mask. Skip invalid indices and map the
     # final outer tail to row zero, which has already received the same value.
     if valid_index:
         for outer_offset in range(0, BLOCK_OUTER):
             outer_index = pid_outer * BLOCK_OUTER + outer_offset
-            safe_outer_index = tl.where(
-                outer_index < outer_size, outer_index, 0
+            safe_outer_index = tl.where(outer_index < outer_size, outer_index, 0)
+            base = (
+                out
+                + (safe_outer_index.to(tl.int32) * dim_size_i32 + index_value)
+                * inner_size_i32
             )
-            base = out + (
-                safe_outer_index.to(tl.int32) * dim_size_i32 + index_value
-            ) * inner_size_i32
             block = tl.make_block_ptr(
                 base=base,
                 shape=(SPAN,),
@@ -185,6 +180,7 @@ def index_fill_contiguous_scalar_small_inner_blockptr_kernel(
             )
             values = tl.full((4,), value, out.dtype.element_ty)
             tl.store(block, values, boundary_check=(0,))
+
 
 @libentry()
 @triton.jit(do_not_specialize=["N"])
@@ -236,9 +232,9 @@ def index_fill_contiguous_tensor_kernel(
     raw_index = tl.load(index + index_coord, mask=m_mask, other=0).to(tl.int64)
     valid_index = (raw_index >= -dim_size) & (raw_index < dim_size)
     tl.device_assert((~m_mask) | valid_index, "index out of bounds")
-    normalized_index = tl.where(
-        raw_index < 0, raw_index + dim_size, raw_index
-    ).to(tl.int64)
+    normalized_index = tl.where(raw_index < 0, raw_index + dim_size, raw_index).to(
+        tl.int64
+    )
 
     out_offsets = outer_coord[:, None].to(tl.int64) * dim_size * inner_size
     out_offsets += normalized_index[:, None] * inner_size
@@ -340,10 +336,9 @@ def index_fill_contiguous_tensor_inner1_kernel(
             )
         out_offsets = pid_outer.to(tl.int64) * dim_size_i64 + index_values
 
-
-
-
     tl.store(out + out_offsets, tl.load(value), mask=index_mask)
+
+
 @libentry()
 @triton.jit(
     do_not_specialize=[
@@ -389,10 +384,9 @@ def index_fill_membership_mask_kernel(
         # Duplicated indices are legal. A nonzero value marks membership.
         tl.atomic_add(membership + index_values, 1, mask=index_mask)
 
+
 @libentry()
-@triton.jit(
-    do_not_specialize=["index_len", "dim_size"]
-)
+@triton.jit(do_not_specialize=["index_len", "dim_size"])
 def index_fill_membership_mask_build_kernel(
     membership,
     index,
@@ -413,18 +407,18 @@ def index_fill_membership_mask_build_kernel(
         index_mask = index_offsets < index_len
         if USE_INT32:
             dim_size_i32 = dim_size.to(tl.int32)
-            index_values = tl.load(
-                index + index_offsets, mask=index_mask, other=0
-            ).to(tl.int32)
+            index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
+                tl.int32
+            )
             if HAS_NEGATIVE:
                 index_values = tl.where(
                     index_values < 0, index_values + dim_size_i32, index_values
                 )
         else:
             dim_size_i64 = dim_size.to(tl.int64)
-            index_values = tl.load(
-                index + index_offsets, mask=index_mask, other=0
-            ).to(tl.int64)
+            index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
+                tl.int64
+            )
             if HAS_NEGATIVE:
                 index_values = tl.where(
                     index_values < 0, index_values + dim_size_i64, index_values
@@ -482,9 +476,7 @@ def index_fill_contiguous_dim0_rows_kernel(
 
 
 @libentry()
-@triton.jit(
-    do_not_specialize=["outer_size", "dim_size"]
-)
+@triton.jit(do_not_specialize=["outer_size", "dim_size"])
 def index_fill_contiguous_mask_inner1_reuse_kernel(
     out,
     membership,
@@ -521,9 +513,7 @@ def index_fill_contiguous_mask_inner1_reuse_kernel(
 
 
 @libentry()
-@triton.jit(
-    do_not_specialize=["outer_size", "dim_size"]
-)
+@triton.jit(do_not_specialize=["outer_size", "dim_size"])
 def index_fill_contiguous_mask_inner1_copy_reuse_kernel(
     inp,
     out,
@@ -561,9 +551,7 @@ def index_fill_contiguous_mask_inner1_copy_reuse_kernel(
 
 
 @libentry()
-@triton.jit(
-    do_not_specialize=["index_len", "outer_size", "dim_size"]
-)
+@triton.jit(do_not_specialize=["index_len", "outer_size", "dim_size"])
 def index_fill_contiguous_local_membership_inner1_kernel(
     inp,
     out,
@@ -590,17 +578,17 @@ def index_fill_contiguous_local_membership_inner1_kernel(
         index_offsets = index_start + tl.arange(0, BLOCK_I)
         index_mask = index_offsets < index_len
         if USE_INT32:
-            index_values = tl.load(
-                index + index_offsets, mask=index_mask, other=0
-            ).to(tl.int32)
+            index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
+                tl.int32
+            )
             if HAS_NEGATIVE:
                 index_values = tl.where(
                     index_values < 0, index_values + dim_size_i32, index_values
                 )
         else:
-            index_values = tl.load(
-                index + index_offsets, mask=index_mask, other=0
-            ).to(tl.int64)
+            index_values = tl.load(index + index_offsets, mask=index_mask, other=0).to(
+                tl.int64
+            )
             if HAS_NEGATIVE:
                 index_values = tl.where(
                     index_values < 0, index_values + dim_size, index_values
@@ -622,6 +610,7 @@ def index_fill_contiguous_local_membership_inner1_kernel(
         fill_values = tl.full([BLOCK_N], value_scalar, dtype=original.dtype)
         result = tl.where(selected, fill_values, original)
         tl.store(out + offsets, result, mask=row_mask)
+
 
 def _generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
@@ -681,9 +670,7 @@ def _generate_strided_kernel(
             code.writeline(f"out_offsets += coord_{i} * stride_{i}")
 
         code.newline()
-        code.writeline(
-            'tl.device_assert((~mask) | valid_index, "index out of bounds")'
-        )
+        code.writeline('tl.device_assert((~mask) | valid_index, "index out of bounds")')
         code.writeline("store_mask = mask & valid_index")
         code.writeline("if VALUE_IS_TENSOR:")
         with code.indent():
@@ -721,9 +708,7 @@ def _generate_strided_wrapper(
             code.writeline("index_len,")
             code.writeline("dim_size,")
             code.writeline(", ".join(f"out_shapes[{i}]" for i in range(rank)) + ",")
-            code.writeline(
-                ", ".join(f"out_strides[{i}]" for i in range(rank)) + ","
-            )
+            code.writeline(", ".join(f"out_strides[{i}]" for i in range(rank)) + ",")
             code.writeline("VALUE_IS_TENSOR=value_is_tensor,")
             code.writeline("BLOCK_SIZE=BLOCK_SIZE,")
         code.writeline(")")
@@ -854,8 +839,7 @@ def _cache_ascend_index_bounds(index, dim_size, has_negative, host_index):
         host_index,
     )
     while (
-        len(_ascend_index_validation_cache)
-        > _ASCEND_INDEX_VALIDATION_CACHE_MAX_ENTRIES
+        len(_ascend_index_validation_cache) > _ASCEND_INDEX_VALIDATION_CACHE_MAX_ENTRIES
     ):
         _ascend_index_validation_cache.pop(next(iter(_ascend_index_validation_cache)))
 
@@ -980,11 +964,7 @@ def _get_inner1_membership_mask_config(outer_size, dim_size):
 
 def _use_int32_indexing(out, dim_size, index_len):
     int32_max = 2**31 - 1
-    return (
-        out.numel() <= int32_max
-        and dim_size <= int32_max
-        and index_len <= int32_max
-    )
+    return out.numel() <= int32_max and dim_size <= int32_max and index_len <= int32_max
 
 
 def _should_use_contiguous_membership_mask(
@@ -1080,9 +1060,7 @@ def _can_use_contiguous_high_density_transpose_fill(
     )
 
 
-def _index_fill_contiguous_small_inner_updates(
-    out, dim, index, value, has_negative
-):
+def _index_fill_contiguous_small_inner_updates(out, dim, index, value, has_negative):
     dim_size = out.size(dim)
     inner_size = math.prod(out.shape[dim + 1 :])
     outer_size = out.numel() // (dim_size * inner_size)
@@ -1150,9 +1128,7 @@ def _build_contiguous_membership_mask(out, index, has_negative, dim_size):
 
     with torch_device_fn.device(out.device):
         if _should_use_fused_membership_build(dim_size, index_len):
-            membership = torch.empty(
-                (dim_size,), dtype=torch.int32, device=out.device
-            )
+            membership = torch.empty((dim_size,), dtype=torch.int32, device=out.device)
             index_fill_membership_mask_build_kernel[(1,)](
                 membership,
                 index,
@@ -1164,9 +1140,7 @@ def _build_contiguous_membership_mask(out, index, has_negative, dim_size):
                 BLOCK_I=block_i,
             )
         else:
-            membership = torch.zeros(
-                (dim_size,), dtype=torch.int32, device=out.device
-            )
+            membership = torch.zeros((dim_size,), dtype=torch.int32, device=out.device)
             index_fill_membership_mask_kernel[marker_grid](
                 membership,
                 index,
@@ -1197,10 +1171,7 @@ def _can_try_contiguous_full_coverage_fill(
         or value_is_tensor
         or not out.is_contiguous()
         or index.numel() != out.size(dim)
-        or (
-            index.numel() * index.element_size()
-            > _FULL_COVERAGE_HOST_CHECK_MAX_BYTES
-        )
+        or (index.numel() * index.element_size() > _FULL_COVERAGE_HOST_CHECK_MAX_BYTES)
         or out.numel() > 2**31 - 1
     ):
         return False
@@ -1269,9 +1240,7 @@ def _index_fill_contiguous_high_density_transpose_fill(
     # Materialize [dim, outer, inner] so each selected dim value is one
     # contiguous row rather than outer_size disjoint small-inner writes.
     transposed = (
-        inp.reshape(outer_size, dim_size, inner_size)
-        .permute(1, 0, 2)
-        .contiguous()
+        inp.reshape(outer_size, dim_size, inner_size).permute(1, 0, 2).contiguous()
     )
     _index_fill_contiguous_dim0_rows(
         transposed, 0, index, value, value_is_tensor, has_negative
@@ -1295,12 +1264,8 @@ def _index_fill_contiguous_membership_mask(
     source=None,
 ):
     block_n, block_p = _get_inner1_membership_mask_config(outer_size, dim_size)
-    select_grid = (
-        triton.cdiv(dim_size, block_n) * triton.cdiv(outer_size, block_p),
-    )
-    membership = _build_contiguous_membership_mask(
-        out, index, has_negative, dim_size
-    )
+    select_grid = (triton.cdiv(dim_size, block_n) * triton.cdiv(outer_size, block_p),)
+    membership = _build_contiguous_membership_mask(out, index, has_negative, dim_size)
 
     with torch_device_fn.device(out.device):
         if source is None:
@@ -1328,6 +1293,7 @@ def _index_fill_contiguous_membership_mask(
             )
     return out
 
+
 def _should_use_local_membership_mask(dim_size):
     return dim_size <= 256
 
@@ -1349,7 +1315,6 @@ def _index_fill_contiguous_local_membership_mask(
     grid = (triton.cdiv(outer_size, block_p),)
     use_int32 = _use_int32_indexing(out, dim_size, index_len)
 
-
     with torch_device_fn.device(out.device):
         index_fill_contiguous_local_membership_inner1_kernel[grid](
             source,
@@ -1367,6 +1332,7 @@ def _index_fill_contiguous_local_membership_mask(
             BLOCK_P=block_p,
         )
     return out
+
 
 def _index_fill_contiguous_inner1(
     out,
@@ -1560,7 +1526,14 @@ def _index_fill_impl(
 
 
 def _index_fill_functional(
-    inp, dim, index, value, value_is_tensor, bounds_checked, has_negative, host_index=None
+    inp,
+    dim,
+    index,
+    value,
+    value_is_tensor,
+    bounds_checked,
+    has_negative,
+    host_index=None,
 ):
     if _can_use_contiguous_dim0_rows(inp, dim, index, bounds_checked):
         return _index_fill_contiguous_dim0_rows_functional(
@@ -1570,7 +1543,13 @@ def _index_fill_functional(
         inp, dim, index, value_is_tensor, bounds_checked
     ):
         full_fill = _try_index_fill_contiguous_full_coverage_fill(
-            inp, dim, index, value, value_is_tensor, inplace=False, host_index=host_index
+            inp,
+            dim,
+            index,
+            value,
+            value_is_tensor,
+            inplace=False,
+            host_index=host_index,
         )
         if full_fill is not None:
             return full_fill
@@ -1608,7 +1587,14 @@ def _index_fill_functional(
 
     out = _native_clone(inp)
     return _index_fill_impl(
-        out, dim, index, value, value_is_tensor, bounds_checked, has_negative, host_index
+        out,
+        dim,
+        index,
+        value,
+        value_is_tensor,
+        bounds_checked,
+        has_negative,
+        host_index,
     )
 
 
@@ -1629,7 +1615,14 @@ def index_fill_tensor(inp, dim, index, value):
     )
     value_is_tensor, value = _prepare_tensor_value(inp, value)
     return _index_fill_functional(
-        inp, dim, index, value, value_is_tensor, bounds_checked, has_negative, host_index
+        inp,
+        dim,
+        index,
+        value,
+        value_is_tensor,
+        bounds_checked,
+        has_negative,
+        host_index,
     )
 
 
@@ -1656,7 +1649,14 @@ def index_fill_tensor_out(inp, dim, index, value, *, out):
         out.resize_(inp.shape)
     out.copy_(inp)
     return _index_fill_impl(
-        out, dim, index, value, value_is_tensor, bounds_checked, has_negative, host_index
+        out,
+        dim,
+        index,
+        value,
+        value_is_tensor,
+        bounds_checked,
+        has_negative,
+        host_index,
     )
 
 
@@ -1677,5 +1677,12 @@ def index_fill_tensor_(inp, dim, index, value):
     )
     value_is_tensor, value = _prepare_tensor_value(inp, value)
     return _index_fill_impl(
-        inp, dim, index, value, value_is_tensor, bounds_checked, has_negative, host_index
+        inp,
+        dim,
+        index,
+        value,
+        value_is_tensor,
+        bounds_checked,
+        has_negative,
+        host_index,
     )

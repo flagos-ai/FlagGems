@@ -10,10 +10,7 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-
-INDEX_FILL_SHAPES = (
-    [(2, 32)] if QUICK_MODE else [(1, 2), (4, 8), (2, 3, 5)]
-)
+INDEX_FILL_SHAPES = [(2, 32)] if QUICK_MODE else [(1, 2), (4, 8), (2, 3, 5)]
 DIM_LIST = [1] if QUICK_MODE else [0, -1]
 INDEX_CASES = ["normal", "negative", "scalar"]
 _INDEX_FILL_DTYPES = utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES
@@ -22,7 +19,7 @@ INDEX_FILL_DTYPES = [
         dtype,
         marks=pytest.mark.skipif(
             flag_gems.device == "npu" and dtype == torch.int16,
-            reason="torch_npu/ACLNN does not support int16 index_fill reference",
+            reason="torch_npu does not support int16 index_fill reference",
         ),
     )
     for dtype in _INDEX_FILL_DTYPES
@@ -206,9 +203,7 @@ def test_index_fill_ascend_transpose_fill_high_density_inner1(
 ):
     from flag_gems.runtime.backend._ascend.ops import index_fill as ascend_index_fill
 
-    inp = torch.empty(
-        (4096, 4096), dtype=torch.float16, device=flag_gems.device
-    )
+    inp = torch.empty((4096, 4096), dtype=torch.float16, device=flag_gems.device)
     index = torch.empty(index_numel, dtype=torch.long, device=flag_gems.device)
     assert (
         ascend_index_fill._can_use_contiguous_high_density_transpose_fill(
@@ -232,9 +227,7 @@ def test_index_fill_ascend_transpose_fill_small_full_dim(
 ):
     from flag_gems.runtime.backend._ascend.ops import index_fill as ascend_index_fill
 
-    inp = torch.empty(
-        (4096, 256), dtype=torch.float16, device=flag_gems.device
-    )
+    inp = torch.empty((4096, 256), dtype=torch.float16, device=flag_gems.device)
     index = torch.empty(index_numel, dtype=torch.long, device=flag_gems.device)
     assert (
         ascend_index_fill._can_use_contiguous_high_density_transpose_fill(
@@ -271,16 +264,11 @@ def test_index_fill_ascend_full_coverage_fill_and_duplicate_fallback(dtype):
     ascend_index_fill.index_fill_scalar_(inplace, 1, index, value)
     utils.gems_assert_equal(inplace, ref_inplace)
 
-    duplicate = torch.randint(
-        0, shape[1] // 2, (shape[1],), device=flag_gems.device
-    )
-    ref_duplicate = ref_inp.index_fill(
-        1, utils.to_reference(duplicate, False), value
-    )
-    duplicate_actual = ascend_index_fill.index_fill_scalar(
-        inp, 1, duplicate, value
-    )
+    duplicate = torch.randint(0, shape[1] // 2, (shape[1],), device=flag_gems.device)
+    ref_duplicate = ref_inp.index_fill(1, utils.to_reference(duplicate, False), value)
+    duplicate_actual = ascend_index_fill.index_fill_scalar(inp, 1, duplicate, value)
     utils.gems_assert_equal(duplicate_actual, ref_duplicate)
+
 
 @pytest.mark.index_fill
 @pytest.mark.parametrize("shape", INDEX_FILL_SHAPES)
@@ -504,6 +492,7 @@ def test_index_fill_large_contiguous_membership_functional(value_is_tensor):
     assert actual is not inp
     utils.gems_assert_equal(actual, ref_out)
 
+
 @pytest.mark.index_fill
 @pytest.mark.index_fill_
 def test_index_fill_large_contiguous_membership_duplicate_index():
@@ -557,7 +546,6 @@ def test_index_fill_dim0_row_path_negative_duplicate(shape, dtype, value_is_tens
 
     utils.gems_assert_equal(actual, ref_out)
     utils.gems_assert_equal(inplace, ref_out)
-
 
 
 @pytest.mark.index_fill
@@ -674,8 +662,9 @@ def test_index_fill_tensor_out(dtype):
 def test_index_fill_invalid_index_dtype():
     inp = torch.randn((3, 4), device=flag_gems.device)
     index = torch.tensor([1], dtype=torch.int32, device=flag_gems.device)
-    with flag_gems.use_gems(include=INDEX_FILL_OPS), pytest.raises(
-        IndexError, match="Expected dtype int64"
+    with (
+        flag_gems.use_gems(include=INDEX_FILL_OPS),
+        pytest.raises(IndexError, match="Expected dtype int64"),
     ):
         inp.index_fill_(1, index, -1.0)
 
@@ -684,8 +673,9 @@ def test_index_fill_invalid_index_dtype():
 def test_index_fill_invalid_index_ndim():
     inp = torch.randn((3, 4), device=flag_gems.device)
     index = torch.tensor([[1]], dtype=torch.long, device=flag_gems.device)
-    with flag_gems.use_gems(include=INDEX_FILL_OPS), pytest.raises(
-        IndexError, match="Index is supposed to be a vector"
+    with (
+        flag_gems.use_gems(include=INDEX_FILL_OPS),
+        pytest.raises(IndexError, match="Index is supposed to be a vector"),
     ):
         inp.index_fill_(1, index, -1.0)
 
@@ -697,9 +687,7 @@ def test_index_fill_invalid_index_ndim():
     reason="out-of-range behavior is backend-specific",
 )
 @pytest.mark.parametrize("op_name", ("index_fill", "index_fill_"))
-@pytest.mark.parametrize(
-    "execution_path", INDEX_FILL_OOB_PATHS
-)
+@pytest.mark.parametrize("execution_path", INDEX_FILL_OOB_PATHS)
 def test_index_fill_out_of_range_index_device_assert(op_name, execution_path):
     if execution_path == "python_strided":
         input_setup = (
@@ -764,8 +752,9 @@ def test_index_fill_out_of_range_index(monkeypatch):
     monkeypatch.setenv("FLAG_GEMS_INDEX_FILL_BOUNDS_CHECK", "sync")
     inp = torch.randn((3, 4), device=flag_gems.device)
     index = torch.tensor([4], dtype=torch.long, device=flag_gems.device)
-    with flag_gems.use_gems(include=INDEX_FILL_OPS), pytest.raises(
-        IndexError, match="index out of range"
+    with (
+        flag_gems.use_gems(include=INDEX_FILL_OPS),
+        pytest.raises(IndexError, match="index out of range"),
     ):
         inp.index_fill_(1, index, -1.0)
 
@@ -775,8 +764,9 @@ def test_index_fill_invalid_tensor_value_ndim():
     inp = torch.randn((3, 4), device=flag_gems.device)
     index = torch.tensor([1], dtype=torch.long, device=flag_gems.device)
     value = torch.tensor([1.0], device=flag_gems.device)
-    with flag_gems.use_gems(include=INDEX_FILL_OPS), pytest.raises(
-        RuntimeError, match="0-dimensional value tensor"
+    with (
+        flag_gems.use_gems(include=INDEX_FILL_OPS),
+        pytest.raises(RuntimeError, match="0-dimensional value tensor"),
     ):
         inp.index_fill_(1, index, value)
 
@@ -788,7 +778,8 @@ def test_index_fill_invalid_tensor_value_ndim():
 def test_index_fill_cpu_index_rejected():
     inp = torch.randn((3, 4), device=flag_gems.device)
     index = torch.tensor([1], dtype=torch.long, device="cpu")
-    with flag_gems.use_gems(include=INDEX_FILL_OPS), pytest.raises(
-        RuntimeError, match="same device"
+    with (
+        flag_gems.use_gems(include=INDEX_FILL_OPS),
+        pytest.raises(RuntimeError, match="same device"),
     ):
         inp.index_fill_(1, index, -1.0)

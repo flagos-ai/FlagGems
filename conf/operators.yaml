@@ -4272,7 +4272,6 @@ ops:
       - index_fill.int_Tensor_out
     labels:
       - aten
-      - KernelGen
     kind:
       - Tensor
     stages:
@@ -4284,7 +4283,6 @@ ops:
       - index_fill_.int_Tensor
     labels:
       - aten
-      - KernelGen
     kind:
       - Tensor
     stages:

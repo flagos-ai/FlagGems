@@ -175,9 +175,8 @@ def _should_skip_cpp_index_fill_out(out, dim):
 
 
 def _try_cpp_index_fill_scalar_(out, dim, index, value):
-    if (
-        not _cpp_index_fill_enabled()
-        or not _should_use_cpp_index_fill(out, dim, index, value)
+    if not _cpp_index_fill_enabled() or not _should_use_cpp_index_fill(
+        out, dim, index, value
     ):
         return None
     cpp_func = _get_cpp_index_fill_scalar_inplace()
