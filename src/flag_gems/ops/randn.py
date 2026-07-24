@@ -108,7 +108,9 @@ def randn_kernel(
 UNROLL = 4
 
 
-def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
+def randn(
+    size, *, generator=None, dtype=None, layout=None, device=None, pin_memory=None
+):
     logger.debug("GEMS RANDN")
     if dtype is None:
         dtype = torch.get_default_dtype()
@@ -120,7 +122,9 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    philox_seed, philox_offset = philox_backend_seed_offset(
+        increment, generator=generator
+    )
     with torch_device_fn.device(device):
         randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out
