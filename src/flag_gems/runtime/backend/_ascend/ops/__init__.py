@@ -49,6 +49,7 @@ from .gather import gather, gather_backward
 from .groupnorm import group_norm, group_norm_backward
 from .hadamard_transform import hadamard_transform
 from .hstack import hstack
+from .imag import imag  # noqa: F401
 from .index import index
 from .index_add import index_add, index_add_
 from .index_select import index_select
