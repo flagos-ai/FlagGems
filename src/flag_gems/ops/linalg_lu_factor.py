@@ -1428,3 +1428,15 @@ def linalg_lu_factor(input, *, pivot=True):
             num_warps=4,
         )
     return LinalgLUFactorResult(lu, pivots)
+
+
+def linalg_lu_factor_out(input, *, pivot=True, out=None):
+    logger.debug("GEMS LINALG_LU_FACTOR_OUT")
+    lu, piv = linalg_lu_factor(input, pivot=pivot)
+
+    lu_out, pivots_out = out
+    lu_out.resize_(lu.shape)
+    pivots_out.resize_(piv.shape)
+    lu_out.copy_(lu)
+    pivots_out.copy_(piv)
+    return LinalgLUFactorResult(lu_out, pivots_out)
