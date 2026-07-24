@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -10,6 +24,66 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.jit
+def log_softmax_kernel_non_inner(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    K,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
+    k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)
+
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets[None, :]
+        mask = (n_offsets[:, None] < N) & (k_offsets[None, :] < K)
+        inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf")).to(
+            tl.float32
+        )
+        m = tl.max(inp, 0)
+        z = tl.sum(tl.exp(inp - m[None, :]), 0)
+        out = inp - m[None, :] - tl.log(z)[None, :]
+        tl.store(output_ptr + offsets, out, mask=mask)
+    else:
+        m = tl.full([TILE_N, TILE_K], value=float("-inf"), dtype=tl.float32)
+        z = tl.full([TILE_N, TILE_K], value=0.0, dtype=tl.float32)
+
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets[None, :]
+            mask = (n_offsets[:, None] < N) & (k_offsets[None, :] < K)
+            inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf")).to(
+                tl.float32
+            )
+            m_new = tl.maximum(inp, m)
+            all_neg_inf = m_new == float("-inf")
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
+            m = m_new
+
+        m_reduced = tl.max(m, 0)
+        z = tl.sum(z * tl.exp(m - m_reduced[None, :]), 0)
+        m = m_reduced
+        log_z = tl.log(z)
+
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets[None, :]
+            mask = (n_offsets[:, None] < N) & (k_offsets[None, :] < K)
+            inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf")).to(
+                tl.float32
+            )
+            out = inp - m[None, :] - log_z[None, :]
+            tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
@@ -117,19 +191,29 @@ def log_softmax_out(self, dim, half_to_float=False, *, out):
         )
     K = inp.numel() // M // N
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        K,
-    )
     with torch_device_fn.device(inp.device):
-        log_softmax_kernel[grid](
-            out,
-            inp,
-            M,
-            N,
-            K,
-            num_warps=8,
-        )
+        if K > 1:
+            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+            log_softmax_kernel_non_inner[grid](
+                out,
+                inp,
+                M,
+                N,
+                K,
+            )
+        else:
+            grid = lambda meta: (
+                triton.cdiv(M, meta["BLOCK_M"]),
+                K,
+            )
+            log_softmax_kernel[grid](
+                out,
+                inp,
+                M,
+                N,
+                K,
+                num_warps=8,
+            )
     return out
 
 
