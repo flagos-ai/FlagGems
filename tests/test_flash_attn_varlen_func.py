@@ -24,6 +24,24 @@ from .conftest import QUICK_MODE
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+HOPPER_AVAILABLE = (
+    vendor_name == "nvidia"
+    and device == "cuda"
+    and torch.cuda.is_available()
+    and torch.cuda.get_device_capability()[0] == 9
+)
+
+FA_VERSION_CASES = [
+    pytest.param(2, id="fa2"),
+    pytest.param(
+        3,
+        id="fa3",
+        marks=pytest.mark.skipif(
+            not HOPPER_AVAILABLE,
+            reason="FA3 requires an NVIDIA Hopper GPU",
+        ),
+    ),
+]
 
 if QUICK_MODE:
     NUM_HEADS = [(8, 2)]
@@ -106,19 +124,23 @@ def ref_paged_attn(
     attn_bias: torch.Tensor = None,
     sliding_window: Optional[int] = None,
     soft_cap: Optional[float] = None,
-) -> torch.Tensor:
+    s_aux: Optional[torch.Tensor] = None,
+    return_softmax_lse: bool = False,
+) -> torch.Tensor | Tuple[torch.Tensor, torch.Tensor]:
     num_seqs = len(query_lens)
     block_tables = block_tables.cpu().numpy()
     _, block_size, num_kv_heads, head_size = key_cache.shape
 
     outputs: List[torch.Tensor] = []
+    softmax_lses: List[torch.Tensor] = []
     start_idx = 0
     for i in range(num_seqs):
         query_len = query_lens[i]
         kv_len = kv_lens[i]
         # clone to avoid clobbering the query tensor
         q = query[start_idx : start_idx + query_len].clone()
-        q *= scale
+        if s_aux is None:
+            q *= scale
 
         num_kv_blocks = (kv_len + block_size - 1) // block_size
         block_indices = block_tables[i, :num_kv_blocks]
@@ -132,7 +154,10 @@ def ref_paged_attn(
             k = torch.repeat_interleave(k, q.shape[1] // k.shape[1], dim=1)
             v = torch.repeat_interleave(v, q.shape[1] // v.shape[1], dim=1)
 
-        attn = torch.einsum("qhd,khd->hqk", q, k)
+        if s_aux is None:
+            attn = torch.einsum("qhd,khd->hqk", q, k)
+        else:
+            attn = torch.einsum("qhd,khd->hqk", q.float(), k.float()) * scale
         empty_mask = torch.ones(query_len, kv_len, device=q.device)
         mask = torch.triu(empty_mask, diagonal=kv_len - query_len + 1).bool()
         if sliding_window is not None:
@@ -151,13 +176,28 @@ def ref_paged_attn(
         if attn_bias is not None:
             attn = attn + attn_bias[i, :, :query_len, :kv_len]
 
-        attn = torch.softmax(attn, dim=-1).to(v.dtype)
-        out = torch.einsum("hqk,khd->qhd", attn, v)
+        if s_aux is not None:
+            # The attention sink is a final, unscaled logit whose value vector is
+            # zero. Drop its probability before the PV product.
+            sink_logits = s_aux.float()[:, None, None].expand(-1, query_len, 1)
+            attn = torch.cat((attn.float(), sink_logits), dim=-1)
+            if return_softmax_lse:
+                softmax_lses.append(torch.logsumexp(attn, dim=-1))
+            attn = torch.softmax(attn, dim=-1)[..., :-1]
+            out = torch.einsum("hqk,khd->qhd", attn, v.float()).to(v.dtype)
+        else:
+            if return_softmax_lse:
+                softmax_lses.append(torch.logsumexp(attn.float(), dim=-1))
+            attn = torch.softmax(attn, dim=-1).to(v.dtype)
+            out = torch.einsum("hqk,khd->qhd", attn, v)
 
         outputs.append(out)
         start_idx += query_len
 
-    return torch.cat(outputs, dim=0)
+    output = torch.cat(outputs, dim=0)
+    if return_softmax_lse:
+        return output, torch.cat(softmax_lses, dim=1)
+    return output
 
 
 @pytest.mark.flash_attn_varlen_func
@@ -386,9 +426,9 @@ def test_flash_attn_varlen_func_noncontiguous_kv_cache(
         )
 
         op = (
-            flag_gems.ops.flash_attn_varlen_opt_func
+            flag_gems.flash_attn_varlen_opt_func
             if optimize_init
-            else flag_gems.ops.flash_attn_varlen_func
+            else flag_gems.flash_attn_varlen_func
         )
         output = op(
             q=query,
@@ -432,6 +472,7 @@ def test_flash_attn_varlen_func_noncontiguous_kv_cache(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("soft_cap", SWAP_SOFT_CAPS)
 @pytest.mark.parametrize("num_blocks", [2048])
+@pytest.mark.parametrize("fa_version", FA_VERSION_CASES)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -446,6 +487,7 @@ def test_flash_attn_varlen_func_swap_qg(
     block_size: int,
     soft_cap: Optional[float],
     num_blocks: int,
+    fa_version: int,
 ) -> None:
     with torch.device(flag_gems.device):
         utils.init_seed(1234567890)
@@ -501,7 +543,7 @@ def test_flash_attn_varlen_func_swap_qg(
                 window_size=window_size,
                 block_table=block_tables,
                 softcap=soft_cap if soft_cap is not None else 0,
-                fa_version=2,
+                fa_version=fa_version,
             )
         else:
             output = flag_gems.flash_attn_varlen_func(
@@ -517,7 +559,7 @@ def test_flash_attn_varlen_func_swap_qg(
                 window_size=window_size,
                 block_table=block_tables,
                 softcap=soft_cap if soft_cap is not None else 0,
-                fa_version=2,
+                fa_version=fa_version,
             )
 
         ref_output = ref_paged_attn(
@@ -535,3 +577,297 @@ def test_flash_attn_varlen_func_swap_qg(
         torch.testing.assert_close(
             output, ref_output, atol=2e-2, rtol=1e-2
         ), f"{torch.max(torch.abs(output - ref_output))}"
+
+
+def _make_fa3_s_aux_case(query_len: int, kv_len: int):
+    num_query_heads = 8
+    num_kv_heads = 2
+    head_size = 128
+    block_size = 16
+    num_kv_blocks = (kv_len + block_size - 1) // block_size
+    dtype = torch.bfloat16
+    scale = head_size**-0.5
+
+    query = torch.randn(
+        query_len,
+        num_query_heads,
+        head_size,
+        dtype=dtype,
+        device=device,
+    )
+    key_cache, value_cache = make_paged_kv_cache(
+        num_kv_blocks,
+        block_size,
+        num_kv_heads,
+        head_size,
+        dtype=dtype,
+        non_contiguous=False,
+        device=device,
+    )
+    cu_query_lens = torch.tensor([0, query_len], dtype=torch.int32, device=device)
+    seqused_k = torch.tensor([kv_len], dtype=torch.int32, device=device)
+    block_tables = torch.arange(
+        num_kv_blocks, dtype=torch.int32, device=device
+    ).unsqueeze(0)
+    s_aux = torch.tensor(
+        [float("-inf"), -2.0, 0.0, 2.0, 4.0, 6.0, 8.0, 10.0],
+        dtype=torch.bfloat16,
+        device=device,
+    )
+    return (
+        query,
+        key_cache,
+        value_cache,
+        cu_query_lens,
+        seqused_k,
+        block_tables,
+        s_aux,
+        scale,
+    )
+
+
+def _capture_fa3_plans(monkeypatch):
+    """Observe scheduler results in tests without production instrumentation."""
+
+    from importlib import import_module
+
+    hopper_package = flag_gems.flash_attn_varlen_func.__module__.split(".ops.", 1)[0]
+    FA3Scheduler = import_module(
+        f"{hopper_package}.ops.attention_impl.scheduling"
+    ).FA3Scheduler
+    original_build = FA3Scheduler.build
+    plans = []
+
+    def build_and_capture(cls, inputs, config=None):
+        plan = original_build(inputs, config)
+        plans.append(plan)
+        return plan
+
+    monkeypatch.setattr(FA3Scheduler, "build", classmethod(build_and_capture))
+    return FA3Scheduler, plans
+
+
+def _plan_signature(plan) -> Tuple[str, int]:
+    num_splits = plan.persistent_num_splits if plan.persistent_split_kv else 1
+    return plan.kernel_name, num_splits
+
+
+@pytest.mark.flash_attn_varlen_func
+@pytest.mark.skipif(not HOPPER_AVAILABLE, reason="FA3 requires an NVIDIA Hopper GPU")
+@pytest.mark.parametrize(
+    "route,kv_len,soft_cap,num_splits,expected_plans",
+    [
+        pytest.param(
+            "direct",
+            256,
+            0.0,
+            (1,),
+            [("direct_packed_gqa", 1)],
+            id="direct",
+        ),
+        pytest.param(
+            "long",
+            512,
+            10.0,
+            (1,),
+            [("long_paged_prefill", 1)],
+            id="persistent-long-softcap",
+        ),
+        pytest.param(
+            "long",
+            2048,
+            0.0,
+            (1, 2),
+            [("long_paged_prefill", 1), ("persistent_splitkv_s2", 2)],
+            id="split-kv",
+        ),
+    ],
+)
+@torch.inference_mode()
+def test_flash_attn_varlen_fa3_s_aux(
+    monkeypatch,
+    route: str,
+    kv_len: int,
+    soft_cap: float,
+    num_splits: Tuple[int, ...],
+    expected_plans: List[Tuple[str, int]],
+) -> None:
+    FA3Scheduler, plans = _capture_fa3_plans(monkeypatch)
+
+    utils.init_seed(1234567890)
+    query_len = 2
+    (
+        query,
+        key_cache,
+        value_cache,
+        cu_query_lens,
+        seqused_k,
+        block_tables,
+        s_aux,
+        scale,
+    ) = _make_fa3_s_aux_case(query_len, kv_len)
+
+    ref_output, ref_lse = ref_paged_attn(
+        query=query,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        query_lens=[query_len],
+        kv_lens=[kv_len],
+        block_tables=block_tables,
+        scale=scale,
+        soft_cap=soft_cap if soft_cap > 0 else None,
+        s_aux=s_aux,
+        return_softmax_lse=True,
+    )
+
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_DECODE_STRATEGY", route)
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_RAGGED_GQA_PACK", "on")
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_MIXED_EXPERIMENT", "off")
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_DYNAMIC_SCHEDULER", "off")
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_EXPERIMENT_DYNAMIC_SPLIT", "1")
+    FA3Scheduler.clear_config_cache()
+
+    results = {}
+    try:
+        for split_count in num_splits:
+            output, lse = flag_gems.flash_attn_varlen_func(
+                q=query,
+                k=key_cache,
+                v=value_cache,
+                cu_seqlens_q=cu_query_lens,
+                seqused_k=seqused_k,
+                max_seqlen_q=query_len,
+                max_seqlen_k=kv_len,
+                softmax_scale=scale,
+                causal=True,
+                window_size=(-1, -1),
+                block_table=block_tables,
+                softcap=soft_cap,
+                s_aux=s_aux,
+                return_softmax_lse=True,
+                num_splits=split_count,
+                fa_version=3,
+            )
+            results[split_count] = (output, lse)
+    finally:
+        FA3Scheduler.clear_config_cache()
+
+    assert [_plan_signature(plan) for plan in plans] == expected_plans
+    for output, lse in results.values():
+        torch.testing.assert_close(output, ref_output, atol=2e-2, rtol=1e-2)
+        torch.testing.assert_close(lse, ref_lse, atol=2e-2, rtol=1e-2)
+
+    if len(num_splits) > 1:
+        one_pass_output, one_pass_lse = results[1]
+        split_output, split_lse = results[2]
+        torch.testing.assert_close(split_output, one_pass_output, atol=2e-2, rtol=1e-2)
+        torch.testing.assert_close(split_lse, one_pass_lse, atol=2e-2, rtol=1e-2)
+
+
+@pytest.mark.flash_attn_varlen_func
+@pytest.mark.skipif(not HOPPER_AVAILABLE, reason="FA3 requires an NVIDIA Hopper GPU")
+@pytest.mark.parametrize("invalid_contract", ["dtype", "shape", "noncontiguous"])
+@torch.inference_mode()
+def test_flash_attn_varlen_fa3_s_aux_contract(invalid_contract: str) -> None:
+    utils.init_seed(1234567890)
+    query_len = 2
+    kv_len = 64
+    (
+        query,
+        key_cache,
+        value_cache,
+        cu_query_lens,
+        seqused_k,
+        block_tables,
+        s_aux,
+        scale,
+    ) = _make_fa3_s_aux_case(query_len, kv_len)
+
+    if invalid_contract == "dtype":
+        s_aux = s_aux.float()
+    elif invalid_contract == "shape":
+        s_aux = s_aux[:-1]
+    else:
+        s_aux = torch.empty(16, dtype=torch.bfloat16, device=device)[::2]
+        assert not s_aux.is_contiguous()
+
+    with pytest.raises(RuntimeError, match="s_aux must be a contiguous bf16"):
+        flag_gems.flash_attn_varlen_func(
+            q=query,
+            k=key_cache,
+            v=value_cache,
+            cu_seqlens_q=cu_query_lens,
+            seqused_k=seqused_k,
+            max_seqlen_q=query_len,
+            max_seqlen_k=kv_len,
+            softmax_scale=scale,
+            causal=True,
+            window_size=(-1, -1),
+            block_table=block_tables,
+            s_aux=s_aux,
+            num_splits=1,
+            fa_version=3,
+        )
+
+
+@pytest.mark.flash_attn_varlen_func
+@pytest.mark.skipif(not HOPPER_AVAILABLE, reason="FA3 requires an NVIDIA Hopper GPU")
+@pytest.mark.parametrize(
+    "route,expected_kernel",
+    [
+        pytest.param("direct", "direct_packed_gqa", id="direct"),
+        pytest.param("long", "long_paged_prefill", id="persistent-long"),
+    ],
+)
+@torch.inference_mode()
+def test_flash_attn_varlen_fa3_s_aux_empty_kv(
+    monkeypatch, route: str, expected_kernel: str
+) -> None:
+    FA3Scheduler, plans = _capture_fa3_plans(monkeypatch)
+
+    utils.init_seed(1234567890)
+    query_len = 2
+    (
+        query,
+        key_cache,
+        value_cache,
+        cu_query_lens,
+        seqused_k,
+        block_tables,
+        s_aux,
+        scale,
+    ) = _make_fa3_s_aux_case(query_len, kv_len=1)
+    seqused_k.zero_()
+
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_DECODE_STRATEGY", route)
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_RAGGED_GQA_PACK", "on")
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_MIXED_EXPERIMENT", "off")
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_DYNAMIC_SCHEDULER", "off")
+    monkeypatch.setenv("FLAG_GEMS_FA3_TLE_EXPERIMENT_DYNAMIC_SPLIT", "1")
+    FA3Scheduler.clear_config_cache()
+
+    try:
+        output, lse = flag_gems.flash_attn_varlen_func(
+            q=query,
+            k=key_cache,
+            v=value_cache,
+            cu_seqlens_q=cu_query_lens,
+            seqused_k=seqused_k,
+            max_seqlen_q=query_len,
+            max_seqlen_k=1,
+            softmax_scale=scale,
+            causal=True,
+            window_size=(-1, -1),
+            block_table=block_tables,
+            s_aux=s_aux,
+            return_softmax_lse=True,
+            num_splits=1,
+            fa_version=3,
+        )
+    finally:
+        FA3Scheduler.clear_config_cache()
+
+    assert [_plan_signature(plan) for plan in plans] == [(expected_kernel, 1)]
+    assert torch.count_nonzero(output).item() == 0
+    expected_lse = s_aux.float().unsqueeze(1).expand(-1, query_len)
+    torch.testing.assert_close(lse, expected_lse, atol=1e-4, rtol=0)
