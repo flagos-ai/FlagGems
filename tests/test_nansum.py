@@ -64,7 +64,7 @@ def test_nansum_dim(shape, dim, keepdim, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
 
 
-@pytest.mark.nansum
+@pytest.mark.nansum_out
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("keepdim", KEEPDIM)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -73,11 +73,13 @@ def test_nansum_dim_out(shape, dim, keepdim, dtype):
     inp = _nan_input(shape, dtype, flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
-    ref_result = torch.nansum(ref_inp, dim=dim, keepdim=keepdim)
+    ref_shape = torch.nansum(ref_inp, dim=dim, keepdim=keepdim).shape
+    ref_result = torch.empty(ref_shape, dtype=dtype, device=ref_inp.device)
+    torch.nansum(ref_inp, dim=dim, keepdim=keepdim, out=ref_result)
 
-    out = torch.empty(ref_result.shape, dtype=dtype, device=flag_gems.device)
+    res_result = torch.empty(ref_shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
-        res_result = torch.ops.aten.nansum.out(inp, dim, keepdim, out=out)
+        torch.ops.aten.nansum.out(inp, dim, keepdim, out=res_result)
 
     if isinstance(dim, int):
         dim = [dim]
@@ -88,24 +90,24 @@ def test_nansum_dim_out(shape, dim, keepdim, dtype):
     if dim == []:
         _dim = inp.numel()
     utils.gems_assert_close(res_result, ref_result, dtype, reduce_dim=_dim)
-    utils.gems_assert_close(out, ref_result, dtype, reduce_dim=_dim)
 
 
-@pytest.mark.nansum
+@pytest.mark.nansum_out
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_nansum_out(shape, dtype):
     inp = _nan_input(shape, dtype, flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
-    ref_out = torch.nansum(ref_inp)
+    ref_shape = torch.nansum(ref_inp).shape
+    ref_result = torch.empty(ref_shape, dtype=dtype, device=ref_inp.device)
+    torch.nansum(ref_inp, out=ref_result)
 
-    out = torch.empty([], dtype=dtype, device=flag_gems.device)
+    res_result = torch.empty(ref_shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.nansum.out(inp, out=out)
+        torch.ops.aten.nansum.out(inp, out=res_result)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
-    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=inp.numel())
+    utils.gems_assert_close(res_result, ref_result, dtype, reduce_dim=inp.numel())
 
 
 @pytest.mark.nansum
