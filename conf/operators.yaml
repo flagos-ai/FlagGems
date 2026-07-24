@@ -6555,6 +6555,29 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: polygamma
+    description: |
+      Computes the n-th derivative of the digamma function of the input (the polygamma function),
+      dispatching to dedicated digamma (n=0), trigamma (n=1), or Hurwitz-zeta (n>=2) Triton kernels.
+    for:
+      - polygamma
+      - polygamma.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: polygamma_
+    description: The in-place version of `polygamma()`.
+    for:
+      - polygamma_
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: pow_scalar
     description: |
       Takes the power of each element in `input` with `exponent` and returns a tensor with the result.
