@@ -360,51 +360,6 @@ def instance_norm_use_running_stats_kernel(
     tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
 
 
-@triton.jit
-def update_running_stats_kernel(
-    mean_ptr,  # pointer to the mean
-    rstd_ptr,  # pointer to the 1/std
-    running_mean_ptr,
-    running_var_ptr,
-    momentum,
-    B,
-    C,
-    N,
-    eps,
-    BLOCK_BATCH_SIZE: tl.constexpr = 1,
-    BLOCK_CHANNEL_SIZE: tl.constexpr = 2048,
-):
-    cid = tl.program_id(0) * BLOCK_CHANNEL_SIZE + tl.arange(0, BLOCK_CHANNEL_SIZE)
-    col_mask = cid < C
-    running_mean = tl.load(running_mean_ptr + cid, mask=col_mask).to(tl.float32)
-    running_var = tl.load(running_var_ptr + cid, mask=col_mask).to(tl.float32)
-
-    new_mean = tl.zeros((BLOCK_CHANNEL_SIZE,), dtype=tl.float32)
-    new_var = tl.zeros((BLOCK_CHANNEL_SIZE,), dtype=tl.float32)
-    for b in range(0, B, BLOCK_BATCH_SIZE):
-        bid = b * BLOCK_BATCH_SIZE + tl.arange(0, BLOCK_BATCH_SIZE)[:, None]
-        row_mask = bid < B
-        mask = row_mask and col_mask[None, :]
-        mean = tl.load(mean_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(
-            tl.float32
-        )
-        rstd = tl.load(rstd_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(
-            tl.float32
-        )
-        var = (
-            (1 / (rstd * rstd) + eps) * N / (N - 1)
-        )  # NOTE: use unbiased var to update running_var
-
-        new_mean += tl.sum(mean, axis=0)
-        new_var += tl.sum(var, axis=0)
-
-    new_running_mean = (1 - momentum) * running_mean + momentum * new_mean / B
-    new_running_var = (1 - momentum) * running_var + momentum * new_var / B
-
-    tl.store(running_mean_ptr + cid, new_running_mean, mask=col_mask)
-    tl.store(running_var_ptr + cid, new_running_var, mask=col_mask)
-
-
 def instance_norm_backward_kernel_heur_block_row_size(args):
     return 1
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
@@ -635,25 +590,20 @@ class InstanceNorm(torch.autograd.Function):
                     buffer_size_limit=512,
                 )
                 if has_running_stats and use_input_stats:  # update running stats
-                    grid = lambda meta: (
-                        triton.cdiv(C, meta["BLOCK_CHANNEL_SIZE"]),
-                        1,
-                        1,
-                    )
-                    update_running_stats_kernel[grid](
-                        mean,
-                        rstd,
-                        running_mean,
-                        running_var,
-                        momentum,
-                        B,
-                        C,
-                        N,
-                        eps,
-                        isCloseCoreTiling=True,
-                        isCloseVectorization=True,
-                        isCloseUnrollControl=True,
-                    )
+                    # mean / rstd are [B, C] fp32; running_mean / running_var are [C].
+                    # The old Triton update kernel ran at ~200ms on XPU (single 2048-wide
+                    # program, all opts closed). This reduction over the batch dim is tiny
+                    # (C<=few thousand) so torch does it far faster with no compile cost.
+                    # rstd = rsqrt(var_biased + eps) so var_biased = 1/rstd^2 - eps.
+                    # torch's instance_norm updates running_var with the *biased* batch
+                    # variance (verified against the fp64 reference), so we use var_biased
+                    # directly. (The old kernel used (1/rstd^2 + eps) * N/(N-1) -- both the
+                    # +2*eps and the N/(N-1) correction were wrong -> pre-existing failures.)
+                    batch_mean = mean.mean(dim=0)  # [C]
+                    var_bc = 1.0 / (rstd * rstd) - eps  # [B, C] biased variance
+                    batch_var = var_bc.mean(dim=0)  # [C]
+                    running_mean.lerp_(batch_mean.to(running_mean.dtype), momentum)
+                    running_var.lerp_(batch_var.to(running_var.dtype), momentum)
             else:  # use running stats instead of input stats
                 TILE_N = triton.next_power_of_2(N)
                 grid = (M, 1, 1)
