@@ -996,7 +996,7 @@ def _nonzero_static_impl(
     size: int,
     fill_value: int = -1,
     out: torch.Tensor = None,
-    cumsum_fn=torch.cumsum,
+    cumsum_fn=None,
     transpose_out=True,
     block_size=DEFAULT_BLOCK_SIZE,
     single_block_max_numel=SINGLE_BLOCK_MAX_NUMEL,
@@ -1269,6 +1269,8 @@ def _nonzero_static_impl(
             out, work_out, transpose=transpose_out and out is not None
         )
 
+    if cumsum_fn is None:
+        cumsum_fn = flag_gems.cumsum
     prefix = cumsum_fn(counts, dim=0)
 
     with torch_device_fn.device(input.device):

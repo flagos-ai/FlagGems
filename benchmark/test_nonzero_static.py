@@ -1,3 +1,5 @@
+import os
+from functools import lru_cache
 from typing import Generator
 
 import pytest
@@ -8,6 +10,50 @@ import flag_gems
 from . import base
 
 BENCH_DTYPES = [torch.float16, torch.bfloat16]  # target report uses fp16 and bf16
+ASCEND_BASELINE_SOURCE = r"""
+#include <ATen/Functions.h>
+#include <torch/library.h>
+
+#include <algorithm>
+#include <cstdint>
+
+namespace {
+
+at::Tensor nonzero_static(
+    const at::Tensor& input,
+    int64_t size,
+    int64_t fill_value) {
+  TORCH_CHECK(size >= 0, "nonzero_static: size must be non-negative");
+
+  auto out = at::full(
+      {size, input.dim()}, fill_value, input.options().dtype(at::kLong));
+  if (size == 0 || input.dim() == 0) {
+    return out;
+  }
+
+  auto indices = at::nonzero(input);
+  auto copy_len = std::min<int64_t>(size, indices.size(0));
+  if (copy_len > 0) {
+    out.narrow(0, 0, copy_len)
+        .copy_(indices.narrow(0, 0, copy_len));
+  }
+  return out;
+}
+
+}
+
+TORCH_LIBRARY(flag_gems_ascend_baseline, m) {
+  m.def(
+      "nonzero_static(Tensor input, int size, int fill_value=-1) -> Tensor");
+}
+
+TORCH_LIBRARY_IMPL(
+    flag_gems_ascend_baseline,
+    CompositeExplicitAutograd,
+    m) {
+  m.impl("nonzero_static", TORCH_FN(nonzero_static));
+}
+"""
 BENCH_CASES = [
     ((1024,), 0.0, 128, -1),
     ((1024,), 0.1, 128, -1),
@@ -24,6 +70,20 @@ BENCH_CASES = [
     ((16, 64, 64), 0.1, 1024, -1),
     ((32, 128, 128), 0.01, 4096, -1),
 ]
+
+
+@lru_cache(maxsize=1)
+def _load_ascend_baseline():
+    from torch.utils.cpp_extension import load_inline
+
+    load_inline(
+        name="flag_gems_ascend_nonzero_static_baseline",
+        cpp_sources=ASCEND_BASELINE_SOURCE,
+        extra_cflags=["-O3"],
+        is_python_module=False,
+        verbose=os.getenv("FLAGGEMS_ASCEND_BASELINE_VERBOSE", "0") == "1",
+    )
+    return torch.ops.flag_gems_ascend_baseline.nonzero_static
 
 
 def _make_input(shape, dtype, nnz_ratio, device):
@@ -43,9 +103,7 @@ def _make_input(shape, dtype, nnz_ratio, device):
 
 def _get_baseline_nonzero_static():
     if flag_gems.vendor_name == "ascend":
-        from .ascendc_baseline import load_nonzero_static
-
-        return load_nonzero_static()
+        return _load_ascend_baseline()
     return torch.nonzero_static
 
 
