@@ -53,6 +53,7 @@ from .index import index
 from .index_add import index_add, index_add_
 from .index_select import index_select
 from .isin import isin
+from .layernorm import layer_norm
 from .linspace import linspace
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .masked_fill import masked_fill, masked_fill_
@@ -151,6 +152,7 @@ __all__ = [
     "index_add_",
     "index_select",
     "isin",
+    "layer_norm",
     "linspace",
     "log_softmax",
     "log_softmax_backward",
