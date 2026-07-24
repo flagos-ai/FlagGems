@@ -137,9 +137,9 @@ at::Tensor to_copy(const at::Tensor& x,
 
   const at::Tensor& x_linear = x;
   if (x_linear.is_contiguous() && out.is_contiguous() && numel <= std::numeric_limits<int32_t>::max()) {
-    static const TritonJITFunction& kernel_linear = TritonJITFunction::get_instance(
-        (utils::get_flag_gems_src_path() / "ops" / "lift_fresh_copy.py").string(),
-        "_copy_kernel");
+    static const TritonJITFunction& kernel_linear =
+        TritonJITFunction::get_instance((utils::get_triton_src_path() / "copy.py").string(),
+                                        "copy_kernel_linear");
     kernel_linear(raw_stream, grid_x, 1, 1, 4, 0, x_linear, out, numel, BLOCK_SIZE);
     return out;
   }
@@ -184,9 +184,9 @@ at::Tensor& copy_(at::Tensor& dst, const at::Tensor& src, bool non_blocking = fa
 
   if (dst.is_contiguous() && src.is_contiguous() && no_broadcast &&
       numel <= std::numeric_limits<int32_t>::max()) {
-    static const TritonJITFunction& kernel_linear = TritonJITFunction::get_instance(
-        (utils::get_flag_gems_src_path() / "ops" / "lift_fresh_copy.py").string(),
-        "_copy_kernel");
+    static const TritonJITFunction& kernel_linear =
+        TritonJITFunction::get_instance((utils::get_triton_src_path() / "copy.py").string(),
+                                        "copy_kernel_linear");
     kernel_linear(raw_stream, grid_x, 1, 1, 4, 0, src, dst, numel, BLOCK_SIZE);
     return dst;
   }

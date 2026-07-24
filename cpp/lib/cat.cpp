@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include "flag_gems/backend_utils.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
+#include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
+using namespace triton_jit;
 
 namespace {
 
@@ -110,26 +113,107 @@ at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
   out_shape_vec[dim] = cat_dim_size;
   at::Tensor out = at::empty(out_shape_vec, ref_tensor->options().dtype(out_dtype));
 
-  std::vector<int64_t> storage_offsets;
-  int64_t current_storage_offset = 0;
-  storage_offsets.push_back(current_storage_offset);
-  int64_t out_stride_for_dim = out.stride(dim);
-  for (size_t i = 0; i < tensors.size() - 1; ++i) {
-    current_storage_offset += cat_dim_size_of(tensors[i], dim) * out_stride_for_dim;
-    storage_offsets.push_back(current_storage_offset);
+  int64_t dim_prod_post = 1;
+  for (int64_t d = dim + 1; d < ndim; ++d) {
+    dim_prod_post *= out_shape_vec[d];
   }
+  int64_t dim_size_out = out_shape_vec[dim];
 
-  for (size_t i = 0; i < tensors.size(); ++i) {
-    const auto& input_tensor = tensors[i];
-    if (input_tensor.numel() == 0) continue;
+  const TritonJITFunction& kernel =
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "cat.py"),
+                                      "cat_copy_func_kernel_4");
 
-    at::Tensor src_tensor = input_tensor;
-    if (input_tensor.scalar_type() != out_dtype) {
-      src_tensor = input_tensor.to(out_dtype);
+  c10::DeviceGuard guard(out.device());
+  backend::StreamType stream = backend::getCurrentStream();
+  backend::RawStreamType raw_stream = backend::getRawStream(stream);
+
+  constexpr int BLOCK = 1024;
+  constexpr int NUM_WARPS = 4;
+  constexpr int NUM_STAGES = 1;
+
+  size_t t_idx = 0;
+  int64_t global_dim_offset = 0;
+
+  while (t_idx < tensors.size()) {
+    // Collect up to 4 tensors (skip numel==0 tensors within batch collect)
+    at::Tensor batch_tensors[4];
+    int64_t dim_sizes[4] = {0};
+    int64_t dim_offsets[4] = {0};
+    int64_t total_elements[4] = {0};
+
+    size_t batch_count = 0;
+    int64_t batch_offset = global_dim_offset;
+    while (batch_count < 4 && t_idx < tensors.size()) {
+      const auto& t = tensors[t_idx];
+      t_idx++;
+
+      if (t.numel() == 0) {
+        // Update dim_offset for zero-element tensors before skipping
+        batch_offset += cat_dim_size_of(t, dim);
+        global_dim_offset = batch_offset;
+        continue;
+      }
+
+      at::Tensor src = t;
+      if (src.scalar_type() != out_dtype) {
+        src = src.to(out_dtype);
+      }
+      src = src.contiguous();
+
+      batch_tensors[batch_count] = src;
+      dim_sizes[batch_count] = src.size(dim);
+      dim_offsets[batch_count] = batch_offset;
+      total_elements[batch_count] = src.numel();
+      batch_offset += dim_sizes[batch_count];
+      batch_count++;
+    }
+    global_dim_offset = batch_offset;
+
+    if (batch_count == 0) {
+      continue;
     }
 
-    at::Tensor output_view = at::as_strided(out, src_tensor.sizes(), out.strides(), storage_offsets[i]);
-    copy_(output_view, src_tensor, false);
+    // Fill remaining slots with dummy data
+    for (size_t j = batch_count; j < 4; ++j) {
+      batch_tensors[j] = batch_tensors[0];
+    }
+
+    int64_t max_elements = 0;
+    for (int j = 0; j < 4; ++j) {
+      if (total_elements[j] > max_elements) {
+        max_elements = total_elements[j];
+      }
+    }
+
+    unsigned int grid_x = (max_elements + BLOCK - 1) / BLOCK;
+    unsigned int grid_y = batch_count;
+
+    kernel(raw_stream,
+           grid_x,
+           grid_y,
+           1,
+           NUM_WARPS,
+           NUM_STAGES,
+           out,
+           batch_tensors[0],
+           batch_tensors[1],
+           batch_tensors[2],
+           batch_tensors[3],
+           dim_sizes[0],
+           dim_sizes[1],
+           dim_sizes[2],
+           dim_sizes[3],
+           dim_size_out,
+           dim_prod_post,
+           dim_offsets[0],
+           dim_offsets[1],
+           dim_offsets[2],
+           dim_offsets[3],
+           total_elements[0],
+           total_elements[1],
+           total_elements[2],
+           total_elements[3],
+           BLOCK);
   }
   return out;
 }
