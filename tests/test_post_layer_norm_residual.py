@@ -311,4 +311,6 @@ def test_post_layer_norm_residual_backward_residual_only(monkeypatch):
     )
     (grad_residual,) = torch.autograd.grad(output, residual, grad_output)
 
-    utils.gems_assert_close(grad_residual, grad_output, torch.float32)
+    utils.gems_assert_close(
+        grad_residual, utils.to_reference(grad_output), torch.float32
+    )
