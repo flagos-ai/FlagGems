@@ -9405,6 +9405,24 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: unified_attention
+    description: |
+      Triton unified paged attention kernel supporting both prefill and decode
+      phases with KV cache. Uses a hybrid tuning config (KernelGen v10): v0
+      prefill tiles (TILE_SIZE=64, num_stages=2) to avoid regressions, plus v9
+      decode pipeline (TILE_SIZE=32, num_stages=4) for HBM latency hiding.
+      Adapted from vLLM v0.20.2 triton_unified_attention.
+    for:
+      - vllm.v1.attention.ops.triton_unified_attention.unified_attention
+    labels:
+      - fused
+      - Attention
+      - vLLM
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: unique_consecutive
     description: Eliminates all but the first element from every consecutive group of equivalent elements.
     for:
