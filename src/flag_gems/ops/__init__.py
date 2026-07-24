@@ -363,6 +363,7 @@ from flag_gems.ops.lt_ import lt_, lt_scalar_
 from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
+from flag_gems.ops.masked_scatter_backward import masked_scatter_backward
 from flag_gems.ops.masked_select import masked_select
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool2d_with_indices import (
@@ -1085,6 +1086,7 @@ __all__ = [
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
+    "masked_scatter_backward",
     "masked_scatter_",
     "masked_select",
     "max",

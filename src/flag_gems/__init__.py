@@ -543,6 +543,7 @@ _FULL_CONFIG = (
     ("masked_fill_.Tensor", masked_fill_),
     ("masked_scatter", masked_scatter),
     ("masked_scatter_", masked_scatter_),
+    ("masked_scatter_backward", masked_scatter_backward),
     ("masked_select", masked_select),
     ("matmuladd", matmuladd),
     ("max", max),
