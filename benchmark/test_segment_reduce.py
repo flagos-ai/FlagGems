@@ -26,6 +26,39 @@ pytestmark = pytest.mark.skipif(
 
 REDUCTIONS = ("sum", "mean", "max", "min", "prod")
 
+_skip_ascend_segment_reduce_native_fallback = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason=(
+        "missing direct native kernel for schema=aten::segment_reduce, "
+        "vendor=ascend, device=npu, dispatch_key=PrivateUse1; "
+        "torch-npu falls back to CPU"
+    ),
+)
+_skip_ascend_segment_reduce_out_native_fallback = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason=(
+        "missing direct native kernel for schema=aten::segment_reduce.out, "
+        "vendor=ascend, device=npu, dispatch_key=PrivateUse1; "
+        "torch-npu falls back to CPU"
+    ),
+)
+_skip_ascend_segment_reduce_backward_native_fallback = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason=(
+        "missing direct native kernel for schema=aten::_segment_reduce_backward, "
+        "vendor=ascend, device=npu, dispatch_key=PrivateUse1; "
+        "torch-npu falls back to CPU"
+    ),
+)
+_skip_ascend_segment_reduce_backward_out_native_fallback = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason=(
+        "missing direct native kernel for schema=aten::_segment_reduce_backward.out, "
+        "vendor=ascend, device=npu, dispatch_key=PrivateUse1; "
+        "torch-npu falls back to CPU"
+    ),
+)
+
 
 def _select_axis(shape):
     return 0 if len(shape) == 1 else 1
@@ -96,6 +129,7 @@ class SegmentReduceBenchmark(base.Benchmark):
 
 
 @pytest.mark.segment_reduce
+@_skip_ascend_segment_reduce_native_fallback
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -109,6 +143,7 @@ def test_segment_reduce():
 
 
 @pytest.mark.segment_reduce_out
+@_skip_ascend_segment_reduce_out_native_fallback
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -123,6 +158,7 @@ def test_segment_reduce_out():
 
 
 @pytest.mark.segment_reduce_backward
+@_skip_ascend_segment_reduce_backward_native_fallback
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -137,6 +173,7 @@ def test_segment_reduce_backward():
 
 
 @pytest.mark.segment_reduce_backward_out
+@_skip_ascend_segment_reduce_backward_out_native_fallback
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
