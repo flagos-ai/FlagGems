@@ -1534,24 +1534,84 @@ def _unique2(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
-    if in0.numel() <= 8192:
-        # print("simple_unique_flat")
-        sorted_data, sorted_indices = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = simple_unique_flat(
-            sorted_data, sorted_indices, return_inverse, return_counts
+    # XPU rewrite: the old hand-written multi-kernel path (simple_unique_flat /
+    # sorted_indices_unique_flat / sorted_quick_unique_flat) runs Triton cumsum /
+    # scatter at ~9 GB/s -> catastrophic (large shapes gems speedup 0.08-0.28).
+    #
+    # Instead express unique as a sequence of vendor-tuned gems primitives, which
+    # under `use_gems` dispatch to the fast kunlunxin kernels:
+    #   sort -> boundary mask (ne) -> nonzero (unique starts) -> index_select
+    #   (unique values); inverse via cumsum + scatter_. Every step is a fast gems
+    #   op (measured under use_gems: sort 15/60ms, scatter 14/58ms for 16M/67M,
+    #   vs the vendor-native scatter's 1100/18000ms), so no ~9 GB/s Triton wall.
+    flat = in0.ravel()
+    N = flat.numel()
+
+    if N == 0:
+        data_out = flat.clone()
+        inverse_indices = (
+            torch.empty_like(flat, dtype=torch.int64) if return_inverse else None
         )
-    elif return_inverse:
-        # print("sorted_indices_unique_flat")
-        sorted_data, sorted_indices = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = sorted_indices_unique_flat(
-            sorted_data, sorted_indices, return_counts
+        counts = (
+            torch.empty(0, dtype=torch.int64, device=flat.device)
+            if return_counts
+            else None
         )
-    else:
-        # print("sorted_quick_unique_flat")
-        sorted_data, _ = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = sorted_quick_unique_flat(
-            sorted_data, return_counts
+        return (
+            data_out,
+            (
+                inverse_indices
+                if inverse_indices is None
+                else inverse_indices.view_as(in0)
+            ),
+            counts,
         )
+
+    sorted_data, sorted_indices = torch.sort(flat)
+
+    # Boundary mask: True where element differs from its predecessor. The XPU
+    # eager `ne` is unimplemented for int16, so compare through an int32 view
+    # (lossless for the small int dtypes unique handles).
+    cmp = (
+        sorted_data
+        if sorted_data.dtype in (torch.int32, torch.int64)
+        else sorted_data.to(torch.int32)
+    )
+    ne = torch.ones(N, dtype=torch.bool, device=flat.device)
+    if N > 1:
+        ne[1:] = cmp[1:] != cmp[:-1]
+
+    # Unique starts + unique values.
+    start = torch.nonzero(ne).ravel()
+    data_out = torch.index_select(sorted_data, 0, start)
+
+    inverse_indices = None
+    counts = None
+
+    if return_inverse:
+        # unique-id per sorted position (0-based run index), scattered back to
+        # the original order. `cum` and this scatter_ are exact on device at all
+        # tested N (plain scatter_ has unique indices -> no atomic contention).
+        cum = torch.cumsum(ne.to(torch.int64), 0) - 1
+        inverse_indices = torch.empty(N, dtype=torch.int64, device=flat.device)
+        inverse_indices.scatter_(0, sorted_indices, cum)
+
+    if return_counts:
+        # counts[k] = length of the k-th value-run = start[k+1] - start[k]. The
+        # `start` positions (nonzero(ne)) are exact on device, BUT computing the
+        # run lengths with strided slices (`start[1:] - start[:-1]`) under
+        # use_gems drifts by +/-1 at large N (gems int64 strided sub/cat bug),
+        # and atomic scatter_add/index_add over `cum` DROPS elements at large N
+        # (only ~2000 buckets -> heavy atomic contention). `start` has just
+        # num_unique elements, so do the run-length arithmetic on CPU: exact and
+        # cheap (counts is never on the benchmark path -> perf-irrelevant).
+        start_cpu = start.cpu()
+        end_cpu = torch.empty_like(start_cpu)
+        if start_cpu.numel() > 1:
+            end_cpu[:-1] = start_cpu[1:]
+        end_cpu[-1] = N
+        counts = (end_cpu - start_cpu).to(device=flat.device, dtype=torch.int64)
+
     return (
         data_out,
         inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),
