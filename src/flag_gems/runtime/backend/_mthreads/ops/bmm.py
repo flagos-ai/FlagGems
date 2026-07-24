@@ -236,9 +236,11 @@ def bmm_sqmma_kernel(
 
 
 def bmm_sqmma(A, B, elem_type, batch, M, N, K):
-    device = "musa"
-    c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
-    C = torch.empty((batch, M, N), dtype=torch.float16, device=device).to(c_type)
+    # Preserve torch.bmm dtype semantics. In particular, BF16 inputs
+    # must not silently produce an FP16 output, otherwise backward may
+    # invoke bmm with mixed BF16/FP16 operands.
+    device = A.device
+    C = torch.empty((batch, M, N), dtype=elem_type, device=device)
     desc_a = TensorDescriptor.from_tensor(A.reshape(batch * M, K), [1, 1])
     desc_b = TensorDescriptor.from_tensor(B.reshape(batch * K, N), [1, 1])
     desc_c = TensorDescriptor.from_tensor(C.reshape(batch * M, N), [1, 1])
