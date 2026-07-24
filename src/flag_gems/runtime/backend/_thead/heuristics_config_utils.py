@@ -181,6 +181,30 @@ def layer_norm_heur_block_row_size(args):
     return min(32, triton.next_power_of_2(args["row_count"]))
 
 
+def layer_norm_heur_fused_min_elements(_args):
+    return 1024 * 1024
+
+
+def layer_norm_heur_fused_max_resident_n(_args):
+    return 512
+
+
+def layer_norm_heur_fused_tile_elements(_args):
+    return 4096
+
+
+def layer_norm_heur_fused_max_block_m(_args):
+    return 256
+
+
+def layer_norm_heur_fused_direct_lowp_atomic(_args):
+    return False
+
+
+def layer_norm_heur_fused_program_waves(_args):
+    return 1
+
+
 def batch_norm_heur_block_m(args):
     """Select BLOCK_M for batch normalization on PPU"""
     return min(2048, triton.next_power_of_2(args["batch_dim"]))
@@ -317,6 +341,14 @@ HEURISTICS_CONFIGS = {
     },
     "layer_norm_persistent": {
         "BLOCK_ROW_SIZE": layer_norm_heur_block_row_size,
+    },
+    "layer_norm_backward_fused": {
+        "MIN_ELEMENTS": layer_norm_heur_fused_min_elements,
+        "MAX_RESIDENT_N": layer_norm_heur_fused_max_resident_n,
+        "TILE_ELEMENTS": layer_norm_heur_fused_tile_elements,
+        "MAX_BLOCK_M": layer_norm_heur_fused_max_block_m,
+        "PROGRAM_WAVES": layer_norm_heur_fused_program_waves,
+        "DIRECT_LOWP_ATOMIC": layer_norm_heur_fused_direct_lowp_atomic,
     },
     "batch_norm": {
         "BLOCK_M": batch_norm_heur_block_m,
