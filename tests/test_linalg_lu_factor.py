@@ -76,36 +76,32 @@ def _make_input(shape, pivot, device, dtype):
 @pytest.mark.parametrize("pivot", [True, False])
 def test_linalg_lu_factor(shape, dtype, pivot):
     inp = _make_input(shape, pivot, flag_gems.device, dtype)
-    # inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_lu, ref_pivots = torch.linalg.lu_factor(ref_inp, pivot=pivot)
     with flag_gems.use_gems():
         res_lu, res_pivots = torch.linalg.lu_factor(inp, pivot=pivot)
 
-    # batch_shape = inp.shape[:-2]
-    # m, n = inp.shape[-2], inp.shape[-1]
-    # k = min(m, n)
+    batch_shape = inp.shape[:-2]
+    m, n = inp.shape[-2], inp.shape[-1]
+    k = min(m, n)
 
-    utils.gems_assert_close(ref_lu, res_lu, dtype)
+    assert res_lu.shape == inp.shape
+    assert res_pivots.dtype == torch.int32
+    assert res_pivots.shape == (*batch_shape, k)
+    assert torch.all(res_pivots >= 1)
+    assert torch.all(res_pivots <= m)
 
-    # assert res_lu.shape == inp.shape
-    # assert res_pivots.dtype == torch.int32
-    # assert res_pivots.shape == (*batch_shape, k)
-    # assert torch.all(res_pivots >= 1)
-    # assert torch.all(res_pivots <= m)
-    # utils.gems_assert_close(ref_lu, res_lu, dtype)
-    # _tf32 = torch.backends.cuda.matmul.allow_tf32
-    # torch.backends.cuda.matmul.allow_tf32 = False
-    # try:
-    #     # utils.gems_assert_close(ref_lu, res_lu, dtype)
-    #     if pivot:
-    #         res_p, res_l, res_u = torch.lu_unpack(res_lu, res_pivots)
-    #         reconstructed = res_p @ res_l @ res_u
-    #         utils.gems_assert_close(reconstructed, ref_inp, dtype, reduce_dim=k)
-    #     else:
-    #         res_l, res_u = _unpack_lu_no_pivot(res_lu)
-    #         reconstructed = res_l @ res_u
-    #         utils.gems_assert_close(reconstructed, ref_inp, dtype, reduce_dim=k)
-    # finally:
-    #     torch.backends.cuda.matmul.allow_tf32 = _tf32
+    _tf32 = torch.backends.cuda.matmul.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32 = False
+    try:
+        if pivot:
+            res_p, res_l, res_u = torch.lu_unpack(res_lu, res_pivots)
+            reconstructed = res_p @ res_l @ res_u
+            utils.gems_assert_close(reconstructed, ref_inp, dtype, reduce_dim=k)
+        else:
+            res_l, res_u = _unpack_lu_no_pivot(res_lu)
+            reconstructed = res_l @ res_u
+            utils.gems_assert_close(reconstructed, ref_inp, dtype, reduce_dim=k)
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = _tf32
