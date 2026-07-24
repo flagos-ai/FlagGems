@@ -44,3 +44,25 @@ def test_amax(shape, dim, keepdim, dtype):
         res_out = torch.amax(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.amax
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((4, 8, 4096), 1),  # non-inner: K = 4096 spans multiple K tiles
+        ((4, 4096, 8), 1),  # non-inner: N = 4096 exercises the reduction loop
+        ((8, 4096), 1),  # inner: N = 4096 exercises the reduction loop
+        ((4096, 8), 0),  # non-inner via the outer dim
+    ],
+)
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_amax_dim_multi_tile(shape, dim, keepdim):
+    inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.amax(inp, dim=dim, keepdim=keepdim)
+
+    utils.gems_assert_equal(res_out, ref_out)
