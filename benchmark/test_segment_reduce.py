@@ -97,6 +97,14 @@ class SegmentReduceBenchmark(base.Benchmark):
 
 @pytest.mark.segment_reduce
 @pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason=(
+        "missing direct native kernel for schema=aten::segment_reduce, "
+        "vendor=ascend, device=npu, dispatch_key=PrivateUse1; "
+        "native baseline would use torch-npu CPU fallback"
+    ),
+)
+@pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_segment_reduce():
@@ -109,6 +117,14 @@ def test_segment_reduce():
 
 
 @pytest.mark.segment_reduce_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason=(
+        "missing direct native kernel for schema=aten::segment_reduce.out, "
+        "vendor=ascend, device=npu, dispatch_key=PrivateUse1; "
+        "native baseline would use torch-npu CPU fallback"
+    ),
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -124,6 +140,14 @@ def test_segment_reduce_out():
 
 @pytest.mark.segment_reduce_backward
 @pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason=(
+        "missing direct native kernel for schema=aten::_segment_reduce_backward, "
+        "vendor=ascend, device=npu, dispatch_key=PrivateUse1; "
+        "native baseline would use torch-npu CPU fallback"
+    ),
+)
+@pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_segment_reduce_backward():
@@ -137,6 +161,14 @@ def test_segment_reduce_backward():
 
 
 @pytest.mark.segment_reduce_backward_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason=(
+        "missing direct native kernel for schema=aten::_segment_reduce_backward.out, "
+        "vendor=ascend, device=npu, dispatch_key=PrivateUse1; "
+        "native baseline would use torch-npu CPU fallback"
+    ),
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )

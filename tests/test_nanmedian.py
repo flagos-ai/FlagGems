@@ -112,6 +112,40 @@ def test_nanmedian(shape, dtype):
     _assert_nanmedian_values(res, ref, dtype)
 
 
+@pytest.mark.nanmedian
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
+def test_nanmedian_large_flat(dtype):
+    inp = _make_input((1024, 1024), dtype)
+    ref_inp = utils.to_reference(inp)
+    ref = torch.nanmedian(ref_inp)
+
+    with flag_gems.use_gems():
+        res = torch.nanmedian(inp)
+
+    _assert_nanmedian_values(res, ref, dtype)
+
+
+@pytest.mark.nanmedian
+@pytest.mark.nanmedian_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon",
+    reason="Hygon Triton limits a single block tensor to 1048576 elements",
+)
+def test_nanmedian_hygon_flat_above_block_limit():
+    inp = _make_input((16, 131072), torch.float16)
+    ref_inp = utils.to_reference(inp)
+    ref = torch.nanmedian(ref_inp)
+    out = torch.empty((), dtype=inp.dtype, device=inp.device)
+
+    with flag_gems.use_gems():
+        res = torch.nanmedian(inp)
+        out_res = torch.ops.aten.nanmedian.out(inp, out=out)
+
+    _assert_nanmedian_values(res, ref, inp.dtype)
+    assert out_res is out
+    _assert_nanmedian_values(out, ref, inp.dtype)
+
+
 @pytest.mark.nanmedian_dim
 @pytest.mark.parametrize(
     ("shape", "dim"),
@@ -233,6 +267,41 @@ def test_nanmedian_dim_values_large_int(dtype):
     assert res.indices is out_indices
     _assert_nanmedian_values(out_values, ref_values, dtype)
     _assert_nanmedian_indices_valid(inp, out_values, out_indices, 1, False, dtype)
+
+
+@pytest.mark.nanmedian_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "mthreads",
+    reason="MThreads non-contiguous nanmedian out regression",
+)
+def test_nanmedian_dim_values_non_contiguous_out():
+    inp = _make_input((4, 1031), torch.float32)
+    ref = torch.nanmedian(utils.to_reference(inp), dim=1)
+    values_storage = torch.full(
+        (8,), -1.0, dtype=torch.float32, device=flag_gems.device
+    )
+    indices_storage = torch.full((8,), -1, dtype=torch.long, device=flag_gems.device)
+    out_values = values_storage[::2]
+    out_indices = indices_storage[::2]
+
+    with flag_gems.use_gems():
+        res = torch.nanmedian(inp, dim=1, out=(out_values, out_indices))
+
+    assert res.values is out_values
+    assert res.indices is out_indices
+    _assert_nanmedian_values(out_values, ref.values, torch.float32)
+    _assert_nanmedian_indices_valid(
+        inp, out_values, out_indices, 1, False, torch.float32
+    )
+    # Interleaved slots outside the out views must retain their sentinel values.
+    utils.gems_assert_equal(
+        values_storage[1::2],
+        utils.to_reference(torch.full_like(values_storage[1::2], -1.0)),
+    )
+    utils.gems_assert_equal(
+        indices_storage[1::2],
+        utils.to_reference(torch.full_like(indices_storage[1::2], -1)),
+    )
 
 
 @pytest.mark.nanmedian

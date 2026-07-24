@@ -51,6 +51,7 @@ from .hadamard_transform import hadamard_transform
 from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
+from .index_reduce import index_reduce_
 from .index_select import index_select
 from .isin import isin
 from .linspace import linspace
@@ -65,6 +66,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .multinomial import multinomial
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
@@ -82,6 +84,7 @@ from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
+from .segment_reduce import _segment_reduce_backward, _segment_reduce_backward_out
 from .select_backward import select_backward
 from .select_scatter import select_scatter
 from .slice_scatter import slice_scatter
@@ -102,6 +105,8 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_segment_reduce_backward",
+    "_segment_reduce_backward_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "addmm",
@@ -149,6 +154,7 @@ __all__ = [
     "index",
     "index_add",
     "index_add_",
+    "index_reduce_",
     "index_select",
     "isin",
     "linspace",
@@ -171,6 +177,10 @@ __all__ = [
     "mm",
     "mm_out",
     "multinomial",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "normed_cumsum",
     "ones",
     "ones_like",

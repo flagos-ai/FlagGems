@@ -38,34 +38,11 @@ RADIX_BITS = 2
 MEDIUM_REDUCTION_N = 1024
 LARGE_FLOAT_REDUCTION_N = 4096
 LONG_RADIX_REDUCTION_N = 131072
-ASCEND_FLAT_SORT_MIN_N = 1 << 20
 FLAT_RADIX_BLOCK_N = 4096
 FLAT_RADIX_BITS = 8
 RADIX_SELECT_DTYPES = (
     torch.float16,
     torch.bfloat16,
-    torch.float32,
-    torch.int8,
-    torch.uint8,
-    torch.int16,
-    torch.int32,
-)
-ASCEND_HISTOGRAM_SELECT_DTYPES = (
-    torch.int8,
-    torch.uint8,
-)
-ASCEND_BYTE_HISTOGRAM_SELECT_DTYPES = (
-    torch.int16,
-    torch.int32,
-)
-ASCEND_FLOAT_SELECT_DTYPES = (
-    torch.float16,
-    torch.float32,
-)
-ASCEND_HISTOGRAM_BINS = 256
-ASCEND_MULTI_HISTOGRAM_MIN_N = 8192
-ASCEND_FLAT_SORT_DTYPES = (
-    torch.float16,
     torch.float32,
     torch.int8,
     torch.uint8,
@@ -949,56 +926,11 @@ def _nanmedian_kthvalue_fallback(inp, M, N):
             result.indices[row_indices] = indices
         return result
     else:
-        if inp.device.type == "npu" and inp.dtype in (torch.int32, torch.int64):
-            sorted_values, sorted_indices = torch.sort(inp, dim=1)
-            kth = (N + 1) // 2 - 1
-            values = sorted_values[:, kth]
-            indices = sorted_indices[:, kth]
-            return NanMedian(values=values, indices=indices)
         values, indices = torch.kthvalue(inp, (N + 1) // 2, dim=1)
         return NanMedian(values=values, indices=indices)
 
 
-def _nanmedian_ascend_float_sort_select(inp, M, N, values, indices):
-    inp = inp.reshape(M, N)
-    flat_values = values.reshape(M)
-    flat_indices = indices.reshape(M)
-    if N <= LARGE_FLOAT_REDUCTION_N:
-        cleaned = torch.empty_like(inp)
-        valid_counts = torch.empty((M,), dtype=torch.int32, device=inp.device)
-        block_n = min(triton.next_power_of_2(N), RADIX_BLOCK_N)
-        num_warps = 4 if block_n <= 512 else 8
-        with torch_device_fn.device(inp.device):
-            nanmedian_float_clean_count_kernel[(M,)](
-                inp,
-                cleaned,
-                valid_counts,
-                N,
-                block_n,
-                num_warps=num_warps,
-                num_stages=1,
-            )
-        sorted_values, sorted_indices = torch.sort(cleaned, dim=1)
-    else:
-        sorted_values, sorted_indices = torch.sort(inp, dim=1)
-        valid_counts = torch.sum(
-            (sorted_values == sorted_values).to(torch.int32), dim=1
-        )
-
-    with torch_device_fn.device(inp.device):
-        nanmedian_float_sorted_gather_kernel[(M,)](
-            sorted_values,
-            sorted_indices,
-            valid_counts,
-            flat_values,
-            flat_indices,
-            N,
-            num_warps=1,
-            num_stages=1,
-        )
-
-
-def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=True):
+def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
     dim = _normalize_dim(dim, inp.ndim)
 
     if inp.ndim == 0:
@@ -1051,7 +983,6 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
     inp = dim_compress(inp, dim)
     is_cuda = inp.is_cuda
     is_nvidia = IS_NVIDIA_BACKEND
-    is_ascend = inp.device.type == "npu"
     in_radix_range = MAX_BLOCK_N < N <= LONG_RADIX_REDUCTION_N
     use_cuda_histogram = (
         is_nvidia
@@ -1060,21 +991,6 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
         and N > MAX_BLOCK_N
         and N == triton.next_power_of_2(N)
     )
-    use_ascend_float_select_path = (
-        use_ascend_float_select
-        and is_ascend
-        and inp.dtype in ASCEND_FLOAT_SELECT_DTYPES
-        and in_radix_range
-    )
-    use_ascend_histogram = (
-        is_ascend and inp.dtype in ASCEND_HISTOGRAM_SELECT_DTYPES and in_radix_range
-    )
-    use_ascend_byte_histogram = (
-        is_ascend
-        and inp.dtype in ASCEND_BYTE_HISTOGRAM_SELECT_DTYPES
-        and in_radix_range
-    )
-
     if is_nvidia and is_cuda and inp.dtype in RADIX_SELECT_DTYPES and in_radix_range:
         flat_values = values.reshape(M)
         flat_indices = indices.reshape(M)
@@ -1091,135 +1007,6 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
                 _radix_bits(inp, N) if use_cuda_histogram else RADIX_BITS,
                 is_cuda,
                 use_cuda_histogram,
-                num_warps=num_warps,
-                num_stages=1,
-            )
-    elif use_ascend_float_select_path:
-        _nanmedian_ascend_float_sort_select(inp, M, N, values, indices)
-    elif use_ascend_histogram and N >= ASCEND_MULTI_HISTOGRAM_MIN_N:
-        flat_values = values.reshape(M)
-        flat_indices = indices.reshape(M)
-        block_n = _radix_block_n(inp, N)
-        num_chunks = triton.cdiv(N, block_n)
-        partial_counts = torch.empty(
-            (M, num_chunks, ASCEND_HISTOGRAM_BINS),
-            dtype=torch.int32,
-            device=inp.device,
-        )
-        num_warps = 4 if block_n <= 512 else 8
-        with torch_device_fn.device(inp.device):
-            nanmedian_ascend_histogram_count_kernel[(M, num_chunks)](
-                inp,
-                partial_counts,
-                M,
-                N,
-                block_n,
-                num_chunks,
-                ASCEND_HISTOGRAM_BINS,
-                num_warps=num_warps,
-                num_stages=1,
-            )
-            nanmedian_ascend_histogram_reduce_kernel[(M,)](
-                inp,
-                partial_counts,
-                flat_values,
-                flat_indices,
-                M,
-                N,
-                block_n,
-                num_chunks,
-                ASCEND_HISTOGRAM_BINS,
-                num_warps=num_warps,
-                num_stages=1,
-            )
-    elif use_ascend_histogram:
-        flat_values = values.reshape(M)
-        flat_indices = indices.reshape(M)
-        block_n = _radix_block_n(inp, N)
-        num_warps = 4 if block_n <= 512 else 8
-        with torch_device_fn.device(inp.device):
-            nanmedian_ascend_histogram_select_kernel[(M,)](
-                inp,
-                flat_values,
-                flat_indices,
-                M,
-                N,
-                block_n,
-                ASCEND_HISTOGRAM_BINS,
-                num_warps=num_warps,
-                num_stages=1,
-            )
-    elif use_ascend_byte_histogram and N >= ASCEND_MULTI_HISTOGRAM_MIN_N:
-        flat_values = values.reshape(M)
-        flat_indices = indices.reshape(M)
-        block_n = _radix_block_n(inp, N)
-        num_chunks = triton.cdiv(N, block_n)
-        partial_counts = torch.empty(
-            (M, num_chunks, ASCEND_HISTOGRAM_BINS),
-            dtype=torch.int32,
-            device=inp.device,
-        )
-        state = torch.empty((M, 3), dtype=torch.int64, device=inp.device)
-        num_warps = 4 if block_n <= 512 else 8
-        nbits = inp.element_size() * 8
-        with torch_device_fn.device(inp.device):
-            nanmedian_ascend_byte_histogram_init_kernel[(M,)](
-                state,
-                M,
-                N,
-                num_warps=1,
-                num_stages=1,
-            )
-            for digit_pos in range(nbits - 8, -1, -8):
-                nanmedian_ascend_byte_histogram_count_kernel[(M, num_chunks)](
-                    inp,
-                    state,
-                    partial_counts,
-                    M,
-                    N,
-                    block_n,
-                    num_chunks,
-                    ASCEND_HISTOGRAM_BINS,
-                    digit_pos,
-                    num_warps=num_warps,
-                    num_stages=1,
-                )
-                nanmedian_ascend_byte_histogram_update_kernel[(M,)](
-                    inp,
-                    partial_counts,
-                    state,
-                    M,
-                    num_chunks,
-                    ASCEND_HISTOGRAM_BINS,
-                    digit_pos,
-                    num_warps=num_warps,
-                    num_stages=1,
-                )
-            nanmedian_ascend_byte_histogram_find_index_kernel[(M,)](
-                inp,
-                state,
-                flat_values,
-                flat_indices,
-                M,
-                N,
-                block_n,
-                num_warps=num_warps,
-                num_stages=1,
-            )
-    elif use_ascend_byte_histogram:
-        flat_values = values.reshape(M)
-        flat_indices = indices.reshape(M)
-        block_n = _radix_block_n(inp, N)
-        num_warps = 4 if block_n <= 512 else 8
-        with torch_device_fn.device(inp.device):
-            nanmedian_ascend_byte_histogram_select_kernel[(M,)](
-                inp,
-                flat_values,
-                flat_indices,
-                M,
-                N,
-                block_n,
-                ASCEND_HISTOGRAM_BINS,
                 num_warps=num_warps,
                 num_stages=1,
             )
@@ -1253,17 +1040,6 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None, use_ascend_float_select=Tru
         indices = torch.squeeze(indices, dim)
 
     return NanMedian(values=values, indices=indices)
-
-
-def _nanmedian_ascend_flat_sort(inp):
-    flat = inp.reshape(-1).contiguous()
-    sorted_values = torch.sort(flat).values
-    if torch.is_floating_point(flat):
-        valid_count = (sorted_values == sorted_values).sum()
-        rank = (valid_count - 1) // 2
-    else:
-        rank = (flat.numel() - 1) // 2
-    return sorted_values[rank]
 
 
 def _nanmedian_cuda_flat_radix_select(inp, out=None):
@@ -1358,20 +1134,9 @@ def _nanmedian_flat_impl(inp, out=None):
     ):
         return _nanmedian_cuda_flat_radix_select(inp, out=out)
 
-    if (
-        inp.device.type == "npu"
-        and inp.dtype in ASCEND_FLAT_SORT_DTYPES
-        and n >= ASCEND_FLAT_SORT_MIN_N
-    ):
-        result = _nanmedian_ascend_flat_sort(inp)
-        if out is not None:
-            out.copy_(result)
-            return out
-        return result
-
     flat = inp.reshape(-1)
     if out is None:
-        return _nanmedian_dim_impl(flat, 0, False, use_ascend_float_select=False).values
+        return _nanmedian_dim_impl(flat, 0, False).values
 
     indices = torch.empty((), dtype=torch.long, device=inp.device)
     _nanmedian_dim_impl(
@@ -1379,7 +1144,6 @@ def _nanmedian_flat_impl(inp, out=None):
         0,
         False,
         out=(out, indices),
-        use_ascend_float_select=False,
     )
     return out
 
