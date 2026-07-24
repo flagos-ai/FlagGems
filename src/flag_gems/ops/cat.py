@@ -59,20 +59,20 @@ def cat_copy_func_kernel_4(
     in_ptr_b,
     in_ptr_c,
     in_ptr_d,
-    dim_size_in_a,
-    dim_size_in_b,
-    dim_size_in_c,
-    dim_size_in_d,
-    dim_size_out,
-    dim_prod_post,
+    dim_size_in_a: tl.int64,
+    dim_size_in_b: tl.int64,
+    dim_size_in_c: tl.int64,
+    dim_size_in_d: tl.int64,
+    dim_size_out: tl.int64,
+    dim_prod_post: tl.int64,
     dim_offset_a: tl.int64,
     dim_offset_b: tl.int64,
     dim_offset_c: tl.int64,
     dim_offset_d: tl.int64,
-    total_elements_a,
-    total_elements_b,
-    total_elements_c,
-    total_elements_d,
+    total_elements_a: tl.int64,
+    total_elements_b: tl.int64,
+    total_elements_c: tl.int64,
+    total_elements_d: tl.int64,
     BLOCK_X: tl.constexpr,
 ):
     pid_x = tl.program_id(0)
@@ -80,24 +80,24 @@ def cat_copy_func_kernel_4(
 
     if pid_y == 0:
         in_ptr = in_ptr_a
-        dim_size_in = dim_size_in_a
+        dim_size_in = tl.cast(dim_size_in_a, tl.int64)
         dim_offset = tl.cast(dim_offset_a, tl.int64)
-        total_elements = total_elements_a
+        total_elements = tl.cast(total_elements_a, tl.int64)
     elif pid_y == 1:
         in_ptr = in_ptr_b
-        dim_size_in = dim_size_in_b
+        dim_size_in = tl.cast(dim_size_in_b, tl.int64)
         dim_offset = tl.cast(dim_offset_b, tl.int64)
-        total_elements = total_elements_b
+        total_elements = tl.cast(total_elements_b, tl.int64)
     elif pid_y == 2:
         in_ptr = in_ptr_c
-        dim_size_in = dim_size_in_c
+        dim_size_in = tl.cast(dim_size_in_c, tl.int64)
         dim_offset = tl.cast(dim_offset_c, tl.int64)
-        total_elements = total_elements_c
+        total_elements = tl.cast(total_elements_c, tl.int64)
     else:
         in_ptr = in_ptr_d
-        dim_size_in = dim_size_in_d
+        dim_size_in = tl.cast(dim_size_in_d, tl.int64)
         dim_offset = tl.cast(dim_offset_d, tl.int64)
-        total_elements = total_elements_d
+        total_elements = tl.cast(total_elements_d, tl.int64)
 
     block_start = pid_x * BLOCK_X
     offsets = tl.arange(0, BLOCK_X)
