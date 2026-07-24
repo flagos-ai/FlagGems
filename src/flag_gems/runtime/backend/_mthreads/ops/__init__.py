@@ -19,6 +19,7 @@ from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmin import argmin
+from .atan2 import atan2, atan2_out
 from .batch_norm import batch_norm, batch_norm_backward
 from .celu import celu
 from .conv2d import conv2d
@@ -73,6 +74,8 @@ __all__ = [
     "arange",
     "arange_start",
     "argmin",
+    "atan2",
+    "atan2_out",
     "batch_norm",
     "batch_norm_backward",
     "celu",
