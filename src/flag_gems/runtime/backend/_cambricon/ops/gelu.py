@@ -33,15 +33,18 @@ exp = tl_extra_shim.exp
 @libentry()
 @libtuner(
     configs=[
-        triton.Config(kwargs={"BLOCK_SIZE": 4096}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={"BLOCK_SIZE": 16384}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={"BLOCK_SIZE": 65536}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={"BLOCK_SIZE": 131072}, num_stages=1, num_warps=1),
+        triton.Config(kwargs={"BLOCK_SIZE": 4096}, num_stages=3, num_warps=1),
+        triton.Config(kwargs={"BLOCK_SIZE": 16384}, num_stages=3, num_warps=1),
+        triton.Config(kwargs={"BLOCK_SIZE": 65536}, num_stages=3, num_warps=1),
+        triton.Config(kwargs={"BLOCK_SIZE": 131072}, num_stages=3, num_warps=1),
     ],
-    key=["n_elements"],
+    key=["n_elements", "inplace"],
+    restore_value=["OUT_ptr"],
 )
 @triton.jit
-def gelu_none_kernel(X_ptr, OUT_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def gelu_none_kernel(
+    X_ptr, OUT_ptr, n_elements, inplace: tl.constexpr, BLOCK_SIZE: tl.constexpr
+):
     pid = tl.program_id(0)
     num_jobs = tl.num_programs(0)
     block_start = pid * BLOCK_SIZE
@@ -109,7 +112,7 @@ def gelu(self, *, approximate="none"):
             min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),
         )
         with torch_device_fn.device(A.device):
-            gelu_none_kernel[grid_fn](A, out, N)
+            gelu_none_kernel[grid_fn](A, out, N, False)
         return out
 
 
@@ -134,7 +137,7 @@ def gelu_(A, *, approximate="none"):
             min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),
         )
         with torch_device_fn.device(A.device):
-            gelu_none_kernel[grid_fn](A_contig, A_contig, N)
+            gelu_none_kernel[grid_fn](A_contig, A_contig, N, True)
         if not A.is_contiguous():
             A.copy_(A_contig)
         return A

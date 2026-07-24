@@ -256,6 +256,11 @@ _gather_func = GatherFunction()
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
     logger.debug("GEMS_CAMBRICON GATHER")
+    if inp.ndim != index.ndim:
+        raise IndexError(
+            f"self and index must have the same number of dimensions, "
+            f"got self.ndim = {inp.ndim} and index.ndim = {index.ndim}"
+        )
     inp = inp.contiguous()
     index = index.contiguous()
     if out is None:

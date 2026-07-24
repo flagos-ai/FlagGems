@@ -107,6 +107,10 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
 
     if dtype is None:
         dtype = x.dtype
+    if dim == [] or dim == ():
+        if not keepdim:
+            return mean(x, dtype=dtype)
+        return mean(x, dtype=dtype).reshape([1] * x.ndim)
     if dim is None:
         out = mean(x, dtype=dtype)
         if not keepdim:

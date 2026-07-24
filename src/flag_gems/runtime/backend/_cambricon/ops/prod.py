@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import logging
-import math
+from functools import reduce as _reduce
 
 import torch
 import triton
@@ -152,24 +152,34 @@ def prod_kernel(
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS_CAMBRICON PROD_DIM")
 
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    shape = inp.shape
-    dim = dim % inp.ndim
-    N = shape[dim]
-    M = math.prod(shape[:dim])
-    K = inp.numel() // M // N
-
-    inp = inp.contiguous()
-
-    shape_list = list(shape)
-    shape_list[dim] = 1
+    if not (-inp.ndim <= dim < inp.ndim):
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of "
+            f"[{-inp.ndim}, {inp.ndim - 1}])"
+        )
 
     if dtype is None:
         dtype = inp.dtype
-    out = torch.empty(shape_list, dtype=dtype, device=inp.device)
-    if not keepdim:
-        out = torch.squeeze(out, dim)
 
+    shape = list(inp.shape)
+    d = dim % inp.ndim
+    N = inp.shape[d]
+    M = _reduce(lambda x, y: x * y, shape[:d], 1)
+    K = _reduce(lambda x, y: x * y, shape[d + 1 :], 1)
+    shape[d] = 1
+    out = torch.empty(shape, dtype=dtype, device=inp.device)
+
+    if M == 0 or K == 0:
+        if not keepdim:
+            out = torch.squeeze(out, d)
+        return out
+    if N == 0:
+        out.fill_(1)
+        if not keepdim:
+            out = torch.squeeze(out, d)
+        return out
+
+    inp = inp.contiguous()
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
@@ -177,4 +187,6 @@ def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
     with torch_device_fn.device(inp.device):
         prod_kernel[grid](inp, out, M, N, K)
 
+    if not keepdim:
+        out = torch.squeeze(out, d)
     return out

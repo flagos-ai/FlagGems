@@ -33,6 +33,7 @@ def bincount_input_fn(shape, dtype, device):
         yield inp, {"minlength": max(512, num_classes * 2)}
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="ValueError")
 @pytest.mark.bincount
 def test_bincount():
     bench = base.GenericBenchmark(
@@ -59,6 +60,7 @@ def bincount_weighted_input_fn(shape, dtype, device):
         yield inp, {"weights": weights, "minlength": max(512, num_classes * 2)}
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="ValueError")
 @pytest.mark.bincount
 def test_bincount_weighted():
     bench = base.GenericBenchmark(

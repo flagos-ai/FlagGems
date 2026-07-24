@@ -156,6 +156,11 @@ def mm(a, b):
         or N * max(b.stride(1), c.stride(1)) >= 1 << 31
         or K * max(a.stride(1), b.stride(0)) >= 1 << 31
     )
+    # Broadcast tensors from expand() have stride=0, incompatible with TMA
+    if 0 in a.stride():
+        a = a.contiguous()
+    if 0 in b.stride():
+        b = b.contiguous()
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
@@ -202,6 +207,11 @@ def mm_out(a, b, *, out):
         or K * max(a.stride(1), b.stride(0)) >= 1 << 31
     )
     # launch kernel
+    # Broadcast tensors from expand() have stride=0, incompatible with TMA
+    if 0 in a.stride():
+        a = a.contiguous()
+    if 0 in b.stride():
+        b = b.contiguous()
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
         META["SPLIT_K"],
@@ -216,6 +226,45 @@ def mm_out(a, b, *, out):
             K,
             a.stride(0),
             a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            c.stride(0),
+            c.stride(1),
+            dot_out_dtype=dot_out_dtype,
+            GROUP_M=8,
+            UPCAST=UPCAST,
+        )
+    return c
+
+
+def router_gemm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    """bf16 x bf16 -> fp32 GEMM for MoE router gate. weight shape: (N, K)."""
+    if x.stride(0) > 1 and x.stride(1) > 1:
+        x = x.contiguous()
+    M, K = x.shape
+    N = weight.shape[0]
+    c = torch.empty((M, N), device=x.device, dtype=torch.float32)
+    b = weight.t().contiguous()
+    dot_out_dtype = tl.float32
+    UPCAST = (
+        M * max(x.stride(0), c.stride(0)) >= 1 << 31
+        or N * max(b.stride(1), c.stride(1)) >= 1 << 31
+        or K * max(x.stride(1), b.stride(0)) >= 1 << 31
+    )
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        META["SPLIT_K"],
+    )
+    with torch_device_fn.device(x.device):
+        mm_kernel[grid](
+            x,
+            b,
+            c,
+            M,
+            N,
+            K,
+            x.stride(0),
+            x.stride(1),
             b.stride(0),
             b.stride(1),
             c.stride(0),

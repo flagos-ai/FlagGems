@@ -23,10 +23,11 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
-from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
-from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
+
+from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
+from .flash_kernel import keep
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ def _attn_fwd_inner(
         else:
             qk *= qk_scale * LOG2E
             if HAS_ATTN_MASK:
-                qk = qk + attn_mask
+                qk = qk + attn_mask * LOG2E
             m_ij = tl.maximum(m_i, tl.max(qk, 1))
             qk = qk - m_ij[:, None]
 
@@ -374,12 +375,15 @@ def _attn_bwd_dkdv(
     key,
     value,
     sm_scale,  #
+    attn_mask,
     DO,  #
     M,
     D,  #
     # shared by Q/K/V/DO.
     stride_tok,
     stride_d,  #
+    stride_attn_mask_q_seqlen,
+    stride_attn_mask_kv_seqlen,
     H,
     Q_CTX,
     KV_CTX,
@@ -391,7 +395,9 @@ def _attn_bwd_dkdv(
     start_m,
     num_steps,  #
     MASK: tl.constexpr,
+    HAS_ATTN_MASK: tl.constexpr,
 ):
+    RCP_LN2 = 1.4426950408889634  # log2(e), converts natural-log bias for exp2.
     # BLOCK_M1: 32
     # BLOCK_N1: 128
     offs_n = start_n + tl.arange(0, BLOCK_N1)
@@ -423,6 +429,15 @@ def _attn_bwd_dkdv(
 
         # key: (BLOCK_N1, BLOCK_DMODEL)
         qkT = tl.dot(key, qT)  # (BLOCK_N1, BLOCK_M1)
+        if HAS_ATTN_MASK:
+            attn = tl.load(
+                attn_mask
+                + offs_m[None, :] * stride_attn_mask_q_seqlen
+                + offs_n[:, None] * stride_attn_mask_kv_seqlen,
+                mask=offs_m_mask[None, :] & offs_n_mask[:, None],
+                other=-float("inf"),
+            )
+            qkT += attn * RCP_LN2
         m = tl.broadcast_to(m[None, :], (BLOCK_N1, BLOCK_M1))  # (BLOCK_N1, BLOCK_M1)
         m = tl.where(offs_n_mask[:, None], m, float("inf"))  # (BLOCK_N1, BLOCK_M1)
         pT = tl.math.exp2(qkT - m)
@@ -436,8 +451,9 @@ def _attn_bwd_dkdv(
             mask &= offs_m[None, :] >= offs_n[:, None]
         pT = tl.where(mask, pT, 0.0)  # (BLOCK_N1, BLOCK_M1)
 
-        do = tl.load(do_ptrs)
-        # do = tl.load(do_ptrs, mask=offs_m_mask[:, None], other=0.0) # (BLOCK_M1, BLOCK_DMODEL)
+        do = tl.load(
+            do_ptrs, mask=offs_m_mask[:, None], other=0.0
+        )  # (BLOCK_M1, BLOCK_DMODEL)
 
         # Compute dV.
         dv += tl.dot(pT, do.to(tl.float32))  # (BLOCK_N1, BLOCK_DMODEL)
@@ -469,12 +485,15 @@ def _attn_bwd_dq(
     query,
     K,
     V,  #
+    attn_mask,
     do,
     m,
     D,
     # shared by Q/K/V/DO.
     stride_tok,
     stride_d,  #
+    stride_attn_mask_q_seqlen,
+    stride_attn_mask_kv_seqlen,
     H,
     Q_CTX,  #
     KV_CTX,  #
@@ -486,7 +505,9 @@ def _attn_bwd_dq(
     start_n,
     num_steps,  #
     MASK: tl.constexpr,
+    HAS_ATTN_MASK: tl.constexpr,
 ):
+    RCP_LN2 = 1.4426950408889634  # log2(e), converts natural-log bias for exp2.
     offs_m = start_m + tl.arange(0, BLOCK_M2)
     offs_m_mask = offs_m < Q_CTX
 
@@ -507,6 +528,15 @@ def _attn_bwd_dq(
         kT = tl.load(kT_ptrs, mask=offs_n_mask[None, :], other=0.0)
         vT = tl.load(vT_ptrs, mask=offs_n_mask[None, :], other=0.0)
         qk = tl.dot(query, kT)
+        if HAS_ATTN_MASK:
+            attn = tl.load(
+                attn_mask
+                + offs_m[:, None] * stride_attn_mask_q_seqlen
+                + offs_n[None, :] * stride_attn_mask_kv_seqlen,
+                mask=offs_m_mask[:, None] & offs_n_mask[None, :],
+                other=-float("inf"),
+            )
+            qk += attn * RCP_LN2
         p = tl.math.exp2(qk - m)
         mask = (offs_m < Q_CTX)[:, None] & (offs_n < KV_CTX)[None, :]
         # Autoregressive masking.
@@ -541,6 +571,7 @@ def _attn_bwd(
     K,
     V,
     sm_scale,  #
+    attn_mask,
     DO,  #
     DQ,
     DK,
@@ -554,6 +585,13 @@ def _attn_bwd(
     stride_d,  #
     kv_stride_z,
     kv_stride_h,  #
+    dk_stride_z,
+    dk_stride_h,
+    dk_stride_tok,  #
+    stride_attn_mask_batch,
+    stride_attn_mask_head,
+    stride_attn_mask_q_seqlen,
+    stride_attn_mask_kv_seqlen,
     H,  # query head num
     Q_CTX,  #
     KV_CTX,  #
@@ -565,9 +603,9 @@ def _attn_bwd(
     BLOCK_N2: tl.constexpr,  #
     BLK_SLICE_FACTOR: tl.constexpr,  #
     BLOCK_DMODEL: tl.constexpr,
+    IS_CAUSAL: tl.constexpr = True,
+    HAS_ATTN_MASK: tl.constexpr = False,
 ):
-    tl.device_assert(Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1.")
-
     LN2: tl.constexpr = 0.6931471824645996  # = ln(2)
 
     bhid = tl.program_id(2)
@@ -577,6 +615,10 @@ def _attn_bwd(
     kv_head_id = q_head_id // GROUP_HEAD
     adj = (stride_h * q_head_id + stride_z * batch_id).to(tl.int64)
     kv_adj = (kv_stride_h * kv_head_id + kv_stride_z * batch_id).to(tl.int64)
+    dk_adj = (dk_stride_h * q_head_id + dk_stride_z * batch_id).to(tl.int64)
+    attn_mask_adj = (
+        stride_attn_mask_head * q_head_id + stride_attn_mask_batch * batch_id
+    ).to(tl.int64)
 
     pid = tl.program_id(0)
 
@@ -586,186 +628,232 @@ def _attn_bwd(
     V += kv_adj
     DO += adj
     DQ += adj
-    DK += adj
-    DV += adj
+    DK += dk_adj
+    DV += dk_adj
+    if HAS_ATTN_MASK:
+        attn_mask += attn_mask_adj
     M += off_chz
     D += off_chz
 
     # load scales
     offs_k = tl.arange(0, BLOCK_DMODEL)
 
+    # dK/dV: only execute when this pid covers a valid KV block
     start_n = pid * BLOCK_N1
-    start_m = start_n
+    if start_n < KV_CTX:
+        dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
+        dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
 
-    MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
-    offs_n = start_n + tl.arange(0, BLOCK_N1)
-    offs_n_mask = offs_n < KV_CTX
-
-    dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
-    dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
-
-    # load K and V: they stay in SRAM throughout the inner loop.
-    key = tl.load(
-        K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_n_mask[:, None],
-        other=0.0,
-    )
-    value = tl.load(
-        V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_n_mask[:, None],
-        other=0.0,
-    )
-
-    num_steps = BLOCK_N1 // MASK_BLOCK_M1
-
-    dk, dv = _attn_bwd_dkdv(
-        dk,
-        dv,  #
-        Q,
-        key,
-        value,
-        sm_scale,  #
-        DO,  #
-        M,
-        D,  #
-        stride_tok,
-        stride_d,  #
-        H,
-        Q_CTX,  #
-        KV_CTX,  #
-        MASK_BLOCK_M1,
-        BLOCK_N1,
-        BLOCK_DMODEL,  #
-        start_n,
-        start_m,
-        num_steps,  #
-        MASK=True,  #
-    )
-
-    # Compute dK and dV for non-masked blocks.
-    start_m += num_steps * MASK_BLOCK_M1
-    remaining_m = Q_CTX - start_m
-    num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
-
-    if num_steps > 0 and start_m < Q_CTX:
-        dk, dv = _attn_bwd_dkdv(  #
-            dk,
-            dv,  #
-            Q,
-            key,
-            value,
-            sm_scale,  #
-            DO,  #
-            M,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M1,
-            BLOCK_N1,
-            BLOCK_DMODEL,  #
-            start_n,
-            start_m,
-            num_steps,  #
-            MASK=False,  #
+        # load K and V: they stay in SRAM throughout the inner loop.
+        offs_n = start_n + tl.arange(0, BLOCK_N1)
+        offs_n_mask = offs_n < KV_CTX
+        key = tl.load(
+            K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_n_mask[:, None],
+            other=0.0,
         )
-    # tl.device_print("dv: ", dv)
+        value = tl.load(
+            V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_n_mask[:, None],
+            other=0.0,
+        )
 
-    dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
-    tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
+        MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
 
-    # Write back dK.
-    dk *= sm_scale
-    dk_ptrs = DK + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
-    tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
+        # Causal: masked diagonal phase, then unmasked above-diagonal phase.
+        # Non-causal: skip masked phase, single unmasked pass over all Q rows.
+        if IS_CAUSAL:
+            # The causal mask is q_idx >= kv_idx, so for KV block starting at
+            # start_n, the first Q row that can attend is start_n itself.
+            start_m = start_n
+            # Clamp to valid Q range
+            if start_m < Q_CTX:
+                end_m = min(start_m + BLOCK_N1, Q_CTX)
+                num_steps = (end_m - start_m + MASK_BLOCK_M1 - 1) // MASK_BLOCK_M1
+                dk, dv = _attn_bwd_dkdv(
+                    dk,
+                    dv,  #
+                    Q,
+                    key,
+                    value,
+                    sm_scale,  #
+                    attn_mask,
+                    DO,  #
+                    M,
+                    D,  #
+                    stride_tok,
+                    stride_d,  #
+                    stride_attn_mask_q_seqlen,
+                    stride_attn_mask_kv_seqlen,
+                    H,
+                    Q_CTX,  #
+                    KV_CTX,  #
+                    MASK_BLOCK_M1,
+                    BLOCK_N1,
+                    BLOCK_DMODEL,  #
+                    start_n,
+                    start_m,
+                    num_steps,  #
+                    MASK=True,  #
+                    HAS_ATTN_MASK=HAS_ATTN_MASK,
+                )
+                start_m += num_steps * MASK_BLOCK_M1
+            # else: start_n >= Q_CTX, no Q rows can attend to this KV block
+        else:
+            start_m = 0
 
-    # THIS BLOCK DOES DQ:
-    MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
+        # Unmasked phase (shared): traverse remaining Q rows.
+        remaining_m = Q_CTX - start_m
+        num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
+        if num_steps > 0:
+            dk, dv = _attn_bwd_dkdv(
+                dk,
+                dv,  #
+                Q,
+                key,
+                value,
+                sm_scale,  #
+                attn_mask,
+                DO,  #
+                M,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                stride_attn_mask_q_seqlen,
+                stride_attn_mask_kv_seqlen,
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M1,
+                BLOCK_N1,
+                BLOCK_DMODEL,  #
+                start_n,
+                start_m,
+                num_steps,  #
+                MASK=False,  #
+                HAS_ATTN_MASK=HAS_ATTN_MASK,
+            )
+
+        dv_ptrs = DV + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
+        tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
+
+        # Write back dK.
+        dk *= sm_scale
+        dk_ptrs = DK + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
+        tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
+
+    # dQ: only execute when this pid covers a valid Q block
     start_m = pid * BLOCK_M2
-    end_n = min(start_m + BLOCK_M2, KV_CTX)  # Ensure end_n does not exceed N_CTX
-    num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
-
-    offs_m = start_m + tl.arange(0, BLOCK_M2)
-    offs_m_mask = offs_m < Q_CTX
-
-    query = tl.load(
-        Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_m_mask[:, None],
-        other=0.0,
-    )
-    dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
-    do = tl.load(
-        DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_m_mask[:, None],
-        other=0.0,
-    )
-
-    m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
-    m = m[:, None]
-
-    # Stage 1 - Compute dQ for masked (diagonal) blocks.
-    # NOTE: This code scans each row of QK^T backward (from right to left,
-    # but inside each call to _attn_bwd_dq, from left to right), but that's
-    # not due to anything important.  I just wanted to reuse the loop
-    # structure for dK & dV above as much as possible.
-
-    if num_steps > 0:
-        dq = _attn_bwd_dq(
-            dq,
-            query,
-            K,
-            V,  #
-            do,
-            m,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M2,
-            MASK_BLOCK_N2,
-            BLOCK_DMODEL,  #
-            start_m,
-            start_n,
-            num_steps,  #
-            MASK=True,  #
+    if start_m < Q_CTX:
+        offs_m = start_m + tl.arange(0, BLOCK_M2)
+        offs_m_mask = offs_m < Q_CTX
+        query = tl.load(
+            Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_m_mask[:, None],
+            other=0.0,
         )
-
-    # Stage 2 - non-masked blocks
-    stage2_end_n = start_n
-    stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
-
-    if stage2_num_steps > 0:
-        dq = _attn_bwd_dq(
-            dq,
-            query,
-            K,
-            V,  #
-            do,
-            m,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M2,
-            BLOCK_N2,
-            BLOCK_DMODEL,  #
-            start_m,
-            stage2_end_n - stage2_num_steps * BLOCK_N2,
-            stage2_num_steps,  #
-            MASK=False,  #
+        dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
+        do = tl.load(
+            DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_m_mask[:, None],
+            other=0.0,
         )
-    # Write back dQ.
-    dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
-    dq *= LN2
-    # tl.store(dq_ptrs, dq)
+        m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
+        m = m[:, None]
 
-    tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
+        MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
+
+        if IS_CAUSAL:
+            # Masked diagonal phase: KV columns [diag_n, end_n)
+            # diag_n is the KV position where the causal boundary starts for
+            # this Q block. Only needed when diag_n < KV_CTX.
+            diag_n = min(start_m, KV_CTX)
+            end_n = min(start_m + BLOCK_M2, KV_CTX)
+            num_steps = (end_n - diag_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
+
+            if num_steps > 0:
+                dq = _attn_bwd_dq(
+                    dq,
+                    query,
+                    K,
+                    V,  #
+                    attn_mask,
+                    do,
+                    m,
+                    D,  #
+                    stride_tok,
+                    stride_d,  #
+                    stride_attn_mask_q_seqlen,
+                    stride_attn_mask_kv_seqlen,
+                    H,
+                    Q_CTX,  #
+                    KV_CTX,  #
+                    BLOCK_M2,
+                    MASK_BLOCK_N2,
+                    BLOCK_DMODEL,  #
+                    start_m,
+                    diag_n,
+                    num_steps,  #
+                    MASK=True,  #
+                    HAS_ATTN_MASK=HAS_ATTN_MASK,
+                )
+
+            # Unmasked phase: KV columns [0, diag_n), all fully visible.
+            stage2_num_steps = (diag_n + BLOCK_N2 - 1) // BLOCK_N2
+        else:
+            # Non-causal: single unmasked pass over all KV columns.
+            stage2_num_steps = (KV_CTX + BLOCK_N2 - 1) // BLOCK_N2
+
+        if stage2_num_steps > 0:
+            dq = _attn_bwd_dq(
+                dq,
+                query,
+                K,
+                V,  #
+                attn_mask,
+                do,
+                m,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                stride_attn_mask_q_seqlen,
+                stride_attn_mask_kv_seqlen,
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M2,
+                BLOCK_N2,
+                BLOCK_DMODEL,  #
+                start_m,
+                0,
+                stage2_num_steps,  #
+                MASK=False,  #
+                HAS_ATTN_MASK=HAS_ATTN_MASK,
+            )
+
+        # Write back dQ.
+        dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
+        dq *= LN2
+        tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
+
+
+def _normalize_attn_mask(attn_mask, query, q_head_num, q_ctx, kv_ctx):
+    if attn_mask is None:
+        return None
+    if attn_mask.dtype == torch.bool:
+        attn_mask = torch.where(
+            attn_mask,
+            torch.zeros((), dtype=query.dtype, device=query.device),
+            torch.full(
+                (), torch.finfo(query.dtype).min, dtype=query.dtype, device=query.device
+            ),
+        )
+    if attn_mask.dim() == 2:
+        attn_mask = attn_mask[None, None, :, :]
+    elif attn_mask.dim() == 3:
+        attn_mask = attn_mask[:, None, :, :]
+    assert attn_mask.dim() == 4, "attn_mask must be broadcastable to [B, H, Q, K]"
+    return attn_mask.expand(query.shape[0], q_head_num, q_ctx, kv_ctx)
 
 
 def scaled_dot_product_attention_forward(
@@ -809,10 +897,12 @@ def scaled_dot_product_attention_forward(
         1,
     )
 
+    attn_mask = _normalize_attn_mask(
+        attn_mask, query, q_head_num, query.shape[2], key.shape[2]
+    )
+
     if attn_mask is not None:
         HAS_ATTN_MASK = True
-        if attn_mask.dtype == torch.bool:
-            attn_mask = attn_mask.to(query.dtype) * -1.0e6
         stride_attn_mask_batch = attn_mask.stride(0)
         stride_attn_mask_head = attn_mask.stride(1)
         stride_attn_mask_q_seqlen = attn_mask.stride(2)
@@ -899,6 +989,7 @@ def scaled_dot_product_attention_backward(
     else:
         sm_scale = scale
 
+    do = do.contiguous()
     assert do.is_contiguous()
     assert (
         query.is_contiguous()
@@ -913,6 +1004,19 @@ def scaled_dot_product_attention_backward(
     BATCH, Q_HEAD, Q_CTX = query.shape[:3]
     _, KV_HEAD, KV_CTX = key.shape[:3]
     group_head = Q_HEAD // KV_HEAD
+    attn_mask = _normalize_attn_mask(attn_mask, query, Q_HEAD, Q_CTX, KV_CTX)
+    if attn_mask is not None:
+        HAS_ATTN_MASK = True
+        stride_attn_mask_batch = attn_mask.stride(0)
+        stride_attn_mask_head = attn_mask.stride(1)
+        stride_attn_mask_q_seqlen = attn_mask.stride(2)
+        stride_attn_mask_kv_seqlen = attn_mask.stride(3)
+    else:
+        HAS_ATTN_MASK = False
+        stride_attn_mask_batch = 1
+        stride_attn_mask_head = 1
+        stride_attn_mask_q_seqlen = 1
+        stride_attn_mask_kv_seqlen = 1
 
     # NUM_WARPS, NUM_STAGES = 4, 1
     # BLOCK_M1, BLOCK_N1, BLOCK_M2, BLOCK_N2 = 32, 128, 128, 32
@@ -958,12 +1062,18 @@ def scaled_dot_product_attention_backward(
         D_HEAD=BLOCK_DMODEL,  #
     )
 
-    max_block_n1 = (
-        max([cfg.kwargs["BLOCK_N1"] for cfg in config_backward])
-        if config_backward
-        else 128
+    grid = lambda meta: (
+        max(
+            triton.cdiv(
+                KV_CTX, meta["BLOCK_N1"]
+            ),  # _attn_bwd_dq traverse the key-value sequence
+            triton.cdiv(
+                Q_CTX, meta["BLOCK_M2"]
+            ),  # _attn_bwd_dkdv traverse the query sequence
+        ),
+        1,
+        BATCH * Q_HEAD,
     )
-    grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
     # logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
     # logger.info(f"{M.shape=}")
 
@@ -972,6 +1082,7 @@ def scaled_dot_product_attention_backward(
         arg_k,
         value,
         sm_scale,
+        attn_mask,
         do,
         dq,
         dk,
@@ -984,6 +1095,13 @@ def scaled_dot_product_attention_backward(
         query.stride(3),  #
         key.stride(0),
         key.stride(1),  #
+        dk.stride(0),
+        dk.stride(1),
+        dk.stride(2),  #
+        stride_attn_mask_batch,
+        stride_attn_mask_head,
+        stride_attn_mask_q_seqlen,
+        stride_attn_mask_kv_seqlen,  #
         Q_HEAD,
         Q_CTX,  #
         KV_CTX,  #
@@ -995,8 +1113,8 @@ def scaled_dot_product_attention_backward(
         # BLOCK_N2=BLOCK_N2,  #
         BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
         BLOCK_DMODEL=BLOCK_DMODEL,  #
-        # num_warps=NUM_WARPS,  #
-        # num_stages=NUM_STAGES,  #
+        IS_CAUSAL=is_causal,  #
+        HAS_ATTN_MASK=HAS_ATTN_MASK,  #
     )
 
     if group_head > 1:
@@ -1022,6 +1140,9 @@ class ScaleDotProductAttention(torch.autograd.Function):
         enable_gqa=False,
     ):
         sm_scale = scale if scale is not None else 1.0 / (key.shape[-1] ** 0.5)
+        attn_mask = _normalize_attn_mask(
+            attn_mask, query, query.shape[1], query.shape[2], key.shape[2]
+        )
         o, M = scaled_dot_product_attention_forward(
             query,
             key,
@@ -1033,7 +1154,12 @@ class ScaleDotProductAttention(torch.autograd.Function):
             enable_gqa,
         )
 
-        ctx.save_for_backward(query, key, value, o, M)
+        if attn_mask is None:
+            ctx.save_for_backward(query, key, value, o, M)
+            ctx.has_attn_mask = False
+        else:
+            ctx.save_for_backward(query, key, value, o, M, attn_mask)
+            ctx.has_attn_mask = True
         ctx.sm_scale = sm_scale
         ctx.causal = is_causal
         ctx.enable_gqa = enable_gqa
@@ -1041,7 +1167,11 @@ class ScaleDotProductAttention(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, do):
-        query, key, value, o, M = ctx.saved_tensors
+        if ctx.has_attn_mask:
+            query, key, value, o, M, attn_mask = ctx.saved_tensors
+        else:
+            query, key, value, o, M = ctx.saved_tensors
+            attn_mask = None
         is_causal = ctx.causal
         enable_gqa = ctx.enable_gqa
         sm_scale = ctx.sm_scale
@@ -1052,7 +1182,7 @@ class ScaleDotProductAttention(torch.autograd.Function):
             value,
             o,
             M,
-            attn_mask=None,
+            attn_mask=attn_mask,
             dropout_p=0.0,
             is_causal=is_causal,
             scale=sm_scale,
@@ -1351,6 +1481,190 @@ def flash_attn_varlen_func(
             # cu_seqlens_k not used since we use seqused_k, but flash_api.cpp
             # still wants it so we pass all zeros
             dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
+            seqused_k,
+            None,
+            block_table,
+            alibi_slopes,
+            max_seqlen_q,
+            max_seqlen_k,
+            dropout_p,
+            softmax_scale,
+            False,
+            causal,
+            real_window_size[0],
+            real_window_size[1],
+            softcap,
+            return_softmax_lse and dropout_p > 0,
+            None,
+        )
+
+    return (out, softmax_lse) if return_softmax_lse else out
+
+
+def flash_attn_varlen_opt_func(
+    q,
+    k,
+    v,
+    max_seqlen_q,
+    cu_seqlens_q,
+    max_seqlen_k,
+    cu_seqlens_k=None,  # only used for non-paged prefill
+    seqused_k=None,
+    q_v=None,
+    dropout_p=0.0,
+    softmax_scale=None,
+    causal=False,
+    window_size=None,
+    softcap=0.0,  # 0.0 means deactivated
+    alibi_slopes=None,
+    deterministic=False,
+    return_attn_probs=False,
+    block_table=None,
+    return_softmax_lse=False,
+    out=None,
+    lse=None,
+    # Dummy FA3 arguments
+    scheduler_metadata=None,
+    q_descale=None,
+    k_descale=None,
+    v_descale=None,
+    s_aux=None,
+    num_splits: int = 0,
+    cp_world_size: int = 1,
+    cp_rank: int = 0,
+    cp_tot_seqused_k=None,
+    fa_version: int = 2,
+):
+    """dropout_p should be set to 0.0 during evaluation
+    Supports multi-query and grouped-query attention (MQA/GQA) by passing in K, V with fewer heads
+    than Q. Note that the number of heads in Q must be divisible by the number of heads in KV.
+    For example, if Q has 6 heads and K, V have 2 heads, head 0, 1, 2 of Q will attention to head
+    0 of K, V, and head 3, 4, 5 of Q will attention to head 1 of K, V.
+
+    If causal=True, the causal mask is aligned to the bottom right corner of the attention matrix.
+    For example, if seqlen_q = 2 and seqlen_k = 5, the causal mask (1 = keep, 0 = masked out) is:
+        1 1 1 1 0
+        1 1 1 1 1
+    If seqlen_q = 5 and seqlen_k = 2, the causal mask is:
+        0 0
+        0 0
+        0 0
+        1 0
+        1 1
+    If the row of the mask is all zero, the output will be zero.
+
+    If window_size != (-1, -1), implements sliding window local attention. Query at position i
+    will only attend to keys between
+    [i + seqlen_k - seqlen_q - window_size[0], i + seqlen_k - seqlen_q + window_size[1]] inclusive.
+
+    Arguments:
+        q: (total_q, nheads, headdim), where total_q = total number of query tokens in the batch.
+        k: (total_k, nheads_k, headdim), where total_k = total number of key tokens in the batch.
+        v: (total_k, nheads_k, headdim), where total_k = total number of key tokens in the batch.
+        cu_seqlens_q: (batch_size + 1,), dtype torch.int32. The cumulative sequence lengths
+           of the sequences in the batch, used to index into q.
+        cu_seqlens_k: (batch_size + 1,), dtype torch.int32. The cumulative sequence lengths
+           of the sequences in the batch, used to index into kv.
+        max_seqlen_q: int. Maximum query sequence length in the batch.
+        max_seqlen_k: int. Maximum key sequence length in the batch.
+        dropout_p: float. Dropout probability.
+        softmax_scale: float. The scaling of QK^T before applying softmax.
+            Default to 1 / sqrt(headdim).
+        causal: bool. Whether to apply causal attention mask (e.g., for auto-regressive modeling).
+        window_size: (left, right). If not (-1, -1), implements sliding window local attention.
+        softcap: float. Anything > 0 activates softcapping attention.
+        alibi_slopes: (nheads,) or (batch_size, nheads), fp32. A bias of
+            (-alibi_slope * |i + seqlen_k - seqlen_q - j|)
+            is added to the attention score of query i and key j.
+        deterministic: bool. Whether to use the deterministic implementation of the backward pass,
+            which is slightly slower and uses more memory. The forward pass is always deterministic.
+        return_attn_probs: bool. Whether to return the attention probabilities. This option is for
+           testing only. The returned probabilities are not guaranteed to be correct
+           (they might not have the right scaling).
+    Return:
+        out: (total, nheads, headdim).
+        softmax_lse [optional, if return_softmax_lse=True]: (nheads, total_q_seqlen). The
+            logsumexp of each row of the matrix QK^T * scaling (e.g., log of the softmax
+            normalization factor).
+    """
+    if fa_version != 2:
+        raise RuntimeError("Only FA2 is implemented.")
+    if num_splits > 0:
+        raise RuntimeError("num_splits > 0 is not implemented in GEMS.")
+    if use_c_extension:
+        logger.debug("GEMS_CAMBRICON FLASH_ATTN_VARLEN_FUNC(C EXTENSION)")
+        with torch_device_fn.device(q.device):
+            out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
+                q,
+                k,
+                v,
+                max_seqlen_q,
+                cu_seqlens_q,
+                max_seqlen_k,
+                cu_seqlens_k,
+                seqused_k,
+                q_v,
+                dropout_p,
+                softmax_scale,
+                causal,
+                window_size,
+                softcap,
+                alibi_slopes,
+                deterministic,
+                return_attn_probs,
+                block_table,
+                return_softmax_lse,
+                out,
+                scheduler_metadata,
+                q_descale,
+                k_descale,
+                v_descale,
+                s_aux,
+                num_splits,
+                cp_world_size,
+                cp_rank,
+                cp_tot_seqused_k,
+                fa_version,
+            )
+        return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
+    else:
+        logger.debug("GEMS_CAMBRICON FLASH_ATTN_VARLEN_OPT_FUNC")
+        assert (
+            cu_seqlens_k is not None or seqused_k is not None
+        ), "cu_seqlens_k or seqused_k must be provided"
+        assert (
+            cu_seqlens_k is None or seqused_k is None
+        ), "cu_seqlens_k and seqused_k cannot be provided at the same time"
+        assert (
+            block_table is None or seqused_k is not None
+        ), "seqused_k must be provided if block_table is provided"
+        if softmax_scale is None:
+            softmax_scale = q.shape[-1] ** (-0.5)
+        # custom op does not support non-tuple input
+        if window_size is None:
+            real_window_size = (-1, -1)
+        else:
+            assert len(window_size) == 2
+            real_window_size = (window_size[0], window_size[1])
+        # q, k, v = [maybe_contiguous(x) for x in (q, k, v)]
+        # dummy_cu_seqlens_k = torch.empty_like(cu_seqlens_q)
+        max_seqlen_q = (
+            max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
+        )
+        max_seqlen_k = (
+            max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
+        )
+        out, q, k, v, softmax_lse, *_ = mha_varlan_fwd_opt(
+            q,
+            k,
+            v,
+            out,
+            lse,
+            cu_seqlens_q,
+            # cu_seqlens_k not used since we use seqused_k, but flash_api.cpp
+            # still wants it so we pass all zeros
+            # dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
+            cu_seqlens_q if cu_seqlens_k is None else cu_seqlens_k,
             seqused_k,
             None,
             block_table,

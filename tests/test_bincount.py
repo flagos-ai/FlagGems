@@ -24,6 +24,7 @@ BINCOUNT_SIZES = [16, 100, 1024, 10000] if not QUICK_MODE else [100, 1024]
 BINCOUNT_MAXVALS = [10, 100, 1000] if not QUICK_MODE else [100]
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="ValueError")
 @pytest.mark.bincount
 @pytest.mark.parametrize("size", BINCOUNT_SIZES)
 @pytest.mark.parametrize("max_val", BINCOUNT_MAXVALS)
@@ -39,6 +40,7 @@ def test_accuracy_bincount(size, max_val):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="ValueError")
 @pytest.mark.bincount
 @pytest.mark.parametrize("size", BINCOUNT_SIZES)
 @pytest.mark.parametrize("max_val", BINCOUNT_MAXVALS)
@@ -60,6 +62,7 @@ def test_accuracy_bincount_with_weights(size, max_val, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="ValueError")
 @pytest.mark.bincount
 @pytest.mark.parametrize("size", BINCOUNT_SIZES)
 @pytest.mark.parametrize("max_val", BINCOUNT_MAXVALS)
@@ -89,6 +92,7 @@ def test_accuracy_bincount_empty():
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="ValueError")
 @pytest.mark.bincount
 def test_accuracy_bincount_single():
     """Test bincount with single element."""
@@ -102,6 +106,7 @@ def test_accuracy_bincount_single():
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="ValueError")
 @pytest.mark.bincount
 def test_accuracy_bincount_all_zeros():
     """Test bincount with all zeros."""

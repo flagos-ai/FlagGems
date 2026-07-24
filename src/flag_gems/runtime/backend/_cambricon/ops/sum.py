@@ -22,10 +22,25 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 
-from ..utils import MAX_GRID_SIZE_X, TOTAL_CORE_NUM, cfggen_reduce_op
+from ..utils import MAX_GRID_SIZE_X, MAX_NRAM_SIZE, TOTAL_CORE_NUM, cfggen_reduce_op
 from .zeros import zero_
 
 logger = logging.getLogger(__name__)
+
+
+def prune_sum_dim_config(configs, named_args, **kwargs):
+    pruned_configs = []
+    for config in configs:
+        block_m = config.kwargs["BLOCK_M"]
+        block_n = config.kwargs["BLOCK_N"]
+        # sum_kernel keeps multiple BLOCK_M x BLOCK_N tensors live in NRAM.
+        if block_m * block_n * 4 * 6 <= MAX_NRAM_SIZE:
+            pruned_configs.append(config)
+    if not pruned_configs:
+        pruned_configs.append(
+            triton.Config({"BLOCK_M": 1, "BLOCK_N": 512}, num_warps=1)
+        )
+    return pruned_configs
 
 
 @libentry()
@@ -67,6 +82,7 @@ def sum_kernel_1(
     configs=runtime.get_tuned_config("sum"),
     key=["M", "N"],
     strategy=["log", "log"],
+    prune_configs_by={"early_config_prune": prune_sum_dim_config},
 )
 @triton.jit
 def sum_kernel(
@@ -99,7 +115,7 @@ def sum_kernel(
         for off in range(0, N, BLOCK_N):
             cols = off + tl.arange(0, BLOCK_N)[None, :]
             col_mask = cols < N
-            mask = row_mask and col_mask
+            mask = row_mask & col_mask
 
             a = tl.load(inp_ + cols, mask, other=0).to(cdtype)
             _sum += a
@@ -128,6 +144,7 @@ def sum(inp, *, dtype=None):
 
 def sum_out(inp, *, dtype=None, out):
     logger.debug("GEMS_CAMBRICON SUM_OUT")
+    inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -137,6 +154,7 @@ def sum_out(inp, *, dtype=None, out):
 
     grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
 
+    zero_(out)
     with torch_device_fn.device(inp.device):
         sum_kernel_1[grid](inp, out, M)
     return out.to(dtype)
@@ -154,7 +172,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             result = result.reshape([1] * inp.ndim)
         return result
 
-    if dim == []:
+    if dim == [] or dim == ():
         if not keepdim:
             return sum(inp, dtype=dtype)
         else:
@@ -162,6 +180,18 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             return torch.reshape(sum(inp, dtype=dtype), [1] * dim_num)
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
+    dim_set = set(dim)
+
+    if len(dim_set) == inp.ndim:
+        if out is not None:
+            out_shape = [1] * inp.ndim if keepdim else []
+            out.resize_(out_shape)
+            return sum_out(inp, dtype=dtype, out=out)
+
+        result = sum(inp, dtype=dtype)
+        if keepdim:
+            result = result.reshape([1] * inp.ndim)
+        return result
 
     inp = dim_compress(inp, dim)
     N = 1
@@ -171,7 +201,6 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     M = inp.numel() // N
     _out_provided = out is not None
     if _out_provided:
-        dim_set = set(dim)
         if keepdim:
             out.resize_(shape)
         else:

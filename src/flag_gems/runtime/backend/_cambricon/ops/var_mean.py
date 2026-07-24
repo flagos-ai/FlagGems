@@ -44,8 +44,7 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("var_mean"), key=["M", "N"])
-@triton.jit(do_not_specialize=["correction"])
+@triton.jit(do_not_specialize=["correction", "M", "N", "START"])
 def var_mean_welford_kernel(
     X,
     Var,
@@ -53,46 +52,34 @@ def var_mean_welford_kernel(
     M,
     N,
     correction,
-    BLOCK_M: tl.constexpr,
+    START,
     BLOCK_N: tl.constexpr,
 ):
-    # Map the program id to the row of X it should compute.
-    num_prog = tl.num_programs(0)
-    task_num = tl.cdiv(M, BLOCK_M)
-    iter_num = tl.cdiv(task_num, num_prog)
-    for i in range(0, iter_num):
-        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[
-            :, None
-        ]
-        X_ptr = X + pid * N
-        Var_ptr = Var + pid
-        Mean_ptr = Mean + pid
-        row_mask = pid < M
+    # One row per program to avoid autotune correctness issues on some backends.
+    pid = START + tl.program_id(0)
+    row_mask = pid < M
+    X_ptr = X + pid * N
+    Var_ptr = Var + pid
+    Mean_ptr = Mean + pid
 
-        _mean = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-        _acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-        _count = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-        for off in range(0, N, BLOCK_N):
-            cols = off + tl.arange(0, BLOCK_N)[None, :]
-            col_mask = cols < N
-            mask = row_mask and col_mask
+    _sum = tl.zeros([BLOCK_N], dtype=tl.float32)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)
+        mask = row_mask & (cols < N)
+        x = tl.load(X_ptr + cols, mask, other=0.0).to(tl.float32)
+        _sum += x
+    mean = tl.sum(_sum) / N
 
-            x = tl.load(X_ptr + cols, mask, other=0.0).to(tl.float32)
-
-            count = _count + mask
-            cnt = tl.maximum(count, 1)
-            cur_mean = (_mean * _count + x) / cnt
-            _acc += (x - cur_mean) * (x - _mean) * mask
-            _mean = cur_mean
-            _count = count
-
-        mean, _, acc = tl.reduce((_mean, _count, _acc), axis=1, combine_fn=welford_func)
-        var = acc / (N - correction)
-        mean = mean[:, None]
-        var = var[:, None]
-        # Write mean / var
-        tl.store(Mean_ptr, mean, row_mask)
-        tl.store(Var_ptr, var, row_mask)
+    _acc = tl.zeros([BLOCK_N], dtype=tl.float32)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)
+        mask = row_mask & (cols < N)
+        x = tl.load(X_ptr + cols, mask, other=0.0).to(tl.float32)
+        diff = tl.where(mask, x - mean, 0.0)
+        _acc += diff * diff
+    var = tl.sum(_acc) / (N - correction)
+    tl.store(Mean_ptr, mean, row_mask)
+    tl.store(Var_ptr, var, row_mask)
 
 
 def prune_varmean_config(configs, named_args, **kwargs):
@@ -275,9 +262,14 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
         mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
-        grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), TOTAL_CORE_NUM),)
+        BLOCK_N = 1024
+        BLOCK_M = 4096
         with torch_device_fn.device(x.device):
-            var_mean_welford_kernel[grid](x, var, mean, M, N, correction)
+            for start in range(0, M, BLOCK_M):
+                grid = (min(BLOCK_M, M - start),)
+                var_mean_welford_kernel[grid](
+                    x, var, mean, M, N, correction, start, BLOCK_N=BLOCK_N
+                )
 
     if not keepdim:
         var = var.squeeze(dim=dim)

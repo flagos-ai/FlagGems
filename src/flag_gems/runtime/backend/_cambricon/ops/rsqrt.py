@@ -35,10 +35,13 @@ logger = logging.getLogger(__name__)
         triton.Config(kwargs={"BLOCK_SIZE": 65536}, num_stages=1, num_warps=1),
         triton.Config(kwargs={"BLOCK_SIZE": 131072}, num_stages=1, num_warps=1),
     ],
-    key=["n_elements"],
+    key=["n_elements", "inplace"],
+    restore_value=["OUT_ptr"],
 )
 @triton.jit
-def rsqrt_kernel(X_ptr, OUT_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def rsqrt_kernel(
+    X_ptr, OUT_ptr, n_elements, inplace: tl.constexpr, BLOCK_SIZE: tl.constexpr
+):
     pid = tl.program_id(0)
     num_jobs = tl.num_programs(0)
     block_start = pid * BLOCK_SIZE
@@ -61,7 +64,7 @@ def rsqrt(A):
         return out
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch_device_fn.device(A.device):
-        rsqrt_kernel[grid_fn](A, out, N)
+        rsqrt_kernel[grid_fn](A, out, N, False)
     return out
 
 
@@ -73,7 +76,7 @@ def rsqrt_(A):
         return A
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch_device_fn.device(A.device):
-        rsqrt_kernel[grid_fn](A_contig, A_contig, N)
+        rsqrt_kernel[grid_fn](A_contig, A_contig, N, True)
     if not A.is_contiguous():
         A.copy_(A_contig)
     return A

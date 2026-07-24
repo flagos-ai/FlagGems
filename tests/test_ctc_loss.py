@@ -858,6 +858,8 @@ def test_ctc_loss_float_lengths_raise(path, length_name):
 @pytest.mark.parametrize("path", ["direct", "registered"])
 @pytest.mark.parametrize("target_layout", TARGET_LAYOUTS)
 def test_ctc_loss_float_targets_match_pytorch(path, target_layout):
+    if flag_gems.vendor_name == "cambricon" and path == "registered":
+        pytest.skip("cambricon does not support float targets with registered path")
     utils.init_seed(505)
     t_steps, batch, classes, max_target = (8, 2, 6, 3)
     log_probs = _make_log_probs((t_steps, batch, classes), torch.float32).detach()

@@ -78,7 +78,10 @@ def test_slice_backward(shape, dim, start, end, step, dtype):
         ref_grad_output, shape, dim, start, end, step
     )
 
-    res_out = flag_gems.slice_backward(grad_output, shape, dim, start, end, step)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.slice_backward(
+            grad_output, shape, dim, start, end, step
+        )
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -107,7 +110,10 @@ def test_slice_backward_oob_end(shape, dtype):
     ref_out = torch.ops.aten.slice_backward(
         ref_grad_output, shape, dim, start, end, step
     )
-    res_out = flag_gems.slice_backward(grad_output, shape, dim, start, end, step)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.slice_backward(
+            grad_output, shape, dim, start, end, step
+        )
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -136,6 +142,9 @@ def test_slice_backward_oob_start(shape, dtype):
     ref_out = torch.ops.aten.slice_backward(
         ref_grad_output, shape, dim, start, end, step
     )
-    res_out = flag_gems.slice_backward(grad_output, shape, dim, start, end, step)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.slice_backward(
+            grad_output, shape, dim, start, end, step
+        )
 
     utils.gems_assert_equal(res_out, ref_out)
