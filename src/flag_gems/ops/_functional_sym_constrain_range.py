@@ -39,18 +39,23 @@ def _functional_sym_constrain_range_kernel(
     tl.store(y_ptr + offsets, x, mask=mask)
 
 
-def _functional_sym_constrain_range(
-    dep_token,
-    min=None,
-    max=None,
-    min_allowable=None,
-    max_allowable=None,
-    tensor_name=None,
-):
+def _functional_sym_constrain_range(*args, **kwargs):
     logger.debug("GEMS _FUNCTIONAL_SYM_CONSTRAIN_RANGE")
-    tensor_arg = dep_token
+    # Get the dep_token tensor to determine output device and properties
+    tensor_arg = None
+    for a in args:
+        if isinstance(a, torch.Tensor):
+            tensor_arg = a
+            break
+    if tensor_arg is None:
+        for v in kwargs.values():
+            if isinstance(v, torch.Tensor):
+                tensor_arg = v
+                break
 
     if tensor_arg is not None:
+        # Return a copy of the dep_token tensor
+        # The actual constraint validation is handled by PyTorch's symbolic tracing
         if tensor_arg.is_contiguous():
             n_elements = tensor_arg.numel()
             if n_elements > 0:
@@ -61,6 +66,8 @@ def _functional_sym_constrain_range(
                         tensor_arg, output, n_elements, BLOCK_SIZE=1024
                     )
                     return output
+        # Fallback for non-contiguous or empty tensors
         return tensor_arg.clone()
 
-    return dep_token
+    # Fallback: return args[0] if it's a tensor
+    return args[0] if len(args) > 0 else None
