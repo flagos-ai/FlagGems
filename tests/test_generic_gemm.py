@@ -21,6 +21,15 @@ from flag_gems.utils.device_info import get_device_capability
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+try:
+    from transformer_engine.pytorch.cpp_extensions.gemm import (
+        general_gemm as te_general_gemm,
+    )
+
+    TE_AVAILABLE = True
+except ImportError:
+    TE_AVAILABLE = False
+
 if QUICK_MODE:
     SHAPES = [
         (1, 64, 64),
@@ -494,3 +503,152 @@ def test_generic_gemm_fp8_output(M, N, K):
     assert res_out is not None
     assert res_out.dtype == FP8_DTYPE
     assert res_out.shape == (M, N)
+
+
+@pytest.mark.generic_gemm
+@pytest.mark.skipif(not TE_AVAILABLE, reason="TE not available")
+@pytest.mark.parametrize("M, N, K", SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_generic_gemm_te_ref_matmul(M, N, K, dtype):
+    inp = torch.randn((M, K), dtype=dtype, device="cuda")
+    weight = torch.randn((N, K), dtype=dtype, device="cuda")
+
+    te_out, te_bias_grad, te_pre_gelu, _ = te_general_gemm(weight, inp)
+
+    gems_out, gems_bias_grad, gems_pre_gelu, gems_extra = generic_gemm(
+        inp, weight, layout="NT"
+    )
+
+    assert te_bias_grad is None
+    assert te_pre_gelu is None
+    assert gems_bias_grad is None
+    assert gems_pre_gelu is None
+    assert gems_extra is None
+
+    utils.gems_assert_close(gems_out, utils.to_reference(te_out), dtype, reduce_dim=K)
+
+
+@pytest.mark.generic_gemm
+@pytest.mark.skipif(not TE_AVAILABLE, reason="TE not available")
+@pytest.mark.parametrize("M, N, K", SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_generic_gemm_te_ref_bias(M, N, K, dtype):
+    inp = torch.randn((M, K), dtype=dtype, device="cuda")
+    weight = torch.randn((N, K), dtype=dtype, device="cuda")
+    bias = torch.randn((N,), dtype=dtype, device="cuda")
+
+    te_out, te_bias_grad, te_pre_gelu, _ = te_general_gemm(
+        weight, inp, bias=bias
+    )
+
+    gems_out, gems_bias_grad, gems_pre_gelu, gems_extra = generic_gemm(
+        inp, weight, layout="NT", bias=bias
+    )
+
+    assert te_bias_grad is None
+    assert te_pre_gelu is None
+    assert gems_bias_grad is None
+    assert gems_pre_gelu is None
+    assert gems_extra is None
+
+    utils.gems_assert_close(gems_out, utils.to_reference(te_out), dtype, reduce_dim=K)
+
+
+@pytest.mark.generic_gemm
+@pytest.mark.skipif(not TE_AVAILABLE, reason="TE not available")
+@pytest.mark.parametrize("M, N, K", SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_generic_gemm_te_ref_gelu(M, N, K, dtype):
+    inp = torch.randn((M, K), dtype=dtype, device="cuda")
+    weight = torch.randn((N, K), dtype=dtype, device="cuda")
+
+    te_out, te_bias_grad, te_pre_gelu, _ = te_general_gemm(
+        weight, inp, gelu=True
+    )
+
+    gems_out, gems_bias_grad, gems_pre_gelu, gems_extra = generic_gemm(
+        inp, weight, layout="NT", gelu=True
+    )
+
+    assert te_bias_grad is None
+    assert te_pre_gelu is not None
+    assert gems_bias_grad is None
+    assert gems_pre_gelu is not None
+    assert gems_extra is None
+
+    utils.gems_assert_close(gems_out, utils.to_reference(te_out), dtype, reduce_dim=K)
+    utils.gems_assert_close(
+        gems_pre_gelu,
+        utils.to_reference(te_pre_gelu),
+        dtype,
+        reduce_dim=K,
+    )
+
+
+@pytest.mark.generic_gemm
+@pytest.mark.skipif(not TE_AVAILABLE, reason="TE not available")
+@pytest.mark.parametrize("M, N, K", SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_generic_gemm_te_ref_bias_gelu(M, N, K, dtype):
+    inp = torch.randn((M, K), dtype=dtype, device="cuda")
+    weight = torch.randn((N, K), dtype=dtype, device="cuda")
+    bias = torch.randn((N,), dtype=dtype, device="cuda")
+
+    te_out, te_bias_grad, te_pre_gelu, _ = te_general_gemm(
+        weight, inp, bias=bias, gelu=True
+    )
+
+    gems_out, gems_bias_grad, gems_pre_gelu, gems_extra = generic_gemm(
+        inp, weight, layout="NT", bias=bias, gelu=True
+    )
+
+    assert te_bias_grad is None
+    assert te_pre_gelu is not None
+    assert gems_bias_grad is None
+    assert gems_pre_gelu is not None
+    assert gems_extra is None
+
+    utils.gems_assert_close(gems_out, utils.to_reference(te_out), dtype, reduce_dim=K)
+    utils.gems_assert_close(
+        gems_pre_gelu,
+        utils.to_reference(te_pre_gelu),
+        dtype,
+        reduce_dim=K,
+    )
+
+
+@pytest.mark.generic_gemm
+@pytest.mark.skipif(not TE_AVAILABLE, reason="TE not available")
+@pytest.mark.skipif(not FP8_SUPPORTED, reason="FP8 requires SM>=90")
+@pytest.mark.parametrize("M, N, K", FP8_SHAPES)
+def test_generic_gemm_te_ref_fp8(M, N, K):
+    from transformer_engine.pytorch import fp8_autocast
+
+    inp = torch.randn((M, K), dtype=torch.bfloat16, device="cuda")
+    weight = torch.randn((N, K), dtype=torch.bfloat16, device="cuda")
+
+    a_fp8, scale_a = _per_tensor_quantize(inp)
+    b_fp8, scale_b = _per_tensor_quantize(weight)
+
+    with fp8_autocast(enabled=True):
+        te_out, te_bias_grad, te_pre_gelu, _ = te_general_gemm(
+            weight, inp, out_dtype=torch.bfloat16
+        )
+
+    gems_out, gems_bias_grad, gems_pre_gelu, gems_extra = generic_gemm(
+        a_fp8, b_fp8, layout="NT", scale_a=scale_a, scale_b=scale_b
+    )
+
+    assert te_bias_grad is None
+    assert te_pre_gelu is None
+    assert gems_bias_grad is None
+    assert gems_pre_gelu is None
+    assert gems_extra is None
+
+    utils.gems_assert_close(
+        gems_out,
+        utils.to_reference(te_out),
+        torch.bfloat16,
+        reduce_dim=K,
+        atol=0.5,
+    )
