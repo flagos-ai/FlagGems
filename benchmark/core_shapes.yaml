@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 single_dim_shapes: &single_dim_shapes
   shapes:
     - [64]
@@ -134,6 +148,14 @@ softmax_backward:
     - [4096, 4096]
     - [64, 512, 512]
     - [256, 1024, 1024]
+
+softmax_backward_out:
+  shapes:
+    - [1048576] # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
 
 smooth_l1_loss:
   shapes:
@@ -476,6 +498,14 @@ AttentionBenchmark:
     - [4, 32, 4096, 128]
     - [4, 32, 8192, 128]
 
+ScaledDotProductFusedAttentionOverrideableBenchmark:
+  shapes:
+    - [2, 8, 64, 64]
+    - [4, 8, 128, 64]
+    - [2, 8, 128, 128]
+    - [1, 16, 256, 64]
+  shape_desc: "B, H, S, D"
+
 KronBenchmark:
   shapes:
     - [16, 16]
@@ -515,6 +545,15 @@ index:
     - [[1024, 1024], [[64], [64]]]
     - [[512, 512, 512], [[2, 128]]]
     - [[64, 64, 64], [[2, 8], [2, 8]]]
+
+index_select_backward:
+  shapes:
+    - [16, 64]
+    - [32, 128]
+    - [64, 256]
+    - [16, 16, 64]
+    - [32, 32, 128]
+  shape_desc: "N, M"
 
 FlashMLABenchmark:
   shapes:
@@ -622,6 +661,15 @@ ReshapeAndCacheFlashBenchmark:
     - [42, 8, 64, 8, 1024]
     - [42, 8, 80, 16, 10000]
 
+FractionalMaxPool2dBenchmark:
+  shapes:
+    - [4, 3, 224, 224]
+    - [16, 64, 56, 56]
+    - [32, 128, 28, 28]
+    - [64, 256, 14, 14]
+    - [128, 512, 7, 7]
+  shape_desc: "N, C, H, W"
+
 pixel_shuffle:
   shapes:
     - [1, 4, 2, 3, 2]
@@ -639,3 +687,48 @@ pixel_unshuffle:
     - [2, 4, 12, 6, 3]
     - [4, 16, 64, 48, 4]
   shape_desc: "N, C, H, W, downscale_factor"
+
+repeat:
+  shapes:
+    - [536870912]  # 2^29, repeat [2] -> 2^30 < 2^31
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [512, 512, 512]
+
+tile:
+  shapes:
+    - [536870912]  # 2^29, tile [2] -> 2^30 < 2^31
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [512, 512, 512]
+
+hstack:
+  shapes:
+    - [536870912]  # 2^29, 3 tensors -> 1.5G total offset < 2^31
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [512, 512, 512]
+
+repeat_interleave_self_int:
+  shapes:
+    - [16, 256, 256]
+    - [128, 256, 256]
+    - [64, 64, 64, 64]
+  shape_desc: "M, N, K"
+
+repeat_interleave_self_tensor:
+  shapes:
+    - [16, 256, 256]
+    - [128, 256, 256]
+    - [64, 64, 64, 64]
+  shape_desc: "M, N, K"
+
+repeat_interleave_tensor:
+  shapes:
+    - [16, 256, 256]
+    - [128, 256, 256]
+    - [64, 64, 64, 64]
+  shape_desc: "M, N, K"

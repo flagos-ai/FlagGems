@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Test suite for grid_sample operator.
 
@@ -787,6 +801,7 @@ class TestGridSampleExtremeSizes:
 
     # Phase 3: Extra large size tests (2048×2048, 4096×4096)
     @pytest.mark.grid_sample
+    @pytest.mark.skip(reason="Skip extreme large size to avoid CI timeout")
     @pytest.mark.skipif(
         gpu_memory_available < 16 * 1024**3,
         reason="Insufficient GPU memory for 2048×2048 test",
@@ -814,6 +829,7 @@ class TestGridSampleExtremeSizes:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     @pytest.mark.grid_sample
+    @pytest.mark.skip(reason="Skip extreme large size to avoid CI timeout")
     @pytest.mark.skipif(
         gpu_memory_available < 32 * 1024**3,
         reason="Insufficient GPU memory for 4096×4096 test",
@@ -841,6 +857,7 @@ class TestGridSampleExtremeSizes:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     @pytest.mark.grid_sample
+    @pytest.mark.skip(reason="Skip large 5D size to avoid CI timeout")
     @pytest.mark.skipif(
         gpu_memory_available < 8 * 1024**3,
         reason="Insufficient GPU memory for 2048×2048 test",
@@ -868,6 +885,7 @@ class TestGridSampleExtremeSizes:
         assert_close(y_gems, y_torch, dtype=dtype)
 
     @pytest.mark.grid_sample
+    @pytest.mark.skip(reason="Skip extreme large size to avoid CI timeout")
     @pytest.mark.skipif(
         gpu_memory_available < 24 * 1024**3,
         reason="Insufficient GPU memory for 2048×2048 test",

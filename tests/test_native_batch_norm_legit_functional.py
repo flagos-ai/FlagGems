@@ -80,5 +80,6 @@ def test_native_batch_norm_legit_functional(shape, dtype, affine):
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_save_mean, ref_save_mean, dtype)
+    utils.gems_assert_close(res_save_var, ref_save_var, dtype)
     utils.gems_assert_close(res_running_mean_out, ref_running_mean_out, dtype)
     utils.gems_assert_close(res_running_var_out, ref_running_var_out, dtype)
