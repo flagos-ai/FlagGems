@@ -298,6 +298,7 @@ from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
+from flag_gems.ops.igammac import igammac, igammac_out
 from flag_gems.ops.igammac_ import igammac_
 from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
@@ -1300,6 +1301,8 @@ __all__ = [
     "special_erfinv_",
     "special_erfinv_out",
     "special_gammainc",
+    "igammac",
+    "igammac_out",
     "special_gammaln",
     "special_gammaln_out",
     "special_hermite_polynomial_h",
