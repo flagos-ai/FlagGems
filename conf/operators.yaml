@@ -5447,6 +5447,22 @@ ops:
       - tensor
     stages:
       - stable: '4.2'
+  - id: masked_scatter_backward
+    description: |
+      Backward of `masked_scatter` with respect to the `source` tensor.
+      Returns a tensor of shape `sizes` where the first ``mask.sum()`` elements
+      are the gradient values from the positions where ``mask`` was True
+      (obtained via stream-compaction / masked_select), and the remaining
+      elements are zero (the tail of `source` that was never consumed by the
+      forward pass).
+    for:
+      - masked_scatter_backward
+    labels:
+      - aten
+    kind:
+      - tensor
+    stages:
+      - stable: '4.2'
   - id: masked_select
     description: |
       Returns a new 1-D tensor which indexes the `input` tensor according to
