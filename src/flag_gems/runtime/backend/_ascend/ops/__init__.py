@@ -87,6 +87,7 @@ from .select_scatter import select_scatter
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .sort import sort
+from .sparse_sampled_addmm import sparse_sampled_addmm
 from .stack import stack
 from .threshold import threshold, threshold_backward
 from .triu import triu
@@ -200,6 +201,7 @@ __all__ = [
     "softmax_backward_out",
     "softmax_out",
     "sort",
+    "sparse_sampled_addmm",
     "stack",
     "threshold",
     "threshold_backward",
