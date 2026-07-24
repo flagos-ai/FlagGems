@@ -291,12 +291,11 @@ def to_reference(inp, upcast=False):
     if TO_CPU:
         ref_inp = ref_inp.to("cpu")
     if upcast:
+        ref_use_fp64 = TO_CPU or fp64_is_supported
         if ref_inp.is_complex():
-            ref_inp = ref_inp.to(
-                torch.complex128 if fp64_is_supported else torch.complex64
-            )
+            ref_inp = ref_inp.to(torch.complex128 if ref_use_fp64 else torch.complex64)
         else:
-            ref_inp = ref_inp.to(torch.float64 if fp64_is_supported else torch.float32)
+            ref_inp = ref_inp.to(torch.float64 if ref_use_fp64 else torch.float32)
     return ref_inp
 
 
