@@ -9042,6 +9042,20 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: te_general_grouped_gemm
+    description: |
+      TransformerEngine-compatible grouped GEMM operation that computes multiple independent
+      matrix multiplications in a single kernel launch. Supports transposes, bias addition,
+      and accumulation modes for efficient Transformer model computations.
+    for:
+      - te_general_grouped_gemm
+    labels:
+      - BLAS
+      - TransformerEngine
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.4'
   - id: thnn_fused_lstm_cell
     description: Fused LSTM cell computation with optional input and hidden biases.
     for:
