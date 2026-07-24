@@ -3740,6 +3740,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: generic_gemm
+    description: General matrix multiplication with fused epilogue (bias, GELU, FP8 input/output).
+    for:
+      - generic_gemm
+    labels:
+      - fused
+      - GEMM
+      - FP8
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.4'
   - id: geometric
     description: Draws random numbers from a geometric distribution.
     for:

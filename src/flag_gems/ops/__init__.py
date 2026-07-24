@@ -269,6 +269,7 @@ from flag_gems.ops.gcd import gcd, gcd_out
 from flag_gems.ops.gcd_ import gcd_  # noqa: F401
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
+from flag_gems.ops.generic_gemm import generic_gemm
 from flag_gems.ops.geometric import geometric, geometric_
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
@@ -952,6 +953,7 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "generic_gemm",
     "geometric",
     "geometric_",
     "get_paged_mqa_logits_metadata",
