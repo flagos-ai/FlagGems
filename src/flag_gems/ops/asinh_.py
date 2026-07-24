@@ -45,18 +45,8 @@ def asinh_kernel_(
     tl.store(x_ptr + offsets, y, mask=mask)
 
 
-def asinh_(*args, **kwargs):
-    x = None
-    if len(args) > 0 and isinstance(args[0], torch.Tensor):
-        x = args[0]
-    else:
-        for key in ("input", "self", "x"):
-            val = kwargs.get(key, None)
-            if isinstance(val, torch.Tensor):
-                x = val
-                break
-    if x is None:
-        raise ValueError("asinh_: expected a Tensor as the first argument")
+def asinh_(self):
+    x = self
 
     if x.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
         return torch.ops.aten.asinh_(x)
