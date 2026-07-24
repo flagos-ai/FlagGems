@@ -20,6 +20,7 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 import torch
@@ -30,7 +31,13 @@ import flag_gems
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.code_cache import config_cache_dir
-from flag_gems.utils.libentry import LibTuner, libcache, major_version, minor_version
+from flag_gems.utils.libentry import (
+    LibTuner,
+    LibTunerRunMode,
+    libcache,
+    major_version,
+    minor_version,
+)
 
 libentry_mod = importlib.import_module("flag_gems.utils.libentry")
 flagtune_runtime_mod = importlib.import_module("flag_gems.runtime.flagtune")
@@ -364,6 +371,7 @@ def test_hash_changes_when_dependency_modified():
 
 
 def test_flagtree_policy_is_bypassed_when_use_flagtune_is_enabled(monkeypatch):
+    """Use exhaustive legacy tuning and avoid the proposer when USE_FLAGTUNE is set."""
     configs = [
         triton.Config({"BLOCK": 4}),
         triton.Config({"BLOCK": 2}),
@@ -371,12 +379,16 @@ def test_flagtree_policy_is_bypassed_when_use_flagtune_is_enabled(monkeypatch):
     called = False
 
     class FakeTuner:
+        """Expose only the routing metadata required by the FlagTune policy."""
+
         _flagtune_expand_op_name = "mm_general_tma"
         _flagtune_op_name = "mm"
-        _flagtune_op_id = "flaggems/mm_general_tma"
+        _flagtune_op_id = "flaggems/mm"
+        _flagtune_variant = "general_tma"
         _flagtune_pre_hook = None
 
-    def fail_if_called(_op_id):
+    def fail_if_called(_op_id, _variant):
+        """Record and reject any unexpected model-backed proposer lookup."""
         nonlocal called
         called = True
         raise AssertionError("FlagTree proposer should not be used")
@@ -398,42 +410,59 @@ def test_flagtree_policy_is_bypassed_when_use_flagtune_is_enabled(monkeypatch):
 
 
 def test_flagtree_policy_is_default_when_use_flagtune_is_disabled(monkeypatch):
-    class FakeParamSpace:
-        all_field_names = ["BLOCK"]
+    """Use the model-backed proposer only when its independent switch is on."""
 
-    class FakeOpInfo:
-        param_space = FakeParamSpace()
+    class FakeVariantInfo:
+        """Convert one synthetic feature/config schema for proposer testing."""
+
+        param_names = ["BLOCK"]
 
         @staticmethod
-        def extract_shape(_nargs):
+        def normalize_inputs(_nargs):
+            """Return the stable shape consumed by the fake proposer."""
             return {"M": 16, "N": 16, "K": 16}
 
         @staticmethod
         def to_config(config_dict):
+            """Convert a proposed dictionary into a Triton Config."""
             return triton.Config({"BLOCK": int(config_dict["BLOCK"])})
 
     class FakeTuner:
+        """Provide routing metadata and normalized arguments to the policy."""
+
         _flagtune_expand_op_name = "mm_general_tma"
         _flagtune_op_name = "mm"
-        _flagtune_op_id = "flaggems/mm_general_tma"
+        _flagtune_op_id = "flaggems/mm"
+        _flagtune_variant = "general_tma"
         _flagtune_pre_hook = None
+        _flagtune_dtype_resolver = staticmethod(
+            lambda _arguments: (
+                "bfloat16",
+                "bfloat16",
+                "bfloat16",
+            )
+        )
+        arg_names = ["M", "N", "K"]
         nargs = {"M": 16, "N": 16, "K": 16}
 
     proposer_called = False
 
     def fake_proposer(_bench, _shape, _initial, _meta):
+        """Record invocation and return one lower-latency synthetic config."""
         nonlocal proposer_called
         proposer_called = True
         return [{"BLOCK": 1}]
 
     monkeypatch.delenv("USE_FLAGTUNE", raising=False)
     monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.setenv("TRITON_USE_FLAGTUNE", "1")
     monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
     monkeypatch.setattr(libentry_mod, "_flagtune_available", lambda: (True, None))
+    monkeypatch.setattr(libentry_mod, "_flagtune_enabled", lambda: True)
     monkeypatch.setattr(
         libentry_mod,
         "_ensure_flagtune_proposer",
-        lambda _op_id: (fake_proposer, FakeOpInfo()),
+        lambda _identity: (fake_proposer, FakeVariantInfo()),
     )
 
     best_config, timings = LibTuner.get("flagtune").policy(
@@ -447,6 +476,418 @@ def test_flagtree_policy_is_default_when_use_flagtune_is_disabled(monkeypatch):
     assert proposer_called is True
     assert best_config.kwargs["BLOCK"] == 1
     assert list(timings.values()) == [1.0]
+
+
+def test_flagtree_policy_is_bypassed_when_triton_flagtune_is_disabled(monkeypatch):
+    """Avoid loading pair models unless the new FlagTree switch is enabled."""
+    called = False
+
+    class FakeTuner:
+        _flagtune_op_name = "mm"
+        _flagtune_op_id = "flaggems/mm"
+        _flagtune_variant = "general_tma"
+
+    def fail_if_called(_op_id, _variant):
+        nonlocal called
+        called = True
+        raise AssertionError("disabled FlagTree proposer should not be loaded")
+
+    monkeypatch.delenv("USE_FLAGTUNE", raising=False)
+    monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.delenv("TRITON_USE_FLAGTUNE", raising=False)
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
+    monkeypatch.setattr(libentry_mod, "_flagtune_available", lambda: (True, None))
+    monkeypatch.setattr(libentry_mod, "_flagtune_enabled", lambda: False)
+    monkeypatch.setattr(libentry_mod, "_ensure_flagtune_proposer", fail_if_called)
+
+    best_config, timings = LibTuner.get("flagtune").policy(
+        FakeTuner(),
+        lambda cfg: [cfg.kwargs["BLOCK"]],
+        [triton.Config({"BLOCK": 8})],
+        (),
+        {},
+    )
+
+    assert best_config.kwargs["BLOCK"] == 8
+    assert list(timings.values()) == [[8]]
+    assert called is False
+
+
+def test_benchmark_success_count_tracks_finite_uncached_benchmarks(monkeypatch):
+    """Separate fresh finite measurements, latency hits, and best-cache hits.
+
+    The fake tuner exercises all explicit LibTuner run modes without compiling
+    a GPU kernel. It also verifies that both cache-isolated modes never read or
+    write the shape-to-best-config cache.
+    """
+    configs = [
+        triton.Config({"BLOCK": 8}),
+        triton.Config({"BLOCK": 16}),
+        triton.Config({"BLOCK": 32}),
+    ]
+
+    class FakeConfigCache:
+        """Track best-config values and every cache protocol operation."""
+
+        def __init__(self):
+            """Initialize empty values and zero access counters."""
+            self.values = {}
+            self.contains_count = 0
+            self.getitem_count = 0
+            self.setitem_count = 0
+
+        def reset_access_counts(self):
+            """Reset protocol counters without changing stored best configs."""
+            self.contains_count = 0
+            self.getitem_count = 0
+            self.setitem_count = 0
+
+        def __contains__(self, key):
+            """Record and perform a best-config membership query."""
+            self.contains_count += 1
+            return key in self.values
+
+        def __getitem__(self, key):
+            """Record and return one stored best config."""
+            self.getitem_count += 1
+            return self.values[key]
+
+        def __setitem__(self, key, value):
+            """Record and persist one best config in memory."""
+            self.setitem_count += 1
+            self.values[key] = value
+
+    class FakeBenchmarkCache:
+        """Store per-config latency tuples for one synthetic shape."""
+
+        def __init__(self):
+            """Initialize an empty config-to-latency mapping."""
+            self.values = {}
+
+        def get(self, config):
+            """Return a cached latency tuple when present."""
+            return self.values.get(config)
+
+        def __setitem__(self, config, value):
+            """Persist a newly measured latency tuple."""
+            self.values[config] = value
+
+    benchmark_cache = FakeBenchmarkCache()
+
+    class FakeLibCache:
+        """Expose the single BenchmarkCache expected by the fake tuner."""
+
+        def __getitem__(self, key):
+            """Validate the benchmark table/key pair and return its cache."""
+            assert key == (
+                "fake_benchmark",
+                (32, "triton_do_bench", 5, 20),
+            )
+            return benchmark_cache
+
+    class FakeFn:
+        """Capture the final config chosen for the synthetic kernel launch."""
+
+        @staticmethod
+        def run(*args, **kwargs):
+            """Return launch arguments instead of executing a GPU kernel."""
+            return args, kwargs
+
+    class FakeTuner:
+        """Implement the minimal protocol consumed by ``LibTuner.run``."""
+
+        arg_names = ["M"]
+        benchmark_table_name = "fake_benchmark"
+        fn = FakeFn()
+
+        @staticmethod
+        def get_key(_args):
+            """Return one stable synthetic shape key."""
+            return (32,)
+
+        @staticmethod
+        def get_benchmark_key(args):
+            """Return the exact shape plus benchmark protocol identity."""
+            return (args["M"], "triton_do_bench", 5, 20)
+
+        def prune_configs(self, _kwargs):
+            """Yield every active config without pruning."""
+            return iter(self.configs)
+
+        def policy(self, bench, candidates, _args, _kwargs):
+            """Track normal-policy calls, benchmark candidates, and minimize p50."""
+            self.policy_call_count = getattr(self, "policy_call_count", 0) + 1
+            timings = {config: bench(config)[1] for config in candidates}
+            return min(timings, key=timings.get), timings
+
+        def _bench(self, *args, config, **kwargs):
+            """Return finite samples except for the largest synthetic block."""
+            block = float(config.kwargs["BLOCK"])
+            if block == 32:
+                return [float("inf")] * 3
+            return [block - 1.0, block, block + 1.0]
+
+        @staticmethod
+        def pre_hook(_kwargs, reset_only=False):
+            """Accept LibTuner's reset hook without external side effects."""
+            return None
+
+    monkeypatch.delenv("TRITON_PRINT_AUTOTUNING", raising=False)
+    monkeypatch.setattr(libentry_mod, "libcache", FakeLibCache())
+    tuner = FakeTuner()
+    tuner.configs = configs
+    config_cache = FakeConfigCache()
+    tuner.cache = config_cache
+
+    LibTuner.run(tuner, 32)
+    assert tuner.benchmark_success_count == 2
+    assert tuner.benchmark_cache_hit_count == 0
+    assert tuner.policy_call_count == 1
+
+    # Force best-config selection to run again while keeping per-config timings.
+    tuner.cache.values.clear()
+    LibTuner.run(tuner, 32)
+    assert tuner.benchmark_success_count == 0
+    assert tuner.benchmark_cache_hit_count == 3
+    assert tuner.policy_call_count == 2
+
+    # A best-config cache hit must also reset the count from the previous run.
+    tuner.benchmark_success_count = 99
+    tuner.benchmark_cache_hit_count = 99
+    LibTuner.run(tuner, 32)
+    assert tuner.benchmark_success_count == 0
+    assert tuner.benchmark_cache_hit_count == 0
+
+    # Single-config kernels bypass autotuning and therefore benchmark no configs.
+    tuner.configs = [configs[0]]
+    tuner.benchmark_success_count = 99
+    tuner.benchmark_cache_hit_count = 99
+    LibTuner.run(tuner, 32)
+    assert tuner.benchmark_success_count == 0
+    assert tuner.benchmark_cache_hit_count == 0
+
+    # Exhaustive collection bypasses a populated best-config cache, reuses one
+    # latency, and measures only the two missing configs (one finite, one inf).
+    tuner.configs = configs
+    config_cache.values = {(32,): configs[1]}
+    config_cache.reset_access_counts()
+    benchmark_cache.values = {configs[0]: (7.0, 8.0, 9.0)}
+    with LibTuner.use_run_mode(
+        tuner, LibTunerRunMode.EXHAUSTIVE_COLLECTION
+    ):
+        LibTuner.run(tuner, 32)
+    assert tuner.benchmark_success_count == 1
+    assert tuner.benchmark_cache_hit_count == 1
+    assert len(tuner.configs_timings) == 3
+    assert tuner.best_config is configs[0]
+    assert config_cache.values == {(32,): configs[1]}
+    assert tuner.policy_call_count == 2
+    assert (
+        config_cache.contains_count,
+        config_cache.getitem_count,
+        config_cache.setitem_count,
+    ) == (0, 0, 0)
+
+    # Force-policy mode also bypasses ConfigCache, but preserves the tuner's
+    # learned/custom policy instead of forcing the exhaustive default policy.
+    config_cache.reset_access_counts()
+    policy_calls = tuner.policy_call_count
+    with LibTuner.use_run_mode(tuner, LibTunerRunMode.FORCE_POLICY):
+        LibTuner.run(tuner, 32)
+        assert tuner.policy_call_count == policy_calls + 1
+        assert tuner.benchmark_success_count == 0
+        assert tuner.benchmark_cache_hit_count == 3
+        assert len(tuner.configs_timings) == 3
+        assert (
+            config_cache.contains_count,
+            config_cache.getitem_count,
+            config_cache.setitem_count,
+        ) == (0, 0, 0)
+
+        # The next cache-isolated pass reconstructs timings entirely from
+        # latency entries and still never touches the best-config cache.
+        config_cache.reset_access_counts()
+        LibTuner.run(tuner, 32)
+        assert tuner.benchmark_success_count == 0
+        assert tuner.benchmark_cache_hit_count == 3
+        assert len(tuner.configs_timings) == 3
+        assert (
+            config_cache.contains_count,
+            config_cache.getitem_count,
+            config_cache.setitem_count,
+        ) == (0, 0, 0)
+
+        tuner.configs = [configs[0]]
+        LibTuner.run(tuner, 32)
+        assert tuner.benchmark_success_count == 0
+        assert tuner.benchmark_cache_hit_count == 1
+        assert len(tuner.configs_timings) == 1
+
+    assert tuner._last_benchmark_args == (32,)
+    assert tuner._last_benchmark_meta == {}
+    assert tuner._run_mode is LibTunerRunMode.NORMAL
+
+
+def test_benchmark_key_preserves_raw_shape_and_scopes_timing_protocol():
+    """Keep ConfigCache bucketing while separating exact benchmark labels."""
+
+    class FakeTuner:
+        """Provide the key/protocol state consumed by LibTuner helpers."""
+
+        keys = ["M"]
+        strategy = [libentry_mod.align32_strategy]
+        _benchmark_protocol = ("triton_do_bench", 5, 20)
+
+    tuner = FakeTuner()
+    assert LibTuner.get_key(tuner, {"M": 33}) == (64,)
+    assert LibTuner.get_key(tuner, {"M": 63}) == (64,)
+    assert LibTuner.get_benchmark_key(tuner, {"M": 33}) == (
+        33,
+        "triton_do_bench",
+        5,
+        20,
+    )
+    assert LibTuner.get_benchmark_key(tuner, {"M": 63}) == (
+        63,
+        "triton_do_bench",
+        5,
+        20,
+    )
+
+    with LibTuner.use_benchmark_protocol(tuner, 25, 100):
+        assert LibTuner.get_benchmark_key(tuner, {"M": 33}) == (
+            33,
+            "triton_do_bench",
+            25,
+            100,
+        )
+    assert tuner._benchmark_protocol == ("triton_do_bench", 5, 20)
+
+
+def test_benchmark_config_reuses_kernel_context_and_bypasses_caches(monkeypatch):
+    """Benchmark one fixed config with explicit durations and no policy/cache call."""
+    config = triton.Config({"BLOCK": 16})
+    observed = {}
+
+    def fake_triton_do_bench(kernel_call, *, warmup, rep, quantiles):
+        """Capture the authoritative timing options and execute the fake kernel."""
+        observed["warmup"] = warmup
+        observed["rep"] = rep
+        observed["quantiles"] = quantiles
+        observed["launch"] = kernel_call()
+        return [1.0, 0.8, 1.2]
+
+    monkeypatch.setattr(triton.testing, "do_bench", fake_triton_do_bench)
+
+    class FakeTuner:
+        """Provide the retained context and _bench protocol used by the API."""
+
+        _last_benchmark_args = ("descriptor",)
+        _last_benchmark_meta = {"M": 32}
+        arg_names = ["descriptor_arg"]
+        nargs = None
+        seen_tuned_metas = {"stale": [9.0, 9.0, 9.0]}
+
+        def __init__(self):
+            """Install a sentinel benchmarker that must be restored."""
+            self.do_bench = lambda _call, _quantiles: [99.0, 99.0, 99.0]
+            self.original_do_bench = self.do_bench
+
+        def _bench(self, *args, config, **meta):
+            """Assert context/reset behavior, then use the installed benchmarker."""
+            observed["args"] = args
+            observed["config"] = config
+            observed["meta"] = meta
+            observed["nargs"] = dict(self.nargs)
+            observed["seen_tuned_metas"] = dict(self.seen_tuned_metas)
+            return self.do_bench(
+                lambda: "kernel-launched",
+                quantiles=(0.5, 0.2, 0.8),
+            )
+
+    tuner = FakeTuner()
+    result = LibTuner.benchmark_config(
+        tuner,
+        config,
+        warmup=200,
+        rep=500,
+        quantiles=(0.2, 0.5, 0.8),
+    )
+
+    assert result == [1.0, 0.8, 1.2]
+    assert observed == {
+        "args": ("descriptor",),
+        "config": config,
+        "meta": {"M": 32},
+        "nargs": {"descriptor_arg": "descriptor"},
+        "seen_tuned_metas": {},
+        "warmup": 200,
+        "rep": 500,
+        "quantiles": (0.2, 0.5, 0.8),
+        "launch": "kernel-launched",
+    }
+    assert tuner.do_bench is tuner.original_do_bench
+    assert tuner.nargs is None
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="The config covers NVIDIA Hopper mm kernels.",
+)
+def test_hopper_mm_config_compiles_without_runtime_registration():
+    """Compile all training variants and verify canonical kernel pair bindings."""
+    mm_ops = importlib.import_module("flag_gems.runtime.backend._nvidia.hopper.ops.mm")
+    from flag_gems.utils.flagtune import operator_config as operator_config_mod
+
+    spec = operator_config_mod.load_operator_benchmark_spec(
+        os.path.join(
+            os.path.dirname(operator_config_mod.__file__),
+            "configs",
+            "mm_flagtune_configs.yaml",
+        )
+    )
+    operator = spec.operator_info
+    expected = {
+        "general_tma": ({"M": 4096, "N": 4096, "K": 4096}, 3360, 54),
+        "gemv": ({"M": 1024, "N": 1, "K": 4096}, 168, 46),
+        "splitk": ({"M": 1024, "N": 1024, "K": 4096}, 672, 53),
+    }
+    assert set(operator.variants) == set(expected)
+    assert spec.dispatch_order == ("gemv", "splitk", "general_tma")
+    assert spec.shape.identity == ("B", "M", "N", "K")
+
+    for name, (shape, config_count, feature_count) in expected.items():
+        variant = operator.get_variant(name)
+        assert variant.matches(shape)
+        assert sum(1 for _ in variant.iter_configs()) == config_count
+        assert len(variant.feature_names) == feature_count
+
+    assert operator.op_id == "flaggems/mm"
+    public_operator = operator_config_mod.resolve_public_operator(
+        flag_gems, operator.op_id
+    )
+    bound_kernel_names = {
+        "general_tma": "mm_kernel_general_host_tma",
+        "gemv": "gemv_kernel",
+        "splitk": "mm_kernel_splitk",
+    }
+    for variant_name, expected_kernel_name in bound_kernel_names.items():
+        _, resolved_tuner = libentry_mod.find_flagtune_benchmark_target(
+            public_operator, operator.op_id, variant_name
+        )
+        assert resolved_tuner.fn.__name__ == expected_kernel_name
+    assert (
+        mm_ops.mm_kernel_general_host_tma.fn._flagtune_op_id,
+        mm_ops.mm_kernel_general_host_tma.fn._flagtune_variant,
+    ) == ("flaggems/mm", "general_tma")
+    assert (
+        mm_ops.gemv_kernel.fn._flagtune_op_id,
+        mm_ops.gemv_kernel.fn._flagtune_variant,
+    ) == ("flaggems/mm", "gemv")
+    assert (
+        mm_ops.mm_kernel_splitk.fn._flagtune_op_id,
+        mm_ops.mm_kernel_splitk.fn._flagtune_variant,
+    ) == ("flaggems/mm", "splitk")
 
 
 @pytest.mark.skipif(
@@ -469,12 +910,8 @@ def test_libcache_vllm_signal_scenario():
         while True:
             time.sleep(0.1)
 
-    cache_file_name = (
-        f"TunedConfig_{torch.cuda.get_device_name().replace(' ', '_')}_triton_{major_version}_{minor_version}.db"
-        if device.vendor_name == "nvidia"
-        else f"TunedConfig_{device.vendor_name}_triton_{major_version}_{minor_version}.db"
-    )
-    cache_path = config_cache_dir() / cache_file_name
+    assert libcache.db_url.startswith("sqlite:///")
+    cache_path = Path(libcache.db_url.removeprefix("sqlite:///"))
     # Start child process
     process = multiprocessing.Process(target=child_process)
     process.start()

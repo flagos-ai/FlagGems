@@ -41,5 +41,5 @@ tests/*.json
 # Generated benchmark data (lives in gh-pages only)
 docs/benchmark/
 
-# Local outputs from benchmark/flagtune/run_tuning_latency_compare.sh
-/flagtune-benchmark-output/
+# Local outputs from FlagTune
+/flagtune-pretune-output/

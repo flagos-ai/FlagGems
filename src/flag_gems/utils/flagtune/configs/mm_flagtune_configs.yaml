@@ -1,0 +1,304 @@
+# Combined FlagTree model schema and FlagGems Pretune execution schema.
+#
+# The loader accepts exactly ``schema_version``, ``op_id``, ``variants``, and
+# ``pretune`` at the top level.  Unknown keys are rejected.  FlagTree compiles
+# ``op_id`` and ``variants`` into the model/feature contract; FlagGems compiles
+# ``pretune`` into shape validation, ordered variant dispatch, safe tensor
+# construction, and a public-operator call.  Keep this file safe-data-only:
+# it cannot import Python modules or execute arbitrary Python expressions.
+schema_version: 3
+# A slash-separated, globally namespaced operator id.  Its first segment must
+# be ``flaggems`` for the FlagGems public-operator resolver.
+op_id: flaggems/mm
+
+pretune:
+  # Input workload-table contract. ``fields`` is a mapping whose insertion
+  # order defines the order in which defaults/min/max may refer to *earlier*
+  # fields.  Each field accepts only:
+  #   type: int (the only currently supported type)
+  #   required: true/false (defaults to true when ``default`` is absent)
+  #   default, min, max: an integer/null literal or a reference to an earlier
+  #     field; bounds are inclusive
+  #   aliases: a list of alternative source-column names, unique
+  #     case-insensitively across all fields
+  #   role: count (optional, at most one field; excluded from identity/dispatch)
+  # ``identity`` is a non-empty ordered list of unique declared fields.  It
+  # determines shape keys and must not include the optional ``count`` field.
+  shape:
+    fields:
+      B: {type: int, default: 1, min: 1, max: 1, aliases: [batch]}
+      M: {type: int, min: 1}
+      N: {type: int, min: 1}
+      K: {type: int, min: 1}
+      Count: {type: int, required: false, min: 0, role: count}
+    identity: [B, M, N, K]
+  dispatch:
+    # Only ``first_match`` is supported.  ``order`` must list every variant
+    # exactly once; the first variant whose ``when`` predicate is true wins,
+    # so overlapping predicates make this order semantically significant.
+    policy: first_match
+    order: [gemv, splitk, general_tma]
+  benchmark:
+    # Tensor recipes are intentionally limited to ``randn``, ``zeros``,
+    # ``ones``, or ``empty``.  Every tensor accepts only ``factory``, ``shape``
+    # (positive integer literals or identity-field references), and ``dtype``
+    # (currently only ``runtime``). Device placement comes only from FlagTune's
+    # registered runtime adapter. Invocation supports only the trusted public
+    # FlagGems callable selected from ``op_id``; ``args`` must be declared
+    # tensor names in positional order.
+    tensors:
+      a: {factory: randn, shape: [M, K], dtype: runtime}
+      b: {factory: randn, shape: [K, N], dtype: runtime}
+    invoke:
+      kind: flag_gems_public
+      args: [a, b]
+
+variants:
+  general_tma:
+    # A variant may contain only ``inputs``, ``when``, ``params``, and
+    # ``features``. ``inputs`` is an insertion-ordered mapping of declared
+    # runtime values. Each input accepts ``default``, ``min``, and ``max``;
+    # these use literals or references to earlier inputs. Missing values without
+    # defaults are required. Input values are normalized before evaluating
+    # ``when`` and ``features``.
+    inputs:
+      M: {min: 1, max: 2147483647}
+      N: {min: 1}
+      K: {min: 1}
+      stride_am: {default: K}
+      stride_bk: {default: N}
+    when:
+      # A safe expression mapping is ``{op: <allowlisted_operation>, args: [...]}``.
+      # Strings are declared symbols, not Python expressions.  Available
+      # operations are registered by FlagTree (for example ident, arithmetic,
+      # comparisons, boolean logic, alignment, log2, and pow); an unknown
+      # operation, symbol, or mapping key is rejected during compilation.
+      op: all
+      args: 
+        - op: gt
+          args: [N, 1]
+        - op: not
+          args:
+            - op: all
+              args:
+                - {op: lt, args: [M, 2048]}
+                - {op: lt, args: [N, 2048]}
+                - {op: ge, args: [K, 4096]}
+    
+    params:
+      # Each parameter is one emitted kernel-config field and must be
+      # ``{values: [non-empty legal values...]}``.  FlagTree enumerates the
+      # Cartesian product in declaration order. Keep values consistent with the
+      # underlying kernel; this schema cannot prove kernel legality by itself.
+      BLOCK_M: {values: [16, 32, 64, 128, 256]}
+      BLOCK_N: {values: [16, 32, 64, 128]}
+      BLOCK_K: {values: [32, 64, 128, 256]}
+      GROUP_M: {values: [1, 2, 4, 8, 16, 32, 64]}
+      num_warps: {values: [4, 8]}
+      num_stages: {values: [2, 3, 4]}
+      num_ctas: {values: [1]}
+    features:
+      # Feature entries are either a symbol or a mapping with ``name``, ``op``,
+      # and ``args``. Raw inputs and parameters must be listed explicitly.
+      # Feature order is the exact XGBoost column order and is stored with the
+      # exported model; never reorder, rename, insert, or delete entries after
+      # training without retraining and versioning the artifact. An expression
+      # may reference inputs, params, and earlier features only. Expressions are
+      # evaluated per candidate config and must handle all legal input values.
+      - {name: M, op: ident, args: [M]}
+      - {name: N, op: ident, args: [N]}
+      - {name: K, op: ident, args: [K]}
+      - {name: stride_am, op: ident, args: [stride_am]}
+      - {name: stride_bk, op: ident, args: [stride_bk]}
+      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
+      - {name: BLOCK_N, op: ident, args: [BLOCK_N]}
+      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
+      - {name: GROUP_M, op: ident, args: [GROUP_M]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: num_ctas, op: ident, args: [num_ctas]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: log2_M, op: log2, args: [M]}
+      - {name: log2_N, op: log2, args: [N]}
+      - {name: log2_K, op: log2, args: [K]}
+      - {name: log2_stride_am, op: log2, args: [stride_am]}
+      - {name: log2_stride_bk, op: log2, args: [stride_bk]}
+      - {name: shape_mn, op: mul, args: [M, N]}
+      - {name: log2_shape_mn, op: log2, args: [shape_mn]}
+      - {name: shape_mk, op: mul, args: [M, K]}
+      - {name: log2_shape_mk, op: log2, args: [shape_mk]}
+      - {name: shape_nk, op: mul, args: [N, K]}
+      - {name: log2_shape_nk, op: log2, args: [shape_nk]}
+      - {name: tile_mn, op: mul, args: [BLOCK_M, BLOCK_N]}
+      - {name: log2_tile_mn, op: log2, args: [tile_mn]}
+      - {name: tile_mk, op: mul, args: [BLOCK_M, BLOCK_K]}
+      - {name: log2_tile_mk, op: log2, args: [tile_mk]}
+      - {name: tile_nk, op: mul, args: [BLOCK_N, BLOCK_K]}
+      - {name: log2_tile_nk, op: log2, args: [tile_nk]}
+      - {name: log2_BLOCK_M, op: log2, args: [BLOCK_M]}
+      - {name: log2_BLOCK_N, op: log2, args: [BLOCK_N]}
+      - {name: log2_BLOCK_K, op: log2, args: [BLOCK_K]}
+      - {name: log2_GROUP_M, op: log2, args: [GROUP_M]}
+      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
+      - {name: grid_n, op: cdiv, args: [N, BLOCK_N]}
+      - {name: grid_k, op: cdiv, args: [K, BLOCK_K]}
+      - {name: grid_mn, op: mul, args: [grid_m, grid_n]}
+      - {name: grid_work, op: mul, args: [grid_mn, grid_k]}
+      - {name: log2_grid_mn, op: log2, args: [grid_mn]}
+      - {name: log2_grid_work, op: log2, args: [grid_work]}
+      - {name: m_mod_block_m, op: mod, args: [M, BLOCK_M]}
+      - {name: n_mod_block_n, op: mod, args: [N, BLOCK_N]}
+      - {name: k_mod_block_k, op: mod, args: [K, BLOCK_K]}
+      - {name: block_m_ratio, op: fdiv, args: [BLOCK_M, M]}
+      - {name: block_n_ratio, op: fdiv, args: [BLOCK_N, N]}
+      - {name: block_k_ratio, op: fdiv, args: [BLOCK_K, K]}
+      - {name: tile_volume, op: mul, args: [tile_mn, BLOCK_K]}
+      - {name: log2_tile_volume, op: log2, args: [tile_volume]}
+      - {name: group_tile_m, op: mul, args: [GROUP_M, BLOCK_M]}
+      - {name: log2_group_tile_m, op: log2, args: [group_tile_m]}
+      - {name: group_tiles_m, op: cdiv, args: [grid_m, GROUP_M]}
+      - {name: grid_m_per_group, op: fdiv, args: [grid_m, GROUP_M]}
+      - {name: group_m_ratio, op: fdiv, args: [GROUP_M, grid_m]}
+      - {name: m_mod_group_tile_m, op: mod, args: [M, group_tile_m]}
+
+  gemv:
+    inputs:
+      M: {}
+      N: {default: 1}
+      K: {}
+      stride_am: {default: K}
+      stride_bk: {default: N}
+    when:
+      op: eq
+      args: [N, 1]
+    params:
+      BLOCK_M: {values: [8, 16, 32]}
+      BLOCK_K: {values: [128, 256]}
+      num_warps: {values: [1, 2, 4, 8]}
+      num_stages: {values: [2, 3, 4, 5, 6, 7, 8]}
+      num_ctas: {values: [1]}
+    features:
+      - {name: M, op: ident, args: [M]}
+      - {name: N, op: ident, args: [1]}
+      - {name: K, op: ident, args: [K]}
+      - {name: stride_am, op: ident, args: [stride_am]}
+      - {name: stride_bk, op: ident, args: [stride_bk]}
+      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
+      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: num_ctas, op: ident, args: [num_ctas]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: log2_M, op: log2, args: [M]}
+      - {name: log2_N, op: log2, args: [N]}
+      - {name: log2_K, op: log2, args: [K]}
+      - {name: log2_stride_am, op: log2, args: [stride_am]}
+      - {name: log2_stride_bk, op: log2, args: [stride_bk]}
+      - {name: shape_mn, op: mul, args: [M, N]}
+      - {name: log2_shape_mn, op: log2, args: [shape_mn]}
+      - {name: shape_mk, op: mul, args: [M, K]}
+      - {name: log2_shape_mk, op: log2, args: [shape_mk]}
+      - {name: shape_nk, op: mul, args: [N, K]}
+      - {name: log2_shape_nk, op: log2, args: [shape_nk]}
+      - {name: tile_mk, op: mul, args: [BLOCK_M, BLOCK_K]}
+      - {name: log2_tile_mk, op: log2, args: [tile_mk]}
+      - {name: log2_BLOCK_M, op: log2, args: [BLOCK_M]}
+      - {name: log2_BLOCK_K, op: log2, args: [BLOCK_K]}
+      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
+      - {name: grid_n, op: cdiv, args: [N, 1]}
+      - {name: grid_k, op: cdiv, args: [K, BLOCK_K]}
+      - {name: grid_mn, op: mul, args: [grid_m, grid_n]}
+      - {name: grid_work, op: mul, args: [grid_mn, grid_k]}
+      - {name: log2_grid_mn, op: log2, args: [grid_mn]}
+      - {name: log2_grid_work, op: log2, args: [grid_work]}
+      - {name: m_mod_block_m, op: mod, args: [M, BLOCK_M]}
+      - {name: n_mod_block_n, op: mod, args: [N, 1]}
+      - {name: k_mod_block_k, op: mod, args: [K, BLOCK_K]}
+      - {name: block_m_ratio, op: fdiv, args: [BLOCK_M, M]}
+      - {name: block_n_ratio, op: fdiv, args: [1, N]}
+      - {name: block_k_ratio, op: fdiv, args: [BLOCK_K, K]}
+      - {name: tile_volume, op: mul, args: [tile_mk, 1]}
+      - {name: log2_tile_volume, op: log2, args: [tile_volume]}
+      - {name: group_tile_m, op: ident, args: [BLOCK_M]}
+      - {name: log2_group_tile_m, op: log2, args: [group_tile_m]}
+      - {name: group_tiles_m, op: ident, args: [grid_m]}
+      - {name: grid_m_per_group, op: ident, args: [grid_m]}
+      - {name: group_m_ratio, op: fdiv, args: [1, grid_m]}
+      - {name: m_mod_group_tile_m, op: mod, args: [M, group_tile_m]}
+
+  splitk:
+    inputs:
+      M: {}
+      N: {}
+      K: {}
+      stride_am: {default: K}
+      stride_bk: {default: N}
+    when:
+      op: all
+      args:
+        - op: lt
+          args: [M, 2048]
+        - op: lt
+          args: [N, 2048]
+        - op: ge
+          args: [K, 4096]
+    params:
+      BLOCK_M: {values: [8, 16]}
+      BLOCK_N: {values: [16, 32]}
+      BLOCK_K: {values: [64, 128, 256]}
+      SPLIT_K: {values: [4, 8, 16, 32]}
+      num_warps: {values: [2, 4]}
+      num_stages: {values: [2, 3, 4, 5, 6, 7, 8]}
+      num_ctas: {values: [1]}
+    features:
+      - {name: M, op: ident, args: [M]}
+      - {name: N, op: ident, args: [N]}
+      - {name: K, op: ident, args: [K]}
+      - {name: stride_am, op: ident, args: [stride_am]}
+      - {name: stride_bk, op: ident, args: [stride_bk]}
+      - {name: BLOCK_M, op: ident, args: [BLOCK_M]}
+      - {name: BLOCK_N, op: ident, args: [BLOCK_N]}
+      - {name: BLOCK_K, op: ident, args: [BLOCK_K]}
+      - {name: SPLIT_K, op: ident, args: [SPLIT_K]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: num_ctas, op: ident, args: [num_ctas]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: log2_M, op: log2, args: [M]}
+      - {name: log2_N, op: log2, args: [N]}
+      - {name: log2_K, op: log2, args: [K]}
+      - {name: log2_stride_am, op: log2, args: [stride_am]}
+      - {name: log2_stride_bk, op: log2, args: [stride_bk]}
+      - {name: shape_mn, op: mul, args: [M, N]}
+      - {name: log2_shape_mn, op: log2, args: [shape_mn]}
+      - {name: shape_mk, op: mul, args: [M, K]}
+      - {name: log2_shape_mk, op: log2, args: [shape_mk]}
+      - {name: shape_nk, op: mul, args: [N, K]}
+      - {name: log2_shape_nk, op: log2, args: [shape_nk]}
+      - {name: tile_mn, op: mul, args: [BLOCK_M, BLOCK_N]}
+      - {name: log2_tile_mn, op: log2, args: [tile_mn]}
+      - {name: tile_mk, op: mul, args: [BLOCK_M, BLOCK_K]}
+      - {name: log2_tile_mk, op: log2, args: [tile_mk]}
+      - {name: tile_nk, op: mul, args: [BLOCK_N, BLOCK_K]}
+      - {name: log2_tile_nk, op: log2, args: [tile_nk]}
+      - {name: log2_BLOCK_M, op: log2, args: [BLOCK_M]}
+      - {name: log2_BLOCK_N, op: log2, args: [BLOCK_N]}
+      - {name: log2_BLOCK_K, op: log2, args: [BLOCK_K]}
+      - {name: grid_m, op: cdiv, args: [M, BLOCK_M]}
+      - {name: grid_n, op: cdiv, args: [N, BLOCK_N]}
+      - {name: grid_k, op: cdiv, args: [K, BLOCK_K]}
+      - {name: grid_mn, op: mul, args: [grid_m, grid_n]}
+      - {name: grid_work, op: mul, args: [grid_mn, grid_k]}
+      - {name: log2_grid_mn, op: log2, args: [grid_mn]}
+      - {name: log2_grid_work, op: log2, args: [grid_work]}
+      - {name: m_mod_block_m, op: mod, args: [M, BLOCK_M]}
+      - {name: n_mod_block_n, op: mod, args: [N, BLOCK_N]}
+      - {name: k_mod_block_k, op: mod, args: [K, BLOCK_K]}
+      - {name: block_m_ratio, op: fdiv, args: [BLOCK_M, M]}
+      - {name: block_n_ratio, op: fdiv, args: [BLOCK_N, N]}
+      - {name: block_k_ratio, op: fdiv, args: [BLOCK_K, K]}
+      - {name: tile_volume, op: mul, args: [tile_mn, BLOCK_K]}
+      - {name: log2_tile_volume, op: log2, args: [tile_volume]}
+      - {name: group_tile_m, op: ident, args: [BLOCK_M]}
+      - {name: log2_group_tile_m, op: log2, args: [group_tile_m]}
+      - {name: group_tiles_m, op: ident, args: [grid_m]}
+      - {name: grid_m_per_group, op: ident, args: [grid_m]}
+      - {name: group_m_ratio, op: fdiv, args: [1, grid_m]}
+      - {name: m_mod_group_tile_m, op: mod, args: [M, group_tile_m]}

@@ -216,6 +216,7 @@ flaggems-setup = "flag_gems._setup:main"
 
 "flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
+"flag_gems.utils.flagtune" = ["configs/*.yaml"]
 
 [tool.setuptools_scm]
 write_to = "src/flag_gems/_version.py"

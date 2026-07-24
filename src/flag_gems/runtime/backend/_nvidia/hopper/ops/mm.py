@@ -328,7 +328,8 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     rep=5,
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_general_tma",
-    flagtune_op_id="flaggems/mm_general_tma",
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="general_tma",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     flagtune_pre_hook=matmul_tma_set_block_size_hook,
 )
@@ -548,7 +549,8 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
     rep=10,
     flagtune_op_name="mm",
     flagtune_expand_op_name="gemv",
-    flagtune_op_id="flaggems/mm_general_tma",
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="gemv",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     flagtune_pre_hook=None,
 )
@@ -638,8 +640,11 @@ def gemv_mm(a, b, c, M, K):
     strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=10,
+    policy="flagtune",
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_splitk",
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="splitk",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     flagtune_pre_hook=None,
 )
