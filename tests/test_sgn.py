@@ -159,6 +159,27 @@ def test_sgn_complex_extreme_values():
 
 
 @pytest.mark.sgn
+def test_sgn_complex_nonfinite_values():
+    inp = torch.tensor(
+        [
+            complex(float("nan"), 1.0),
+            complex(float("inf"), 1.0),
+            complex(1.0, float("inf")),
+            complex(float("nan"), float("nan")),
+        ],
+        dtype=torch.complex64,
+        device=flag_gems.device,
+    )
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.sgn(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.sgn(inp)
+
+    utils.gems_assert_close(res_out, ref_out, torch.complex64, equal_nan=True)
+
+
+@pytest.mark.sgn
 @pytest.mark.parametrize("dtype", [torch.float32, torch.complex64])
 def test_sgn_noncontiguous(dtype):
     inp = _make_input((7, 11), dtype).transpose(0, 1)

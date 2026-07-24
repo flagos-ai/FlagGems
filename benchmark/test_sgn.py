@@ -21,7 +21,9 @@ from . import base, consts
 @pytest.mark.sgn
 def test_sgn():
     bench = base.UnaryPointwiseBenchmark(
-        op_name="sgn", torch_op=torch.sgn, dtypes=consts.FLOAT_DTYPES
+        op_name="sgn",
+        torch_op=torch.sgn,
+        dtypes=consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES,
     )
     bench.run()
 
@@ -42,6 +44,6 @@ def test_sgn_out():
     bench = base.UnaryPointwiseOutBenchmark(
         op_name="sgn_out",
         torch_op=torch.sgn,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES,
     )
     bench.run()
