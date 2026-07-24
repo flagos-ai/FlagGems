@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .addmm import addmm, addmm_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
@@ -21,7 +22,6 @@ from .linear import linear
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
-from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .repeat import repeat
 from .scatter_add import scatter_add_
 from .special_modified_bessel_k1 import (
