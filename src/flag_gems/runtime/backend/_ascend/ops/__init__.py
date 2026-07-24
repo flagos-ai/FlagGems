@@ -51,6 +51,7 @@ from .hadamard_transform import hadamard_transform
 from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
+from .index_reduce import index_reduce_
 from .index_select import index_select
 from .isin import isin
 from .linspace import linspace
@@ -153,6 +154,7 @@ __all__ = [
     "index",
     "index_add",
     "index_add_",
+    "index_reduce_",
     "index_select",
     "isin",
     "linspace",
