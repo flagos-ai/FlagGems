@@ -65,6 +65,9 @@ from flag_gems.fused.fused_moe import (
     invoke_fused_moe_triton_kernel,
     outplace_fused_experts,
 )
+from flag_gems.fused.fused_topk_with_score_function_bwd import (
+    fused_topk_with_score_function_bwd,
+)
 from flag_gems.fused.geglu import dgeglu, geglu
 from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
@@ -144,6 +147,7 @@ __all__ = [
     "fp8_fp4_mqa_logits",
     "fp8_fp4_paged_mqa_logits",
     "fused_add_rms_norm",
+    "fused_topk_with_score_function_bwd",
     "fused_deepseek_v4_qnorm_rope_kv_rope_insert",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_experts_impl",
