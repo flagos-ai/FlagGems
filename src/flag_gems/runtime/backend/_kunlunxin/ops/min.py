@@ -184,9 +184,17 @@ def min_dim(inp, dim=None, keepdim=False):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    isCloseCoreTiling = False
-    if inp.dtype in [torch.int16, torch.int32, torch.int64] and M == 4096 and N == 256:
-        isCloseCoreTiling = True
+    # NOTE (kunlunxin/XPU): the `tl.min(..., return_indices=True)` argmin combine
+    # makes the `TritonXPUCoreTiling` pass emit incompatible `tt.reduce` slice
+    # orders (order=[0,1] value vs order=[1,0] index) for most 2D (K==1) tiles,
+    # which fails compilation ("out of resource: uni_sram / PassManager::run
+    # failed"). This crashed nearly every benchmark shape (e.g. (1024,1),
+    # (1024,16), (1024,65536)) and previously only a single int (4096,256) case
+    # was worked around. Closing core-tiling side-steps the buggy layout for the
+    # argmin reduce and compiles every shape/dtype with no measurable perf
+    # penalty on the shapes that already compiled (probe: (4096,256)/(64,4096,64)
+    # within noise, True vs False).
+    isCloseCoreTiling = True
     with torch_device_fn.device(inp.device):
         min_kernel[grid](
             inp, out_value, out_index, M, N, K, isCloseCoreTiling=isCloseCoreTiling

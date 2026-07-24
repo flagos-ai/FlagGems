@@ -68,3 +68,44 @@ def ge_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN GE_SCALAR")
     res = ge_func_scalar(A, B)
     return res
+
+
+# greater_equal_ is the in-place alias of ge_ (out = (x >= y) written back into
+# x). It was NOT overridden by kunlunxin, so it fell to the generic
+# ops/greater_equal.py which calls the generic ops/ge.py::ge_func -- a bare
+# `@pointwise_dynamic` with NO CodeGenConfig -> discrete / launch-bound slow
+# path. Baseline (IR ir-greater_equal_-dev0): large shapes ~0.005-0.011
+# ([64,64,65536] gems ~5.2s), total avg gems speedup ~0.0797.
+#
+# Fix: a dedicated tuned pointwise_dynamic that writes in place (out0=A).
+# CRITICAL: this in-place variant must NOT reuse ge's config_ -- ge's config has
+# `isCloseMemoryAsync=False` (async memory copy ON), and with in-place aliasing
+# (input tensor == output tensor) the async double-buffered copy path deadlocks
+# the device ("noc idle timeout" hang, confirmed on device 6). The out-of-place
+# ge is fine because its output is a fresh bool tensor (no aliasing). So use a
+# config with the DEFAULT isCloseMemoryAsync (True = async closed), mirroring the
+# proven in-place bool op logical_and_. Body returns tl.where(...,1,0) (int 0/1)
+# which stores cleanly into A's original fp16/bf16/fp32 dtype.
+config_inplace_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")], config=config_inplace_)
+@triton.jit
+def greater_equal_func_(x, y):
+    return tl.where(x.to(tl.float32) >= y.to(tl.float32), 1, 0)
+
+
+def greater_equal_(A, B):
+    logger.debug("GEMS_KUNLUNXIN GREATER_EQUAL_")
+    if A.device != B.device:
+        B = B.to(A.device)
+    greater_equal_func_(A, B, out0=A)
+    return A

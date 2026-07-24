@@ -27,9 +27,76 @@ logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
 
 
+# Forward is split into TWO @libentry kernels, one program per (n, group):
+#
+#   1) group_norm_reduce_kernel  -> flat 1D contiguous reduction => Mean/Rstd
+#   2) group_norm_normalize_kernel -> per-channel affine write => Y
+#
+# WHY split + per-channel: the previous single kernel combined the reduction
+# with a normalize pass that recovered each element's channel via a PER-ELEMENT
+# gather `ch = ch_base + idx // HW` + masked `tl.load(W + ch)`. On the XPU triton
+# fork that integer-div + gather in the pointwise store loop was pathologically
+# slow (measured 9.5ms vs 0.16ms for a scalar-per-channel write on
+# [16,8,128,128] group=4), and fusing it with the reduce loop tripped the XPU
+# codegen into the same slow path even after removing the giant 2D tile.
+#
+# A group is `group_size` channels x HW CONTIGUOUS elements. The reduction is a
+# flat 1D inner reduction over a BOUNDED BLOCK (loops), killing the old
+# tensor<2x16384> giant-tile IR explosion (449K lines / 891 modules in
+# ir-group_norm-dev3.log). The normalize walks the group ONE CHANNEL AT A TIME
+# (`GROUP_SIZE` is a constexpr so the channel loop statically unrolls), loading
+# a SCALAR weight/bias per channel and doing a contiguous HW block DMA -> no
+# per-element div/gather. This is ~40x faster than the fused gather kernel.
+
+
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
-def group_norm_kernel(
+def group_norm_reduce_kernel(
+    X,
+    Mean,
+    Rstd,
+    MeanOut,
+    RstdOut,
+    group_size,
+    HW,
+    eps,
+    BLOCK_HW_SIZE: tl.constexpr,
+    WRITE_OUT: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    num_elements = group_size * HW
+    base = pid * num_elements
+
+    sum_acc = tl.zeros([BLOCK_HW_SIZE], dtype=tl.float32)
+    sumsq_acc = tl.zeros([BLOCK_HW_SIZE], dtype=tl.float32)
+    for off in range(0, num_elements, BLOCK_HW_SIZE):
+        idx = off + tl.arange(0, BLOCK_HW_SIZE)
+        m = idx < num_elements
+        x = tl.load(X + base + idx, mask=m, other=0.0).to(tl.float32)
+        sum_acc += x
+        sumsq_acc += x * x
+
+    mean = tl.sum(sum_acc) / num_elements
+    var = tl.sum(sumsq_acc) / num_elements - mean * mean
+    rstd = rsqrt(var + eps)
+    # Mean/Rstd are the fp32 SCRATCH the normalize kernel reloads at full
+    # precision. When the input is fp16/bf16 the returned mean/rstd must be in
+    # the input dtype, so we ALSO write MeanOut/RstdOut here (auto-cast on
+    # store). That avoids two extra `.to(dtype)` copy kernels after the launch
+    # -- on the XPU those dispatch to a gems copy op (~0.085ms launch each),
+    # which was the ~0.19ms fp16/bf16 latency floor. For fp32 the scratch IS
+    # the output tensor (same dtype), so WRITE_OUT is False and we skip the
+    # redundant second store.
+    tl.store(Mean + pid, mean)
+    tl.store(Rstd + pid, rstd)
+    if WRITE_OUT:
+        tl.store(MeanOut + pid, mean)
+        tl.store(RstdOut + pid, rstd)
+
+
+@libentry()
+@triton.jit
+def group_norm_normalize_kernel(
     X,
     Y,
     W,
@@ -37,52 +104,35 @@ def group_norm_kernel(
     Mean,
     Rstd,
     group_size,
-    C,
     HW,
     num_groups,
-    eps,
-    BLOCK_GROUP_SIZE: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
     BLOCK_HW_SIZE: tl.constexpr,
 ):
     pid = ext.program_id(0)
     group = pid % num_groups
-    num_elements = group_size * HW
-    group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
-    hw_offset = tl.arange(0, BLOCK_HW_SIZE)
+    base = pid * (group_size * HW)
+    ch_base = group * group_size
 
-    wb_offset = group * group_size + group_offset
-    wb_mask = wb_offset < C
+    mean = tl.load(Mean + pid).to(tl.float32)
+    rstd = tl.load(Rstd + pid).to(tl.float32)
 
-    xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-    xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
-
-    Mean_ptr = Mean + pid
-    Rstd_ptr = Rstd + pid
-
-    X_ptr = X + xy_offset
-    Y_ptr = Y + xy_offset
-
-    X_val = tl.load(X_ptr, mask=xy_mask, other=0.0).to(tl.float32)
-    mean = tl.sum(X_val) / num_elements
-    x = tl.where(xy_mask, X_val - mean, 0.0)
-
-    var = tl.sum(x * x) / num_elements
-    rstd = rsqrt(var + eps)
-    x_hat = x * rstd
-
-    if W is None:
-        weight = 1
-    else:
-        weight = tl.load(W + wb_offset, mask=wb_mask, other=0.0)[:, None]
-    if B is None:
-        bias = 0
-    else:
-        bias = tl.load(B + wb_offset, mask=wb_mask, other=0.0)[:, None]
-    Y_val = x_hat * weight + bias
-
-    tl.store(Y_ptr, Y_val, mask=xy_mask)
-    tl.store(Mean_ptr, mean)
-    tl.store(Rstd_ptr, rstd)
+    for c in range(0, GROUP_SIZE):
+        cbase = base + c * HW
+        if W is None:
+            weight = 1.0
+        else:
+            weight = tl.load(W + ch_base + c).to(tl.float32)
+        if B is None:
+            bias = 0.0
+        else:
+            bias = tl.load(B + ch_base + c).to(tl.float32)
+        for off in range(0, HW, BLOCK_HW_SIZE):
+            idx = off + tl.arange(0, BLOCK_HW_SIZE)
+            m = idx < HW
+            x = tl.load(X + cbase + idx, mask=m, other=0.0).to(tl.float32)
+            y = (x - mean) * rstd * weight + bias
+            tl.store(Y + cbase + idx, y, mask=m)
 
 
 @libentry()
@@ -255,28 +305,53 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
     bias = None if bias is None else bias.contiguous()
 
     y = torch.empty_like(input)
+    # Returned mean/rstd are in the input dtype (matches the generic op).
+    # The normalize kernel needs FULL-PRECISION mean/rstd on reload: storing
+    # them in a low-precision (fp16/bf16) buffer loses enough bits to fail
+    # gems_assert_close. So we keep an fp32 SCRATCH pair for the normalize
+    # reload and let the reduce kernel also write the input-dtype outputs
+    # directly (see kernel comment). For fp32 input the scratch aliases the
+    # output tensors (no extra allocation, the double store is harmless).
     mean = torch.empty((N, group), dtype=input.dtype, device=input.device)
     rstd = torch.empty((N, group), dtype=input.dtype, device=input.device)
+    if input.dtype == torch.float32:
+        mean_f32, rstd_f32 = mean, rstd
+        write_out = False
+    else:
+        mean_f32 = torch.empty((N, group), dtype=torch.float32, device=input.device)
+        rstd_f32 = torch.empty((N, group), dtype=torch.float32, device=input.device)
+        write_out = True
 
     grid = (N * group,)
+    block_hw = min(triton.next_power_of_2(HxW), 1024)
     with torch_device_fn.device(input.device):
         if N == 1 and C == 64 and HxW == 1024 and group == 64:
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-        group_norm_kernel[grid](
+        group_norm_reduce_kernel[grid](
+            input,
+            mean_f32,
+            rstd_f32,
+            mean,
+            rstd,
+            group_size,
+            HxW,
+            eps,
+            BLOCK_HW_SIZE=block_hw,
+            WRITE_OUT=write_out,
+        )
+        group_norm_normalize_kernel[grid](
             input,
             y,
             weight,
             bias,
-            mean,
-            rstd,
+            mean_f32,
+            rstd_f32,
             group_size,
-            C,
             HxW,
             group,
-            eps,
-            BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
-            BLOCK_HW_SIZE=triton.next_power_of_2(HxW),
+            GROUP_SIZE=group_size,
+            BLOCK_HW_SIZE=block_hw,
         )
         if "TRITONXPU_OTHER_SIM" in os.environ:
             del os.environ["TRITONXPU_OTHER_SIM"]
