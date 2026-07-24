@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .addmm import addmm, addmm_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
@@ -55,4 +56,5 @@ __all__ = [
     "var_dim",
     "mm",
     "mm_out",
+    "_native_batch_norm_legit_functional",
 ]
