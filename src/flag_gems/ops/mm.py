@@ -462,6 +462,7 @@ def mm_kernel_syrk(
     stride_cn,
     BLOCK_M: tl.constexpr,
     BLOCK_K: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
 ):
     pid = tl.program_id(0)
 
@@ -489,7 +490,10 @@ def mm_kernel_syrk(
     ran = tl.max_contiguous(tl.multiple_of(rn % M, BLOCK_M), BLOCK_M).to(tl.int64)
     rm = rm.to(tl.int64)
     rn = rn.to(tl.int64)
-    acc = tl.zeros((BLOCK_M, BLOCK_M), dtype=tl.float32)
+    if IS_FP64:
+        acc = tl.zeros((BLOCK_M, BLOCK_M), dtype=tl.float64)
+    else:
+        acc = tl.zeros((BLOCK_M, BLOCK_M), dtype=tl.float32)
 
     for start_k in range(0, K, BLOCK_K):
         rk = (start_k + tl.arange(0, BLOCK_K)).to(tl.int64)
@@ -504,7 +508,10 @@ def mm_kernel_syrk(
             mask=mask_k[:, None],
             other=0.0,
         )
-        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+        if IS_FP64:
+            acc += tl.dot(a, b, allow_tf32=False)
+        else:
+            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     out = acc.to(C.dtype.element_ty)
     c_ptr = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
@@ -549,6 +556,7 @@ def syrk_mm(a, c, M, K):
             a.stride(1),
             c.stride(0),
             c.stride(1),
+            IS_FP64=a.dtype == torch.float64,
         )
     return c
 
