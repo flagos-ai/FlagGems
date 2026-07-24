@@ -6615,6 +6615,16 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: post_layer_norm_residual
+    description: Fuses LayerNorm followed by a residual addition.
+    for:
+      - post_layer_norm_residual
+    labels:
+      - fused
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.4'
   - id: prelu
     description: |
       An activation function used in neural networks that improves upon ReLU (Rectified Linear Unit)
