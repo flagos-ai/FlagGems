@@ -30,6 +30,7 @@ from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .mm import mm
 from .mul import mul, mul_
+from .nansum import nansum, nansum_out
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .pow import (
     pow_scalar,
@@ -67,6 +68,8 @@ __all__ = [
     "mul",
     "mul_",
     "mm",
+    "nansum",
+    "nansum_out",
     "per_token_group_quant_fp8",
     "pow_scalar",
     "pow_tensor_scalar",

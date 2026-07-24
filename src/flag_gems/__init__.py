@@ -582,6 +582,8 @@ _FULL_CONFIG = (
     ("nanmedian.dim", nanmedian_dim),
     ("nanmedian.dim_values", nanmedian_dim_values),
     ("nanmedian.out", nanmedian_out),
+    ("nansum", nansum),
+    ("nansum.out", nansum_out),
     ("narrow", narrow),
     ("narrow_copy", narrow_copy),
     ("native_batch_norm", batch_norm),

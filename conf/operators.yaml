@@ -5966,6 +5966,31 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.4'
+  - id: nansum
+    description: |
+      Returns the sum of all elements in the `input` tensor, treating `NaN` values as zero.
+      Supports global reduction and reduction along specified dimensions.
+    for:
+      - nansum
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
+  - id: nansum_out
+    description: |
+      A variant of `nansum()` with the `out` argument.
+    for:
+      - nansum.out
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
   - id: narrow
     description: Pure layout operation (narrow); returns a zero-copy view sharing storage with the input.
     for:
