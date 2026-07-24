@@ -497,6 +497,7 @@ _FULL_CONFIG = (
     ("linalg_cholesky", linalg_cholesky),
     ("linalg_ldl_factor", ldl_factor),
     ("linalg_ldl_factor_ex", ldl_factor_ex),
+    ("linalg_lu_factor", linalg_lu_factor),
     ("linalg_slogdet", linalg_slogdet),
     ("linalg_vector_norm", vector_norm),
     ("linear", linear),
