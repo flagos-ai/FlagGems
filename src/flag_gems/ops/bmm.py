@@ -22,6 +22,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils.amd_lds_prune import matmul_lds_prune_configs_by
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
         "align32",
         "align32",
     ],
+    prune_configs_by=matmul_lds_prune_configs_by(("A", "B")),
     flagtune_op_name="bmm",
     flagtune_expand_op_name="bmm",
     flagtune_pre_hook=None,

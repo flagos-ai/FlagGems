@@ -23,6 +23,7 @@ from flag_gems.ops.mm_streamk import streamk_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils.amd_lds_prune import matmul_lds_prune_configs_by
 from flag_gems.utils.device_info import get_device_capability, get_sm_count
 from flag_gems.utils.triton_version_utils import (  # noqa: F401
     HAS_TLE,
@@ -62,6 +63,7 @@ def prev_multiple_of(a, b):
     # Add 'stride_am' and 'stride_bk' to trigger autotune for tensors with the same shape but different strides.
     key=["M", "N", "K", "stride_am", "stride_bk"],
     strategy=["align32", "align32", "align32", "align32", "align32"],
+    prune_configs_by=matmul_lds_prune_configs_by(("A", "B")),
     warmup=5,
     rep=10,
 )
