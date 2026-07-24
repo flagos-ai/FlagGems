@@ -4,6 +4,7 @@ from .amax import amax
 from .arange import arange, arange_start
 from .batch_norm import batch_norm, batch_norm_backward
 from .bmm import bmm
+from .conv_depthwise2d import _conv_depthwise2d
 from .exponential_ import exponential_
 from .full import full
 from .full_like import full_like
@@ -40,6 +41,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_conv_depthwise2d",
     "_nested_view_from_buffer_copy",
     "_unique2",
     "addmm",
