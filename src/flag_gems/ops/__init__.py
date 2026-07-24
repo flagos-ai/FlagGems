@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops.__irshift__ import __irshift__
 from flag_gems.ops.__lshift__ import __lshift__
@@ -327,6 +326,7 @@ from flag_gems.ops.lgamma_ import lgamma, lgamma_
 from flag_gems.ops.lift import lift, lift_out
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
+from flag_gems.ops.linalg_diagonal import linalg_diagonal
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linalg_svdvals import linalg_svdvals
@@ -1032,6 +1032,7 @@ __all__ = [
     "lift_fresh_copy_out",
     "lift_out",
     "linalg_cholesky",
+    "linalg_diagonal",
     "linalg_slogdet",
     "linalg_svdvals",
     "linear",

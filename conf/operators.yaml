@@ -4742,6 +4742,16 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: linalg_diagonal
+    description: Extracts the diagonal elements of a tensor along specified dimensions.
+    for:
+      - linalg_diagonal
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_eigvals
     description: Computes the eigenvalues of a square matrix.
     for:
