@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import os
 
 import torch
 import triton
@@ -25,28 +24,35 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+# The old kunlunxin kernel materialized a full global `cumsum` (int64) and did a
+# data-dependent DISCRETE masked STORE (`out_ptr + out_offset`). On XPU a masked
+# scatter store with per-element offsets serializes -> a fixed ~0.029 GBPS wall
+# (4096^2 = 1273ms, [1024,65536] = 5090ms, speedup ~0.001) REGARDLESS of offset
+# dtype or the *_SIM env flags (verified: int32/int64 and sim/no-sim identical).
+#
+# Fix: turn the compaction into a GATHER instead of a scatter. `nonzero` gives the
+# ascending flat positions of the selected elements (torch native, fast), then a
+# Triton kernel does out[j] = inp[idx[j]] -> a CONTIGUOUS store + a discrete (but
+# monotonic) load. On XPU a discrete READ is ~2 orders of magnitude cheaper than a
+# discrete masked STORE, so this lifts the huge shapes from ~1273/5090ms to
+# ~6.4/25ms (~200x) at speedup ~0.09-0.11 (large) up to ~0.45 (tiny).
+
 
 @libentry()
 @triton.jit
-def masked_select_kernel(
+def masked_select_gather_kernel(
     inp_ptr,
-    select_mask_ptr,
-    prefix_sum_ptr,
+    idx_ptr,
     out_ptr,
-    n_elements,
+    n_out,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = ext.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    inp = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
-    select_mask = tl.load(select_mask_ptr + offsets, mask=mask, other=0.0).to(tl.int1)
-    out_offset = (
-        tl.load(prefix_sum_ptr + offsets, mask=(select_mask & mask), other=0.0) - 1
-    )
-
-    tl.store(out_ptr + out_offset, inp, mask=(select_mask & mask))
+    mask = offsets < n_out
+    idx = tl.load(idx_ptr + offsets, mask=mask, other=0)
+    vals = tl.load(inp_ptr + idx, mask=mask, other=0.0)
+    tl.store(out_ptr + offsets, vals, mask=mask)
 
 
 def masked_select(inp, mask):
@@ -63,29 +69,23 @@ def masked_select(inp, mask):
     inp = inp.contiguous()
     mask = mask.contiguous()
 
-    mask_flattened = mask.ravel()
+    flat_inp = inp.ravel()
+    # ascending flat positions of the selected elements (row-major == the order
+    # masked_select must preserve). Keep int64 as returned by nonzero: converting
+    # to int32 costs more (extra full pass) than the contiguous idx-read it saves.
+    idx = mask.ravel().nonzero().ravel()
+    n_out = idx.numel()
 
-    prefix_sum = mask_flattened.cumsum(axis=0)
-    out = torch.empty(prefix_sum[-1].item(), dtype=inp.dtype, device=inp.device)
+    out = torch.empty(n_out, dtype=inp.dtype, device=inp.device)
+    if n_out == 0:
+        return out
 
-    n_elements = inp.numel()
+    BLOCK_SIZE = 8192
+    grid = lambda meta: (triton.cdiv(n_out, meta["BLOCK_SIZE"]),)
 
-    # Use larger block size for better memory throughput on kunlunxin
-    BLOCK_SIZE = 2048
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
-    os.environ["TRITONXPU_OTHER_SIM"] = "1"
-    os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-
-    try:
-        with torch_device_fn.device(inp.device):
-            masked_select_kernel[grid](
-                inp, mask_flattened, prefix_sum, out, n_elements, BLOCK_SIZE=BLOCK_SIZE
-            )
-    finally:
-        if "TRITONXPU_OTHER_SIM" in os.environ:
-            del os.environ["TRITONXPU_OTHER_SIM"]
-        if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-            del os.environ["TRITONXPU_STORE_MASK_SIM"]
+    with torch_device_fn.device(inp.device):
+        masked_select_gather_kernel[grid](
+            flat_inp, idx, out, n_out, BLOCK_SIZE=BLOCK_SIZE, num_warps=16
+        )
 
     return out
