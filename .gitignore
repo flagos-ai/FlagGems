@@ -40,3 +40,6 @@ tests/*.json
 
 # Generated benchmark data (lives in gh-pages only)
 docs/benchmark/
+
+# Local outputs from FlagTune
+/flagtune-pretune-output/
