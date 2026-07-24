@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -8,7 +22,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.ops import weight_norm_interface, weight_norm_interface_backward
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
@@ -99,6 +113,10 @@ def weight_norm_except_dim_bwd_kernel(
 
     tid_n = tl.arange(0, BLOCK_COL_SIZE)[None, :]
 
+    # norm_value is already sqrt(sum(v^2) + eps) from forward, safe to divide directly
+    norm_1 = 1 / norm_value
+    norm_cu = tl_extra_shim.pow(norm_value, 3)
+
     v_block = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     for base in range(0, v_shape0 * v_shape2, BLOCK_COL_SIZE):
         col_offset = base + tid_n
@@ -125,13 +143,12 @@ def weight_norm_except_dim_bwd_kernel(
         v_offsets = m_idx * v_shape1 * v_shape2 + n_idx * v_shape2 + k_idx
         v_value = tl.load(v + v_offsets, mask=mask).to(tl.float32)
         grad_value = tl.load(grad + v_offsets, mask=mask).to(tl.float32)
-        v_grad_value = g_value * (
-            grad_value / (norm_value + eps)
-            - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
-        )
+        # v_grad = g * (grad / norm - v * <v, grad> / norm^3)
+        v_grad_value = g_value * (grad_value * norm_1 - v_value * vw_sum / norm_cu)
         tl.store(v_grad + v_offsets, v_grad_value, mask=mask)
 
-    g_grad_value = vw_sum / (norm_value + eps)
+    # g_grad = <v, grad> / norm
+    g_grad_value = vw_sum * norm_1
     tl.store(g_grad + row_offset, g_grad_value, mask=row_mask)
 
 
