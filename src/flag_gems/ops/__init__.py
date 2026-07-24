@@ -329,6 +329,7 @@ from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
+from flag_gems.ops.linalg_svd import linalg_svd
 from flag_gems.ops.linalg_svdvals import linalg_svdvals
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linear_backward import linear_backward
@@ -1033,6 +1034,7 @@ __all__ = [
     "lift_out",
     "linalg_cholesky",
     "linalg_slogdet",
+    "linalg_svd",
     "linalg_svdvals",
     "linear",
     "linear_backward",

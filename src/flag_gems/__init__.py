@@ -498,6 +498,7 @@ _FULL_CONFIG = (
     ("linalg_ldl_factor", ldl_factor),
     ("linalg_ldl_factor_ex", ldl_factor_ex),
     ("linalg_slogdet", linalg_slogdet),
+    ("linalg_svd", linalg_svd),
     ("linalg_vector_norm", vector_norm),
     ("linear", linear),
     ("linear_backward", linear_backward),
