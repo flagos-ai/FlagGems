@@ -46,10 +46,6 @@ def sgn_real_kernel(
         neg = x < 0
         result = pos.to(x.dtype) - neg.to(x.dtype)
 
-    # Propagate NaNs for floating types
-    is_nan = x != x
-    result = tl.where(is_nan, x, result)
-
     tl.store(out_ptr + offsets, result, mask=mask)
 
 
