@@ -4742,6 +4742,18 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: linalg_eigh
+    description: |
+      Computes the eigenvalue decomposition of a symmetric (or Hermitian) matrix or a batch of matrices.
+    for:
+      - linalg_eigh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_eigvals
     description: Computes the eigenvalues of a square matrix.
     for:
