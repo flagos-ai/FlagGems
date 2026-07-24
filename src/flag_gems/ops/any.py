@@ -15,6 +15,7 @@
 import importlib.util
 import logging
 import math
+from functools import reduce
 from typing import Sequence
 
 import torch
@@ -23,7 +24,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, libtuner
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
@@ -71,6 +72,81 @@ def any_kernel_dim(
         _any = _any or (a != 0)
     any = tl.reduce(_any, axis=1, combine_fn=reduce_any)
     tl.store(out, any[:, None], row_mask)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.jit
+def any_dim_kernel_non_inner(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    K,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    # Boolean OR over the reduced dim is the elementwise maximum of 0/1 values,
+    # whose identity is 0. This mirrors amax's structure directly.
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
+    k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
+
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)[:, None]
+        inp_offset = pid_m * N * K + n_offsets * K + k_offsets
+        mask = (n_offsets < N) & (k_offsets < K)
+        inp = (tl.load(input_ptr + inp_offset, mask=mask, other=0) != 0).to(tl.int32)
+        out = tl.max(inp, axis=0, keep_dims=True)
+        out_offset = pid_m * K + k_offsets
+        tl.store(output_ptr + out_offset, out != 0, mask=k_offsets < K)
+    else:
+        acc = tl.full([TILE_N, TILE_K], value=0, dtype=tl.int32)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
+            inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
+            mask = (n_offsets < N) & (k_offsets < K)
+            inp = (tl.load(input_ptr + inp_offsets, mask=mask, other=0) != 0).to(
+                tl.int32
+            )
+            acc = tl.maximum(acc, inp)
+        out = tl.max(acc, axis=0, keep_dims=True)
+        out_offset = pid_m * K + k_offsets
+        tl.store(output_ptr + out_offset, out != 0, mask=k_offsets < K)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+@triton.jit
+def any_dim_kernel_inner(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = ext.program_id(0)
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        inp_offset = pid_m * N + n_offsets
+        mask = n_offsets < N
+        inp = (tl.load(input_ptr + inp_offset, mask=mask, other=0) != 0).to(tl.int32)
+        out = tl.max(inp, axis=0)
+        tl.store(output_ptr + pid_m, out != 0)
+    else:
+        acc = tl.full([TILE_N], value=0, dtype=tl.int32)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            inp_offsets = pid_m * N + n_offsets
+            mask = n_offsets < N
+            inp = (tl.load(input_ptr + inp_offsets, mask=mask, other=0) != 0).to(
+                tl.int32
+            )
+            acc = tl.maximum(acc, inp)
+        out = tl.max(acc, axis=0)
+        tl.store(output_ptr + pid_m, out != 0)
 
 
 @libentry()
@@ -130,17 +206,33 @@ def any_dim(inp, dim=None, keepdim=False):
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         dim = dim % inp.ndim
-        inp = dim_compress(inp, dim)
+
+        # Single-dim reduction: split into (M, N, K) and reduce over N with a
+        # strided kernel, avoiding the dim_compress copy. K == 1 means the
+        # reduced dim is innermost (contiguous); K > 1 means it is a middle or
+        # outer dim, where the copy used to dominate the runtime.
         N = shape[dim]
+        M = reduce(lambda x, y: x * y, shape[:dim], 1)
+        K = reduce(lambda x, y: x * y, shape[dim + 1 :], 1)
         shape[dim] = 1
-        M = inp.numel() // N
-
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
-        inp = inp.to(torch.bool)
-
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+        if M * N * K == 0:
+            # An empty reduction dim reduces to the OR identity (False), and an
+            # empty spectator dim gives an empty output. torch.empty(bool) is not
+            # guaranteed zeroed, so fill False for the empty-reduction case.
+            if N == 0 and M * K > 0:
+                out.fill_(False)
+            if not keepdim:
+                out = out.squeeze(dim=dim)
+            return out
+        inp = inp.contiguous()
         with torch_device_fn.device(inp.device):
-            any_kernel_dim[grid](inp, out, M, N)
+            if K == 1:
+                grid = (M, 1, 1)
+                any_dim_kernel_inner[grid](out, inp, M, N)
+            else:
+                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+                any_dim_kernel_non_inner[grid](out, inp, M, N, K)
         if not keepdim:
             out = out.squeeze(dim=dim)
     return out
