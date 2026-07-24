@@ -43,6 +43,12 @@ ADAPTIVE_AVGPOOL2D_CONFIGS = [
     # Edge cases
     ((2, 4, 10, 10), (1, 5)),  # Different scaling for different dimensions
     ((4, 2, 50, 100), (25, 25)),  # 2x down one dimension, 4x down other
+    # Non-divisible input/output ratios (windows follow ATen's ceil end rule)
+    ((2, 3, 10, 10), (3, 3)),  # in=10, out=3: per-window ceil end
+    ((2, 3, 5, 5), (3, 3)),  # in=5, out=3: middle window longer than cdiv
+    ((1, 4, 224, 224), (13, 13)),  # Image classification-like, non-divisible
+    ((4, 3, 17, 17), (5, 5)),  # Non-divisible both dimensions
+    ((2, 3, 22, 33), (7, 9)),  # Non-square, non-divisible both dimensions
 ]
 
 
