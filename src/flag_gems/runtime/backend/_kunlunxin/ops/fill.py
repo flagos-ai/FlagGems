@@ -64,6 +64,19 @@ def fill_scalar(input, value):
         return fill_scalar_func(input, value, out0=out)
 
 
+def fill_scalar_out(input, value, *, out=None):
+    # The generic ops/fill.py fill_scalar_out routes through a NO-config
+    # pointwise kernel whose store is judged discrete (lm2gm offsetState=-1) on
+    # XPU -> ~0.002-0.003 speedup on large shapes. Reuse the kunlunxin-tuned
+    # fill_scalar_func (prefer_1d_tile) so the write is a contiguous block DMA.
+    logger.debug("GEMS_KUNLUNXIN FILL_SCALAR_OUT")
+    if out is None:
+        return fill_scalar(input, value)
+    with torch_device_fn.device(input.device):
+        fill_scalar_func(input, value, out0=out)
+    return out
+
+
 def fill_tensor(input, value):
     if not value.is_cuda:
         return fill_scalar(input, value.item())
@@ -75,6 +88,25 @@ def fill_tensor(input, value):
     out = torch.empty_like(input)
     with torch_device_fn.device(input.device):
         return fill_tensor_func(input, value, out0=out)
+
+
+def fill_tensor_out(input, value, *, out=None):
+    # fill.Tensor_out fills `out` with a single 0-dim `value`. The generic
+    # ops/fill.py routes a cuda value through fill_tensor_func (`return value`),
+    # which broadcasts a 0-dim (stride-0) tensor read: on XPU that scalar-load
+    # per element defeats the block DMA and is CATASTROPHIC (measured 74ms for a
+    # (4096,4096) fill vs 0.07ms for a pure write) -> the IR dump
+    # ir-fill_tensor_out-dev0.log shows 1110 modules / 1389 kernel recompiles.
+    # Since value is 0-dim, this is semantically identical to fill.Scalar_out;
+    # read it once and reuse the fast tl.full pure-write fill_scalar_func.
+    logger.debug("GEMS_KUNLUNXIN FILL_TENSOR_OUT")
+    if out is None:
+        return fill_tensor(input, value)
+    if value.is_cuda and value.ndim != 0:
+        raise RuntimeError(
+            f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
+        )
+    return fill_scalar_out(input, value.item(), out=out)
 
 
 def fill_tensor_(self, value):
