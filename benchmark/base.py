@@ -391,14 +391,17 @@ class Benchmark:
             elif isinstance(item, dict):
                 kwargs.update(item)
         if self.is_backward:
-            args = [
-                (
-                    a.clone().requires_grad_()
-                    if torch.is_tensor(a) and torch.is_floating_point(a)
-                    else a
-                )
-                for a in args
-            ]
+            backward_args = []
+            for a in args:
+                if torch.is_tensor(a) and torch.is_floating_point(a):
+                    # only inplace operators require clone
+                    a = (
+                        a.detach().clone().requires_grad_()
+                        if self.is_inplace
+                        else a.detach().requires_grad_()
+                    )
+                backward_args.append(a)
+            args = backward_args
         return args, kwargs
 
     def run(self):
