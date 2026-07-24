@@ -54,6 +54,7 @@ registrar = GeneralOpRegistrar
 current_work_registrar = None
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 CONJUGATE_DISPATCH_KEY = torch._C.DispatchKey.Conjugate.name
+SPARSE_CSR_DISPATCH_KEY = "SparseCsr" + backend_info.dispatch_key
 
 
 def torch_ge(v):
@@ -840,6 +841,13 @@ _FULL_CONFIG = (
     ("softshrink.out", softshrink_out),
     ("sort", sort),
     ("sort.stable", sort_stable),
+    ("sparse_sampled_addmm", sparse_sampled_addmm, None, (SPARSE_CSR_DISPATCH_KEY,)),
+    (
+        "sparse_sampled_addmm.out",
+        sparse_sampled_addmm,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
     ("special_airy_ai", special_airy_ai),
     ("special_airy_ai.out", special_airy_ai_out),
     ("special_bessel_j0", special_bessel_j0),
