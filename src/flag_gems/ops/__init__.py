@@ -26,6 +26,7 @@ from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
+from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
 from flag_gems.ops._conj import _conj
 from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from flag_gems.ops._euclidean_dist import _euclidean_dist
@@ -665,6 +666,7 @@ __all__ = [
     "_assert_async",
     "_batch_norm_no_update",
     "_cdist_backward",
+    "_chunk_cat",
     "_conj",
     "_conv_depthwise2d",
     "_embedding_bag_dense_backward",
@@ -1228,7 +1230,6 @@ __all__ = [
     "rsqrt_",
     "rsub_scalar",
     "rsub_tensor",
-    "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
@@ -1287,6 +1288,7 @@ __all__ = [
     "softplus_backward",
     "softshrink",
     "softshrink_out",
+    "scalar_tensor",
     "sort",
     "sort_stable",
     "special_airy_ai",
