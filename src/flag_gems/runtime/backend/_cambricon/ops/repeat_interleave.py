@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -8,7 +22,7 @@ from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(num_inputs=1, promotion_methods=[(0, "DEFAULT")])
@@ -50,7 +64,7 @@ def repeat_interleave_self_int_forward(inp, repeats, dim=None, *, output_size=No
 class RepeatInterleaveSelfIntFn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, repeats, dim, output_size):
-        logger.debug("GEMS_CAMBRICON REPEAT_INTERLEAVE_SELF_INT FORWARD")
+        logger.debug("GEMS_CAMBRICON REPEAT_INTERLEAVE_SELF_INT_FORWARD")
         ctx.inp_shape = inp.shape
         ctx.dim = dim
         if dim is None:
@@ -76,7 +90,7 @@ class RepeatInterleaveSelfIntFn(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_out):
-        logger.debug("GEMS_CAMBRICON REPEAT_INTERLEAVE_SELF_INT BACKWARD")
+        logger.debug("GEMS_CAMBRICON REPEAT_INTERLEAVE_SELF_INT_BACKWARD")
         dim = ctx.dim
         k = ctx.repeats
         shape = ctx.inp_shape
