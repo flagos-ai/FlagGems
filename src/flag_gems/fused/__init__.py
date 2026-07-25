@@ -38,7 +38,10 @@ from flag_gems.fused.deepseek_v4_attention_fused_q_kv_rmsnorm import fused_q_kv_
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
 from flag_gems.fused.FLA import (
     chunk_gated_delta_rule_fwd,
+    dequantize_gdn_state_fp8,
+    fused_recurrent_gated_delta_rule_fp8_w8a16_decode,
     fused_recurrent_gated_delta_rule_fwd,
+    quantize_gdn_state_fp8,
 )
 from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.flash_mla_with_kvcache import flash_mla_with_kvcache
@@ -132,6 +135,7 @@ __all__ = [
     "cross_entropy_loss",
     "cutlass_scaled_mm",
     "dequantize_and_gather_k_cache",
+    "dequantize_gdn_state_fp8",
     "dgeglu",
     "dispatch_fused_moe_kernel",
     "dreglu",
@@ -151,6 +155,7 @@ __all__ = [
     "fused_inv_rope_fp8_quant",
     "fused_q_kv_rmsnorm",
     "fused_recurrent_gated_delta_rule_fwd",
+    "fused_recurrent_gated_delta_rule_fp8_w8a16_decode",
     "geglu",
     "gelu_and_mul",
     "grouped_topk",
@@ -173,6 +178,7 @@ __all__ = [
     "outer",
     "outplace_fused_experts",
     "pack_seq_triton",
+    "quantize_gdn_state_fp8",
     "reglu",
     "reshape_and_cache",
     "reshape_and_cache_flash",
