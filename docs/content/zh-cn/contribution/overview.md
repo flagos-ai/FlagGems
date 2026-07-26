@@ -80,7 +80,7 @@ Other fields for an operator include:
   - 一个新的、AI 生成的算子通常以 `alpha` 阶段作为起点。
   <!--
   - When an operator has been continuously tested without significant issues for a release cycle,
-    it may get promoted to the next stage in the followin release. For example, consider an operator
+    it may get promoted to the next stage in the following release. For example, consider an operator
     introduced in version *5.0* as `alpha`, if it works without serious flaws for at least one
     release cycle, it may get promoted to `beta` in the next release, i.e. *5.1*.
   -->

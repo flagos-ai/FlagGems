@@ -45,7 +45,7 @@ Other fields for an operator include:
   - A new, hand-written operator usually starts with a `beta` stage.
   - A new, AI generated operator (labelled with `KernelGen`) usually starts with an `alpha` stage.
   - When an operator has been continuously tested without significant issues for a release cycle,
-    it may get promoted to the next stage in the followin release. For example, consider an operator
+    it may get promoted to the next stage in the following release. For example, consider an operator
     introduced in version *5.0* as `alpha`, if it works without serious flaws for at least one
     release cycle, it may get promoted to `beta` in the next release, i.e. *5.1*.
   - An existing operator may get demoted from `stable` to `beta` or `alpha` if its starts to

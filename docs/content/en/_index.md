@@ -39,7 +39,7 @@ This convenience allows developers to engage in the development of *FlagGems* wi
 - Review [platforms supported](/FlagGems/overview/platforms/)
 - [Getting started with FlagGems](/FlagGems/getting-started/)
 - Check the project [changelog](/FlagGems/references/changelog/)
-- Review the list of [operators suppored](/FlagGems/references/changelog/)
+- Review the list of [operators supported](/FlagGems/references/changelog/)
 
 ## Supported models
 

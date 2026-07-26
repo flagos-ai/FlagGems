@@ -61,7 +61,7 @@ Triton 编程语言在代码可读性、用户友好性上都有很好表现，�
 - Review [platforms supported](/FlagGems/overview/platforms/)
 - [Getting started with FlagGems](/FlagGems/getting-started/)
 - Check the project [changelog](/FlagGems/references/changelog/)
-- Review the list of [operators suppored](/FlagGems/references/changelog/)
+- Review the list of [operators supported](/FlagGems/references/changelog/)
 -->
 ## 下一步
 
