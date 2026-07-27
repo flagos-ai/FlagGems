@@ -114,11 +114,11 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("topk", &flag_gems::topk);
   m.def(
       "contiguous",
-      [](const at::Tensor& self, at::MemoryFormat memory_format) {
-        return flag_gems::contiguous(self, memory_format);
+      [](const at::Tensor& self, const std::optional<at::MemoryFormat>& memory_format) {
+        return flag_gems::contiguous(self, memory_format.value_or(c10::MemoryFormat::Contiguous));
       },
       py::arg("self"),
-      py::arg("memory_format") = c10::MemoryFormat::Contiguous);
+      py::arg("memory_format") = py::none());
   m.def(
       "cat",
       [](const std::vector<at::Tensor>& tensors, int64_t dim) { return flag_gems::cat(tensors, dim); },
@@ -139,20 +139,34 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
   m.def("copy_", &flag_gems::copy_);
   m.def("to_copy", &flag_gems::to_copy);
-  m.def("fp8_matmul",
-        &flag_gems::fp8_matmul,
-        py::arg("a"),
-        py::arg("a_s"),
-        py::arg("b"),
-        py::arg("b_s"),
-        py::arg("scale_dtype") = at::kFloat);
-  m.def("fp8_matmul_direct",
-        &flag_gems::fp8_matmul_direct,
-        py::arg("a"),
-        py::arg("a_s"),
-        py::arg("b"),
-        py::arg("b_s"),
-        py::arg("scale_dtype") = at::kFloat);
+  m.def(
+      "fp8_matmul",
+      [](const at::Tensor& a,
+         const at::Tensor& a_s,
+         const at::Tensor& b,
+         const at::Tensor& b_s,
+         const std::optional<at::ScalarType>& scale_dtype) {
+        return flag_gems::fp8_matmul(a, a_s, b, b_s, scale_dtype.value_or(at::kFloat));
+      },
+      py::arg("a"),
+      py::arg("a_s"),
+      py::arg("b"),
+      py::arg("b_s"),
+      py::arg("scale_dtype") = py::none());
+  m.def(
+      "fp8_matmul_direct",
+      [](const at::Tensor& a,
+         const at::Tensor& a_s,
+         const at::Tensor& b,
+         const at::Tensor& b_s,
+         const std::optional<at::ScalarType>& scale_dtype) {
+        return flag_gems::fp8_matmul_direct(a, a_s, b, b_s, scale_dtype.value_or(at::kFloat));
+      },
+      py::arg("a"),
+      py::arg("a_s"),
+      py::arg("b"),
+      py::arg("b_s"),
+      py::arg("scale_dtype") = py::none());
 }
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {

@@ -67,4 +67,4 @@ test_env:
 gpu_check_script: tools/gpu_check_ascend.sh
 
 # Output base directory for this backends
-output_base_dir: /home/flaggems/weekly
+output_base_dir: /data/flaggems/weekly
