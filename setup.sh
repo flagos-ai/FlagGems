@@ -205,6 +205,7 @@ fi
 if [ "${COMPILER}" = "flagtree" ]; then
   if [ -n "${FLAGTREE_PKGS}" ]; then
     printf "Installing FlagTree ..."
+    uv pip uninstall triton
     uv pip install -q ${FLAGTREE_PKGS} --default-index "${FLAGOS_PYPI}" || fail
     ok
   else
@@ -215,6 +216,7 @@ fi
 
 if [ "${COMPILER}" = "triton" ] && [ -n "${TRITON_PKGS}" ]; then
   printf "Installing Triton ..."
+  uv pip uninstall flagtree
   uv pip install -q ${TRITON_PKGS} --default-index "${FLAGOS_PYPI}" || fail
   ok
 elif [ "${COMPILER}" = "triton" ] && [ -z "${TRITON_PKGS}" ]; then
