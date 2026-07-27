@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import math
 from enum import Enum
 
 import torch
@@ -24,6 +23,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from ..utils.block_size_utils import get_block_size_1d
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
@@ -84,32 +84,40 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
     M = inp.numel()
     dtype = inp.dtype
 
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    # Block sizing follows the kunlunxin `sum` global-reduction recipe:
+    # get_block_size_1d divides work across the 12 clusters and caps the tile at
+    # the per-core buffer (paired with buffer_size_limit=2048 at launch) so each
+    # program's load is a bounded stride-1 block DMA. mse_loss loads TWO tensors
+    # (inp + target) per block, so budget for 2x the element size; sizing for a
+    # single tensor (as `sum` does) picks a block wide enough to overrun the
+    # per-core buffer and the fp16/bf16 reduction silently truncates to half the
+    # true sum. The previous bf16-mean special case instead forced mid_size=12 ->
+    # block_size=next_pow2(M/12), a tile of tens of millions of elements for large
+    # M; that unbounded tile hung the XPU watchdog ("wait for noc idle timeout" /
+    # kl3ChannelCheckErrors 721) under do_bench.
+    block_size = get_block_size_1d(M, inp.element_size() * 2)
+
+    # kernel_2 reduces all `mid_size` block partials in ONE tl.sum tile. On XPU,
+    # with buffer_size_limit=2048 a 1D tl.sum is only complete up to 32768 lanes;
+    # beyond that it silently drops the tail. For fp32 the get_block_size_1d cap
+    # is 16384, so at M ~ 6.5e8 (benchmark's [10000, 65536]) mid_size hits 40000
+    # -> block_mid = next_pow2(40000) = 65536 and the final reduction drops ~82%
+    # of the partials (verified: sum 7232 vs 40000), i.e. the previous result was
+    # silently WRONG. Grow the first-stage block just enough to keep
+    # mid_size <= 32768 so the second stage stays inside the correctness ceiling.
+    # This only ever enlarges the block for that huge-M/fp32 case; every other
+    # benchmark shape already satisfies the bound, so their (small, fast to
+    # compile) blocks are untouched.
+    MAX_MID = 32768
+    if triton.cdiv(M, block_size) > MAX_MID:
+        block_size = triton.next_power_of_2(triton.cdiv(M, MAX_MID))
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    if (
-        dtype == torch.bfloat16
-        and mid_size > 1024
-        and reduction == Reduction.MEAN.value
-    ):
-        mid_size = 12
-        block_size = triton.next_power_of_2(triton.cdiv(M, mid_size))
-        block_mid = triton.next_power_of_2(mid_size)
-
-    mid = torch.empty(
-        (mid_size,),
-        dtype=(
-            torch.float32
-            if (
-                dtype == torch.bfloat16
-                and mid_size > 1024
-                and reduction == Reduction.MEAN.value
-            )
-            else dtype
-        ),
-        device=inp.device,
-    )
+    # Always accumulate the block partials in fp32: summing O(M/block) partials in
+    # a low-precision dtype (bf16 especially) loses accuracy, and fp32 mid matches
+    # the generic implementation.
+    mid = torch.empty((mid_size,), dtype=torch.float32, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     import os
@@ -117,10 +125,14 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
     os.environ["TRITONXPU_OTHER_SIM"] = "1"
 
     with torch_device_fn.device(inp.device):
-        kernel_1[(mid_size, 1, 1)](inp, target, mid, M, block_size, reduction)
+        kernel_1[(mid_size, 1, 1)](
+            inp, target, mid, M, block_size, reduction, buffer_size_limit=2048
+        )
         if mid_size == 1:
-            return mid.reshape([])
-        kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+            if "TRITONXPU_OTHER_SIM" in os.environ:
+                del os.environ["TRITONXPU_OTHER_SIM"]
+            return mid.reshape([]).to(dtype)
+        kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
 
     if "TRITONXPU_OTHER_SIM" in os.environ:
         del os.environ["TRITONXPU_OTHER_SIM"]
