@@ -1,190 +1,272 @@
-# benchmark/benchmark_meshgrid.py
-import os
-import sys
-import time
-
-import numpy as np
+# benchmark/test_meshgrid_perf.py
+import pytest
 import torch
+import time
+from typing import List, Dict
+import sys
+import os
+from tabulate import tabulate
 
-from flag_gems.ops.meshgrid import meshgrid
-
-sys.path.insert(
-    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
-)
-
-
-def get_device():
-    """Auto-select available device"""
-    if torch.cuda.is_available():
-        return "cuda"
-    try:
-        import torch_npu  # noqa: F401
-
-        if torch.npu.is_available():
-            return "npu:0"
-    except Exception:
-        pass
-    return "cpu"
+from flag_gems.ops.meshgrid import meshgrid, meshgrid_stack, register_ops
 
 
-def format_shape(shape):
-    """Format shape tuple as string"""
-    return "x".join(str(s) for s in shape)
-
-
-def benchmark(shape, indexing="ij", warmup=200, runs=1000):
-    """Run performance benchmark"""
-    device = get_device()
-    shape_str = format_shape(shape)
-    print(f"\n{shape_str} {indexing} on {device}:")
-
-    tensors = [torch.randn(s, device=device) for s in shape]
-
-    # Warmup
-    for _ in range(warmup):
-        _ = meshgrid(tensors, indexing=indexing)
-        _ = torch.meshgrid(tensors, indexing=indexing)
-
-    if device == "cuda":
-        torch.cuda.synchronize()
-        torch.cuda.empty_cache()
-
-    # Use CUDA Event for precise timing
-    if device == "cuda":
-        starter = torch.cuda.Event(enable_timing=True)
-        ender = torch.cuda.Event(enable_timing=True)
-    else:
-        starter = ender = None
-
-    our_times = []
-    torch_times = []
-
-    # Test separately to avoid interference
-    # Test FlagGems first
-    for _ in range(runs):
-        if device == "cuda":
-            starter.record()
-            result = meshgrid(tensors, indexing=indexing)
-            ender.record()
+class TestMeshgridPerformance:
+    
+    @pytest.fixture
+    def device(self):
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            return torch.device("mps")
+        else:
+            return torch.device("cpu")
+    
+    @pytest.mark.performance
+    @pytest.mark.parametrize("size_x, size_y, indexing", [
+        (8, 8, "ij"),
+        (8, 8, "xy"),
+        (256, 256, "ij"),
+        (256, 256, "xy"),
+        (1024, 1024, "ij"),
+        (1024, 1024, "xy"),
+    ])
+    def test_performance_2d(self, device, size_x, size_y, indexing):
+        """Test 2D meshgrid performance"""
+        sizes = (size_x, size_y)
+        total_elements = size_x * size_y
+        
+        result = self._benchmark_case(device, '2D', sizes, indexing, total_elements)
+        self._print_single_result(result)
+        
+        assert result['correct'], f"2D meshgrid incorrect for {size_x}x{size_y} with {indexing}"
+    
+    @pytest.mark.performance
+    @pytest.mark.parametrize("size_x, size_y, size_z, indexing", [
+        (16, 16, 16, "ij"),
+        (16, 16, 16, "xy"),
+        (128, 128, 128, "ij"),
+        (128, 128, 128, "xy"),
+        (512, 512, 512, "ij"),
+        (512, 512, 512, "xy"),
+    ])
+    def test_performance_3d(self, device, size_x, size_y, size_z, indexing):
+        """Test 3D meshgrid performance"""
+        sizes = (size_x, size_y, size_z)
+        total_elements = size_x * size_y * size_z
+        
+        result = self._benchmark_case(device, '3D', sizes, indexing, total_elements)
+        self._print_single_result(result)
+        
+        assert result['correct'], f"3D meshgrid incorrect for {size_x}x{size_y}x{size_z} with {indexing}"
+    
+    @pytest.mark.performance
+    @pytest.mark.parametrize("size_x, size_y, size_z, size_w, indexing", [
+        (8, 8, 8, 8, "ij"),
+        (8, 8, 8, 8, "xy"),
+        (64, 64, 64, 64, "ij"),
+        (64, 64, 64, 64, "xy"),
+        (128, 128, 128, 128, "ij"),
+        (128, 128, 128, 128, "xy"),
+    ])
+    def test_performance_4d(self, device, size_x, size_y, size_z, size_w, indexing):
+        """Test 4D meshgrid performance"""
+        sizes = (size_x, size_y, size_z, size_w)
+        total_elements = size_x * size_y * size_z * size_w
+        
+        result = self._benchmark_case(device, '4D', sizes, indexing, total_elements)
+        self._print_single_result(result)
+        
+        assert result['correct'], f"4D meshgrid incorrect for {size_x}x{size_y}x{size_z}x{size_w} with {indexing}"
+    
+    @pytest.mark.performance
+    @pytest.mark.parametrize("size_x, size_y, indexing", [
+        (8, 8, "ij"),
+        (8, 8, "xy"),
+        (256, 256, "ij"),
+        (256, 256, "xy"),
+        (1024, 1024, "ij"),
+        (1024, 1024, "xy"),
+    ])
+    def test_performance_2d_tiled(self, device, size_x, size_y, indexing):
+        """Test 2D meshgrid performance with tiled kernel"""
+        sizes = (size_x, size_y)
+        total_elements = size_x * size_y
+        
+        # Use tiled kernel for larger sizes
+        if total_elements > 10000:
+            result = self._benchmark_case(device, '2D', sizes, indexing, total_elements, use_tiled=True)
+            self._print_single_result(result)
+            assert result['correct'], f"2D tiled meshgrid incorrect for {size_x}x{size_y} with {indexing}"
+    
+    @pytest.mark.benchmark
+    def test_compare_all_dimensions(self, device):
+        """Comprehensive benchmark comparing all dimensions"""
+        test_cases = []
+        
+        # 2D test cases
+        for size_x, size_y in [(8, 8), (256, 256), (1024, 1024)]:
+            for indexing in ["ij", "xy"]:
+                test_cases.append({
+                    'dim': '2D',
+                    'sizes': (size_x, size_y),
+                    'indexing': indexing,
+                    'elements': size_x * size_y
+                })
+        
+        # 3D test cases
+        for size_x, size_y, size_z in [(16, 16, 16), (128, 128, 128), (512, 512, 512)]:
+            for indexing in ["ij", "xy"]:
+                test_cases.append({
+                    'dim': '3D',
+                    'sizes': (size_x, size_y, size_z),
+                    'indexing': indexing,
+                    'elements': size_x * size_y * size_z
+                })
+        
+        # 4D test cases
+        for size_x, size_y, size_z, size_w in [(8, 8, 8, 8), (64, 64, 64, 64), (128, 128, 128, 128)]:
+            for indexing in ["ij", "xy"]:
+                test_cases.append({
+                    'dim': '4D',
+                    'sizes': (size_x, size_y, size_z, size_w),
+                    'indexing': indexing,
+                    'elements': size_x * size_y * size_z * size_w
+                })
+        
+        results = []
+        for case in test_cases:
+            result = self._benchmark_case(
+                device, 
+                case['dim'], 
+                case['sizes'], 
+                case['indexing'], 
+                case['elements']
+            )
+            results.append(result)
+        
+        self._print_results_table(results)
+        
+        for result in results:
+            assert result['correct'], f"Benchmark failed for {result['dim']} {result['size']}"
+    
+    def _benchmark_case(self, device, dim: str, sizes: tuple, indexing: str, total_elements: int, use_tiled: bool = False) -> Dict:
+        """Benchmark a single case"""
+        tensors = [torch.linspace(0, size, size, device=device) for size in sizes]
+        
+        # Determine number of iterations based on size
+        if total_elements < 10000:
+            num_iterations = 100
+        elif total_elements < 100000:
+            num_iterations = 50
+        elif total_elements < 1000000:
+            num_iterations = 20
+        elif total_elements < 10000000:
+            num_iterations = 10
+        else:
+            num_iterations = 5
+        
+        # Warmup
+        warmup_result = meshgrid(tensors, indexing=indexing)
+        _ = sum(r.sum() for r in warmup_result)
+        _ = torch.meshgrid(*tensors, indexing=indexing)
+        if device.type == "cuda":
             torch.cuda.synchronize()
-            _ = result
-            our_times.append(starter.elapsed_time(ender))
-        else:
+        
+        # Benchmark our implementation
+        our_times = []
+        for _ in range(num_iterations):
+            if device.type == "cuda":
+                torch.cuda.synchronize()
             start = time.perf_counter()
-            result = meshgrid(tensors, indexing=indexing)
-            _ = result
-            our_times.append((time.perf_counter() - start) * 1000)
-
-    # Then test PyTorch
-    for _ in range(runs):
-        if device == "cuda":
-            starter.record()
-            result = torch.meshgrid(tensors, indexing=indexing)
-            ender.record()
-            torch.cuda.synchronize()
-            _ = result
-            torch_times.append(starter.elapsed_time(ender))
-        else:
+            our_result = meshgrid(tensors, indexing=indexing)
+            our_sum = sum(r.sum() for r in our_result)
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            our_times.append(time.perf_counter() - start)
+        
+        our_times.sort()
+        if len(our_times) > 5:
+            our_times = our_times[1:-1]
+        our_time = sum(our_times) / len(our_times)
+        
+        # Benchmark PyTorch implementation
+        torch_times = []
+        for _ in range(num_iterations):
+            if device.type == "cuda":
+                torch.cuda.synchronize()
             start = time.perf_counter()
-            result = torch.meshgrid(tensors, indexing=indexing)
-            _ = result
-            torch_times.append((time.perf_counter() - start) * 1000)
-
-    # Statistics
-    our_median = np.median(our_times)
-    torch_median = np.median(torch_times)
-    speedup = torch_median / our_median
-
-    # Calculate percentage difference
-    pct_diff = (our_median - torch_median) / torch_median * 100
-
-    print(f"  FlagGems (median): {our_median:.4f} ms")
-    print(f"  PyTorch  (median): {torch_median:.4f} ms")
-    print(f"  Speedup:           {speedup:.2f}x")
-    print(f"  Difference:        {pct_diff:+.1f}%")
-    print(f"  (FlagGems mean±std: {np.mean(our_times):.4f}±{np.std(our_times):.4f} ms)")
-    print(
-        f"  (PyTorch mean±std:  {np.mean(torch_times):.4f}±{np.std(torch_times):.4f} ms)"
-    )
-
-    return our_median, torch_median, speedup
-
-
-def main():
-    """Main test function"""
-    print("=" * 70)
-    print("Meshgrid Performance Benchmark")
-    print(f"Device: {get_device()}")
-    print(f"PyTorch Version: {torch.__version__}")
-    print("=" * 70)
-
-    # Test cases
-    cases = [
-        ((10, 10), "ij"),
-        ((10, 10), "xy"),
-        ((20, 20), "ij"),
-        ((50, 50), "ij"),
-        ((100, 100), "ij"),
-        ((200, 200), "ij"),
-        ((500, 500), "ij"),
-        ((1000, 1000), "ij"),
-        ((32, 32, 32), "ij"),
-        ((32, 32, 32), "xy"),
-        ((10, 10, 10, 10), "ij"),  # 4D
-        ((5, 5, 5, 5, 5), "ij"),  # 5D
-    ]
-
-    all_results = []
-
-    for shape, indexing in cases:
-        try:
-            our_time, torch_time, speedup = benchmark(shape, indexing)
-            all_results.append((shape, indexing, speedup, our_time, torch_time))
-        except Exception as e:
-            print(f"  ⚠️  Benchmark failed for {shape}: {e}")
-        print("-" * 70)
-
-    # Summary
-    print("\n" + "=" * 70)
-    print("Summary of Results:")
-    print("=" * 70)
-    print(f"{'Shape':<15} {'Mode':<6} {'Speedup':<10} {'Status'}")
-    print("-" * 70)
-
-    total_speedup = 0
-    count = 0
-    fast_count = 0
-
-    for shape, indexing, speedup, our_time, torch_time in all_results:
-        shape_str = format_shape(shape)
-        if speedup >= 1.2:
-            status = "🚀 EXCELLENT"
-            fast_count += 1
-        elif speedup >= 1.05:
-            status = "✅ GOOD"
-            fast_count += 1
-        elif speedup >= 0.95:
-            status = "✅ PASS"
-        else:
-            status = "⚠️  SLOW"
-        print(f"{shape_str:<15} {indexing:<6} {speedup:>6.2f}x     {status}")
-        if speedup > 0.5:
-            total_speedup += speedup
-            count += 1
-
-    if count > 0:
-        avg_speedup = total_speedup / count
-        print("-" * 70)
-        print(f"Average Speedup:     {avg_speedup:.2f}x")
-        print(f"Fast Cases (>1.05x): {fast_count}/{len(all_results)}")
-
-    print("=" * 70)
-    print("Note: Speedup = PyTorch_time / FlagGems_time")
-    print("Speedup > 1.0 means FlagGems is faster than PyTorch")
-    print("=" * 70)
+            torch_result = torch.meshgrid(*tensors, indexing=indexing)
+            torch_sum = sum(r.sum() for r in torch_result)
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            torch_times.append(time.perf_counter() - start)
+        
+        torch_times.sort()
+        if len(torch_times) > 5:
+            torch_times = torch_times[1:-1]
+        torch_time = sum(torch_times) / len(torch_times)
+        
+        # Check correctness
+        correct = True
+        for our, torch_out in zip(our_result, torch_result):
+            if not torch.allclose(our, torch_out):
+                correct = False
+                break
+        
+        speedup = torch_time / our_time if our_time > 0 else 0
+        
+        size_str = "x".join(str(s) for s in sizes)
+        
+        return {
+            'dim': dim,
+            'size': size_str,
+            'elements': total_elements,
+            'indexing': indexing.upper(),
+            'our_time_ms': our_time * 1000,
+            'torch_time_ms': torch_time * 1000,
+            'speedup': speedup,
+            'correct': correct,
+            'num_iterations': num_iterations
+        }
+    
+    def _print_single_result(self, result: Dict):
+        """Print a single benchmark result"""
+        print(f"\n{result['dim']} {result['size']} ({result['indexing']}):")
+        print(f"  Our:     {result['our_time_ms']:.4f} ms")
+        print(f"  PyTorch: {result['torch_time_ms']:.4f} ms")
+        print(f"  Speedup: {result['speedup']:.2f}x")
+        print(f"  Correct: {'✓' if result['correct'] else '✗'}")
+        print(f"  Iterations: {result['num_iterations']}")
+    
+    def _print_results_table(self, results: List[Dict]):
+        """Print all results in a table"""
+        print("\n" + "=" * 130)
+        print("MeshGrid Performance Comparison Results")
+        print("=" * 130)
+        
+        table_data = []
+        for r in results:
+            table_data.append([
+                r['dim'],
+                r['size'],
+                f"{r['elements']:,}",
+                r['indexing'],
+                f"{r['our_time_ms']:.4f}",
+                f"{r['torch_time_ms']:.4f}",
+                f"{r['speedup']:.2f}x",
+                "✓" if r['correct'] else "✗"
+            ])
+        
+        headers = ["Dim", "Size", "Elements", "Indexing", "Our (ms)", "PyTorch (ms)", "Speedup", "Correct"]
+        print(tabulate(table_data, headers=headers, tablefmt="grid", stralign="center"))
+        print("=" * 130)
 
 
 if __name__ == "__main__":
-    main()
-
+    pytest.main([
+        __file__, 
+        "-v", 
+        "-s",
+        "--tb=short"
+    ])
 

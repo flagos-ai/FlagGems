@@ -6,7 +6,6 @@ import triton.language as tl
 
 
 def register_ops(registry):
-    """注册算子到 PDU"""
     registry.register_op("meshgrid", meshgrid, "aten::meshgrid")
 
 
@@ -21,7 +20,6 @@ def _meshgrid_kernel_2d(
     num_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """2D meshgrid kernel - vectorized version (fallback for large tensors)"""
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -48,10 +46,6 @@ def _meshgrid_kernel_2d_tiled(
     BLOCK_SIZE0: tl.constexpr,
     BLOCK_SIZE1: tl.constexpr,
 ):
-    """
-    2D meshgrid kernel using tiling - avoids division and modulo
-    Each block processes one tile
-    """
     pid0 = tl.program_id(0)
     pid1 = tl.program_id(1)
 
@@ -90,7 +84,6 @@ def _meshgrid_kernel_3d(
     num_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """3D meshgrid kernel"""
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -128,7 +121,6 @@ def _meshgrid_kernel_4d(
     num_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """4D meshgrid kernel"""
     pid = tl.program_id(0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -157,16 +149,6 @@ def _meshgrid_kernel_4d(
 def meshgrid(
     tensors: List[torch.Tensor], indexing: str = "ij"
 ) -> Tuple[torch.Tensor, ...]:
-    """
-    High-performance meshgrid implementation
-
-    Strategy:
-    - 1D: return directly
-    - 2D: use view + expand (fastest)
-    - 3D: use view + expand
-    - 4D+: use broadcast_tensors (PyTorch C++ accelerated)
-    """
-    # ---- Input validation ----
     if not tensors:
         raise ValueError("tensors must be a non-empty list or tuple")
 
@@ -183,16 +165,13 @@ def meshgrid(
     if indexing not in ["ij", "xy"]:
         raise ValueError(f"indexing must be 'ij' or 'xy', got {indexing}")
 
-    # ---- NPU fast path ----
     device = tensors[0].device
     if device.type == "npu":
         return torch.meshgrid(*tensors, indexing=indexing)
 
-    # ---- 1D special case ----
     if rank == 1:
         return tensors
 
-    # ---- 2D fast path (view + expand) ----
     if rank == 2:
         x, y = tensors[0], tensors[1]
         if indexing == "ij":
@@ -200,13 +179,12 @@ def meshgrid(
                 x.view(-1, 1).expand(x.size(0), y.size(0)),
                 y.view(1, -1).expand(x.size(0), y.size(0)),
             )
-        else:  # xy
+        else:
             return (
                 x.view(1, -1).expand(y.size(0), x.size(0)),
                 y.view(-1, 1).expand(y.size(0), x.size(0)),
             )
 
-    # ---- 3D fast path (view + expand) ----
     if rank == 3:
         x, y, z = tensors[0], tensors[1], tensors[2]
         if indexing == "ij":
@@ -215,14 +193,13 @@ def meshgrid(
                 y.view(1, -1, 1).expand(x.size(0), y.size(0), z.size(0)),
                 z.view(1, 1, -1).expand(x.size(0), y.size(0), z.size(0)),
             )
-        else:  # xy
+        else:
             return (
                 x.view(1, -1, 1).expand(y.size(0), x.size(0), z.size(0)),
                 y.view(-1, 1, 1).expand(y.size(0), x.size(0), z.size(0)),
                 z.view(1, 1, -1).expand(y.size(0), x.size(0), z.size(0)),
             )
 
-    # ---- 4D fast path (view + expand) ----
     if rank == 4:
         x, y, z, w = tensors[0], tensors[1], tensors[2], tensors[3]
         if indexing == "ij":
@@ -232,7 +209,7 @@ def meshgrid(
                 z.view(1, 1, -1, 1).expand(x.size(0), y.size(0), z.size(0), w.size(0)),
                 w.view(1, 1, 1, -1).expand(x.size(0), y.size(0), z.size(0), w.size(0)),
             )
-        else:  # xy mode: swap first two dimensions
+        else:
             return (
                 x.view(1, -1, 1, 1).expand(y.size(0), x.size(0), z.size(0), w.size(0)),
                 y.view(-1, 1, 1, 1).expand(y.size(0), x.size(0), z.size(0), w.size(0)),
@@ -240,8 +217,6 @@ def meshgrid(
                 w.view(1, 1, 1, -1).expand(y.size(0), x.size(0), z.size(0), w.size(0)),
             )
 
-    # ---- Fallback: use broadcast_tensors ----
-    # This is the general method, implemented in PyTorch C++
     if indexing == "ij":
         reshaped = []
         for i, t in enumerate(tensors):
@@ -250,7 +225,6 @@ def meshgrid(
             reshaped.append(t.view(*shape))
         return torch.broadcast_tensors(*reshaped)
     else:
-        # xy mode
         if rank >= 2:
             reshaped = []
             for i, t in enumerate(tensors):
@@ -268,20 +242,9 @@ def meshgrid(
 
 
 def meshgrid_stack(tensors: List[torch.Tensor], indexing: str = "ij") -> torch.Tensor:
-    """
-    Create coordinate grid and stack into single tensor.
-
-    Args:
-        tensors: Input coordinate vectors (list of 1D tensors)
-        indexing: 'ij' or 'xy'
-
-    Returns:
-        Stacked tensor of shape (N, shape...) where N is number of inputs
-    """
     grids = meshgrid(tensors, indexing=indexing)
     return torch.stack(grids, dim=0)
 
 
 __all__ = ["meshgrid", "meshgrid_stack", "register_ops"]
-
 
