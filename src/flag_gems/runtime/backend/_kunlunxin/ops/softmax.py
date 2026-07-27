@@ -12,6 +12,17 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+# The P800 runtime cannot reliably execute the generic non-inner softmax
+# preparation path: materializing the transposed view can dispatch to a broken
+# ``copy_`` kernel, and the replacement inner kernel can still fail with an XPU
+# launch exception. The same kernel has zero-length-DMA failures for small or
+# masked-tail reductions, so those are covered by the fallback as well. Capture
+# the native CUDA implementation before FlagGems installs its registration so
+# the affected layouts can redispatch safely.
+_NATIVE_SOFTMAX = torch.library.get_kernel("aten::_softmax", "CUDA")
+_CUDA_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
+_SOFTMAX_NATIVE_MIN_N = 64
+
 
 @triton.jit
 def next_multiple_of(a, b):
@@ -203,62 +214,28 @@ def softmax(self, dim, half_to_float=False):
     N = self.shape[dim]
     for i in range(dim):
         M *= self.shape[i]  # pre_dim
+    K = self.numel() // M // N  # post_dim
+    if K > 1 or N < _SOFTMAX_NATIVE_MIN_N or (N & (N - 1)) != 0:
+        return _NATIVE_SOFTMAX.call_boxed(_CUDA_KEYSET, self, dim, half_to_float)
+
     self = self.contiguous()
     if half_to_float:
         dtype = torch.float32
     else:
         dtype = self.dtype
-    out = torch.empty_like(self, dtype=dtype)
-    K = self.numel() // M // N  # post_dim
 
     with torch_device_fn.device(self.device):
-        if K > 1:
-            # grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
-            # 重新排列输入数据为 [M, K, N]
-            inp_view = self.view(M, N, K).transpose(1, 2).contiguous()
-            # 合并 M 和 K 维为 M' = M * K
-            inp_reshaped = inp_view.view(M * K, N)
-            if out.ndim == 3:
-                m, n, k = out.shape
-            elif out.ndim == 2:
-                m, n = out.shape
-            origin_dim = out.ndim
-
-            # 分配输出的视图
-            out_view = out.view(M, N, K).transpose(1, 2).contiguous()
-            out_reshaped = out_view.view(M * K, N)
-
-            grid = lambda meta: (M * K, 1, 1)
-
-            # 调用 Triton 前向内核
-            softmax_kernel_inner[grid](
-                out_reshaped,
-                inp_reshaped,
-                M * K,
-                N,
-                buffer_size_limit=2048,
-                is_use_mask_zero=True,
-            )
-
-            # 将输出恢复到原始布局
-            # out_view.copy_(out_reshaped.view(M, K, N).transpose(1, 2))
-            if M == 1 and origin_dim == 2:
-                out = out_reshaped.view(K, N).transpose(0, 1)
-            elif M == 1 and origin_dim == 3:
-                out = out_reshaped.transpose(0, 1).view(m, n, k)
-            else:
-                out = out_reshaped.view(m, k, n).transpose(1, 2)
-        else:
-            grid = (M, 1, 1)
-            softmax_kernel_inner[grid](
-                out,
-                self,
-                M,
-                N,
-                buffer_size_limit=2048,
-                isCloseVectorization=True,
-                is_use_mask_zero=True,
-            )
+        out = torch.empty_like(self, dtype=dtype)
+        grid = (M, 1, 1)
+        softmax_kernel_inner[grid](
+            out,
+            self,
+            M,
+            N,
+            buffer_size_limit=2048,
+            isCloseVectorization=True,
+            is_use_mask_zero=True,
+        )
     return out
 
 
