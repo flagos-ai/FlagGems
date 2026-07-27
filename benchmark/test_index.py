@@ -40,6 +40,17 @@ class IndexAccBenchmark(base.GenericBenchmark):
                     (2, 8),
                 ),
             ),
+            # Non-leading adjacent tensor indices. These cover patterns such
+            # as x[:, idx, :] and x[:, idx0, idx1, ...] without adding the
+            # larger model-scale stress cases to the shared benchmark.
+            ((1, 4096, 512), (None, (32768,), None)),
+            ((4, 512, 128), (None, (4096,), None)),
+            ((2, 256, 256, 64), (None, (4096,), (4096,), None)),
+            ((2, 128, 128, 128), (None, (2048,), (2048,), (2048,))),
+            (
+                (1, 128, 128, 64, 8),
+                (None, (2048,), (2048,), (2048,), None),
+            ),
         )
         self.shapes = INDEX_SHAPE
         return None
@@ -47,9 +58,12 @@ class IndexAccBenchmark(base.GenericBenchmark):
 
 def gen_indices(input_shape, indices_shape, accumulate):
     indices = []
-    for i, shape in enumerate(indices_shape):
+    for dim, shape in enumerate(indices_shape):
+        if shape is None:
+            indices.append(None)
+            continue
         index = np.random.choice(
-            np.arange(input_shape[i]), size=shape, replace=accumulate
+            np.arange(input_shape[dim]), size=shape, replace=accumulate
         )
         indices.append(torch.tensor(index, device=flag_gems.device))
 

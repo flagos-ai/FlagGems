@@ -14,7 +14,17 @@
 
 import logging
 
-from .nonzero import nonzero
+import torch
+import triton
+
+from flag_gems.runtime import torch_device_fn
+
+from .nonzero import (
+    _dense_block_size,
+    _is_dense,
+    nonzero,
+    nonzero_dense_dimmajor_kernel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +38,30 @@ def nonzero_numpy(inp):
     """
     logger.debug("GEMS_KUNLUNXIN NONZERO_NUMPY")
 
-    # Use the existing nonzero implementation which returns shape [N, ndim]
-    out = nonzero(inp, as_tuple=False)
+    inp_ndim = inp.ndim
+    inp, inp_bool, prefix_sum, num_nonzeros = _is_dense(inp)
+    n_elements = inp.numel()
 
-    # Unbind along dim=1 to get ndim tensors of shape [N]
-    # Convert to list since aten::nonzero_numpy returns Tensor[]
+    # DENSE fast path: write coordinates dim-major into [ndim, N] with stride-1
+    # contiguous stores, then unbind(0) gives ndim contiguous [N] views for free.
+    if inp_ndim >= 1 and num_nonzeros == n_elements and n_elements < 2**31:
+        out = torch.empty(inp_ndim, num_nonzeros, dtype=torch.int64, device=inp.device)
+        if n_elements > 0:
+            shape_t = torch.tensor(inp.shape, dtype=torch.int32, device=inp.device)
+            block = _dense_block_size(n_elements)
+            grid = (triton.cdiv(n_elements, block),)
+            with torch_device_fn.device(inp.device):
+                nonzero_dense_dimmajor_kernel[grid](
+                    out,
+                    n_elements,
+                    shape_t,
+                    inp_ndim,
+                    block,
+                    isCloseUnrollControl=True,
+                    is_use_mask_zero=True,
+                )
+        return list(out.unbind(dim=0))
+
+    # SPARSE path: reuse the scatter-based nonzero and unbind the [N, ndim] result.
+    out = nonzero(inp, as_tuple=False)
     return list(out.unbind(dim=1))

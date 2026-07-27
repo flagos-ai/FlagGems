@@ -34,12 +34,13 @@ std::filesystem::path get_path_of_this_library() {
 std::filesystem::path get_triton_src_path() {
   const static std::filesystem::path triton_src_dir = []() {
     std::filesystem::path installed_script_path =
-        get_path_of_this_library().parent_path().parent_path() / "share" / "flag_gems" / "triton_src";
+        get_path_of_this_library().parent_path().parent_path().parent_path() / "share" / "flag_gems" /
+        "triton_src";
     if (std::filesystem::exists(installed_script_path)) {
       return installed_script_path;
     } else {
       std::filesystem::path source_script_path =
-          std::filesystem::path(__FILE__).parent_path().parent_path() / "triton_src";
+          std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() / "triton_src";
       return source_script_path;
     }
   }();
