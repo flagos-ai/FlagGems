@@ -106,16 +106,6 @@ def sgn_complex_kernel(
     tl.store(out_ri_ptr + base + 1, out_imag, mask=mask)
 
 
-def _extract_input(args, kwargs):
-    if len(args) >= 1 and isinstance(args[0], torch.Tensor):
-        return args[0]
-    if "input" in kwargs and isinstance(kwargs["input"], torch.Tensor):
-        return kwargs["input"]
-    if "self" in kwargs and isinstance(kwargs["self"], torch.Tensor):
-        return kwargs["self"]
-    return None
-
-
 def _sgn_impl(x: torch.Tensor, out: torch.Tensor):
     if x.device != out.device:
         raise RuntimeError("input and out must be on the same device")
@@ -160,32 +150,12 @@ def _sgn_impl(x: torch.Tensor, out: torch.Tensor):
     return out
 
 
-def sgn(*args, **kwargs):
+def sgn(x: torch.Tensor):
     logger.debug("GEMS SGN")
-    if len(args) > 1:
-        raise TypeError("sgn expects a single Tensor argument")
-    x = _extract_input(args, kwargs)
-    if x is None:
-        raise TypeError("sgn expects a single Tensor argument")
-
     out = torch.empty_like(x)
     return _sgn_impl(x, out)
 
 
-def sgn_out(*args, **kwargs):
+def sgn_out(x: torch.Tensor, *, out: torch.Tensor):
     logger.debug("GEMS SGN_OUT")
-    if len(args) > 2:
-        raise TypeError("sgn_out expects an input Tensor and an out Tensor")
-    x = _extract_input(args, kwargs)
-    out = kwargs.get("out")
-    if len(args) >= 2:
-        if out is not None:
-            raise TypeError("sgn_out got multiple values for out")
-        if isinstance(args[1], torch.Tensor):
-            out = args[1]
-
-    if x is None:
-        raise TypeError("sgn_out expects an input Tensor")
-    if not isinstance(out, torch.Tensor):
-        raise TypeError("sgn_out expects an out Tensor")
     return _sgn_impl(x, out)

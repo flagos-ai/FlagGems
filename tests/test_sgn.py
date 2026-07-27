@@ -186,7 +186,10 @@ def test_sgn_complex_nonfinite_values():
     with flag_gems.use_gems():
         res_out = torch.sgn(inp)
 
-    utils.gems_assert_close(res_out, ref_out, torch.complex64, equal_nan=True)
+    res_real = torch.view_as_real(utils.to_cpu(res_out, ref_out))
+    ref_real = torch.view_as_real(ref_out).to(dtype=res_real.dtype)
+    assert torch.equal(torch.isnan(res_real), torch.isnan(ref_real))
+    torch.testing.assert_close(res_real, ref_real, equal_nan=True)
 
 
 @pytest.mark.sgn
