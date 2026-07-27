@@ -1,0 +1,131 @@
+{
+  "tests/test_rms_norm.py::test_rms_norm[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "rms_norm"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 2 / 2 (100.0%)\nGreatest absolute difference: 0.0011310577392578125 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_rms_norm.py::test_rms_norm[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rms_norm"
+    ],
+    "reason": null
+  },
+  "tests/test_rms_norm.py::test_rms_norm[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "rms_norm"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 7915478 / 8199800 (96.5%)\nGreatest absolute difference: 0.017364501953125 at index (146, 7630) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_rms_norm.py::test_rms_norm[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "rms_norm"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 2 / 2 (100.0%)\nGreatest absolute difference: 0.0011303622741252184 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 0.999972939491272 at index (0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_rms_norm.py::test_rms_norm[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rms_norm"
+    ],
+    "reason": null
+  },
+  "tests/test_rms_norm.py::test_rms_norm[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "rms_norm"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 7915866 / 8199800 (96.5%)\nGreatest absolute difference: 0.01736108586192131 at index (146, 7630) (up to 0.0001 allowed)\nGreatest relative difference: 1.0000582933425903 at index (147, 23871) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_rms_norm.py::test_rms_norm[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "rms_norm"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 2 / 2 (100.0%)\nGreatest absolute difference: 0.00113677978515625 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_rms_norm.py::test_rms_norm[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rms_norm"
+    ],
+    "reason": null
+  },
+  "tests/test_rms_norm.py::test_rms_norm[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "rms_norm"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 7911626 / 8199800 (96.5%)\nGreatest absolute difference: 0.017333984375 at index (6, 20264) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (0, 0) (up to 0.016 allowed)"
+  }
+}

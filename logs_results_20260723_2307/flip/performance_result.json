@@ -1,0 +1,459 @@
+{
+  "flip": {
+    "details": [
+      {
+        "op_name": "flip",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.03197399899363518,
+            "latency": 0.0091559998691082,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.4921362440724306,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 26.313459396362305,
+            "latency": 8.196139335632324,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.2104699931058756,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 25.362667083740234,
+            "latency": 8.211429595947266,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.0887029825181633,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "flip",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.020796999335289,
+            "latency": 0.008042000234127045,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 2.5860480887621495,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 25.018508911132812,
+            "latency": 8.002341270446777,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.1263986457973205,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 23.909982681274414,
+            "latency": 0.07223200052976608,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 331.0164816966595,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "flip",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.03206700086593628,
+            "latency": 0.008886000141501427,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.6087103708416177,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 26.414018630981445,
+            "latency": 8.200167655944824,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.2211559250050503,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 24.82082748413086,
+            "latency": 8.207881927490234,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.0240234573793936,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "flip",
+        "dtype": "torch.int16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.03205699846148491,
+            "latency": 0.008914000354707241,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.596252769336775,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 26.098180770874023,
+            "latency": 8.173301696777344,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.193101360881404,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 25.10169219970703,
+            "latency": 8.18231201171875,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.0677994390529544,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "flip",
+        "dtype": "torch.int32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.020711999386548996,
+            "latency": 0.00810300000011921,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 2.5560902611679976,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 25.264698028564453,
+            "latency": 7.980457782745361,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.165820647931945,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 23.884408950805664,
+            "latency": 0.07161000370979309,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 333.53453028154684,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_flip.py::test_flip",
+    "reason": null
+  }
+}

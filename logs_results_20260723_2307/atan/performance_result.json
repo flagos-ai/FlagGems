@@ -1,0 +1,207 @@
+{
+  "atan": {
+    "details": [
+      {
+        "op_name": "atan",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.006386000197380781,
+            "latency": 0.0077390000224113464,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8251712338658203,
+            "accuracy": null,
+            "tflops": 0.0005292673456697772,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.5182380080223083,
+            "latency": 0.780538022518158,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6639497283558052,
+            "accuracy": null,
+            "tflops": 0.021494425019646886,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.5182170271873474,
+            "latency": 0.7808300256729126,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.663674564436418,
+            "accuracy": null,
+            "tflops": 0.02148638685550231,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "atan",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.006541000213474035,
+            "latency": 0.0056940000504255295,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.1487531007284075,
+            "accuracy": null,
+            "tflops": 0.0007193536992845467,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.5128099918365479,
+            "latency": 0.7900429964065552,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6490912446145608,
+            "accuracy": null,
+            "tflops": 0.021235826500974973,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.5128359794616699,
+            "latency": 0.7897740006446838,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6493452291960073,
+            "accuracy": null,
+            "tflops": 0.021243059389527818,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "atan",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.006577999796718359,
+            "latency": 0.007666999939829111,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8579626774935093,
+            "accuracy": null,
+            "tflops": 0.000534237646034375,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.5549780130386353,
+            "latency": 0.8101189732551575,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6850574191697616,
+            "accuracy": null,
+            "tflops": 0.02070957051232498,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.5549290180206299,
+            "latency": 0.8102089762687683,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6849208466885028,
+            "accuracy": null,
+            "tflops": 0.020707269965415127,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_atan.py::test_atan",
+    "reason": null
+  }
+}

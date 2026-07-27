@@ -1,0 +1,204 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_special_gammainc.py F                                               [100%]
+
+=================================== FAILURES ===================================
+____________________________ test_special_gammainc _____________________________
+
+self = <benchmark.base.BinaryPointwiseBenchmark object at 0x7fda1420e920>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+>                                   metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+
+base.py:458: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+base.py:318: in get_latency
+    latency = do_bench(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/testing.py:103: in do_bench
+    fn()
+base.py:288: in <lambda>
+    fn = lambda: op(*args, **kwargs)
+../src/flag_gems/ops/special_gammainc.py:173: in special_gammainc
+    _launch_gammainc(out, a, x)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+out = None
+a = tensor([[ 0.4302,  1.7095, -0.0737,  ...,  0.3647,  2.0991,  0.7991],
+        [-0.6064, -0.5152, -0.1470,  ...,  0.923...3746, -0.7956, -0.9879],
+        [-0.4305,  1.1482,  0.4531,  ...,  2.2738,  0.7386, -0.4780]],
+       device='cuda:0')
+x = tensor([[-1.8651e+00, -1.5690e+00,  1.6814e+00,  ...,  4.3241e-01,
+         -1.0055e+00,  2.9278e-01],
+        [-4.586...       [ 4.0512e-01,  5.6242e-01, -1.9510e+00,  ..., -1.7730e+00,
+          9.1890e-01,  4.4005e-01]], device='cuda:0')
+
+    def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
+        assert (
+            a.device.type == flag_gems.device
+            and x.device.type == flag_gems.device
+>           and out.device.type == flag_gems.device
+        ), f"All tensors must be {flag_gems.device} tensors"
+E       AttributeError: 'NoneType' object has no attribute 'device'
+
+../src/flag_gems/ops/special_gammainc.py:120: AttributeError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.special_gammainc
+    def test_special_gammainc():
+        bench = base.BinaryPointwiseBenchmark(
+            op_name="special_gammainc",
+            torch_op=torch.special.gammainc,
+            # float32 only: gammainc series expansion is numerically unstable in lower precisions
+            dtypes=[torch.float32],
+        )
+>       bench.run()
+
+test_special_gammainc.py:29: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.base.BinaryPointwiseBenchmark object at 0x7fda1420e920>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+    
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+    
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+>                   pytest.fail(str(e))  # raise exception again
+E                   Failed: 'NoneType' object has no attribute 'device'
+
+base.py:480: Failed
+=========================== short test summary info ============================
+FAILED test_special_gammainc.py::test_special_gammainc - Failed: 'NoneType' o...
+====================== 1 failed, 950 deselected in 8.42s =======================

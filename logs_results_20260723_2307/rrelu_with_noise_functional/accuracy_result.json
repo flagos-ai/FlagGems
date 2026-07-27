@@ -1,0 +1,137 @@
+{
+  "tests/test_rrelu_with_noise_functional.py::test_rrelu_with_noise_functional[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        19,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rrelu_with_noise_functional"
+    ],
+    "reason": null
+  },
+  "tests/test_rrelu_with_noise_functional.py::test_rrelu_with_noise_functional[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rrelu_with_noise_functional"
+    ],
+    "reason": null
+  },
+  "tests/test_rrelu_with_noise_functional.py::test_rrelu_with_noise_functional[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rrelu_with_noise_functional"
+    ],
+    "reason": null
+  },
+  "tests/test_rrelu_with_noise_functional.py::test_rrelu_with_noise_functional[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        19,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rrelu_with_noise_functional"
+    ],
+    "reason": null
+  },
+  "tests/test_rrelu_with_noise_functional.py::test_rrelu_with_noise_functional[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rrelu_with_noise_functional"
+    ],
+    "reason": null
+  },
+  "tests/test_rrelu_with_noise_functional.py::test_rrelu_with_noise_functional[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rrelu_with_noise_functional"
+    ],
+    "reason": null
+  },
+  "tests/test_rrelu_with_noise_functional.py::test_rrelu_with_noise_functional[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        19,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rrelu_with_noise_functional"
+    ],
+    "reason": null
+  },
+  "tests/test_rrelu_with_noise_functional.py::test_rrelu_with_noise_functional[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rrelu_with_noise_functional"
+    ],
+    "reason": null
+  },
+  "tests/test_rrelu_with_noise_functional.py::test_rrelu_with_noise_functional[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rrelu_with_noise_functional"
+    ],
+    "reason": null
+  }
+}

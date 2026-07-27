@@ -1,0 +1,3 @@
+[CMD] pytest -m "unique_dim" --level core --record json --output benchmark_unique_dim.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

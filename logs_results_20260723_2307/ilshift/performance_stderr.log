@@ -1,0 +1,3 @@
+[CMD] pytest -m "ilshift" --level core --record json --output benchmark_ilshift.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

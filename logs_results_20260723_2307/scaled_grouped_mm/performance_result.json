@@ -1,0 +1,7 @@
+{
+  "scaled_grouped_mm": {
+    "result": "skipped",
+    "reason": "Skipped: native torch._scaled_grouped_mm benchmark requires CUDA FP8 on SM89+.",
+    "test_case": "benchmark/test_scaled_grouped_mm.py::test_scaled_grouped_mm_benchmark"
+  }
+}

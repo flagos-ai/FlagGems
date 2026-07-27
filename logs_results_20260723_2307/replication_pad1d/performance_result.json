@@ -1,0 +1,318 @@
+{
+  "replication_pad1d": {
+    "details": [
+      {
+        "op_name": "replication_pad1d",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                2,
+                3,
+                7
+              ],
+              [
+                1,
+                2
+              ]
+            ],
+            "latency_base": 0.007459999993443489,
+            "latency": 0.0064650001004338264,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.1539056268449082,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4,
+                16,
+                64
+              ],
+              [
+                3,
+                1
+              ]
+            ],
+            "latency_base": 0.00636299978941679,
+            "latency": 0.01726599968969822,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.3685277368105875,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                8,
+                32,
+                256
+              ],
+              [
+                1,
+                2
+              ]
+            ],
+            "latency_base": 0.006407999899238348,
+            "latency": 0.13885299861431122,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.046149524772149154,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                32,
+                256
+              ],
+              [
+                3,
+                1
+              ]
+            ],
+            "latency_base": 0.00622900016605854,
+            "latency": 0.02470399998128414,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.2521454084673599,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "replication_pad1d",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                2,
+                3,
+                7
+              ],
+              [
+                1,
+                2
+              ]
+            ],
+            "latency_base": 0.007888000458478928,
+            "latency": 0.006397999823093414,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.232885382398323,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4,
+                16,
+                64
+              ],
+              [
+                3,
+                1
+              ]
+            ],
+            "latency_base": 0.005917000118643045,
+            "latency": 0.020059000700712204,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.2949798051720971,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                8,
+                32,
+                256
+              ],
+              [
+                1,
+                2
+              ]
+            ],
+            "latency_base": 0.006060999818146229,
+            "latency": 0.13063600659370422,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.046396089226737956,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                32,
+                256
+              ],
+              [
+                3,
+                1
+              ]
+            ],
+            "latency_base": 0.005735000129789114,
+            "latency": 0.021425999701023102,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.2676654629802531,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "replication_pad1d",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                2,
+                3,
+                7
+              ],
+              [
+                1,
+                2
+              ]
+            ],
+            "latency_base": 0.007528000045567751,
+            "latency": 0.006297999992966652,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.1953001038384745,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4,
+                16,
+                64
+              ],
+              [
+                3,
+                1
+              ]
+            ],
+            "latency_base": 0.0058650001883506775,
+            "latency": 0.017582999542355537,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.3335608451915459,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                8,
+                32,
+                256
+              ],
+              [
+                1,
+                2
+              ]
+            ],
+            "latency_base": 0.006095000077039003,
+            "latency": 0.13519799709320068,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.04508202937974982,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                32,
+                256
+              ],
+              [
+                3,
+                1
+              ]
+            ],
+            "latency_base": 0.0056870002299547195,
+            "latency": 0.023914000019431114,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.23781049700316956,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_replication_pad1d.py::test_replication_pad1d",
+    "reason": null
+  }
+}

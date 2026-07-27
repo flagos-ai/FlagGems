@@ -1,0 +1,740 @@
+{
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype0-shape0-3-2-1-False-True-None]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        16,
+        16,
+        16
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype0-shape1-3-2-1-False-False-None]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        16,
+        16,
+        16
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "ceil_mode": false,
+      "count_include_pad": false,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype0-shape2-kernel_size2-stride2-padding2-False-True-None]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        12,
+        16,
+        20
+      ],
+      "kernel_size": [
+        2,
+        3,
+        4
+      ],
+      "stride": [
+        1,
+        2,
+        2
+      ],
+      "padding": [
+        0,
+        1,
+        1
+      ],
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype0-shape3-3-2-1-True-True-None]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        4,
+        15,
+        15,
+        15
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "ceil_mode": true,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype0-shape4-2-1-0-False-True-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        1,
+        7,
+        7,
+        7
+      ],
+      "kernel_size": 2,
+      "stride": 1,
+      "padding": 0,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": 1
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype0-shape5-3-2-1-False-True-None]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        64,
+        16,
+        56,
+        56
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype0-shape6-2-2-0-False-False-None]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        8,
+        8,
+        16,
+        16
+      ],
+      "kernel_size": 2,
+      "stride": 2,
+      "padding": 0,
+      "ceil_mode": false,
+      "count_include_pad": false,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype0-shape7-2-2-padding7-False-True-None]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        8,
+        10,
+        16,
+        20
+      ],
+      "kernel_size": 2,
+      "stride": 2,
+      "padding": [
+        0,
+        1,
+        0
+      ],
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype0-shape8-2-1-0-False-True-None]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        1,
+        4,
+        4,
+        4
+      ],
+      "kernel_size": 2,
+      "stride": 1,
+      "padding": 0,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype0-shape9-3-1-1-False-True-None]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        8,
+        8,
+        8
+      ],
+      "kernel_size": 3,
+      "stride": 1,
+      "padding": 1,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype1-shape0-3-2-1-False-True-None]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        16,
+        16,
+        16
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype1-shape1-3-2-1-False-False-None]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        16,
+        16,
+        16
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "ceil_mode": false,
+      "count_include_pad": false,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype1-shape2-kernel_size2-stride2-padding2-False-True-None]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        12,
+        16,
+        20
+      ],
+      "kernel_size": [
+        2,
+        3,
+        4
+      ],
+      "stride": [
+        1,
+        2,
+        2
+      ],
+      "padding": [
+        0,
+        1,
+        1
+      ],
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype1-shape3-3-2-1-True-True-None]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        4,
+        15,
+        15,
+        15
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "ceil_mode": true,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype1-shape4-2-1-0-False-True-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        1,
+        7,
+        7,
+        7
+      ],
+      "kernel_size": 2,
+      "stride": 1,
+      "padding": 0,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": 1
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype1-shape5-3-2-1-False-True-None]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        64,
+        16,
+        56,
+        56
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype1-shape6-2-2-0-False-False-None]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        8,
+        8,
+        16,
+        16
+      ],
+      "kernel_size": 2,
+      "stride": 2,
+      "padding": 0,
+      "ceil_mode": false,
+      "count_include_pad": false,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype1-shape7-2-2-padding7-False-True-None]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        8,
+        10,
+        16,
+        20
+      ],
+      "kernel_size": 2,
+      "stride": 2,
+      "padding": [
+        0,
+        1,
+        0
+      ],
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype1-shape8-2-1-0-False-True-None]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        1,
+        4,
+        4,
+        4
+      ],
+      "kernel_size": 2,
+      "stride": 1,
+      "padding": 0,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype1-shape9-3-1-1-False-True-None]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        8,
+        8,
+        8
+      ],
+      "kernel_size": 3,
+      "stride": 1,
+      "padding": 1,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype2-shape0-3-2-1-False-True-None]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        16,
+        16,
+        16
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype2-shape1-3-2-1-False-False-None]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        16,
+        16,
+        16
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "ceil_mode": false,
+      "count_include_pad": false,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype2-shape2-kernel_size2-stride2-padding2-False-True-None]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        12,
+        16,
+        20
+      ],
+      "kernel_size": [
+        2,
+        3,
+        4
+      ],
+      "stride": [
+        1,
+        2,
+        2
+      ],
+      "padding": [
+        0,
+        1,
+        1
+      ],
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype2-shape3-3-2-1-True-True-None]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        4,
+        15,
+        15,
+        15
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "ceil_mode": true,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype2-shape4-2-1-0-False-True-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        1,
+        7,
+        7,
+        7
+      ],
+      "kernel_size": 2,
+      "stride": 1,
+      "padding": 0,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": 1
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype2-shape5-3-2-1-False-True-None]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        64,
+        16,
+        56,
+        56
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype2-shape6-2-2-0-False-False-None]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        8,
+        8,
+        16,
+        16
+      ],
+      "kernel_size": 2,
+      "stride": 2,
+      "padding": 0,
+      "ceil_mode": false,
+      "count_include_pad": false,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype2-shape7-2-2-padding7-False-True-None]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        8,
+        10,
+        16,
+        20
+      ],
+      "kernel_size": 2,
+      "stride": 2,
+      "padding": [
+        0,
+        1,
+        0
+      ],
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype2-shape8-2-1-0-False-True-None]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        1,
+        4,
+        4,
+        4
+      ],
+      "kernel_size": 2,
+      "stride": 1,
+      "padding": 0,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_avg_pool3d.py::test_avg_pool3d_backward[dtype2-shape9-3-1-1-False-True-None]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        8,
+        8,
+        8
+      ],
+      "kernel_size": 3,
+      "stride": 1,
+      "padding": 1,
+      "ceil_mode": false,
+      "count_include_pad": true,
+      "divisor_override": null
+    },
+    "result": "failed",
+    "opname": [
+      "avg_pool3d_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  }
+}

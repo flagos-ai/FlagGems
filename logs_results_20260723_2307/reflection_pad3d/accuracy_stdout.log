@@ -1,0 +1,3423 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 01:34:59 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 01:35:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:35:01 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:35:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:35:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:35:01 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:35:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:35:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:35:01 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:35:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 01:35:03 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49901 deselected / 50 selected
+
+test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype0-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype0-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype0-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype1-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype1-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype1-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype2-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype2-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype2-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype0-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype0-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype0-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype1-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype1-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype1-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype2-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype2-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype2-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype0-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype0-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype0-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype1-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype1-shape1] PASSED
+test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype1-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype2-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype2-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype2-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype0-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype0-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype0-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype1-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype1-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype1-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype2-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype2-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype2-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype0-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype0-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype0-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype1-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype1-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype1-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype2-shape0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype2-shape1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype2-shape2] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d_list_padding[padding0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d_list_padding[padding1] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d_empty_padding PASSED
+test_reflection_pad3d.py::test_reflection_pad3d_4d_input[padding0] FAILED
+test_reflection_pad3d.py::test_reflection_pad3d_4d_input[padding1] FAILED
+
+=================================== FAILURES ===================================
+________________ test_reflection_pad3d[padding0-dtype0-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.float16, padding = (1, 1, 1, 1, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 1.7061e+00, -1.1172e+00,  1.7061e+00,  ..., -7.7490e-01,
+             7.9199e-01, -7.7490e-01],
+         ....0820e+00, -2.6025e-01,  1.0820e+00,  ..., -5.1221e-01,
+             1.4209e+00, -5.1221e-01]]]]], dtype=torch.float16)
+ref = tensor([[[[[ 1.7061, -1.1172,  1.7061,  ..., -0.7749,  0.7920, -0.7749],
+           [-0.0831, -0.1003, -0.0831,  ..., ...470, -0.5952],
+           [ 1.0820, -0.2603,  1.0820,  ..., -0.5122,  1.4209, -0.5122]]]]],
+       dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 288 / 25920 (1.1%)
+E       Greatest absolute difference: 3.9765625 at index (0, 2, 0, 3, 0) (up to 0.0001 allowed)
+E       Greatest relative difference: 43.0 at index (1, 0, 0, 1, 4) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding0-dtype0-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.float16, padding = (1, 1, 1, 1, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 1.4746e+00, -1.1904e+00,  1.4746e+00,  ..., -1.3691e+00,
+             2.1523e+00, -1.3691e+00],
+         ....8906e-01,  1.9492e+00,  7.8906e-01,  ..., -5.1416e-01,
+             1.3770e-01, -5.1416e-01]]]]], dtype=torch.float16)
+ref = tensor([[[[[ 1.4746e+00, -1.1904e+00,  1.4746e+00,  ..., -1.3691e+00,
+             2.1523e+00, -1.3691e+00],
+         ....8906e-01,  1.9492e+00,  7.8906e-01,  ..., -5.1416e-01,
+             1.3770e-01, -5.1416e-01]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 128 / 62424 (0.2%)
+E       Greatest absolute difference: 4.015625 at index (0, 1, 0, 2, 25) (up to 0.0001 allowed)
+E       Greatest relative difference: 239.25 at index (0, 2, 0, 3, 28) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding0-dtype0-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.float16, padding = (1, 1, 1, 1, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 1.8447e+00, -1.1680e+00,  1.8447e+00,  ...,  9.7473e-02,
+            -1.0723e+00,  9.7473e-02],
+         ....0146e-01,  7.4609e-01, -5.0146e-01,  ...,  1.6846e+00,
+            -1.7041e+00,  1.6846e+00]]]]], dtype=torch.float16)
+ref = tensor([[[[[ 1.8447e+00, -1.1680e+00,  1.8447e+00,  ...,  9.7473e-02,
+            -1.0723e+00,  9.7473e-02],
+         ....0146e-01,  7.4609e-01, -5.0146e-01,  ...,  1.6846e+00,
+            -1.7041e+00,  1.6846e+00]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 204 / 323136 (0.1%)
+E       Greatest absolute difference: 4.53125 at index (1, 0, 0, 0, 14) (up to 0.0001 allowed)
+E       Greatest relative difference: 103.5 at index (0, 3, 0, 0, 55) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding0-dtype1-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.float32, padding = (1, 1, 1, 1, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-1.4758e+00,  1.2648e+00, -1.4758e+00,  ..., -4.0292e-01,
+             1.8785e+00, -4.0292e-01],
+         ...e-01],
+           [-9.0614e-01,  7.1571e-01, -9.0614e-01,  ...,  2.0060e-01,
+             2.1332e-01,  2.0060e-01]]]]])
+ref = tensor([[[[[-1.4758e+00,  1.2648e+00, -1.4758e+00,  ..., -4.0292e-01,
+             1.8785e+00, -4.0292e-01],
+         ...e-01],
+           [-9.0614e-01,  7.1571e-01, -9.0614e-01,  ...,  2.0060e-01,
+             2.1332e-01,  2.0060e-01]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 312 / 25920 (1.2%)
+E       Greatest absolute difference: 5.379448890686035 at index (1, 2, 0, 1, 3) (up to 0.0001 allowed)
+E       Greatest relative difference: 1918.7457275390625 at index (1, 3, 0, 4, 9) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding0-dtype1-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.float32, padding = (1, 1, 1, 1, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-1.5010e+00,  9.3887e-01, -1.5010e+00,  ...,  1.7818e+00,
+             1.9257e-01,  1.7818e+00],
+         ...e-01],
+           [ 1.0270e+00, -6.7842e-01,  1.0270e+00,  ..., -2.7224e-01,
+            -8.3890e-01, -2.7224e-01]]]]])
+ref = tensor([[[[[-1.5010e+00,  9.3887e-01, -1.5010e+00,  ...,  1.7818e+00,
+             1.9257e-01,  1.7818e+00],
+         ...e-01],
+           [ 1.0270e+00, -6.7842e-01,  1.0270e+00,  ..., -2.7224e-01,
+            -8.3890e-01, -2.7224e-01]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 204 / 62424 (0.3%)
+E       Greatest absolute difference: 4.122748851776123 at index (0, 2, 0, 1, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 724.6049194335938 at index (0, 1, 0, 3, 16) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding0-dtype1-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.float32, padding = (1, 1, 1, 1, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 7.7476e-01,  1.2396e+00,  7.7476e-01,  ..., -1.3412e+00,
+            -4.7501e-01, -1.3412e+00],
+         ...e-01],
+           [-1.8818e+00,  1.7587e+00, -1.8818e+00,  ..., -1.6073e+00,
+             6.4492e-01, -1.6073e+00]]]]])
+ref = tensor([[[[[ 7.7476e-01,  1.2396e+00,  7.7476e-01,  ..., -1.3412e+00,
+            -4.7501e-01, -1.3412e+00],
+         ...e-01],
+           [-1.8818e+00,  1.7587e+00, -1.8818e+00,  ..., -1.6073e+00,
+             6.4492e-01, -1.6073e+00]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 200 / 323136 (0.1%)
+E       Greatest absolute difference: 3.844621419906616 at index (0, 3, 0, 0, 5) (up to 0.0001 allowed)
+E       Greatest relative difference: 511.8838806152344 at index (1, 3, 0, 0, 4) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding0-dtype2-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.bfloat16, padding = (1, 1, 1, 1, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 4.4141e-01,  1.4219e+00,  4.4141e-01,  ...,  6.3672e-01,
+             2.4023e-01,  6.3672e-01],
+         ...3125e+00, -2.5781e+00, -2.3125e+00,  ...,  4.1016e-01,
+            -4.0625e-01,  4.1016e-01]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 4.4141e-01,  1.4219e+00,  4.4141e-01,  ...,  6.3672e-01,
+             2.4023e-01,  6.3672e-01],
+         ...3125e+00, -2.5781e+00, -2.3125e+00,  ...,  4.1016e-01,
+            -4.0625e-01,  4.1016e-01]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 281 / 25920 (1.1%)
+E       Greatest absolute difference: 4.4375 at index (1, 3, 0, 0, 8) (up to 0.0001 allowed)
+E       Greatest relative difference: 316.0 at index (0, 2, 0, 4, 14) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding0-dtype2-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.bfloat16, padding = (1, 1, 1, 1, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-0.3750, -1.0078, -0.3750,  ..., -0.0835,  0.8281, -0.0835],
+           [ 0.7617,  0.4785,  0.7617,  ..., ...93,  0.7500],
+           [-0.1719, -0.2852, -0.1719,  ..., -1.1797, -1.5234, -1.1797]]]]],
+       dtype=torch.bfloat16)
+ref = tensor([[[[[-0.3750, -1.0078, -0.3750,  ..., -0.0835,  0.8281, -0.0835],
+           [ 0.7617,  0.4785,  0.7617,  ..., ...93,  0.7500],
+           [-0.1719, -0.2852, -0.1719,  ..., -1.1797, -1.5234, -1.1797]]]]],
+       dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 99 / 62424 (0.2%)
+E       Greatest absolute difference: 3.4375 at index (0, 2, 0, 1, 31) (up to 0.0001 allowed)
+E       Greatest relative difference: 120.0 at index (0, 2, 0, 0, 4) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding0-dtype2-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.bfloat16, padding = (1, 1, 1, 1, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-1.1768e-01,  1.6797e+00, -1.1768e-01,  ..., -9.0820e-02,
+            -8.7500e-01, -9.0820e-02],
+         ...3477e-01, -1.2422e+00, -1.3477e-01,  ..., -1.0938e+00,
+            -9.2969e-01, -1.0938e+00]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[-1.1768e-01,  1.6797e+00, -1.1768e-01,  ..., -9.0820e-02,
+            -8.7500e-01, -9.0820e-02],
+         ...3477e-01, -1.2422e+00, -1.3477e-01,  ..., -1.0938e+00,
+            -9.2969e-01, -1.0938e+00]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 248 / 323136 (0.1%)
+E       Greatest absolute difference: 4.3125 at index (0, 1, 0, 0, 48) (up to 0.0001 allowed)
+E       Greatest relative difference: 2000.0 at index (1, 3, 0, 0, 39) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding1-dtype0-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.float16, padding = (2, 3, 2, 3, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-1.7480e+00,  1.7959e+00, -2.0410e+00,  ...,  6.8896e-01,
+             3.9624e-01,  6.7383e-01],
+         ....7281e-02,  4.5898e-01, -4.2700e-01,  ..., -1.6138e-01,
+            -1.8418e+00,  1.8174e+00]]]]], dtype=torch.float16)
+ref = tensor([[[[[-1.7480e+00,  1.7959e+00, -2.0410e+00,  ...,  6.8896e-01,
+             3.9624e-01,  6.7383e-01],
+         ....7281e-02,  4.5898e-01, -4.2700e-01,  ..., -1.6138e-01,
+            -1.8418e+00,  1.8174e+00]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 286 / 35280 (0.8%)
+E       Greatest absolute difference: 4.0625 at index (1, 0, 0, 8, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 83.9375 at index (1, 2, 0, 7, 2) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding1-dtype0-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.float16, padding = (2, 3, 2, 3, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-7.0703e-01, -7.8955e-01, -6.4062e-01,  ...,  2.5620e-02,
+             9.2383e-01,  4.0161e-01],
+         ....4839e-01, -5.8984e-01,  2.6758e-01,  ...,  1.7712e-01,
+            -1.2080e+00,  6.8359e-02]]]]], dtype=torch.float16)
+ref = tensor([[[[[-7.0703e-01, -7.8955e-01, -6.4062e-01,  ...,  2.5620e-02,
+             9.2383e-01,  4.0161e-01],
+         ....4839e-01, -5.8984e-01,  2.6758e-01,  ...,  1.7712e-01,
+            -1.2080e+00,  6.8359e-02]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 196 / 73926 (0.3%)
+E       Greatest absolute difference: 3.83984375 at index (0, 1, 0, 1, 6) (up to 0.0001 allowed)
+E       Greatest relative difference: 54.46875 at index (0, 1, 0, 0, 1) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding1-dtype0-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.float16, padding = (2, 3, 2, 3, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 7.9590e-01, -4.2969e-02,  1.1309e+00,  ...,  2.0625e+00,
+            -7.7197e-01,  4.9243e-01],
+         ....2422e-01, -1.1484e+00, -2.1814e-01,  ...,  3.7695e-01,
+             1.1230e-01, -4.7656e-01]]]]], dtype=torch.float16)
+ref = tensor([[[[[ 7.9590e-01, -4.2969e-02,  1.1309e+00,  ...,  2.0625e+00,
+            -7.7197e-01,  4.9243e-01],
+         ....2422e-01, -1.1484e+00, -2.1814e-01,  ...,  3.7695e-01,
+             1.1230e-01, -4.7656e-01]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 189 / 367632 (0.1%)
+E       Greatest absolute difference: 4.625 at index (0, 1, 0, 0, 28) (up to 0.0001 allowed)
+E       Greatest relative difference: 209.75 at index (0, 2, 0, 0, 11) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding1-dtype1-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.float32, padding = (2, 3, 2, 3, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 9.1323e-01,  8.0062e-01, -1.4158e+00,  ..., -4.7046e-01,
+            -6.5207e-01,  3.9070e-02],
+         ...e+00],
+           [-6.1145e-01, -4.7495e-01,  1.3415e+00,  ..., -2.2253e-01,
+            -2.0040e-01, -1.9175e-01]]]]])
+ref = tensor([[[[[ 9.1323e-01,  8.0062e-01, -1.4158e+00,  ..., -4.7046e-01,
+            -6.5207e-01,  3.9070e-02],
+         ...e+00],
+           [-6.1145e-01, -4.7495e-01,  1.3415e+00,  ..., -2.2253e-01,
+            -2.0040e-01, -1.9175e-01]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 416 / 35280 (1.2%)
+E       Greatest absolute difference: 3.984684944152832 at index (1, 0, 0, 6, 10) (up to 0.0001 allowed)
+E       Greatest relative difference: 801.24951171875 at index (0, 1, 0, 0, 10) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding1-dtype1-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.float32, padding = (2, 3, 2, 3, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 8.3749e-01,  9.1472e-01,  9.9297e-01,  ...,  2.5415e-01,
+            -1.8378e+00,  1.3126e-01],
+         ...e-02],
+           [ 1.5477e+00, -1.1550e+00,  3.5556e-01,  ..., -1.2441e+00,
+            -1.5816e+00, -9.6468e-01]]]]])
+ref = tensor([[[[[ 8.3749e-01,  9.1472e-01,  9.9297e-01,  ...,  2.5415e-01,
+            -1.8378e+00,  1.3126e-01],
+         ...e-02],
+           [ 1.5477e+00, -1.1550e+00,  3.5556e-01,  ..., -1.2441e+00,
+            -1.5816e+00, -9.6468e-01]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 288 / 73926 (0.4%)
+E       Greatest absolute difference: 3.7873969078063965 at index (0, 2, 0, 0, 14) (up to 0.0001 allowed)
+E       Greatest relative difference: 87.11647033691406 at index (0, 1, 0, 1, 11) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding1-dtype1-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.float32, padding = (2, 3, 2, 3, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 6.4204e-01,  3.5573e-02, -7.7919e-01,  ...,  1.1334e+00,
+            -2.0257e-01, -5.2115e-01],
+         ...e-01],
+           [-6.6351e-01, -1.2746e+00,  2.1324e-01,  ...,  1.5467e+00,
+            -5.5252e-02, -1.0570e+00]]]]])
+ref = tensor([[[[[ 6.4204e-01,  3.5573e-02, -7.7919e-01,  ...,  1.1334e+00,
+            -2.0257e-01, -5.2115e-01],
+         ...e-01],
+           [-6.6351e-01, -1.2746e+00,  2.1324e-01,  ...,  1.5467e+00,
+            -5.5252e-02, -1.0570e+00]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 256 / 367632 (0.1%)
+E       Greatest absolute difference: 4.115270614624023 at index (0, 3, 0, 1, 24) (up to 0.0001 allowed)
+E       Greatest relative difference: 920.1704711914062 at index (1, 3, 0, 1, 34) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding1-dtype2-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.bfloat16, padding = (2, 3, 2, 3, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 4.6094e-01, -6.3281e-01, -1.7656e+00,  ..., -9.4922e-01,
+             6.6016e-01, -2.6172e-01],
+         ...3672e-01,  1.7969e-01, -4.4922e-01,  ...,  3.6133e-01,
+            -9.6484e-01,  1.1641e+00]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 4.6094e-01, -6.3281e-01, -1.7656e+00,  ..., -9.4922e-01,
+             6.6016e-01, -2.6172e-01],
+         ...3672e-01,  1.7969e-01, -4.4922e-01,  ...,  3.6133e-01,
+            -9.6484e-01,  1.1641e+00]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 327 / 35280 (0.9%)
+E       Greatest absolute difference: 3.46875 at index (1, 3, 0, 0, 15) (up to 0.0001 allowed)
+E       Greatest relative difference: 464.0 at index (1, 0, 0, 0, 2) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding1-dtype2-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.bfloat16, padding = (2, 3, 2, 3, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-2.9102e-01, -7.1484e-01, -1.9141e-01,  ..., -3.5742e-01,
+             1.8359e-01,  3.9062e-01],
+         ...8594e-01, -1.7656e+00, -1.5156e+00,  ..., -2.3242e-01,
+            -2.5156e+00,  3.2031e-01]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[-2.9102e-01, -7.1484e-01, -1.9141e-01,  ..., -3.5742e-01,
+             1.8359e-01,  3.9062e-01],
+         ...8594e-01, -1.7656e+00, -1.5156e+00,  ..., -2.3242e-01,
+            -2.5156e+00,  3.2031e-01]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 159 / 73926 (0.2%)
+E       Greatest absolute difference: 3.75 at index (0, 1, 0, 2, 36) (up to 0.0001 allowed)
+E       Greatest relative difference: 1320.0 at index (0, 2, 0, 3, 31) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding1-dtype2-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.bfloat16, padding = (2, 3, 2, 3, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 7.4219e-01, -1.9629e-01, -2.8125e-01,  ...,  1.1250e+00,
+            -1.0078e+00,  3.0625e+00],
+         ...3008e-01, -5.6641e-01, -2.5977e-01,  ..., -8.1641e-01,
+             4.3750e-01, -4.3555e-01]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 7.4219e-01, -1.9629e-01, -2.8125e-01,  ...,  1.1250e+00,
+            -1.0078e+00,  3.0625e+00],
+         ...3008e-01, -5.6641e-01, -2.5977e-01,  ..., -8.1641e-01,
+             4.3750e-01, -4.3555e-01]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 266 / 367632 (0.1%)
+E       Greatest absolute difference: 4.25 at index (1, 3, 0, 0, 21) (up to 0.0001 allowed)
+E       Greatest relative difference: 472.0 at index (1, 2, 0, 0, 4) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding2-dtype0-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.float16, padding = (1, 1, 2, 2, 2, 2)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 6.2305e-01, -2.9023e+00,  6.2305e-01,  ...,  1.7419e-01,
+            -2.4927e-01,  1.7419e-01],
+         ....2275e-01, -5.7709e-02,  8.2275e-01,  ..., -5.6494e-01,
+             9.1650e-01, -5.6494e-01]]]]], dtype=torch.float16)
+ref = tensor([[[[[ 6.2305e-01, -2.9023e+00,  6.2305e-01,  ...,  1.7419e-01,
+            -2.4927e-01,  1.7419e-01],
+         ....2275e-01, -5.7709e-02,  8.2275e-01,  ..., -5.6494e-01,
+             9.1650e-01, -5.6494e-01]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 100 / 34560 (0.3%)
+E       Greatest absolute difference: 3.16015625 at index (0, 1, 0, 1, 4) (up to 0.0001 allowed)
+E       Greatest relative difference: 51.15625 at index (1, 1, 0, 1, 8) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding2-dtype0-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.float16, padding = (1, 1, 2, 2, 2, 2)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 8.1006e-01,  3.1769e-02,  8.1006e-01,  ..., -4.5215e-01,
+            -5.9814e-03, -4.5215e-01],
+         ....7344e-01, -1.3096e+00,  7.7344e-01,  ...,  1.1904e+00,
+             1.5518e+00,  1.1904e+00]]]]], dtype=torch.float16)
+ref = tensor([[[[[ 8.1006e-01,  3.1769e-02,  8.1006e-01,  ..., -4.5215e-01,
+            -5.9814e-03, -4.5215e-01],
+         ....7344e-01, -1.3096e+00,  7.7344e-01,  ...,  1.1904e+00,
+             1.5518e+00,  1.1904e+00]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 56 / 73440 (0.1%)
+E       Greatest absolute difference: 3.9921875 at index (0, 1, 0, 2, 10) (up to 0.0001 allowed)
+E       Greatest relative difference: 7.8359375 at index (0, 2, 0, 0, 31) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding2-dtype0-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.float16, padding = (1, 1, 2, 2, 2, 2)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-6.0303e-01,  6.9971e-01, -6.0303e-01,  ...,  1.7471e+00,
+             7.1240e-01,  1.7471e+00],
+         ....5010e+00,  7.1777e-01, -1.5010e+00,  ..., -5.3467e-01,
+            -3.3838e-01, -5.3467e-01]]]]], dtype=torch.float16)
+ref = tensor([[[[[-6.0303e-01,  6.9971e-01, -6.0303e-01,  ...,  1.7471e+00,
+             7.1240e-01,  1.7471e+00],
+         ....5010e+00,  7.1777e-01, -1.5010e+00,  ..., -5.3467e-01,
+            -3.3838e-01, -5.3467e-01]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 323 / 380160 (0.1%)
+E       Greatest absolute difference: 5.0859375 at index (0, 3, 0, 1, 15) (up to 0.0001 allowed)
+E       Greatest relative difference: 193.875 at index (1, 3, 0, 1, 4) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding2-dtype1-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.float32, padding = (1, 1, 2, 2, 2, 2)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-1.5823e+00,  1.3855e+00, -1.5823e+00,  ...,  1.4993e-02,
+             8.0377e-03,  1.4993e-02],
+         ...e+00],
+           [ 1.2233e+00,  3.2757e-01,  1.2233e+00,  ...,  1.3707e+00,
+             1.3981e-01,  1.3707e+00]]]]])
+ref = tensor([[[[[-1.5823e+00,  1.3855e+00, -1.5823e+00,  ...,  1.4993e-02,
+             8.0377e-03,  1.4993e-02],
+         ...e+00],
+           [ 1.2233e+00,  3.2757e-01,  1.2233e+00,  ...,  1.3707e+00,
+             1.3981e-01,  1.3707e+00]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 124 / 34560 (0.4%)
+E       Greatest absolute difference: 4.141753196716309 at index (0, 2, 0, 1, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 76.57627868652344 at index (0, 2, 0, 1, 5) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding2-dtype1-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.float32, padding = (1, 1, 2, 2, 2, 2)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 1.0063e+00, -2.9626e-01,  1.0063e+00,  ...,  1.1119e+00,
+             9.3718e-01,  1.1119e+00],
+         ...e-01],
+           [ 6.3693e-01,  1.4118e+00,  6.3693e-01,  ...,  1.0456e+00,
+             1.1971e+00,  1.0456e+00]]]]])
+ref = tensor([[[[[ 1.0063e+00, -2.9626e-01,  1.0063e+00,  ...,  1.1119e+00,
+             9.3718e-01,  1.1119e+00],
+         ...e-01],
+           [ 6.3693e-01,  1.4118e+00,  6.3693e-01,  ...,  1.0456e+00,
+             1.1971e+00,  1.0456e+00]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 444 / 380160 (0.1%)
+E       Greatest absolute difference: 4.113847732543945 at index (0, 3, 0, 1, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 312.7334289550781 at index (1, 0, 0, 1, 29) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding2-dtype2-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.bfloat16, padding = (1, 1, 2, 2, 2, 2)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 9.0234e-01,  1.0132e-02,  9.0234e-01,  ...,  1.5000e+00,
+             3.0859e-01,  1.5000e+00],
+         ...3281e-01,  8.7402e-02, -6.3281e-01,  ..., -4.3945e-01,
+             1.5391e+00, -4.3945e-01]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 9.0234e-01,  1.0132e-02,  9.0234e-01,  ...,  1.5000e+00,
+             3.0859e-01,  1.5000e+00],
+         ...3281e-01,  8.7402e-02, -6.3281e-01,  ..., -4.3945e-01,
+             1.5391e+00, -4.3945e-01]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 99 / 34560 (0.3%)
+E       Greatest absolute difference: 4.25 at index (0, 1, 0, 0, 10) (up to 0.0001 allowed)
+E       Greatest relative difference: 304.0 at index (0, 3, 0, 0, 9) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding2-dtype2-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.bfloat16, padding = (1, 1, 2, 2, 2, 2)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-2.4316e-01, -1.3672e+00, -2.4316e-01,  ..., -1.6641e+00,
+             5.9082e-02, -1.6641e+00],
+         ...7891e-01, -4.2383e-01,  8.7891e-01,  ...,  7.8613e-02,
+             6.6016e-01,  7.8613e-02]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[-2.4316e-01, -1.3672e+00, -2.4316e-01,  ..., -1.6641e+00,
+             5.9082e-02, -1.6641e+00],
+         ...7891e-01, -4.2383e-01,  8.7891e-01,  ...,  7.8613e-02,
+             6.6016e-01,  7.8613e-02]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 116 / 73440 (0.2%)
+E       Greatest absolute difference: 3.40625 at index (0, 2, 0, 2, 17) (up to 0.0001 allowed)
+E       Greatest relative difference: 796.0 at index (0, 1, 0, 2, 9) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding2-dtype2-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.bfloat16, padding = (1, 1, 2, 2, 2, 2)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 1.0938e+00,  2.2852e-01,  1.0938e+00,  ..., -2.2500e+00,
+             6.6016e-01, -2.2500e+00],
+         ...4219e-01, -9.7266e-01, -7.4219e-01,  ...,  9.1016e-01,
+             3.0078e-01,  9.1016e-01]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 1.0938e+00,  2.2852e-01,  1.0938e+00,  ..., -2.2500e+00,
+             6.6016e-01, -2.2500e+00],
+         ...4219e-01, -9.7266e-01, -7.4219e-01,  ...,  9.1016e-01,
+             3.0078e-01,  9.1016e-01]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 466 / 380160 (0.1%)
+E       Greatest absolute difference: 4.4375 at index (1, 2, 0, 0, 27) (up to 0.0001 allowed)
+E       Greatest relative difference: 82.0 at index (1, 0, 0, 0, 51) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding3-dtype0-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.float16, padding = (0, 4, 0, 4, 0, 4)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-2.0471e-01,  1.2949e+00, -4.4385e-01,  ..., -1.7217e+00,
+             1.3203e+00,  1.2266e+00],
+         ....6694e-01, -1.5808e-01, -1.3691e+00,  ...,  1.0996e+00,
+             9.3555e-01,  1.6719e+00]]]]], dtype=torch.float16)
+ref = tensor([[[[[-2.0471e-01,  1.2949e+00, -4.4385e-01,  ..., -1.7217e+00,
+             1.3203e+00,  1.2266e+00],
+         ....6694e-01, -1.5808e-01, -1.3691e+00,  ...,  1.0996e+00,
+             9.3555e-01,  1.6719e+00]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 228 / 38400 (0.6%)
+E       Greatest absolute difference: 3.8515625 at index (0, 3, 0, 1, 2) (up to 0.0001 allowed)
+E       Greatest relative difference: 631.5 at index (1, 1, 0, 1, 6) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding3-dtype0-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.float16, padding = (0, 4, 0, 4, 0, 4)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 1.1543e+00,  1.6035e+00,  4.2773e-01,  ...,  1.9409e-01,
+             1.3242e+00,  1.3857e+00],
+         ....0957e+00,  5.4199e-01,  9.1016e-01,  ..., -7.8613e-02,
+             6.6016e-01, -4.9902e-01]]]]], dtype=torch.float16)
+ref = tensor([[[[[ 1.1543e+00,  1.6035e+00,  4.2773e-01,  ...,  1.9409e-01,
+             1.3242e+00,  1.3857e+00],
+         ....0957e+00,  5.4199e-01,  9.1016e-01,  ..., -7.8613e-02,
+             6.6016e-01, -4.9902e-01]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 252 / 77760 (0.3%)
+E       Greatest absolute difference: 4.6328125 at index (0, 1, 0, 5, 3) (up to 0.0001 allowed)
+E       Greatest relative difference: 106.3125 at index (0, 1, 0, 2, 22) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding3-dtype0-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.float16, padding = (0, 4, 0, 4, 0, 4)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-1.5637e-01, -2.3352e-01, -6.6260e-01,  ...,  1.9629e-01,
+            -4.1333e-01, -5.1025e-01],
+         ....1719e-01,  2.8564e-01,  3.8721e-01,  ...,  6.6992e-01,
+            -1.5063e-01,  5.1367e-01]]]]], dtype=torch.float16)
+ref = tensor([[[[[-1.5637e-01, -2.3352e-01, -6.6260e-01,  ...,  1.9629e-01,
+            -4.1333e-01, -5.1025e-01],
+         ....1719e-01,  2.8564e-01,  3.8721e-01,  ...,  6.6992e-01,
+            -1.5063e-01,  5.1367e-01]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 788 / 391680 (0.2%)
+E       Greatest absolute difference: 4.875 at index (1, 1, 0, 1, 58) (up to 0.0001 allowed)
+E       Greatest relative difference: 2198.0 at index (1, 3, 0, 1, 58) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding3-dtype1-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.float32, padding = (0, 4, 0, 4, 0, 4)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 9.6184e-01, -2.0324e+00,  2.5500e-01,  ..., -5.3066e-01,
+            -3.9996e-01,  1.9992e-01],
+         ...e-01],
+           [-4.5233e-01, -1.9122e+00,  1.1808e-01,  ..., -1.4600e+00,
+            -3.0091e-01,  9.1359e-01]]]]])
+ref = tensor([[[[[ 9.6184e-01, -2.0324e+00,  2.5500e-01,  ..., -5.3066e-01,
+            -3.9996e-01,  1.9992e-01],
+         ...e-01],
+           [-4.5233e-01, -1.9122e+00,  1.1808e-01,  ..., -1.4600e+00,
+            -3.0091e-01,  9.1359e-01]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 276 / 38400 (0.7%)
+E       Greatest absolute difference: 4.508841037750244 at index (0, 2, 0, 2, 11) (up to 0.0001 allowed)
+E       Greatest relative difference: 864.442138671875 at index (1, 3, 0, 2, 0) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding3-dtype1-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.float32, padding = (0, 4, 0, 4, 0, 4)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-1.8639e-01,  5.9076e-01,  9.8183e-02,  ..., -3.3613e-01,
+             7.9202e-02, -4.8025e-01],
+         ...e-01],
+           [ 3.2521e-01, -2.7121e-01,  1.7213e-01,  ..., -2.9338e-01,
+             1.7881e+00,  8.6037e-01]]]]])
+ref = tensor([[[[[-1.8639e-01,  5.9076e-01,  9.8183e-02,  ..., -3.3613e-01,
+             7.9202e-02, -4.8025e-01],
+         ...e-01],
+           [ 3.2521e-01, -2.7121e-01,  1.7213e-01,  ..., -2.9338e-01,
+             1.7881e+00,  8.6037e-01]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 232 / 77760 (0.3%)
+E       Greatest absolute difference: 3.6363754272460938 at index (0, 1, 0, 5, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 63.37533950805664 at index (0, 1, 0, 3, 31) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding3-dtype1-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.float32, padding = (0, 4, 0, 4, 0, 4)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-1.4587e+00, -4.0512e-01, -4.8863e-01,  ..., -3.3797e-01,
+            -2.9189e-01, -5.0901e-01],
+         ...e-01],
+           [-5.9738e-01, -1.5506e+00,  7.4453e-01,  ...,  6.1982e-01,
+            -8.9029e-01, -8.7172e-01]]]]])
+ref = tensor([[[[[-1.4587e+00, -4.0512e-01, -4.8863e-01,  ..., -3.3797e-01,
+            -2.9189e-01, -5.0901e-01],
+         ...e-01],
+           [-5.9738e-01, -1.5506e+00,  7.4453e-01,  ...,  6.1982e-01,
+            -8.9029e-01, -8.7172e-01]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 568 / 391680 (0.1%)
+E       Greatest absolute difference: 4.817636966705322 at index (1, 0, 0, 1, 49) (up to 0.0001 allowed)
+E       Greatest relative difference: 487.2890930175781 at index (1, 3, 0, 1, 8) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding3-dtype2-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.bfloat16, padding = (0, 4, 0, 4, 0, 4)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 1.1719e-01,  3.5742e-01,  2.7148e-01,  ..., -2.4805e-01,
+            -1.7422e+00, -2.0469e+00],
+         ...9922e-01, -5.4297e-01,  8.3984e-01,  ...,  1.0938e+00,
+             8.3594e-01,  1.1250e+00]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 1.1719e-01,  3.5742e-01,  2.7148e-01,  ..., -2.4805e-01,
+            -1.7422e+00, -2.0469e+00],
+         ...9922e-01, -5.4297e-01,  8.3984e-01,  ...,  1.0938e+00,
+             8.3594e-01,  1.1250e+00]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 264 / 38400 (0.7%)
+E       Greatest absolute difference: 4.3125 at index (0, 2, 0, 2, 0) (up to 0.0001 allowed)
+E       Greatest relative difference: 7104.0 at index (1, 0, 0, 0, 2) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding3-dtype2-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.bfloat16, padding = (0, 4, 0, 4, 0, 4)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 4.3750e-01,  1.6719e+00, -1.0312e+00,  ...,  6.7578e-01,
+             3.5742e-01,  3.3789e-01],
+         ...4609e-01, -9.9609e-01,  1.1719e+00,  ..., -6.4453e-01,
+             1.4219e+00,  1.3359e+00]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 4.3750e-01,  1.6719e+00, -1.0312e+00,  ...,  6.7578e-01,
+             3.5742e-01,  3.3789e-01],
+         ...4609e-01, -9.9609e-01,  1.1719e+00,  ..., -6.4453e-01,
+             1.4219e+00,  1.3359e+00]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 201 / 77760 (0.3%)
+E       Greatest absolute difference: 4.78125 at index (0, 1, 0, 3, 28) (up to 0.0001 allowed)
+E       Greatest relative difference: 312.0 at index (0, 1, 0, 0, 22) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding3-dtype2-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.bfloat16, padding = (0, 4, 0, 4, 0, 4)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 1.3750e+00,  1.1094e+00,  7.0312e-01,  ...,  3.8672e-01,
+            -3.5742e-01, -1.5156e+00],
+         ...0059e-01, -1.2109e+00,  3.4375e-01,  ..., -3.1094e+00,
+            -2.5586e-01, -1.3438e+00]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 1.3750e+00,  1.1094e+00,  7.0312e-01,  ...,  3.8672e-01,
+            -3.5742e-01, -1.5156e+00],
+         ...0059e-01, -1.2109e+00,  3.4375e-01,  ..., -3.1094e+00,
+            -2.5586e-01, -1.3438e+00]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 765 / 391680 (0.2%)
+E       Greatest absolute difference: 4.5 at index (1, 2, 0, 0, 31) (up to 0.0001 allowed)
+E       Greatest relative difference: 1400.0 at index (1, 3, 0, 2, 41) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding4-dtype0-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.float16, padding = (4, 0, 4, 0, 4, 0)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-1.1582e+00,  5.9229e-01, -1.8143e-02,  ...,  6.3330e-01,
+             7.0312e-01,  9.1064e-01],
+         ....0625e+00,  1.9248e+00, -6.4307e-01,  ..., -4.0259e-01,
+            -8.3887e-01, -8.1055e-02]]]]], dtype=torch.float16)
+ref = tensor([[[[[-1.1582e+00,  5.9229e-01, -1.8143e-02,  ...,  6.3330e-01,
+             7.0312e-01,  9.1064e-01],
+         ....0625e+00,  1.9248e+00, -6.4307e-01,  ..., -4.0259e-01,
+            -8.3887e-01, -8.1055e-02]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 240 / 38400 (0.6%)
+E       Greatest absolute difference: 3.71875 at index (0, 3, 0, 0, 16) (up to 0.0001 allowed)
+E       Greatest relative difference: 302.0 at index (0, 1, 0, 1, 18) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding4-dtype0-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.float16, padding = (4, 0, 4, 0, 4, 0)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 1.5000e+00, -9.4299e-02,  5.3027e-01,  ..., -1.3174e+00,
+             1.6675e-01,  2.4915e-01],
+         ....2451e-01,  1.1270e+00, -4.2212e-01,  ..., -5.6396e-01,
+             1.0322e+00,  7.6465e-01]]]]], dtype=torch.float16)
+ref = tensor([[[[[ 1.5000e+00, -9.4299e-02,  5.3027e-01,  ..., -1.3174e+00,
+             1.6675e-01,  2.4915e-01],
+         ....2451e-01,  1.1270e+00, -4.2212e-01,  ..., -5.6396e-01,
+             1.0322e+00,  7.6465e-01]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 88 / 77760 (0.1%)
+E       Greatest absolute difference: 3.55078125 at index (0, 2, 0, 1, 23) (up to 0.0001 allowed)
+E       Greatest relative difference: 76.1875 at index (0, 1, 0, 2, 12) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding4-dtype0-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.float16, padding = (4, 0, 4, 0, 4, 0)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-2.6221e-01, -7.8076e-01, -8.2764e-01,  ..., -2.6782e-01,
+             6.6113e-01,  6.9629e-01],
+         ....0020e+00, -1.8320e+00,  7.2949e-01,  ..., -3.0151e-01,
+            -2.5952e-01,  1.0977e+00]]]]], dtype=torch.float16)
+ref = tensor([[[[[-2.6221e-01, -7.8076e-01, -8.2764e-01,  ..., -2.6782e-01,
+             6.6113e-01,  6.9629e-01],
+         ....0020e+00, -1.8320e+00,  7.2949e-01,  ..., -3.0151e-01,
+            -2.5952e-01,  1.0977e+00]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 473 / 391680 (0.1%)
+E       Greatest absolute difference: 4.27734375 at index (1, 0, 0, 0, 16) (up to 0.0001 allowed)
+E       Greatest relative difference: 1678.0 at index (0, 2, 0, 0, 39) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding4-dtype1-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.float32, padding = (4, 0, 4, 0, 4, 0)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-5.9562e-01,  5.4219e-02, -2.3476e+00,  ...,  2.7510e-01,
+             6.4358e-01,  2.9910e+00],
+         ...e-01],
+           [ 9.8824e-01,  1.3648e+00, -5.0097e-01,  ...,  2.7575e-01,
+            -1.1881e+00,  2.1136e-01]]]]])
+ref = tensor([[[[[-5.9562e-01,  5.4219e-02, -2.3476e+00,  ...,  2.7510e-01,
+             6.4358e-01,  2.9910e+00],
+         ...e-01],
+           [ 9.8824e-01,  1.3648e+00, -5.0097e-01,  ...,  2.7575e-01,
+            -1.1881e+00,  2.1136e-01]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 348 / 38400 (0.9%)
+E       Greatest absolute difference: 4.2510457038879395 at index (1, 1, 0, 0, 13) (up to 0.0001 allowed)
+E       Greatest relative difference: 1122.9700927734375 at index (1, 1, 0, 1, 15) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding4-dtype1-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.float32, padding = (4, 0, 4, 0, 4, 0)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 9.0501e-01, -2.1153e+00, -2.3853e+00,  ...,  1.5192e-01,
+             1.4394e+00,  1.7342e+00],
+         ...e-01],
+           [ 1.6183e-01, -4.7920e-01,  3.9963e-01,  ...,  6.5891e-01,
+            -1.4489e-01, -1.7295e+00]]]]])
+ref = tensor([[[[[ 9.0501e-01, -2.1153e+00, -2.3853e+00,  ...,  1.5192e-01,
+             1.4394e+00,  1.7342e+00],
+         ...e-01],
+           [ 1.6183e-01, -4.7920e-01,  3.9963e-01,  ...,  6.5891e-01,
+            -1.4489e-01, -1.7295e+00]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 128 / 77760 (0.2%)
+E       Greatest absolute difference: 3.3762922286987305 at index (0, 2, 0, 3, 4) (up to 0.0001 allowed)
+E       Greatest relative difference: 2119.836181640625 at index (0, 2, 0, 0, 23) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding4-dtype1-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.float32, padding = (4, 0, 4, 0, 4, 0)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-2.6072e-01,  9.9441e-01, -6.2245e-02,  ..., -1.0419e-01,
+             8.1469e-01,  2.6402e-01],
+         ...e-01],
+           [ 4.5224e-01,  1.5809e-01, -1.6706e+00,  ...,  4.3858e-01,
+            -4.1694e-01, -5.7429e-01]]]]])
+ref = tensor([[[[[-2.6072e-01,  9.9441e-01, -6.2245e-02,  ..., -1.0419e-01,
+             8.1469e-01,  2.6402e-01],
+         ...e-01],
+           [ 4.5224e-01,  1.5809e-01, -1.6706e+00,  ...,  4.3858e-01,
+            -4.1694e-01, -5.7429e-01]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 516 / 391680 (0.1%)
+E       Greatest absolute difference: 4.754249095916748 at index (1, 1, 0, 1, 14) (up to 0.0001 allowed)
+E       Greatest relative difference: 4245.74267578125 at index (1, 1, 0, 1, 3) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding4-dtype2-shape0] _________________
+
+shape = (2, 4, 8, 16, 16), dtype = torch.bfloat16, padding = (4, 0, 4, 0, 4, 0)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 2.1680e-01,  9.3750e-01, -4.4434e-02,  ..., -8.1250e-01,
+            -5.1953e-01, -4.2773e-01],
+         ...3672e-01,  1.5723e-01, -8.4766e-01,  ...,  4.0234e-01,
+            -9.9609e-01,  7.9297e-01]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 2.1680e-01,  9.3750e-01, -4.4434e-02,  ..., -8.1250e-01,
+            -5.1953e-01, -4.2773e-01],
+         ...3672e-01,  1.5723e-01, -8.4766e-01,  ...,  4.0234e-01,
+            -9.9609e-01,  7.9297e-01]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 179 / 38400 (0.5%)
+E       Greatest absolute difference: 4.0 at index (1, 3, 0, 2, 16) (up to 0.0001 allowed)
+E       Greatest relative difference: 324.0 at index (1, 2, 0, 0, 0) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding4-dtype2-shape1] _________________
+
+shape = (1, 3, 16, 32, 32), dtype = torch.bfloat16, padding = (4, 0, 4, 0, 4, 0)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 1.0000e+00,  4.4922e-01,  3.2227e-01,  ..., -7.5684e-03,
+            -4.0430e-01,  4.8242e-01],
+         ...7480e-01,  1.3770e-01, -6.2891e-01,  ...,  3.0078e-01,
+             1.1084e-01,  1.2734e+00]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 1.0000e+00,  4.4922e-01,  3.2227e-01,  ..., -7.5684e-03,
+            -4.0430e-01,  4.8242e-01],
+         ...7480e-01,  1.3770e-01, -6.2891e-01,  ...,  3.0078e-01,
+             1.1084e-01,  1.2734e+00]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 110 / 77760 (0.1%)
+E       Greatest absolute difference: 4.40625 at index (0, 1, 0, 0, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 40.25 at index (0, 1, 0, 0, 20) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_reflection_pad3d[padding4-dtype2-shape2] _________________
+
+shape = (2, 4, 16, 32, 64), dtype = torch.bfloat16, padding = (4, 0, 4, 0, 4, 0)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        # 5D shapes: (N, C, D, H, W) covering small/medium volumes
+        "shape",
+        [
+            (2, 4, 8, 16, 16),
+            (1, 3, 16, 32, 32),
+            (2, 4, 16, 32, 64),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 2, 3, 1, 1),
+            (1, 1, 2, 2, 2, 2),
+            (0, 4, 0, 4, 0, 4),
+            (4, 0, 4, 0, 4, 0),
+        ],
+    )
+    def test_reflection_pad3d(shape, dtype, padding):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 4.6680e-01, -5.2344e-01,  2.4844e+00,  ...,  1.1953e+00,
+            -3.7500e-01, -6.4844e-01],
+         ...8096e-02,  1.9453e+00,  1.6250e+00,  ...,  1.0156e+00,
+             8.5547e-01, -5.0000e-01]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 4.6680e-01, -5.2344e-01,  2.4844e+00,  ...,  1.1953e+00,
+            -3.7500e-01, -6.4844e-01],
+         ...8096e-02,  1.9453e+00,  1.6250e+00,  ...,  1.0156e+00,
+             8.5547e-01, -5.0000e-01]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 550 / 391680 (0.1%)
+E       Greatest absolute difference: 4.53125 at index (0, 3, 0, 0, 56) (up to 0.0001 allowed)
+E       Greatest relative difference: 140.0 at index (1, 2, 0, 2, 20) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________ test_reflection_pad3d_list_padding[padding0] _________________
+
+padding = (1, 1, 1, 1, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 4, 5, 2, 1),
+        ],
+    )
+    def test_reflection_pad3d_list_padding(padding):
+        # Fixed shape for padding-focused test
+        shape = (2, 4, 8, 16, 16)
+        dtype = torch.float32
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x.clone())
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:76: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 1.1612e+00, -1.2597e+00,  1.1612e+00,  ..., -4.9483e-01,
+             4.3830e-01, -4.9483e-01],
+         ...e-01],
+           [ 1.1039e+00, -5.5579e-01,  1.1039e+00,  ...,  8.9612e-01,
+            -2.2057e-01,  8.9612e-01]]]]])
+ref = tensor([[[[[ 1.1612, -1.2597,  1.1612,  ..., -0.4948,  0.4383, -0.4948],
+           [ 0.0863,  1.1571,  0.0863,  ..., ...-0.2653,  ..., -0.5220, -1.6792, -0.5220],
+           [ 1.1039, -0.5558,  1.1039,  ...,  0.8961, -0.2206,  0.8961]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 332 / 25920 (1.3%)
+E       Greatest absolute difference: 4.777157783508301 at index (0, 2, 0, 1, 16) (up to 0.0001 allowed)
+E       Greatest relative difference: 125.77484130859375 at index (1, 3, 0, 3, 0) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________ test_reflection_pad3d_list_padding[padding1] _________________
+
+padding = (2, 3, 4, 5, 2, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 4, 5, 2, 1),
+        ],
+    )
+    def test_reflection_pad3d_list_padding(padding):
+        # Fixed shape for padding-focused test
+        shape = (2, 4, 8, 16, 16)
+        dtype = torch.float32
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x.clone())
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:76: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-5.1716e-01,  3.7438e-01, -8.5074e-01,  ..., -9.8194e-01,
+            -4.2203e-01,  5.1630e-02],
+         ...e-01],
+           [-6.3354e-01,  4.3702e-01, -1.6871e+00,  ..., -4.3185e-01,
+             2.7406e-01, -1.9072e-01]]]]])
+ref = tensor([[[[[-5.1716e-01,  3.7438e-01, -8.5074e-01,  ..., -9.8194e-01,
+            -4.2203e-01,  5.1630e-02],
+         ...e-01],
+           [-6.3354e-01,  4.3702e-01, -1.6871e+00,  ..., -4.3185e-01,
+             2.7406e-01, -1.9072e-01]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 419 / 46200 (0.9%)
+E       Greatest absolute difference: 4.380931854248047 at index (1, 3, 0, 0, 6) (up to 0.0001 allowed)
+E       Greatest relative difference: 140.0397491455078 at index (0, 1, 0, 3, 5) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+___________________ test_reflection_pad3d_4d_input[padding0] ___________________
+
+padding = (1, 1, 1, 1, 1, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 4, 5, 2, 1),
+        ],
+    )
+    def test_reflection_pad3d_4d_input(padding):
+        # 4D input (C, D, H, W) without batch dimension
+        shape = (3, 8, 16, 16)
+        dtype = torch.float32
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x.clone())
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:116: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[-0.4048,  1.1799, -0.4048,  ..., -1.0674,  0.0271, -1.0674],
+          [ 0.2608, -0.1807,  0.2608,  ..., -0...,  0.3504,  ..., -1.9617, -1.3369, -1.9617],
+          [-1.0740,  0.0111, -1.0740,  ...,  1.0959,  0.8854,  1.0959]]]])
+ref = tensor([[[[-0.4048,  1.1799, -0.4048,  ..., -1.0674,  0.0271, -1.0674],
+          [ 0.2608, -0.1807,  0.2608,  ..., -0...,  0.3504,  ..., -1.9617, -1.3369, -1.9617],
+          [-1.0740,  0.0111, -1.0740,  ...,  1.0959,  0.8854,  1.0959]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 90 / 9720 (0.9%)
+E       Greatest absolute difference: 3.477489471435547 at index (2, 0, 3, 7) (up to 0.0001 allowed)
+E       Greatest relative difference: 70.00605010986328 at index (2, 0, 0, 15) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+___________________ test_reflection_pad3d_4d_input[padding1] ___________________
+
+padding = (2, 3, 4, 5, 2, 1)
+
+    @pytest.mark.reflection_pad3d
+    @pytest.mark.parametrize(
+        "padding",
+        [
+            (1, 1, 1, 1, 1, 1),
+            (2, 3, 4, 5, 2, 1),
+        ],
+    )
+    def test_reflection_pad3d_4d_input(padding):
+        # 4D input (C, D, H, W) without batch dimension
+        shape = (3, 8, 16, 16)
+        dtype = torch.float32
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x.clone())
+        ref_out = torch.ops.aten.reflection_pad3d(ref_x, padding)
+    
+        with flag_gems.use_gems():
+            act_out = flag_gems.reflection_pad3d(x, padding)
+    
+>       utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
+
+test_reflection_pad3d.py:116: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 9.8371e-01, -1.2313e+00,  4.7626e-01,  ...,  2.3438e-01,
+            6.3166e-01, -2.2369e+00],
+          [...893e-01],
+          [ 9.4775e-01,  1.8306e+00,  6.4851e-01,  ...,  1.2909e+00,
+            5.4260e-01,  2.4832e+00]]]])
+ref = tensor([[[[ 9.8371e-01, -1.2313e+00,  4.7626e-01,  ...,  2.3438e-01,
+            6.3166e-01, -2.2369e+00],
+          [...893e-01],
+          [ 9.4775e-01,  1.8306e+00,  6.4851e-01,  ...,  1.2909e+00,
+            5.4260e-01,  2.4832e+00]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 99 / 17325 (0.6%)
+E       Greatest absolute difference: 4.2600250244140625 at index (1, 0, 5, 6) (up to 0.0001 allowed)
+E       Greatest relative difference: 40.928558349609375 at index (2, 0, 0, 0) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+=========================== short test summary info ============================
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype0-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype0-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype0-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype1-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype1-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype1-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype2-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype2-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding0-dtype2-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype0-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype0-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype0-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype1-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype1-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype1-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype2-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype2-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding1-dtype2-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype0-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype0-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype0-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype1-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype1-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype2-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype2-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding2-dtype2-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype0-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype0-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype0-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype1-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype1-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype1-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype2-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype2-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding3-dtype2-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype0-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype0-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype0-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype1-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype1-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype1-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype2-shape0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype2-shape1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d[padding4-dtype2-shape2]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d_list_padding[padding0]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d_list_padding[padding1]
+FAILED test_reflection_pad3d.py::test_reflection_pad3d_4d_input[padding0] - A...
+FAILED test_reflection_pad3d.py::test_reflection_pad3d_4d_input[padding1] - A...
+=============== 48 failed, 2 passed, 49901 deselected in 13.50s ================

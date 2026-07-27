@@ -1,0 +1,50 @@
+{
+  "tests/test_get_paged_mqa_logits_metadata.py::test_get_paged_mqa_logits_metadata[1024-4-1]": {
+    "params": {
+      "avg_ctx_len": 1024,
+      "batch_size": 4,
+      "next_n": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "get_paged_mqa_logits_metadata"
+    ],
+    "reason": "Skipped: vllm with deep_gemm is required."
+  },
+  "tests/test_get_paged_mqa_logits_metadata.py::test_get_paged_mqa_logits_metadata[1024-2-2]": {
+    "params": {
+      "avg_ctx_len": 1024,
+      "batch_size": 2,
+      "next_n": 2
+    },
+    "result": "skipped",
+    "opname": [
+      "get_paged_mqa_logits_metadata"
+    ],
+    "reason": "Skipped: vllm with deep_gemm is required."
+  },
+  "tests/test_get_paged_mqa_logits_metadata.py::test_get_paged_mqa_logits_metadata[2048-4-1]": {
+    "params": {
+      "avg_ctx_len": 2048,
+      "batch_size": 4,
+      "next_n": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "get_paged_mqa_logits_metadata"
+    ],
+    "reason": "Skipped: vllm with deep_gemm is required."
+  },
+  "tests/test_get_paged_mqa_logits_metadata.py::test_get_paged_mqa_logits_metadata[2048-2-2]": {
+    "params": {
+      "avg_ctx_len": 2048,
+      "batch_size": 2,
+      "next_n": 2
+    },
+    "result": "skipped",
+    "opname": [
+      "get_paged_mqa_logits_metadata"
+    ],
+    "reason": "Skipped: vllm with deep_gemm is required."
+  }
+}

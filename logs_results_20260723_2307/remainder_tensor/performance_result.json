@@ -1,0 +1,167 @@
+{
+  "remainder_tensor": {
+    "details": [
+      {
+        "op_name": "remainder_tensor",
+        "dtype": "torch.int16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.006912000011652708,
+            "latency": 0.006794999819248915,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0172185718198776,
+            "accuracy": null,
+            "tflops": 0.0012055923793836837,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.6810510158538818,
+            "latency": 0.4802759885787964,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.4180409432276777,
+            "accuracy": null,
+            "tflops": 0.06986489601383622,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.6809340119361877,
+            "latency": 0.4802359938621521,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.4179154012592492,
+            "accuracy": null,
+            "tflops": 0.0698707144588407,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "remainder_tensor",
+        "dtype": "torch.int32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.006467999890446663,
+            "latency": 0.005797999911010265,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.115557086878198,
+            "accuracy": null,
+            "tflops": 0.0014129010220306462,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.39984801411628723,
+            "latency": 0.4985620081424713,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8020025745764905,
+            "accuracy": null,
+            "tflops": 0.06730242467735595,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.4000079929828644,
+            "latency": 0.49869900941848755,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.802103042974353,
+            "accuracy": null,
+            "tflops": 0.0672839355328306,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_remainder.py::test_remainder_tensor",
+    "reason": null
+  }
+}

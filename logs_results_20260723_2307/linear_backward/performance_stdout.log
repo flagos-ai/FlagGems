@@ -1,0 +1,243 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_linear_backward.py F                                                [100%]
+
+=================================== FAILURES ===================================
+_____________________________ test_linear_backward _____________________________
+
+self = <benchmark.test_linear_backward.LinearBackwardBenchmark object at 0x7f3ffd053d30>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+>                       metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+
+base.py:440: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+base.py:318: in get_latency
+    latency = do_bench(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/testing.py:103: in do_bench
+    fn()
+base.py:288: in <lambda>
+    fn = lambda: op(*args, **kwargs)
+../src/flag_gems/ops/linear_backward.py:89: in linear_backward
+    grad_input = mm(grad_output_flat, weight)
+../src/flag_gems/ops/mm.py:598: in mm
+    return general_mm(a, b, c, M, N, K)
+../src/flag_gems/ops/mm.py:426: in general_mm
+    mm_kernel_general[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+../src/flag_gems/utils/libentry.py:546: in run
+    best_config, timings = self.policy(
+../src/flag_gems/utils/libentry.py:505: in policy
+    return policy_impl(fn, configs, args, kwargs)
+../src/flag_gems/utils/libentry.py:663: in default_policy
+    timings: Dict[triton.Config, float] = {
+../src/flag_gems/utils/libentry.py:664: in <dictcomp>
+    config: bench_fn(config) for config in configs
+../src/flag_gems/utils/libentry.py:542: in bench
+    ret = self._bench(*args, config=config, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/autotuner.py:145: in _bench
+    return do_bench(kernel_call, warmup=self.num_warmups, rep=self.num_reps, quantiles=(0.5, 0.2, 0.8))
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/testing.py:103: in do_bench
+    fn()
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/autotuner.py:126: in kernel_call
+    self.fn.run(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = JITFunction(flag_gems.ops.mm:mm_kernel_general)
+grid = <function general_mm.<locals>.<lambda> at 0x7f3ffcf36b00>, warmup = False
+args = (tensor([[-0.7448, -0.2631,  1.0934,  ..., -0.7670, -0.3596,  0.0495],
+        [-1.2636, -1.4211,  1.3518,  ...,  0.03...7],
+        [-1.4503, -0.8527,  0.0529,  ...,  1.2283,  0.6319, -0.8123]],
+       device='cuda:0'), 64, 512, 1024, ...)
+kwargs = {'GROUP_M': 8, 'IS_FP64': False, 'BLOCK_M': 128, 'BLOCK_N': 256, ...}
+
+    def default_run(self, *args, grid, warmup, **kwargs):
+        driver = DriverConfig()
+    
+        # parse options
+        device = driver.active.get_current_device()
+        stream = driver.active.get_current_stream(device)
+        kwargs["debug"] = self.debug
+        # Execute pre run hooks with args and kwargs
+        for hook in self.pre_run_hooks:
+            hook(*args, **kwargs)
+    
+        if self.binder is None:
+            self.create_binder()
+    
+        bound_args, sig_and_spec, constexpr_vals, non_constexpr_vals, excess_kwargs = self.binder(*args, **kwargs)
+    
+        # compute cache key
+        key = ''.join(sig_and_spec) + str((constexpr_vals, excess_kwargs))
+        kernel = self.cache[device].get(key, None)
+    
+        if kernel is None:
+            # Kernel is not cached; we have to compile.
+            target = driver.active.get_current_target()
+            backend = self.make_backend(target)
+            if backend.binary_ext == 'xpubin':
+                kwargs['grid'] = grid
+                options = backend.parse_options(kwargs)
+            else:
+                options = backend.parse_options(kwargs)
+    
+            # deprecated arguments
+            assert "device_type" not in kwargs, "device_type option is deprecated; current target will be used"
+            assert "device" not in kwargs, "device option is deprecated; current device will be used"
+            assert "stream" not in kwargs, "stream option is deprecated; current stream will be used"
+            for k in excess_kwargs:
+                if k not in options.__dict__:
+>                   raise KeyError("Keyword argument %s was specified but unrecognised" % k)
+E                   KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:660: KeyError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.linear_backward
+    def test_linear_backward():
+        bench = LinearBackwardBenchmark(
+            op_name="linear_backward",
+            # Use flag_gems.linear_backward for both baseline and gems since there's no native PyTorch CUDA impl
+            torch_op=flag_gems.linear_backward,
+            # Keep the worktree benchmark dtype set; this backward benchmark uses only fp32/fp16 core cases.
+            dtypes=[torch.float32, torch.float16],
+        )
+        bench.set_gems(flag_gems.linear_backward)
+>       bench.run()
+
+test_linear_backward.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.test_linear_backward.LinearBackwardBenchmark object at 0x7f3ffd053d30>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+    
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+    
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+>                   pytest.fail(str(e))  # raise exception again
+E                   Failed: 'Keyword argument SPLIT_K was specified but unrecognised'
+
+base.py:480: Failed
+=========================== short test summary info ============================
+FAILED test_linear_backward.py::test_linear_backward - Failed: 'Keyword argum...
+====================== 1 failed, 950 deselected in 8.22s =======================

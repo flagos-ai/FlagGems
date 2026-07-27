@@ -1,0 +1,7 @@
+{
+  "special_shifted_chebyshev_polynomial_w": {
+    "result": "skipped",
+    "reason": "Skipped: NVIDIA-only CUDA JIT kernel; not supported on other backends",
+    "test_case": "benchmark/test_special_shifted_chebyshev_polynomial_w.py::test_special_shifted_chebyshev_polynomial_w"
+  }
+}

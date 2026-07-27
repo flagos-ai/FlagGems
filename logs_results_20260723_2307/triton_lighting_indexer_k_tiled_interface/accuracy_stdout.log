@@ -1,0 +1,102 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 02:34:39 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 02:34:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:34:41 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:34:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:34:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:34:41 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:34:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:34:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:34:41 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:34:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 02:34:42 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49870 deselected / 81 selected
+
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-2048-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-2048-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-2048-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-4096-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-4096-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-4096-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-8192-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-8192-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-8192-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-2048-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-2048-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-2048-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-4096-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-4096-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-4096-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-8192-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-8192-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-8192-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-2048-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-2048-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-2048-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-4096-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-4096-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-4096-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-8192-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-8192-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-8192-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-2048-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-2048-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-2048-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-4096-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-4096-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-4096-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-8192-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-8192-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-8192-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-2048-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-2048-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-2048-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-4096-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-4096-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-4096-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-8192-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-8192-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-8192-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-2048-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-2048-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-2048-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-4096-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-4096-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-4096-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-8192-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-8192-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-8192-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-2048-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-2048-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-2048-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-4096-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-4096-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-4096-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-8192-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-8192-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-8192-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-2048-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-2048-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-2048-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-4096-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-4096-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-4096-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-8192-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-8192-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-8192-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-2048-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-2048-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-2048-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-4096-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-4096-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-4096-4096] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-8192-1024] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-8192-2048] SKIPPED
+test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-8192-4096] SKIPPED
+
+==================== 81 skipped, 49870 deselected in 10.22s ====================

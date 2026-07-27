@@ -1,0 +1,878 @@
+{
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        1,
+        1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 6 (66.7%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        1,
+        1
+      ],
+      "shape": [
+        1,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 5 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        1,
+        1
+      ],
+      "shape": [
+        4,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 40 / 40 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        1,
+        1
+      ],
+      "shape": [
+        1,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 128 / 128 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding1-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        0,
+        2
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 6 / 6 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 2) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 2) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding1-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        0,
+        2
+      ],
+      "shape": [
+        1,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 5 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding1-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        0,
+        2
+      ],
+      "shape": [
+        4,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 40 / 40 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding1-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        0,
+        2
+      ],
+      "shape": [
+        1,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 128 / 128 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding2-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        2,
+        1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 6 (66.7%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding2-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        2,
+        1
+      ],
+      "shape": [
+        1,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 5 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding2-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        2,
+        1
+      ],
+      "shape": [
+        4,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 40 / 40 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding2-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        2,
+        1
+      ],
+      "shape": [
+        1,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 128 / 128 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding3-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        1,
+        2
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 6 (66.7%)\nGreatest absolute difference: 2.0 at index (0, 2) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 2) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding3-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        1,
+        2
+      ],
+      "shape": [
+        1,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 5 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding3-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        1,
+        2
+      ],
+      "shape": [
+        4,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 40 / 40 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype0-padding3-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "padding": [
+        1,
+        2
+      ],
+      "shape": [
+        1,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 128 / 128 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        1,
+        1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 6 (66.7%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        1,
+        1
+      ],
+      "shape": [
+        1,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 5 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        1,
+        1
+      ],
+      "shape": [
+        4,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 40 / 40 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding0-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        1,
+        1
+      ],
+      "shape": [
+        1,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 128 / 128 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        0,
+        2
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 6 / 6 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 2) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 2) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        0,
+        2
+      ],
+      "shape": [
+        1,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 5 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        0,
+        2
+      ],
+      "shape": [
+        4,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 40 / 40 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        0,
+        2
+      ],
+      "shape": [
+        1,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 128 / 128 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding2-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        2,
+        1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 6 (66.7%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding2-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        2,
+        1
+      ],
+      "shape": [
+        1,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 5 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding2-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        2,
+        1
+      ],
+      "shape": [
+        4,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 40 / 40 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding2-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        2,
+        1
+      ],
+      "shape": [
+        1,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 128 / 128 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding3-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        1,
+        2
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 6 (66.7%)\nGreatest absolute difference: 2.0 at index (0, 2) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 2) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding3-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        1,
+        2
+      ],
+      "shape": [
+        1,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 5 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding3-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        1,
+        2
+      ],
+      "shape": [
+        4,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 40 / 40 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype1-padding3-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "padding": [
+        1,
+        2
+      ],
+      "shape": [
+        1,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 128 / 128 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding0-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        1,
+        1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 6 (66.7%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding0-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        1,
+        1
+      ],
+      "shape": [
+        1,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 5 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding0-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        1,
+        1
+      ],
+      "shape": [
+        4,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 40 / 40 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding0-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        1,
+        1
+      ],
+      "shape": [
+        1,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 128 / 128 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding1-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        0,
+        2
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 6 / 6 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 2) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 2) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding1-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        0,
+        2
+      ],
+      "shape": [
+        1,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 5 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding1-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        0,
+        2
+      ],
+      "shape": [
+        4,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 40 / 40 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding1-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        0,
+        2
+      ],
+      "shape": [
+        1,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 128 / 128 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        2,
+        1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 6 (66.7%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        2,
+        1
+      ],
+      "shape": [
+        1,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 5 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        2,
+        1
+      ],
+      "shape": [
+        4,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 40 / 40 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        2,
+        1
+      ],
+      "shape": [
+        1,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 128 / 128 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding3-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        1,
+        2
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 6 (66.7%)\nGreatest absolute difference: 2.0 at index (0, 2) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 2) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding3-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        1,
+        2
+      ],
+      "shape": [
+        1,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 5 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding3-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        1,
+        2
+      ],
+      "shape": [
+        4,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 40 / 40 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_reflection_pad1d_backward.py::test_reflection_pad1d_backward[dtype2-padding3-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "padding": [
+        1,
+        2
+      ],
+      "shape": [
+        1,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reflection_pad1d_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 128 / 128 (100.0%)\nGreatest absolute difference: 2.0 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (0, 0, 0) (up to 0.016 allowed)"
+  }
+}

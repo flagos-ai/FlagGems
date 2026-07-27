@@ -1,0 +1,319 @@
+{
+  "abs_": {
+    "customized": true,
+    "accuracy": {
+      "total": 18,
+      "skipped": 0,
+      "failed": 0,
+      "passed": 18,
+      "details": {},
+      "status": "Passed",
+      "exit_code": 0,
+      "duration": 22.705303192138672,
+      "data_file": "abs_/accuracy_result.json"
+    },
+    "performance": {
+      "duration": 25.2937114238739,
+      "exit_code": 0,
+      "data_file": "abs_/performance_result.json",
+      "data": {
+        "fp16": {
+          "result": "OK",
+          "details": {
+            "[[64,64]]": {
+              "base": 0.005350000225007534,
+              "gems": 0.006328999996185303,
+              "speedup": 0.8453152517352118
+            },
+            "[[4096,4096]]": {
+              "base": 0.0375249981880188,
+              "gems": 0.041526999324560165,
+              "speedup": 0.9036289353520788
+            },
+            "[[64,512,512]]": {
+              "base": 0.0374940000474453,
+              "gems": 0.041554998606443405,
+              "speedup": 0.9022741259731767
+            }
+          },
+          "speedup": 0.8837394376868225
+        },
+        "fp32": {
+          "result": "OK",
+          "details": {
+            "[[64,64]]": {
+              "base": 0.0054419999942183495,
+              "gems": 0.005295999813824892,
+              "speedup": 1.0275680108621479
+            },
+            "[[4096,4096]]": {
+              "base": 0.06900600343942642,
+              "gems": 0.07640399783849716,
+              "speedup": 0.9031726793314059
+            },
+            "[[64,512,512]]": {
+              "base": 0.06906600296497345,
+              "gems": 0.07641900330781937,
+              "speedup": 0.9037804731209633
+            }
+          },
+          "speedup": 0.9448403877715057
+        },
+        "bf16": {
+          "result": "OK",
+          "details": {
+            "[[64,64]]": {
+              "base": 0.00535999983549118,
+              "gems": 0.006254000123590231,
+              "speedup": 0.8570514438068427
+            },
+            "[[4096,4096]]": {
+              "base": 0.0374240018427372,
+              "gems": 0.061886999756097794,
+              "speedup": 0.6047150773220311
+            },
+            "[[64,512,512]]": {
+              "base": 0.037418998777866364,
+              "gems": 0.061813998967409134,
+              "speedup": 0.6053482933145158
+            }
+          },
+          "speedup": 0.6890382714811297
+        }
+      },
+      "status": "Passed",
+      "test_case": "benchmark/test_abs.py::test_abs_inplace"
+    }
+  },
+  "adaptive_max_pool3d_backward": {
+    "customized": false,
+    "accuracy": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 610.0016186237335
+    },
+    "performance": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "duration": 610.0014457702637,
+      "data": {}
+    }
+  },
+  "broadcast_to": {
+    "customized": true,
+    "accuracy": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 610.0018980503082
+    },
+    "performance": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "duration": 610.0015754699707,
+      "data": {}
+    }
+  },
+  "dswiglu": {
+    "customized": false,
+    "accuracy": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 610.0014953613281
+    },
+    "performance": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "duration": 610.0027914047241,
+      "data": {}
+    }
+  },
+  "geglu": {
+    "customized": true,
+    "accuracy": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 610.0015017986298
+    },
+    "performance": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "duration": 610.0017158985138,
+      "data": {}
+    }
+  },
+  "lerp_tensor": {
+    "customized": true,
+    "accuracy": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 610.0014510154724
+    },
+    "performance": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "duration": 610.0021698474884,
+      "data": {}
+    }
+  },
+  "logcumsumexp": {
+    "customized": false,
+    "accuracy": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 610.0033521652222
+    },
+    "performance": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "duration": 610.002069234848,
+      "data": {}
+    }
+  },
+  "moe_align_block_size_triton": {
+    "customized": true,
+    "accuracy": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 610.0015196800232
+    },
+    "performance": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "duration": 601.266491651535,
+      "data": {}
+    }
+  },
+  "rad2deg": {
+    "customized": true,
+    "accuracy": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 610.001650094986
+    },
+    "performance": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "duration": 610.0014877319336,
+      "data": {}
+    }
+  },
+  "scaled_grouped_mm": {
+    "customized": false,
+    "accuracy": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 610.0018572807312
+    },
+    "performance": {
+      "duration": 16.133941173553467,
+      "exit_code": 0,
+      "data_file": "scaled_grouped_mm/performance_result.json",
+      "data": {},
+      "status": "Skipped",
+      "reason": "Skipped: native torch._scaled_grouped_mm benchmark requires CUDA FP8 on SM89+.",
+      "test_case": "benchmark/test_scaled_grouped_mm.py::test_scaled_grouped_mm_benchmark"
+    }
+  },
+  "searchsorted_scalar_out": {
+    "customized": false,
+    "accuracy": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 610.0021812915802
+    },
+    "performance": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "duration": 610.0359897613525,
+      "data": {}
+    }
+  },
+  "square_": {
+    "customized": true,
+    "accuracy": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 610.0015006065369
+    },
+    "performance": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "duration": 610.0022306442261,
+      "data": {}
+    }
+  },
+  "unsqueeze_": {
+    "customized": false,
+    "accuracy": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "duration": 610.0017747879028
+    },
+    "performance": {
+      "status": "Timeout",
+      "exit_code": -100,
+      "duration": 610.0015089511871,
+      "data": {}
+    }
+  }
+}

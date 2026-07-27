@@ -1,0 +1,170 @@
+{
+  "tests/test_is_all_true.py::test_is_all_true[allTrue-shape0]": {
+    "params": {
+      "kind": "allTrue",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "is_all_true"
+    ],
+    "reason": null
+  },
+  "tests/test_is_all_true.py::test_is_all_true[allTrue-shape1]": {
+    "params": {
+      "kind": "allTrue",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "is_all_true"
+    ],
+    "reason": null
+  },
+  "tests/test_is_all_true.py::test_is_all_true[allTrue-shape2]": {
+    "params": {
+      "kind": "allTrue",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "is_all_true"
+    ],
+    "reason": null
+  },
+  "tests/test_is_all_true.py::test_is_all_true[allFalse-shape0]": {
+    "params": {
+      "kind": "allFalse",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "is_all_true"
+    ],
+    "reason": null
+  },
+  "tests/test_is_all_true.py::test_is_all_true[allFalse-shape1]": {
+    "params": {
+      "kind": "allFalse",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "is_all_true"
+    ],
+    "reason": null
+  },
+  "tests/test_is_all_true.py::test_is_all_true[allFalse-shape2]": {
+    "params": {
+      "kind": "allFalse",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "is_all_true"
+    ],
+    "reason": null
+  },
+  "tests/test_is_all_true.py::test_is_all_true[mixed-shape0]": {
+    "params": {
+      "kind": "mixed",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "is_all_true"
+    ],
+    "reason": null
+  },
+  "tests/test_is_all_true.py::test_is_all_true[mixed-shape1]": {
+    "params": {
+      "kind": "mixed",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "is_all_true"
+    ],
+    "reason": null
+  },
+  "tests/test_is_all_true.py::test_is_all_true[mixed-shape2]": {
+    "params": {
+      "kind": "mixed",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "is_all_true"
+    ],
+    "reason": null
+  },
+  "tests/test_is_all_true.py::test_accuracy_is_all_true_empty[shape0]": {
+    "params": {
+      "shape": [
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "is_all_true"
+    ],
+    "reason": null
+  },
+  "tests/test_is_all_true.py::test_accuracy_is_all_true_empty[shape1]": {
+    "params": {
+      "shape": [
+        0,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "is_all_true"
+    ],
+    "reason": null
+  },
+  "tests/test_is_all_true.py::test_accuracy_is_all_true_empty[shape2]": {
+    "params": {
+      "shape": [
+        3,
+        0,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "is_all_true"
+    ],
+    "reason": null
+  }
+}

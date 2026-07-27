@@ -1,0 +1,141 @@
+{
+  "relu6": {
+    "details": [
+      {
+        "op_name": "relu6",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.005065999925136566,
+            "latency": 0.007387000136077404,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6857993545166875,
+            "accuracy": null,
+            "tflops": 0.0005544876031605207,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.061932001262903214,
+            "latency": 3.615009069442749,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.01713190757567034,
+            "accuracy": null,
+            "tflops": 0.0046409886331450325,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.061709001660346985,
+            "latency": 3.6148340702056885,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.017071046820369175,
+            "accuracy": null,
+            "tflops": 0.004641213309977838,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "relu6",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.005324000027030706,
+            "latency": 0.005121999885886908,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0394377480757833,
+            "accuracy": null,
+            "tflops": 0.0007996876398388968,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.07132899761199951,
+            "latency": 0.8967429995536804,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.07954229656378783,
+            "accuracy": null,
+            "tflops": 0.018709057119319826,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.07152099907398224,
+            "latency": 0.8970540165901184,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.07972875406750626,
+            "accuracy": null,
+            "tflops": 0.018702570513839903,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "failed",
+    "test_case": "benchmark/test_relu6.py::test_relu6",
+    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:8071)"
+  }
+}

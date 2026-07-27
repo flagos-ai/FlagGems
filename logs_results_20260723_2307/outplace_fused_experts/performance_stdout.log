@@ -1,0 +1,163 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_outplace_fused_experts.py F                                         [100%]
+
+=================================== FAILURES ===================================
+___________________ test_outplace_fused_experts_gems_vs_vllm ___________________
+
+hidden_states = tensor([[ 0.1670, -0.2910, -0.5352,  ...,  1.4844,  1.9688, -0.6016]],
+       device='cuda:0', dtype=torch.bfloat16)
+w1 = tensor([[[ 1.3750,  0.5781, -0.6250,  ..., -0.5977,  0.4473, -0.6289],
+         [ 1.0469,  1.5000, -1.4688,  ...,  0.0...
+         [-0.1719, -0.0991,  0.0991,  ..., -1.2422, -1.4688, -1.3984]]],
+       device='cuda:0', dtype=torch.bfloat16)
+w2 = tensor([[[-1.5781, -1.3594,  0.3320,  ..., -0.2812, -1.8672,  0.5469],
+         [-0.1367,  0.9336, -0.8008,  ...,  0.1...
+         [-1.5234,  0.8828, -0.5898,  ...,  0.9531,  0.6445,  0.8945]]],
+       device='cuda:0', dtype=torch.bfloat16)
+topk_weights = tensor([[0.9844, 0.0166]], device='cuda:0', dtype=torch.bfloat16)
+topk_ids = tensor([[1, 3]], device='cuda:0')
+
+    def _vllm_outplace_fused_experts_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
+        """Wrapper to call vLLM fused_experts_impl out-of-place."""
+>       return vllm_fused_experts_impl(
+            hidden_states.clone(),
+            w1,
+            w2,
+            topk_weights,
+            topk_ids,
+            inplace=False,
+            activation="silu",
+        )
+
+test_outplace_fused_experts.py:96: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/model_executor/layers/fused_moe/fused_moe.py:1726: in fused_experts_impl
+    config = get_config_func(M)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/model_executor/layers/fused_moe/fused_moe.py:1346: in try_get_optimal_moe_config
+    configs = get_moe_configs(E, N, dtype, block_n, block_k)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/model_executor/layers/fused_moe/fused_moe.py:1060: in get_moe_configs
+    json_file_name = get_config_file_name(E, N, dtype, block_shape)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/model_executor/layers/fused_moe/fused_moe.py:1024: in get_config_file_name
+    device_name = current_platform.get_device_name().replace(" ", "_")
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'vllm.platforms.interface.UnspecifiedPlatform'>, device_id = 0
+
+    @classmethod
+    def get_device_name(cls, device_id: int = 0) -> str:
+        """Get the name of a device."""
+>       raise NotImplementedError
+E       NotImplementedError
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/platforms/interface.py:351: NotImplementedError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.outplace_fused_experts
+    @pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vLLM not installed")
+    def test_outplace_fused_experts_gems_vs_vllm():
+        """
+        Benchmark FlagGems outplace_fused_experts vs vLLM outplace fused_experts_impl (bf16/fp16).
+        """
+        bench = OutplaceFusedExpertsBenchmark(
+            op_name="outplace_fused_experts",
+            torch_op=_vllm_outplace_fused_experts_wrapper,
+            dtypes=[torch.bfloat16, torch.float16],
+        )
+        bench.set_gems(flag_gems.outplace_fused_experts)
+>       bench.run()
+
+test_outplace_fused_experts.py:119: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.test_outplace_fused_experts.OutplaceFusedExpertsBenchmark object at 0x7f00588e7df0>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+    
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+    
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+>                   pytest.fail(str(e))  # raise exception again
+E                   Failed
+
+base.py:480: Failed
+=========================== short test summary info ============================
+FAILED test_outplace_fused_experts.py::test_outplace_fused_experts_gems_vs_vllm
+====================== 1 failed, 950 deselected in 8.08s =======================

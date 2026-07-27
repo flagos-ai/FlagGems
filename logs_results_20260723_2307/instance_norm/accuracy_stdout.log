@@ -1,0 +1,3062 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 00:21:58 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 00:22:00 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:22:00 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:22:00 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:22:00 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:22:00 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:22:00 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:22:00 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:22:00 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:22:00 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 00:22:01 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49711 deselected / 240 selected
+
+test_instance_norm.py::test_instance_norm[False-False-False-dtype0-shape0] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype0-shape1] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype0-shape2] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype0-shape3] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype0-shape4] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype0-shape5] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype0-shape6] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype0-shape7] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype0-shape8] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype0-shape9] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype1-shape0] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype1-shape1] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype1-shape2] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype1-shape3] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype1-shape4] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype1-shape5] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype1-shape6] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype1-shape7] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype1-shape8] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype1-shape9] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype2-shape0] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype2-shape1] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype2-shape2] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype2-shape3] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype2-shape4] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype2-shape5] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype2-shape6] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype2-shape7] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype2-shape8] PASSED
+test_instance_norm.py::test_instance_norm[False-False-False-dtype2-shape9] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype0-shape0] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype0-shape1] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype0-shape2] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype0-shape3] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype0-shape4] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype0-shape5] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype0-shape6] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype0-shape7] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype0-shape8] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype0-shape9] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype1-shape0] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype1-shape1] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype1-shape2] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype1-shape3] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype1-shape4] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype1-shape5] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype1-shape6] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype1-shape7] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype1-shape8] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype1-shape9] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype2-shape0] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype2-shape1] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype2-shape2] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype2-shape3] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype2-shape4] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype2-shape5] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype2-shape6] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype2-shape7] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype2-shape8] PASSED
+test_instance_norm.py::test_instance_norm[False-False-True-dtype2-shape9] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype0-shape0] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype0-shape1] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype0-shape2] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype0-shape3] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype0-shape4] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype0-shape5] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype0-shape6] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype0-shape7] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype0-shape8] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype0-shape9] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype1-shape0] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype1-shape1] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype1-shape2] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype1-shape3] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype1-shape4] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype1-shape5] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype1-shape6] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype1-shape7] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype1-shape8] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype1-shape9] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype2-shape0] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype2-shape1] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype2-shape2] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype2-shape3] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype2-shape4] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype2-shape5] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype2-shape6] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype2-shape7] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype2-shape8] PASSED
+test_instance_norm.py::test_instance_norm[False-True-False-dtype2-shape9] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype0-shape0] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype0-shape1] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype0-shape2] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype0-shape3] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype0-shape4] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype0-shape5] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype0-shape6] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype0-shape7] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype0-shape8] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype0-shape9] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype1-shape0] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype1-shape1] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype1-shape2] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype1-shape3] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype1-shape4] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype1-shape5] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype1-shape6] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype1-shape7] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype1-shape8] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype1-shape9] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype2-shape0] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype2-shape1] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype2-shape2] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype2-shape3] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype2-shape4] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype2-shape5] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype2-shape6] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype2-shape7] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype2-shape8] PASSED
+test_instance_norm.py::test_instance_norm[False-True-True-dtype2-shape9] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype0-shape0] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype0-shape1] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype0-shape2] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype0-shape3] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype0-shape4] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype0-shape5] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype0-shape6] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype0-shape7] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype0-shape8] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype0-shape9] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype1-shape0] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype1-shape1] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype1-shape2] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype1-shape3] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype1-shape4] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype1-shape5] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype1-shape6] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype1-shape7] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype1-shape8] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype1-shape9] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype2-shape0] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype2-shape1] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype2-shape2] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype2-shape3] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype2-shape4] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype2-shape5] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype2-shape6] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype2-shape7] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype2-shape8] PASSED
+test_instance_norm.py::test_instance_norm[True-False-False-dtype2-shape9] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype0-shape0] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype0-shape1] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype0-shape2] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype0-shape3] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype0-shape4] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype0-shape5] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype0-shape6] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype0-shape7] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype0-shape8] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype0-shape9] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype1-shape0] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype1-shape1] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype1-shape2] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype1-shape3] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype1-shape4] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype1-shape5] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype1-shape6] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype1-shape7] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype1-shape8] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype1-shape9] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype2-shape0] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype2-shape1] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype2-shape2] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype2-shape3] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype2-shape4] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype2-shape5] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype2-shape6] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype2-shape7] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype2-shape8] PASSED
+test_instance_norm.py::test_instance_norm[True-False-True-dtype2-shape9] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape0] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape1] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape2] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape3] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape4] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape5] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape6] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape7] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape8] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape9] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape0] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape1] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape2] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape3] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape4] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape5] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape6] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape7] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape8] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape9] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape0] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape1] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape2] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape3] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape4] FAILED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape5] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape6] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape7] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape8] PASSED
+test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape9] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape0] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape1] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape2] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape3] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape4] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape5] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape6] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape7] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape8] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape9] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape0] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape1] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape2] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape3] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape4] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape5] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape6] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape7] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape8] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape9] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape0] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape1] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape2] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape3] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape4] FAILED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape5] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape6] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape7] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape8] PASSED
+test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape9] PASSED
+
+=================================== FAILURES ===================================
+______________ test_instance_norm[True-True-False-dtype0-shape0] _______________
+
+shape = (1, 1, 2, 2), dtype = torch.float16, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([1.1531]), ref = tensor([1.1589]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.005860328674316406 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.005056703928858042 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+______________ test_instance_norm[True-True-False-dtype0-shape1] _______________
+
+shape = (2, 1, 2, 2), dtype = torch.float16, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([1.0876]), ref = tensor([1.1011]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.013467192649841309 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.01223121490329504 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+______________ test_instance_norm[True-True-False-dtype0-shape2] _______________
+
+shape = (2, 3, 2, 2), dtype = torch.float16, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.9284, 0.5057, 0.0952]), ref = tensor([0.9885, 0.5154, 0.1109])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 3 / 3 (100.0%)
+E       Greatest absolute difference: 0.0601041316986084 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.1412370204925537 at index (2,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+______________ test_instance_norm[True-True-False-dtype0-shape4] _______________
+
+shape = (4, 16, 8, 8), dtype = torch.float16, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([1.5268, 1.5851, 1.3328, 0.8501, 1.4587, 0.6807, 0.4905, 0.9470, 0.4546,
+        0.6441, 2.3192, 0.8984, 0.2307, 0.1695, 0.6359, 0.2615])
+ref = tensor([1.5283, 1.5864, 1.3343, 0.8518, 1.4603, 0.6822, 0.4921, 0.9485, 0.4561,
+        0.6459, 2.3208, 0.9002, 0.2323, 0.1710, 0.6372, 0.2630])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 16 / 16 (100.0%)
+E       Greatest absolute difference: 0.0018076896667480469 at index (11,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.00895693339407444 at index (13,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+______________ test_instance_norm[True-True-False-dtype0-shape5] _______________
+
+shape = (2, 3, 1024), dtype = torch.float16, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.1722, 0.4698, 0.1647]), ref = tensor([0.1723, 0.4699, 0.1648])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 3 (33.3%)
+E       Greatest absolute difference: 0.00010231137275695801 at index (1,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.00021773771732114255 at index (1,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+______________ test_instance_norm[True-True-False-dtype1-shape0] _______________
+
+shape = (1, 1, 2, 2), dtype = torch.float32, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([1.2438]), ref = tensor([1.2525]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.008659839630126953 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.006914188154041767 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+______________ test_instance_norm[True-True-False-dtype1-shape1] _______________
+
+shape = (2, 1, 2, 2), dtype = torch.float32, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.1829]), ref = tensor([0.2148]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.03185713291168213 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.14830918610095978 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+______________ test_instance_norm[True-True-False-dtype1-shape2] _______________
+
+shape = (2, 3, 2, 2), dtype = torch.float32, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.5804, 0.3465, 0.9286]), ref = tensor([0.5886, 0.3701, 0.9510])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 3 / 3 (100.0%)
+E       Greatest absolute difference: 0.023592084646224976 at index (1,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.06374210864305496 at index (1,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+______________ test_instance_norm[True-True-False-dtype1-shape4] _______________
+
+shape = (4, 16, 8, 8), dtype = torch.float32, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.7041, 1.2830, 0.2472, 1.2945, 1.0061, 0.3860, 0.7926, 0.2491, 0.4396,
+        0.1918, 0.3867, 0.4262, 0.8333, 1.0814, 1.1696, 1.1230])
+ref = tensor([0.7055, 1.2846, 0.2490, 1.2960, 1.0078, 0.3877, 0.7941, 0.2508, 0.4412,
+        0.1932, 0.3885, 0.4278, 0.8349, 1.0831, 1.1711, 1.1245])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 16 / 16 (100.0%)
+E       Greatest absolute difference: 0.0018116682767868042 at index (2,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.007275728974491358 at index (2,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+______________ test_instance_norm[True-True-False-dtype2-shape0] _______________
+
+shape = (1, 1, 2, 2), dtype = torch.bfloat16, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.6558]), ref = tensor([0.6987]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.04282635450363159 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.061297256499528885 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+______________ test_instance_norm[True-True-False-dtype2-shape1] _______________
+
+shape = (2, 1, 2, 2), dtype = torch.bfloat16, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.2956]), ref = tensor([0.3016]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.00602114200592041 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.019964003935456276 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+______________ test_instance_norm[True-True-False-dtype2-shape2] _______________
+
+shape = (2, 3, 2, 2), dtype = torch.bfloat16, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.6703, 0.9696, 1.1556]), ref = tensor([0.7166, 1.0047, 1.2110])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 3 / 3 (100.0%)
+E       Greatest absolute difference: 0.05540955066680908 at index (2,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.0646928921341896 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+______________ test_instance_norm[True-True-False-dtype2-shape4] _______________
+
+shape = (4, 16, 8, 8), dtype = torch.bfloat16, has_weight_bias = False
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.1423, 0.7706, 1.7349, 0.5934, 0.1460, 0.3881, 1.5238, 1.7268, 0.6644,
+        1.6173, 0.6474, 0.3380, 0.5158, 0.2315, 0.4737, 2.1569])
+ref = tensor([0.1439, 0.7721, 1.7366, 0.5952, 0.1478, 0.3893, 1.5254, 1.7282, 0.6659,
+        1.6187, 0.6491, 0.3397, 0.5171, 0.2328, 0.4753, 2.1584])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 16 / 16 (100.0%)
+E       Greatest absolute difference: 0.0018154531717300415 at index (4,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.012282411567866802 at index (4,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype0-shape0] _______________
+
+shape = (1, 1, 2, 2), dtype = torch.float16, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.4114]), ref = tensor([0.4258]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.014350175857543945 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.033703405410051346 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype0-shape1] _______________
+
+shape = (2, 1, 2, 2), dtype = torch.float16, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.1018]), ref = tensor([0.1264]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.024625487625598907 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.19476087391376495 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype0-shape2] _______________
+
+shape = (2, 3, 2, 2), dtype = torch.float16, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.7495, 0.5698, 0.3503]), ref = tensor([0.7878, 0.6095, 0.3751])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 3 / 3 (100.0%)
+E       Greatest absolute difference: 0.039681851863861084 at index (1,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.06636440008878708 at index (2,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype0-shape4] _______________
+
+shape = (4, 16, 8, 8), dtype = torch.float16, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.6190, 1.8835, 0.2982, 1.1024, 0.4478, 0.4638, 0.5124, 1.1635, 1.1083,
+        0.4011, 0.6326, 0.2940, 1.2183, 0.8157, 0.7528, 0.8487])
+ref = tensor([0.6203, 1.8848, 0.2998, 1.1039, 0.4491, 0.4654, 0.5138, 1.1651, 1.1098,
+        0.4029, 0.6338, 0.2954, 1.2202, 0.8172, 0.7543, 0.8501])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 16 / 16 (100.0%)
+E       Greatest absolute difference: 0.0019088983535766602 at index (12,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.005512222647666931 at index (2,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype0-shape5] _______________
+
+shape = (2, 3, 1024), dtype = torch.float16, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.9805, 0.2187, 0.7180]), ref = tensor([0.9806, 0.2188, 0.7181])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 3 (33.3%)
+E       Greatest absolute difference: 0.0001035928726196289 at index (1,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.0004734164976980537 at index (1,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype1-shape0] _______________
+
+shape = (1, 1, 2, 2), dtype = torch.float32, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.3105]), ref = tensor([0.3456]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.03502741456031799 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.1013636514544487 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype1-shape1] _______________
+
+shape = (2, 1, 2, 2), dtype = torch.float32, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.6560]), ref = tensor([0.6791]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.02308899164199829 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.03400121256709099 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype1-shape2] _______________
+
+shape = (2, 3, 2, 2), dtype = torch.float32, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([1.8376, 0.6148, 0.8347]), ref = tensor([1.8405, 0.6289, 0.8527])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 3 / 3 (100.0%)
+E       Greatest absolute difference: 0.018006086349487305 at index (2,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.022540880367159843 at index (1,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype1-shape4] _______________
+
+shape = (4, 16, 8, 8), dtype = torch.float32, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.5916, 1.4579, 1.0435, 0.5601, 0.2150, 0.5046, 0.5290, 0.2085, 0.7046,
+        1.3391, 0.2154, 1.1298, 0.9409, 0.7260, 0.8695, 0.5028])
+ref = tensor([0.5931, 1.4594, 1.0451, 0.5617, 0.2166, 0.5064, 0.5305, 0.2101, 0.7062,
+        1.3407, 0.2170, 1.1314, 0.9424, 0.7277, 0.8711, 0.5044])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 16 / 16 (100.0%)
+E       Greatest absolute difference: 0.00176316499710083 at index (5,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.007538825739175081 at index (7,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype1-shape5] _______________
+
+shape = (2, 3, 1024), dtype = torch.float32, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.6550, 0.6245, 1.0519]), ref = tensor([0.6551, 0.6245, 1.0520])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 3 (33.3%)
+E       Greatest absolute difference: 0.00010269880294799805 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.0001567702420288697 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype2-shape0] _______________
+
+shape = (1, 1, 2, 2), dtype = torch.bfloat16, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.1982]), ref = tensor([0.2206]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.02237074077129364 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.1014309898018837 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype2-shape1] _______________
+
+shape = (2, 1, 2, 2), dtype = torch.bfloat16, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.9079]), ref = tensor([0.9241]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.016111016273498535 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.017435090616345406 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype2-shape2] _______________
+
+shape = (2, 3, 2, 2), dtype = torch.bfloat16, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.1581, 0.0708, 1.3233]), ref = tensor([0.1737, 0.0872, 1.3421])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 3 / 3 (100.0%)
+E       Greatest absolute difference: 0.018791556358337402 at index (2,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.18804630637168884 at index (1,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_______________ test_instance_norm[True-True-True-dtype2-shape4] _______________
+
+shape = (4, 16, 8, 8), dtype = torch.bfloat16, has_weight_bias = True
+use_input_stats = True, has_running_stats = True
+
+    @pytest.mark.instance_norm
+    @pytest.mark.parametrize("shape", NORM_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("has_weight_bias", WEIGTH_BIAS)
+    @pytest.mark.parametrize("use_input_stats", USE_INPUT_BIAS)
+    @pytest.mark.parametrize("has_running_stats", HAS_RUN_STATS)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_instance_norm(
+        shape, dtype, has_weight_bias, use_input_stats, has_running_stats
+    ):
+        if use_input_stats is False and has_running_stats is False:
+            return
+    
+        B, C = shape[:2]
+        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=True)
+    
+        weight = None
+        bias = None
+        if has_weight_bias:
+            weight = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+            bias = torch.randn(size=(C,), dtype=dtype, device=device, requires_grad=True)
+    
+        running_mean = None
+        running_var = None
+        if has_running_stats:
+            running_mean = torch.randn(size=(C,), dtype=torch.float32, device=device)
+            r = torch.randn(size=(C,), dtype=torch.float32, device=device).abs()
+            running_var = r + 1e-5
+    
+        momentum = 0.1
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+    
+        ref_running_mean = utils.to_reference(None, True)
+        ref_running_var = utils.to_reference(None, True)
+        if has_running_stats:
+            ref_running_mean = utils.to_reference(running_mean.clone(), True)
+            ref_running_var = utils.to_reference(running_var.clone(), True)
+    
+        ref_out = torch.nn.functional.instance_norm(
+            ref_inp,
+            running_mean=ref_running_mean,
+            running_var=ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        res_out = flag_gems.instance_norm(
+            inp,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+        )
+    
+        utils.gems_assert_close(res_out, ref_out, dtype)
+        if has_running_stats:
+            utils.gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+>           utils.gems_assert_close(running_var, ref_running_var, running_var.dtype)
+
+test_instance_norm.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([0.7257, 1.7299, 0.5819, 1.2281, 1.4007, 0.8094, 0.8279, 1.1144, 0.1482,
+        0.8995, 0.1689, 1.7468, 0.9880, 1.1035, 0.5093, 0.2781])
+ref = tensor([0.7270, 1.7315, 0.5834, 1.2296, 1.4027, 0.8112, 0.8296, 1.1157, 0.1497,
+        0.9011, 0.1706, 1.7484, 0.9897, 1.1053, 0.5108, 0.2795])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 16 / 16 (100.0%)
+E       Greatest absolute difference: 0.0019683837890625 at index (4,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.010106856003403664 at index (8,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+=========================== short test summary info ============================
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape0]
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape1]
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape2]
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape4]
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype0-shape5]
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape0]
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape1]
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape2]
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype1-shape4]
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape0]
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape1]
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape2]
+FAILED test_instance_norm.py::test_instance_norm[True-True-False-dtype2-shape4]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape0]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape1]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape2]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape4]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype0-shape5]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape0]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape1]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape2]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape4]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype1-shape5]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape0]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape1]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape2]
+FAILED test_instance_norm.py::test_instance_norm[True-True-True-dtype2-shape4]
+============== 27 failed, 213 passed, 49711 deselected in 26.92s ===============

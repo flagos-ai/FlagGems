@@ -1,0 +1,88 @@
+{
+  "tests/test_igammac_.py::test_igammac_[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "failed",
+    "opname": [
+      "igammac_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp2prr_yzg/kernel.o', '/tmp/tmp2prr_yzg/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_igammac_.py::test_igammac_[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "igammac_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpusw6as07/kernel.o', '/tmp/tmpusw6as07/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_igammac_.py::test_igammac_[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "igammac_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpl30rhsqp/kernel.o', '/tmp/tmpl30rhsqp/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_igammac_.py::test_igammac_[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "igammac_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp1i3fv9ty/kernel.o', '/tmp/tmp1i3fv9ty/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_igammac_.py::test_igammac_[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "igammac_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpuo1mdgxp/kernel.o', '/tmp/tmpuo1mdgxp/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_igammac_.py::test_igammac_[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "igammac_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpoi2xhgc4/kernel.o', '/tmp/tmpoi2xhgc4/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  }
+}

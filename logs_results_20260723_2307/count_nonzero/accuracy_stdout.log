@@ -1,0 +1,388 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:39:20 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:39:22 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:39:22 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:39:22 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:39:22 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:39:22 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:39:22 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:39:22 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:39:22 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:39:22 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:39:23 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49933 deselected / 18 selected
+
+test_count_nonzero.py::test_count_nonzero[dtype0-shape0] PASSED
+test_count_nonzero.py::test_count_nonzero[dtype0-shape1] FAILED
+test_count_nonzero.py::test_count_nonzero[dtype0-shape2] PASSED
+test_count_nonzero.py::test_count_nonzero[dtype1-shape0] PASSED
+test_count_nonzero.py::test_count_nonzero[dtype1-shape1] PASSED
+test_count_nonzero.py::test_count_nonzero[dtype1-shape2] FAILED
+test_count_nonzero.py::test_count_nonzero[dtype2-shape0] PASSED
+test_count_nonzero.py::test_count_nonzero[dtype2-shape1] FAILED
+test_count_nonzero.py::test_count_nonzero[dtype2-shape2] FAILED
+test_count_nonzero.py::test_count_nonzero[dtype3-shape0] PASSED
+test_count_nonzero.py::test_count_nonzero[dtype3-shape1] FAILED
+test_count_nonzero.py::test_count_nonzero[dtype3-shape2] FAILED
+test_count_nonzero.py::test_count_nonzero[dtype4-shape0] PASSED
+test_count_nonzero.py::test_count_nonzero[dtype4-shape1] PASSED
+test_count_nonzero.py::test_count_nonzero[dtype4-shape2] PASSED
+test_count_nonzero.py::test_count_nonzero[dtype5-shape0] PASSED
+test_count_nonzero.py::test_count_nonzero[dtype5-shape1] PASSED
+test_count_nonzero.py::test_count_nonzero[dtype5-shape2] PASSED
+
+=================================== FAILURES ===================================
+______________________ test_count_nonzero[dtype0-shape1] _______________________
+
+shape = (4096, 256), dtype = torch.float16
+
+    @pytest.mark.count_nonzero
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_count_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = utils.to_reference(inp, False)
+        dim = random.choice([None] + list(range(inp.ndim)))
+        ref_out = torch.count_nonzero(ref_inp, dim)
+    
+        with flag_gems.use_gems():
+>           res_out = torch.count_nonzero(inp, dim)
+
+test_count_nonzero.py:56: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/count_nonzero.py:128: in count_nonzero
+    x = dim_compress(x, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[-1.4150, -1.7607, -1.6484,  ...,  1.7041,  1.1084,  1.5010],
+        [-1.7197,  1.7441,  1.6191,  ...,  1.89...    [ 0.1750, -1.5986, -1.2578,  ..., -0.2488,  1.6162,  0.6040]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_count_nonzero[dtype1-shape2] _______________________
+
+shape = (200, 40999, 3), dtype = torch.float32
+
+    @pytest.mark.count_nonzero
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_count_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = utils.to_reference(inp, False)
+        dim = random.choice([None] + list(range(inp.ndim)))
+        ref_out = torch.count_nonzero(ref_inp, dim)
+    
+        with flag_gems.use_gems():
+>           res_out = torch.count_nonzero(inp, dim)
+
+test_count_nonzero.py:56: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/count_nonzero.py:128: in count_nonzero
+    x = dim_compress(x, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0.,....3156e-01,  3.3310e-01,  4.3596e-01,  ...,  2.1383e+00,
+           1.2371e-01,  5.4906e-01]]], device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_count_nonzero[dtype2-shape1] _______________________
+
+shape = (4096, 256), dtype = torch.bfloat16
+
+    @pytest.mark.count_nonzero
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_count_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = utils.to_reference(inp, False)
+        dim = random.choice([None] + list(range(inp.ndim)))
+        ref_out = torch.count_nonzero(ref_inp, dim)
+    
+        with flag_gems.use_gems():
+>           res_out = torch.count_nonzero(inp, dim)
+
+test_count_nonzero.py:56: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/count_nonzero.py:128: in count_nonzero
+    x = dim_compress(x, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[ 7.4159e-17, -8.5547e-01,  5.1017e+14,  ...,  9.2578e-01,
+          5.0197e+10, -1.1875e+00],
+        [-1.27...   [ 0.6055, -0.1787,  0.1836,  ...,  1.5391, -0.5664,  1.2500]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_count_nonzero[dtype2-shape2] _______________________
+
+shape = (200, 40999, 3), dtype = torch.bfloat16
+
+    @pytest.mark.count_nonzero
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_count_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = utils.to_reference(inp, False)
+        dim = random.choice([None] + list(range(inp.ndim)))
+        ref_out = torch.count_nonzero(ref_inp, dim)
+    
+        with flag_gems.use_gems():
+>           res_out = torch.count_nonzero(inp, dim)
+
+test_count_nonzero.py:56: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/count_nonzero.py:128: in count_nonzero
+    x = dim_compress(x, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-9.9090e+07,  2.4219e+00,  2.2283e+30,  ..., -9.6798e-05,
+          -1.1797e+00, -6.3963e+07],
+         [-2...  [-0.1758, -0.2266, -0.2432,  ...,  0.7617, -0.6211, -1.1016]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_count_nonzero[dtype3-shape1] _______________________
+
+shape = (4096, 256), dtype = torch.int16
+
+    @pytest.mark.count_nonzero
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_count_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = utils.to_reference(inp, False)
+        dim = random.choice([None] + list(range(inp.ndim)))
+        ref_out = torch.count_nonzero(ref_inp, dim)
+    
+        with flag_gems.use_gems():
+>           res_out = torch.count_nonzero(inp, dim)
+
+test_count_nonzero.py:56: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/count_nonzero.py:128: in count_nonzero
+    x = dim_compress(x, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[ 1,  0, -3,  ..., -1,  2,  0],
+        [-1, -1, -2,  ...,  0,  0,  0],
+        [ 2,  0,  1,  ...,  0,  2,  0...   [ 1,  1, -2,  ...,  1,  0,  2],
+        [-3, -1,  2,  ..., -3,  0,  1]], device='cuda:0', dtype=torch.int16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_count_nonzero[dtype3-shape2] _______________________
+
+shape = (200, 40999, 3), dtype = torch.int16
+
+    @pytest.mark.count_nonzero
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_count_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = utils.to_reference(inp, False)
+        dim = random.choice([None] + list(range(inp.ndim)))
+        ref_out = torch.count_nonzero(ref_inp, dim)
+    
+        with flag_gems.use_gems():
+>           res_out = torch.count_nonzero(inp, dim)
+
+test_count_nonzero.py:56: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/count_nonzero.py:128: in count_nonzero
+    x = dim_compress(x, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-1, -1, -1,  ..., -1,  2,  0],
+         [ 2,  0,  2,  ...,  0, -1, -1],
+         [ 2,  0,  0,  ...,  0,  1,... [ 0, -1,  0,  ..., -3, -3, -1],
+         [-1,  2,  0,  ..., -3,  2, -1]]], device='cuda:0', dtype=torch.int16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+=========================== short test summary info ============================
+FAILED test_count_nonzero.py::test_count_nonzero[dtype0-shape1] - torch.Accel...
+FAILED test_count_nonzero.py::test_count_nonzero[dtype1-shape2] - torch.Accel...
+FAILED test_count_nonzero.py::test_count_nonzero[dtype2-shape1] - torch.Accel...
+FAILED test_count_nonzero.py::test_count_nonzero[dtype2-shape2] - torch.Accel...
+FAILED test_count_nonzero.py::test_count_nonzero[dtype3-shape1] - torch.Accel...
+FAILED test_count_nonzero.py::test_count_nonzero[dtype3-shape2] - torch.Accel...
+=============== 6 failed, 12 passed, 49933 deselected in 13.09s ================

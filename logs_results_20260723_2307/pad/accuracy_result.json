@@ -1,0 +1,1658 @@
+{
+  "tests/test_pad.py::test_pad[True-constant-dtype0-shape0]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "constant",
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-constant-dtype0-shape1]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "constant",
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-constant-dtype0-shape2]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "constant",
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-constant-dtype0-shape3]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "constant",
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-constant-dtype1-shape0]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "constant",
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-constant-dtype1-shape1]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "constant",
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-constant-dtype1-shape2]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "constant",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-constant-dtype1-shape3]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "constant",
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-constant-dtype2-shape0]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "constant",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-constant-dtype2-shape1]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "constant",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-constant-dtype2-shape2]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "constant",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-constant-dtype2-shape3]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "constant",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-reflect-dtype0-shape0]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "reflect",
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-reflect-dtype0-shape1]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "reflect",
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-reflect-dtype0-shape2]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "reflect",
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-reflect-dtype0-shape3]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "reflect",
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-reflect-dtype1-shape0]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "reflect",
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-reflect-dtype1-shape1]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "reflect",
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-reflect-dtype1-shape2]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "reflect",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-reflect-dtype1-shape3]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "reflect",
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-reflect-dtype2-shape0]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "reflect",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-reflect-dtype2-shape1]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "reflect",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-reflect-dtype2-shape2]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "reflect",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-reflect-dtype2-shape3]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "reflect",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-replicate-dtype0-shape0]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "replicate",
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-replicate-dtype0-shape1]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "replicate",
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-replicate-dtype0-shape2]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "replicate",
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-replicate-dtype0-shape3]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "replicate",
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-replicate-dtype1-shape0]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "replicate",
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-replicate-dtype1-shape1]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "replicate",
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-replicate-dtype1-shape2]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "replicate",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-replicate-dtype1-shape3]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "replicate",
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-replicate-dtype2-shape0]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "replicate",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-replicate-dtype2-shape1]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "replicate",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-replicate-dtype2-shape2]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "replicate",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-replicate-dtype2-shape3]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "replicate",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-circular-dtype0-shape0]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "circular",
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-circular-dtype0-shape1]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "circular",
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-circular-dtype0-shape2]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "circular",
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-circular-dtype0-shape3]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "circular",
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-circular-dtype1-shape0]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "circular",
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-circular-dtype1-shape1]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "circular",
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-circular-dtype1-shape2]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "circular",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-circular-dtype1-shape3]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "circular",
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-circular-dtype2-shape0]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "circular",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-circular-dtype2-shape1]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "circular",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-circular-dtype2-shape2]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "circular",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[True-circular-dtype2-shape3]": {
+    "params": {
+      "contiguous": true,
+      "pad_mode": "circular",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-constant-dtype0-shape0]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "constant",
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-constant-dtype0-shape1]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "constant",
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-constant-dtype0-shape2]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "constant",
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-constant-dtype0-shape3]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "constant",
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-constant-dtype1-shape0]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "constant",
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-constant-dtype1-shape1]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "constant",
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-constant-dtype1-shape2]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "constant",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-constant-dtype1-shape3]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "constant",
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-constant-dtype2-shape0]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "constant",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-constant-dtype2-shape1]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "constant",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-constant-dtype2-shape2]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "constant",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-constant-dtype2-shape3]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "constant",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-reflect-dtype0-shape0]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "reflect",
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-reflect-dtype0-shape1]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "reflect",
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-reflect-dtype0-shape2]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "reflect",
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-reflect-dtype0-shape3]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "reflect",
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-reflect-dtype1-shape0]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "reflect",
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-reflect-dtype1-shape1]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "reflect",
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-reflect-dtype1-shape2]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "reflect",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-reflect-dtype1-shape3]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "reflect",
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-reflect-dtype2-shape0]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "reflect",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-reflect-dtype2-shape1]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "reflect",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-reflect-dtype2-shape2]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "reflect",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-reflect-dtype2-shape3]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "reflect",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-replicate-dtype0-shape0]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "replicate",
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-replicate-dtype0-shape1]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "replicate",
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-replicate-dtype0-shape2]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "replicate",
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-replicate-dtype0-shape3]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "replicate",
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-replicate-dtype1-shape0]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "replicate",
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-replicate-dtype1-shape1]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "replicate",
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-replicate-dtype1-shape2]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "replicate",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-replicate-dtype1-shape3]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "replicate",
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-replicate-dtype2-shape0]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "replicate",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-replicate-dtype2-shape1]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "replicate",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-replicate-dtype2-shape2]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "replicate",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-replicate-dtype2-shape3]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "replicate",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-circular-dtype0-shape0]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "circular",
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-circular-dtype0-shape1]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "circular",
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-circular-dtype0-shape2]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "circular",
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-circular-dtype0-shape3]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "circular",
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-circular-dtype1-shape0]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "circular",
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-circular-dtype1-shape1]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "circular",
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-circular-dtype1-shape2]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "circular",
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-circular-dtype1-shape3]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "circular",
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-circular-dtype2-shape0]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "circular",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-circular-dtype2-shape1]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "circular",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        64,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-circular-dtype2-shape2]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "circular",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        64,
+        112,
+        112
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  },
+  "tests/test_pad.py::test_pad[False-circular-dtype2-shape3]": {
+    "params": {
+      "contiguous": false,
+      "pad_mode": "circular",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pad"
+    ],
+    "reason": null
+  }
+}

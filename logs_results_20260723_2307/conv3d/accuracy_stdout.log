@@ -1,0 +1,947 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:36:13 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:36:16 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:36:16 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:36:16 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:36:16 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:36:16 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:36:16 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:36:16 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:36:16 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:36:16 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:36:17 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49791 deselected / 160 selected
+
+test_conv3d.py::test_conv3d[True-1-dtype0-0-1-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-0-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-0-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-0-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-0-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-0-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-0-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-0-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-0-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-0-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-1-1-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-1-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-1-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-1-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-1-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-1-2-shape0-kernel0-1] Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter indexPASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-1-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-1-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-1-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype0-1-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-0-1-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-0-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-0-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-0-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-0-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-0-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-0-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-0-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-0-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-0-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-1-1-shape0-kernel0-1]  18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter iPASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-1-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-1-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-1-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-1-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-1-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-1-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-1-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-1-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-1-dtype1-1-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-0-1-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-0-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-0-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-0-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-0-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-0-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-0-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-0-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-0-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-0-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-1-1-shape0-kernel0-1] ndex 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parametPASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-1-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-1-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-1-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-1-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-1-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-1-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-1-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-1-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype0-1-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-0-1-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-0-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-0-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-0-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-0-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-0-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-0-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-0-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-0-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-0-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-1-1-shape0-kernel0-1] er index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parPASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-1-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-1-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-1-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-1-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-1-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-1-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-1-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-1-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[True-2-dtype1-1-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-0-1-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-0-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-0-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-0-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-0-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-0-2-shape0-kernel0-1] ameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandledPASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-0-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-0-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-0-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-0-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-1-1-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-1-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-1-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-1-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-1-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-1-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-1-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-1-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-1-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype0-1-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-0-1-shape0-kernel0-1]  parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhanPASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-0-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-0-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-0-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-0-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-0-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-0-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-0-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-0-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-0-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-1-1-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-1-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-1-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-1-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-1-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-1-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-1-2-shape1-kernel1-1] dled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered uPASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-1-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-1-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-1-dtype1-1-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-0-1-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-0-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-0-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-0-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-0-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-0-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-0-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-0-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-0-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-0-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-1-1-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-1-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-1-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-1-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-1-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-1-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-1-2-shape1-kernel1-1] nhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: EncounterPASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-1-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-1-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype0-1-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-0-1-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-0-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-0-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-0-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-0-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-0-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-0-2-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-0-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-0-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-0-2-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-1-1-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-1-1-shape1-kernel1-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-1-1-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-1-1-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-1-1-shape4-kernel4-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-1-2-shape0-kernel0-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-1-2-shape1-kernel1-1] ed unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: EncouPASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-1-2-shape2-kernel2-4] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-1-2-shape3-kernel3-1] PASSED
+test_conv3d.py::test_conv3d[False-2-dtype1-1-2-shape4-kernel4-1] PASSED
+
+=============================== warnings summary ===============================
+tests/test_conv3d.py::test_conv3d[True-1-dtype0-0-1-shape0-kernel0-1]
+  /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/backends/__init__.py:46: UserWarning: Please use the new API settings to control TF32 behavior, such as torch.backends.cudnn.conv.fp32_precision = 'tf32' or torch.backends.cuda.matmul.fp32_precision = 'ieee'. Old settings, e.g, torch.backends.cuda.matmul.allow_tf32 = True, torch.backends.cudnn.allow_tf32 = True, allowTF32CuDNN() and allowTF32CuBLAS() will be deprecated after Pytorch 2.9. Please see https://pytorch.org/docs/main/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices (Triggered internally at /pytorch/aten/src/ATen/Context.cpp:80.)
+    self.setter(val)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+============== 160 passed, 49791 deselected, 1 warning in 16.63s ===============
+ntered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23
+Warning: Encountered unhandled parameter index 18
+Warning: Encountered unhandled parameter index 19
+Warning: Encountered unhandled parameter index 20
+Warning: Encountered unhandled parameter index 21
+Warning: Encountered unhandled parameter index 22
+Warning: Encountered unhandled parameter index 23

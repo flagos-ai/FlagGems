@@ -1,0 +1,972 @@
+================================================================================
+WARNING: Libraries loaded from different directories!
+This may cause version mismatch issues.
+--------------------------------------------------------------------------------
+Directory: /root/miniconda/envs/python310_torch29_cuda/xcudart/lib
+  - libcuda.so.1
+  - libcuda.so.1
+  - libxpurt.so.2
+  - libcupti.so.12
+  - libxpuml.so.1
+Directory: /usr/local/cuda/lib64
+  - libcudart.so.12
+================================================================================
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0 -- /workspace/FlagGems/.venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: md-report-0.8.0
+collecting ... vLLM not installed, the native pytorch implementation of FlashMLA for comparison
+collected 49368 items / 6 errors / 49350 deselected / 18 selected
+
+test_abs.py::test_abs[dtype0-shape0] FAILED
+test_abs.py::test_abs[dtype0-shape1] FAILED
+test_abs.py::test_abs[dtype0-shape2] FAILED
+test_abs.py::test_abs[dtype0-shape3] FAILED
+test_abs.py::test_abs[dtype0-shape4] FAILED
+test_abs.py::test_abs[dtype0-shape5] FAILED
+test_abs.py::test_abs[dtype1-shape0] FAILED
+test_abs.py::test_abs[dtype1-shape1] FAILED
+test_abs.py::test_abs[dtype1-shape2] FAILED
+test_abs.py::test_abs[dtype1-shape3] FAILED
+test_abs.py::test_abs[dtype1-shape4] FAILED
+test_abs.py::test_abs[dtype1-shape5] FAILED
+test_abs.py::test_abs[dtype2-shape0] FAILED
+test_abs.py::test_abs[dtype2-shape1] FAILED
+test_abs.py::test_abs[dtype2-shape2] FAILED
+test_abs.py::test_abs[dtype2-shape3] FAILED
+test_abs.py::test_abs[dtype2-shape4] FAILED
+test_abs.py::test_abs[dtype2-shape5] FAILED
+
+==================================== ERRORS ====================================
+_______________ ERROR collecting tests/test_cutlass_scaled_mm.py _______________
+test_cutlass_scaled_mm.py:45: in <module>
+    CUDA_AVAILABLE = is_cuda_available()
+test_cutlass_scaled_mm.py:40: in is_cuda_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+__________________ ERROR collecting tests/test_fp8_einsum.py ___________________
+test_fp8_einsum.py:44: in <module>
+    CUDA_AVAILABLE = is_cuda_available()
+test_fp8_einsum.py:39: in is_cuda_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+________________ ERROR collecting tests/test_fp8_mqa_logits.py _________________
+test_fp8_mqa_logits.py:47: in <module>
+    HOPPER_AVAILABLE = is_hopper_available()
+test_fp8_mqa_logits.py:43: in is_hopper_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+______________ ERROR collecting tests/test_fused_experts_impl.py _______________
+test_fused_experts_impl.py:103: in <module>
+    CUDA_AVAILABLE = is_cuda_available()
+test_fused_experts_impl.py:98: in is_cuda_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+_______________ ERROR collecting tests/test_fused_marlin_moe.py ________________
+test_fused_marlin_moe.py:505: in <module>
+    not _is_hopper(),
+test_fused_marlin_moe.py:47: in _is_hopper
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+_______________ ERROR collecting tests/test_pointwise_dynamic.py _______________
+test_pointwise_dynamic.py:813: in <module>
+    get_device_properties(0).total_memory < (80 * 1024**3),
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+=================================== FAILURES ===================================
+___________________________ test_abs[dtype0-shape0] ____________________________
+
+shape = (), dtype = torch.float16
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype0-shape1] ____________________________
+
+shape = (1,), dtype = torch.float16
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype0-shape2] ____________________________
+
+shape = (1024, 1024), dtype = torch.float16
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype0-shape3] ____________________________
+
+shape = (20, 320, 15), dtype = torch.float16
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype0-shape4] ____________________________
+
+shape = (16, 128, 64, 60), dtype = torch.float16
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype0-shape5] ____________________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float16
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype1-shape0] ____________________________
+
+shape = (), dtype = torch.float32
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype1-shape1] ____________________________
+
+shape = (1,), dtype = torch.float32
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype1-shape2] ____________________________
+
+shape = (1024, 1024), dtype = torch.float32
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype1-shape3] ____________________________
+
+shape = (20, 320, 15), dtype = torch.float32
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype1-shape4] ____________________________
+
+shape = (16, 128, 64, 60), dtype = torch.float32
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype1-shape5] ____________________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float32
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype2-shape0] ____________________________
+
+shape = (), dtype = torch.bfloat16
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype2-shape1] ____________________________
+
+shape = (1,), dtype = torch.bfloat16
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype2-shape2] ____________________________
+
+shape = (1024, 1024), dtype = torch.bfloat16
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype2-shape3] ____________________________
+
+shape = (20, 320, 15), dtype = torch.bfloat16
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype2-shape4] ____________________________
+
+shape = (16, 128, 64, 60), dtype = torch.bfloat16
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+___________________________ test_abs[dtype2-shape5] ____________________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.bfloat16
+
+    @pytest.mark.abs
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_abs(shape, dtype):
+>       inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+test_abs.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+=============================== warnings summary ===============================
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:1034
+  /workspace/FlagGems/.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:1034: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+    r = torch._C._cuda_getDeviceCount() if nvml_count < 0 else nvml_count
+
+../src/flag_gems/utils/device_info.py:34
+../src/flag_gems/utils/device_info.py:34
+  /workspace/FlagGems/src/flag_gems/utils/device_info.py:34: UserWarning: [device_info] Failed to get current device, fallback to device_id=0.
+    warnings.warn(
+
+../src/flag_gems/utils/device_info.py:46
+../src/flag_gems/utils/device_info.py:46
+  /workspace/FlagGems/src/flag_gems/utils/device_info.py:46: UserWarning: [device_info] Failed to get device properties for device_id=0, fallback to None.
+    warnings.warn(
+
+../src/flag_gems/utils/device_info.py:65
+../src/flag_gems/utils/device_info.py:65
+  /workspace/FlagGems/src/flag_gems/utils/device_info.py:65: UserWarning: [device_info] Failed to get device capability for device_id=0 using torch_device_fn, fallback to (0, 0).
+    warnings.warn(
+
+../.venv/lib/python3.10/site-packages/torch/__init__.py:1617
+  /workspace/FlagGems/.venv/lib/python3.10/site-packages/torch/__init__.py:1617: UserWarning: Please use the new API settings to control TF32 behavior, such as torch.backends.cudnn.conv.fp32_precision = 'tf32' or torch.backends.cuda.matmul.fp32_precision = 'ieee'. Old settings, e.g, torch.backends.cuda.matmul.allow_tf32 = True, torch.backends.cudnn.allow_tf32 = True, allowTF32CuDNN() and allowTF32CuBLAS() will be deprecated after Pytorch 2.9. Please see https://pytorch.org/docs/main/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices (Triggered internally at /pytorch/aten/src/ATen/Context.cpp:80.)
+    _C._set_float32_matmul_precision(precision)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED test_abs.py::test_abs[dtype0-shape0] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype0-shape1] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype0-shape2] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype0-shape3] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype0-shape4] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype0-shape5] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype1-shape0] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype1-shape1] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype1-shape2] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype1-shape3] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype1-shape4] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype1-shape5] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype2-shape0] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype2-shape1] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype2-shape2] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype2-shape3] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype2-shape4] - RuntimeError: The NVIDIA driver...
+FAILED test_abs.py::test_abs[dtype2-shape5] - RuntimeError: The NVIDIA driver...
+ERROR test_cutlass_scaled_mm.py - RuntimeError: The NVIDIA driver on your sys...
+ERROR test_fp8_einsum.py - RuntimeError: The NVIDIA driver on your system is ...
+ERROR test_fp8_mqa_logits.py - RuntimeError: The NVIDIA driver on your system...
+ERROR test_fused_experts_impl.py - RuntimeError: The NVIDIA driver on your sy...
+ERROR test_fused_marlin_moe.py - RuntimeError: The NVIDIA driver on your syst...
+ERROR test_pointwise_dynamic.py - RuntimeError: The NVIDIA driver on your sys...
+========== 18 failed, 49350 deselected, 8 warnings, 6 errors in 6.57s ==========

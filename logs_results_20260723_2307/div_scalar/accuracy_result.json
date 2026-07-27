@@ -1,0 +1,3506 @@
+{
+  "tests/test_div.py::test_div_scalar_tensor[dtype0-0.001-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0-0.001-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0-0.001-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0-0.001-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0-0.001-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0-0.001-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0--0.999-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0--0.999-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0--0.999-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0--0.999-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0--0.999-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0--0.999-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0-100.001-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0-100.001-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0-100.001-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0-100.001-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0-100.001-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0-100.001-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0--111.999-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0--111.999-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0--111.999-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0--111.999-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0--111.999-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype0--111.999-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1-0.001-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1-0.001-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1-0.001-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1-0.001-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1-0.001-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1-0.001-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1--0.999-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1--0.999-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1--0.999-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1--0.999-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1--0.999-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1--0.999-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1-100.001-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1-100.001-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1-100.001-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1-100.001-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1-100.001-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1-100.001-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1--111.999-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1--111.999-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1--111.999-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1--111.999-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1--111.999-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype1--111.999-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2-0.001-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2-0.001-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2-0.001-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2-0.001-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2-0.001-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2-0.001-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2--0.999-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2--0.999-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2--0.999-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2--0.999-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2--0.999-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2--0.999-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2-100.001-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2-100.001-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2-100.001-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2-100.001-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2-100.001-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2-100.001-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2--111.999-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2--111.999-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2--111.999-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2--111.999-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2--111.999-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_tensor[dtype2--111.999-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_scalar[dtype0]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_scalar_scalar[dtype1]": {
+    "params": {
+      "dtype": "torch.int64"
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_div.py::test_div_complex_int_scalar[complex_dtype0-shape0]": {
+    "params": {
+      "complex_dtype": "torch.complex32",
+      "shape": []
+    },
+    "result": "failed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": "KeyError: 'complex32'"
+  },
+  "tests/test_div.py::test_div_complex_int_scalar[complex_dtype0-shape1]": {
+    "params": {
+      "complex_dtype": "torch.complex32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": "KeyError: 'complex32'"
+  },
+  "tests/test_div.py::test_div_complex_int_scalar[complex_dtype0-shape2]": {
+    "params": {
+      "complex_dtype": "torch.complex32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": "KeyError: 'complex32'"
+  },
+  "tests/test_div.py::test_div_complex_int_scalar[complex_dtype0-shape3]": {
+    "params": {
+      "complex_dtype": "torch.complex32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": "KeyError: 'complex32'"
+  },
+  "tests/test_div.py::test_div_complex_int_scalar[complex_dtype0-shape4]": {
+    "params": {
+      "complex_dtype": "torch.complex32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": "KeyError: 'complex32'"
+  },
+  "tests/test_div.py::test_div_complex_int_scalar[complex_dtype0-shape5]": {
+    "params": {
+      "complex_dtype": "torch.complex32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": "KeyError: 'complex32'"
+  },
+  "tests/test_div.py::test_div_complex_int_scalar[complex_dtype1-shape0]": {
+    "params": {
+      "complex_dtype": "torch.complex64",
+      "shape": []
+    },
+    "result": "failed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": "KeyError: 'complex64'"
+  },
+  "tests/test_div.py::test_div_complex_int_scalar[complex_dtype1-shape1]": {
+    "params": {
+      "complex_dtype": "torch.complex64",
+      "shape": [
+        1
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": "KeyError: 'complex64'"
+  },
+  "tests/test_div.py::test_div_complex_int_scalar[complex_dtype1-shape2]": {
+    "params": {
+      "complex_dtype": "torch.complex64",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": "KeyError: 'complex64'"
+  },
+  "tests/test_div.py::test_div_complex_int_scalar[complex_dtype1-shape3]": {
+    "params": {
+      "complex_dtype": "torch.complex64",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": "KeyError: 'complex64'"
+  },
+  "tests/test_div.py::test_div_complex_int_scalar[complex_dtype1-shape4]": {
+    "params": {
+      "complex_dtype": "torch.complex64",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": "KeyError: 'complex64'"
+  },
+  "tests/test_div.py::test_div_complex_int_scalar[complex_dtype1-shape5]": {
+    "params": {
+      "complex_dtype": "torch.complex64",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": "KeyError: 'complex64'"
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0-0.001-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0-0.001-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0-0.001-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0-0.001-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0-0.001-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0-0.001-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0--0.999-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0--0.999-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0--0.999-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0--0.999-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0--0.999-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0--0.999-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0-100.001-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0-100.001-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0-100.001-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0-100.001-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0-100.001-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0-100.001-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0--111.999-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0--111.999-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0--111.999-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0--111.999-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0--111.999-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype0--111.999-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1-0.001-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1-0.001-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1-0.001-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1-0.001-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1-0.001-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1-0.001-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1--0.999-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1--0.999-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1--0.999-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1--0.999-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1--0.999-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1--0.999-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1-100.001-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1-100.001-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1-100.001-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1-100.001-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1-100.001-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1-100.001-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1--111.999-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1--111.999-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1--111.999-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1--111.999-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1--111.999-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype1--111.999-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2-0.001-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2-0.001-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2-0.001-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2-0.001-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2-0.001-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2-0.001-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2--0.999-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2--0.999-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2--0.999-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2--0.999-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2--0.999-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2--0.999-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2-100.001-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2-100.001-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2-100.001-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2-100.001-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2-100.001-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2-100.001-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2--111.999-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2--111.999-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2--111.999-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2--111.999-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2--111.999-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_tensor_scalar[dtype2--111.999-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0-0.001-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0-0.001-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0-0.001-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0-0.001-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0-0.001-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0-0.001-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0--0.999-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0--0.999-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0--0.999-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0--0.999-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0--0.999-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0--0.999-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0-100.001-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0-100.001-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0-100.001-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0-100.001-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0-100.001-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0-100.001-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0--111.999-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0--111.999-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0--111.999-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0--111.999-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0--111.999-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype0--111.999-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1-0.001-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1-0.001-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1-0.001-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1-0.001-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1-0.001-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1-0.001-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1--0.999-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1--0.999-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1--0.999-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1--0.999-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1--0.999-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1--0.999-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1-100.001-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1-100.001-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1-100.001-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1-100.001-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1-100.001-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1-100.001-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1--111.999-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1--111.999-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1--111.999-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1--111.999-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1--111.999-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype1--111.999-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2-0.001-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2-0.001-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2-0.001-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2-0.001-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2-0.001-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2-0.001-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2--0.999-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2--0.999-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2--0.999-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2--0.999-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2--0.999-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2--0.999-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2-100.001-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2-100.001-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2-100.001-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2-100.001-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2-100.001-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2-100.001-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2--111.999-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2--111.999-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2--111.999-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2--111.999-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2--111.999-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_true_divide.py::test_true_divide_scalar_tensor[dtype2--111.999-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "div_scalar"
+    ],
+    "reason": null
+  }
+}

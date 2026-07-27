@@ -1,0 +1,108 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 01:51:01 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 01:51:03 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:51:03 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:51:03 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:51:03 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:51:03 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:51:03 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:51:03 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:51:03 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:51:03 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 01:51:04 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49939 deselected / 12 selected
+
+test_scaled_mm.py::test_scaled_mm[float16-default-scalar-bias_False-16-16-16] PASSED
+test_scaled_mm.py::test_scaled_mm[float16-default-scalar-bias_False-17-31-32] PASSED
+test_scaled_mm.py::test_scaled_mm[float16-default-scalar-bias_False-64-48-80] PASSED
+test_scaled_mm.py::test_scaled_mm[float16-float32-rowwise_2d-bias_True-16-16-16] PASSED
+test_scaled_mm.py::test_scaled_mm[float16-float32-rowwise_2d-bias_True-17-31-32] PASSED
+test_scaled_mm.py::test_scaled_mm[float16-float32-rowwise_2d-bias_True-64-48-80] PASSED
+test_scaled_mm.py::test_scaled_mm[float32-float16-rowwise_1d-bias_True-16-16-16] PASSED
+test_scaled_mm.py::test_scaled_mm[float32-float16-rowwise_1d-bias_True-17-31-32] PASSED
+test_scaled_mm.py::test_scaled_mm[float32-float16-rowwise_1d-bias_True-64-48-80] PASSED
+test_scaled_mm.py::test_scaled_mm[bfloat16-float32-rowwise_2d-bias_False-16-16-16] FAILED
+test_scaled_mm.py::test_scaled_mm[bfloat16-float32-rowwise_2d-bias_False-17-31-32] PASSED
+test_scaled_mm.py::test_scaled_mm[bfloat16-float32-rowwise_2d-bias_False-64-48-80] PASSED
+
+=================================== FAILURES ===================================
+_______ test_scaled_mm[bfloat16-float32-rowwise_2d-bias_False-16-16-16] ________
+
+M = 16, N = 16, K = 16
+case = (torch.bfloat16, torch.float32, 'rowwise_2d', False)
+
+    @pytest.mark.skipif(
+        version.parse(torch.__version__) < version.parse("2.5"),
+        reason="aten._scaled_mm is unavailable before torch 2.5",
+    )
+    @pytest.mark.scaled_mm
+    @pytest.mark.parametrize("M, N, K", SCALED_MM_SHAPES)
+    @pytest.mark.parametrize("case", _scaled_mm_cases(), ids=_case_id)
+    def test_scaled_mm(M, N, K, case):
+        dtype, out_dtype, scale_mode, use_bias = case
+        mat1 = _make_matrix((M, K), dtype)
+        mat2 = _make_matrix((K, N), dtype)
+        scale_a, scale_b = _make_scales(M, N, scale_mode)
+        bias = None
+        if use_bias:
+            bias_dtype = out_dtype or (torch.float32 if _is_float8(dtype) else dtype)
+            bias = _make_matrix((N,), bias_dtype)
+    
+        ref = _reference_scaled_mm(mat1, mat2, scale_a, scale_b, bias, out_dtype)
+        scale_result = torch.tensor([2.0], device=flag_gems.device)
+        with flag_gems.use_gems():
+            res = torch._scaled_mm(
+                mat1,
+                mat2,
+                scale_a,
+                scale_b,
+                bias=bias,
+                scale_result=scale_result,
+                out_dtype=out_dtype,
+                use_fast_accum=True,
+            )
+    
+        target_dtype = out_dtype or dtype
+>       _assert_scaled_mm_close(res, ref, target_dtype, reduce_dim=K)
+
+test_scaled_mm.py:169: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_scaled_mm.py:134: in _assert_scaled_mm_close
+    utils.gems_assert_close(res, ref, dtype, reduce_dim=reduce_dim)
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[-0.1296,  0.0666,  0.9376, -0.2472,  0.0833, -0.0930, -0.3142,  0.0691,
+         -0.6739,  0.0643, -0.1630,  ... -0.1284,  0.2291, -0.5573, -0.1732,
+          0.0987,  0.0622,  0.1945, -0.2725,  0.2116,  0.2162, -0.3324, -0.2822]])
+ref = tensor([[-0.1206, -0.0564,  0.6284, -0.3634,  0.0736, -0.1368, -0.1368,  0.1625,
+         -0.4302, -0.0625, -0.3570,  ... -0.1284,  0.2291, -0.5573, -0.1732,
+          0.0987,  0.0622,  0.1945, -0.2725,  0.2116,  0.2162, -0.3324, -0.2822]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 16, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 127 / 256 (49.6%)
+E       Greatest absolute difference: 0.8013235330581665 at index (8, 3) (up to 0.0016 allowed)
+E       Greatest relative difference: 77.39537811279297 at index (2, 14) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+=========================== short test summary info ============================
+FAILED test_scaled_mm.py::test_scaled_mm[bfloat16-float32-rowwise_2d-bias_False-16-16-16]
+=============== 1 failed, 11 passed, 49939 deselected in 21.11s ================

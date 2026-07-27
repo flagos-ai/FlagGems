@@ -1,0 +1,834 @@
+{
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype0-shapes0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype0-shapes1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype0-shapes2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype0-shapes3]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          1,
+          512
+        ],
+        [
+          256,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype0-shapes4]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          256,
+          1
+        ],
+        [
+          256,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype0-shapes5]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype0-shapes6]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [],
+        [
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype1-shapes0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype1-shapes1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype1-shapes2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype1-shapes3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          1,
+          512
+        ],
+        [
+          256,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype1-shapes4]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          256,
+          1
+        ],
+        [
+          256,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype1-shapes5]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype1-shapes6]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [],
+        [
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype2-shapes0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype2-shapes1]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype2-shapes2]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype2-shapes3]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          1,
+          512
+        ],
+        [
+          256,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype2-shapes4]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          256,
+          1
+        ],
+        [
+          256,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype2-shapes5]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype2-shapes6]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [],
+        [
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype3-shapes0]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype3-shapes1]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype3-shapes2]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype3-shapes3]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          1,
+          512
+        ],
+        [
+          256,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype3-shapes4]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          256,
+          1
+        ],
+        [
+          256,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype3-shapes5]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift[dtype3-shapes6]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [],
+        [
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype0-shapes0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype0-shapes1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype0-shapes2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype0-shapes3]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype1-shapes0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype1-shapes1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype1-shapes2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype1-shapes3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype2-shapes0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype2-shapes1]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype2-shapes2]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype2-shapes3]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype3-shapes0]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype3-shapes1]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype3-shapes2]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  },
+  "tests/test_bitwise_right_shift.py::test_bitwise_right_shift_[dtype3-shapes3]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "bitwise_right_shift"
+    ],
+    "reason": null
+  }
+}

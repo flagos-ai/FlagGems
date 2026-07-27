@@ -1,0 +1,743 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 02:26:21 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 02:26:23 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:26:23 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:26:23 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:26:23 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:26:23 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:26:23 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:26:23 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:26:23 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:26:23 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 02:26:24 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49915 deselected / 36 selected
+
+test_swiglu.py::test_swiglu[dtype0-shape0] FAILED
+test_swiglu.py::test_swiglu[dtype0-shape1] FAILED
+test_swiglu.py::test_swiglu[dtype0-shape2] FAILED
+test_swiglu.py::test_swiglu[dtype0-shape3] FAILED
+test_swiglu.py::test_swiglu[dtype0-shape4] FAILED
+test_swiglu.py::test_swiglu[dtype0-shape5] FAILED
+test_swiglu.py::test_swiglu[dtype0-shape6] FAILED
+test_swiglu.py::test_swiglu[dtype0-shape7] FAILED
+test_swiglu.py::test_swiglu[dtype0-shape8] FAILED
+test_swiglu.py::test_swiglu[dtype0-shape9] FAILED
+test_swiglu.py::test_swiglu[dtype0-shape10] FAILED
+test_swiglu.py::test_swiglu[dtype0-shape11] FAILED
+test_swiglu.py::test_swiglu[dtype1-shape0] FAILED
+test_swiglu.py::test_swiglu[dtype1-shape1] FAILED
+test_swiglu.py::test_swiglu[dtype1-shape2] FAILED
+test_swiglu.py::test_swiglu[dtype1-shape3] FAILED
+test_swiglu.py::test_swiglu[dtype1-shape4] FAILED
+test_swiglu.py::test_swiglu[dtype1-shape5] FAILED
+test_swiglu.py::test_swiglu[dtype1-shape6] FAILED
+test_swiglu.py::test_swiglu[dtype1-shape7] FAILED
+test_swiglu.py::test_swiglu[dtype1-shape8] FAILED
+test_swiglu.py::test_swiglu[dtype1-shape9] FAILED
+test_swiglu.py::test_swiglu[dtype1-shape10] FAILED
+test_swiglu.py::test_swiglu[dtype1-shape11] FAILED
+test_swiglu.py::test_swiglu[dtype2-shape0] FAILED
+test_swiglu.py::test_swiglu[dtype2-shape1] FAILED
+test_swiglu.py::test_swiglu[dtype2-shape2] FAILED
+test_swiglu.py::test_swiglu[dtype2-shape3] FAILED
+test_swiglu.py::test_swiglu[dtype2-shape4] FAILED
+test_swiglu.py::test_swiglu[dtype2-shape5] FAILED
+test_swiglu.py::test_swiglu[dtype2-shape6] FAILED
+test_swiglu.py::test_swiglu[dtype2-shape7] FAILED
+test_swiglu.py::test_swiglu[dtype2-shape8] FAILED
+test_swiglu.py::test_swiglu[dtype2-shape9] FAILED
+test_swiglu.py::test_swiglu[dtype2-shape10] FAILED
+test_swiglu.py::test_swiglu[dtype2-shape11] FAILED
+
+=================================== FAILURES ===================================
+__________________________ test_swiglu[dtype0-shape0] __________________________
+
+shape = (2,), dtype = torch.float16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype0-shape1] __________________________
+
+shape = (64,), dtype = torch.float16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype0-shape2] __________________________
+
+shape = (32, 64), dtype = torch.float16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype0-shape3] __________________________
+
+shape = (256, 512), dtype = torch.float16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype0-shape4] __________________________
+
+shape = (1, 128), dtype = torch.float16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype0-shape5] __________________________
+
+shape = (8, 16, 32), dtype = torch.float16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype0-shape6] __________________________
+
+shape = (16, 32, 64), dtype = torch.float16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype0-shape7] __________________________
+
+shape = (20, 320, 16), dtype = torch.float16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype0-shape8] __________________________
+
+shape = (4, 8, 16, 32), dtype = torch.float16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype0-shape9] __________________________
+
+shape = (8, 16, 32, 64), dtype = torch.float16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+_________________________ test_swiglu[dtype0-shape10] __________________________
+
+shape = (10,), dtype = torch.float16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+_________________________ test_swiglu[dtype0-shape11] __________________________
+
+shape = (20, 30), dtype = torch.float16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype1-shape0] __________________________
+
+shape = (2,), dtype = torch.float32
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype1-shape1] __________________________
+
+shape = (64,), dtype = torch.float32
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype1-shape2] __________________________
+
+shape = (32, 64), dtype = torch.float32
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype1-shape3] __________________________
+
+shape = (256, 512), dtype = torch.float32
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype1-shape4] __________________________
+
+shape = (1, 128), dtype = torch.float32
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype1-shape5] __________________________
+
+shape = (8, 16, 32), dtype = torch.float32
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype1-shape6] __________________________
+
+shape = (16, 32, 64), dtype = torch.float32
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype1-shape7] __________________________
+
+shape = (20, 320, 16), dtype = torch.float32
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype1-shape8] __________________________
+
+shape = (4, 8, 16, 32), dtype = torch.float32
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype1-shape9] __________________________
+
+shape = (8, 16, 32, 64), dtype = torch.float32
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+_________________________ test_swiglu[dtype1-shape10] __________________________
+
+shape = (10,), dtype = torch.float32
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+_________________________ test_swiglu[dtype1-shape11] __________________________
+
+shape = (20, 30), dtype = torch.float32
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype2-shape0] __________________________
+
+shape = (2,), dtype = torch.bfloat16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype2-shape1] __________________________
+
+shape = (64,), dtype = torch.bfloat16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype2-shape2] __________________________
+
+shape = (32, 64), dtype = torch.bfloat16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype2-shape3] __________________________
+
+shape = (256, 512), dtype = torch.bfloat16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype2-shape4] __________________________
+
+shape = (1, 128), dtype = torch.bfloat16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype2-shape5] __________________________
+
+shape = (8, 16, 32), dtype = torch.bfloat16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype2-shape6] __________________________
+
+shape = (16, 32, 64), dtype = torch.bfloat16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype2-shape7] __________________________
+
+shape = (20, 320, 16), dtype = torch.bfloat16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype2-shape8] __________________________
+
+shape = (4, 8, 16, 32), dtype = torch.bfloat16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+__________________________ test_swiglu[dtype2-shape9] __________________________
+
+shape = (8, 16, 32, 64), dtype = torch.bfloat16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+_________________________ test_swiglu[dtype2-shape10] __________________________
+
+shape = (10,), dtype = torch.bfloat16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+_________________________ test_swiglu[dtype2-shape11] __________________________
+
+shape = (20, 30), dtype = torch.bfloat16
+
+    @pytest.mark.swiglu
+    @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(TE_OP is None, reason="'swiglu' not found in TransformerEngine")
+    def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
+        torch.manual_seed(42)
+        device = flag_gems.device
+    
+        input_tensor = generate_input(shape, dtype, device)
+    
+>       te_forward = TE_OP(input_tensor, quantizer=None).to(device)
+E       TypeError: swiglu() got an unexpected keyword argument 'quantizer'
+
+test_swiglu.py:59: TypeError
+=========================== short test summary info ============================
+FAILED test_swiglu.py::test_swiglu[dtype0-shape0] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype0-shape1] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype0-shape2] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype0-shape3] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype0-shape4] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype0-shape5] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype0-shape6] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype0-shape7] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype0-shape8] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype0-shape9] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype0-shape10] - TypeError: swiglu() got ...
+FAILED test_swiglu.py::test_swiglu[dtype0-shape11] - TypeError: swiglu() got ...
+FAILED test_swiglu.py::test_swiglu[dtype1-shape0] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype1-shape1] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype1-shape2] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype1-shape3] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype1-shape4] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype1-shape5] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype1-shape6] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype1-shape7] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype1-shape8] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype1-shape9] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype1-shape10] - TypeError: swiglu() got ...
+FAILED test_swiglu.py::test_swiglu[dtype1-shape11] - TypeError: swiglu() got ...
+FAILED test_swiglu.py::test_swiglu[dtype2-shape0] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype2-shape1] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype2-shape2] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype2-shape3] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype2-shape4] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype2-shape5] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype2-shape6] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype2-shape7] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype2-shape8] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype2-shape9] - TypeError: swiglu() got a...
+FAILED test_swiglu.py::test_swiglu[dtype2-shape10] - TypeError: swiglu() got ...
+FAILED test_swiglu.py::test_swiglu[dtype2-shape11] - TypeError: swiglu() got ...
+==================== 36 failed, 49915 deselected in 10.24s =====================

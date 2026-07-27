@@ -1,0 +1,398 @@
+{
+  "tests/test_scalar_tensor.py::test_scalar_tensor[0.01-dtype0]": {
+    "params": {
+      "fill_value": 0.01,
+      "dtype": "torch.bool"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[0.01-dtype1]": {
+    "params": {
+      "fill_value": 0.01,
+      "dtype": "torch.int16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[0.01-dtype2]": {
+    "params": {
+      "fill_value": 0.01,
+      "dtype": "torch.int32"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[0.01-dtype3]": {
+    "params": {
+      "fill_value": 0.01,
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[0.01-dtype4]": {
+    "params": {
+      "fill_value": 0.01,
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[0.01-dtype5]": {
+    "params": {
+      "fill_value": 0.01,
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[2-dtype0]": {
+    "params": {
+      "fill_value": 2,
+      "dtype": "torch.bool"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[2-dtype1]": {
+    "params": {
+      "fill_value": 2,
+      "dtype": "torch.int16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[2-dtype2]": {
+    "params": {
+      "fill_value": 2,
+      "dtype": "torch.int32"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[2-dtype3]": {
+    "params": {
+      "fill_value": 2,
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[2-dtype4]": {
+    "params": {
+      "fill_value": 2,
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[2-dtype5]": {
+    "params": {
+      "fill_value": 2,
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[0-dtype0]": {
+    "params": {
+      "fill_value": 0,
+      "dtype": "torch.bool"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[0-dtype1]": {
+    "params": {
+      "fill_value": 0,
+      "dtype": "torch.int16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[0-dtype2]": {
+    "params": {
+      "fill_value": 0,
+      "dtype": "torch.int32"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[0-dtype3]": {
+    "params": {
+      "fill_value": 0,
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[0-dtype4]": {
+    "params": {
+      "fill_value": 0,
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[0-dtype5]": {
+    "params": {
+      "fill_value": 0,
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[-1-dtype0]": {
+    "params": {
+      "fill_value": -1,
+      "dtype": "torch.bool"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[-1-dtype1]": {
+    "params": {
+      "fill_value": -1,
+      "dtype": "torch.int16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[-1-dtype2]": {
+    "params": {
+      "fill_value": -1,
+      "dtype": "torch.int32"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[-1-dtype3]": {
+    "params": {
+      "fill_value": -1,
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[-1-dtype4]": {
+    "params": {
+      "fill_value": -1,
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[-1-dtype5]": {
+    "params": {
+      "fill_value": -1,
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[True-dtype0]": {
+    "params": {
+      "fill_value": true,
+      "dtype": "torch.bool"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[True-dtype1]": {
+    "params": {
+      "fill_value": true,
+      "dtype": "torch.int16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[True-dtype2]": {
+    "params": {
+      "fill_value": true,
+      "dtype": "torch.int32"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[True-dtype3]": {
+    "params": {
+      "fill_value": true,
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[True-dtype4]": {
+    "params": {
+      "fill_value": true,
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[True-dtype5]": {
+    "params": {
+      "fill_value": true,
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[False-dtype0]": {
+    "params": {
+      "fill_value": false,
+      "dtype": "torch.bool"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[False-dtype1]": {
+    "params": {
+      "fill_value": false,
+      "dtype": "torch.int16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[False-dtype2]": {
+    "params": {
+      "fill_value": false,
+      "dtype": "torch.int32"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[False-dtype3]": {
+    "params": {
+      "fill_value": false,
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[False-dtype4]": {
+    "params": {
+      "fill_value": false,
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_scalar_tensor.py::test_scalar_tensor[False-dtype5]": {
+    "params": {
+      "fill_value": false,
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "scalar_tensor"
+    ],
+    "reason": null
+  }
+}

@@ -1,0 +1,131 @@
+{
+  "tests/test_norm.py::test_norm_scalar[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm_scalar[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm_scalar[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "norm_scalar"
+    ],
+    "reason": "AssertionError: Scalars are not close!\n\nExpected 4952.0 but got 4960.0.\nAbsolute difference: 8.0 (up to 0.0001 allowed)\nRelative difference: 0.0016155088852988692 (up to 0.001 allowed)"
+  },
+  "tests/test_norm.py::test_norm_scalar[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm_scalar[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "norm_scalar"
+    ],
+    "reason": "AssertionError: Scalars are not close!\n\nExpected 1022.9631958007812 but got 1022.9739990234375.\nAbsolute difference: 0.01080322265625 (up to 0.0001 allowed)\nRelative difference: 1.056071489238005e-05 (up to 1.3e-06 allowed)"
+  },
+  "tests/test_norm.py::test_norm_scalar[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "norm_scalar"
+    ],
+    "reason": "AssertionError: Scalars are not close!\n\nExpected 4951.92431640625 but got 4959.794921875.\nAbsolute difference: 7.87060546875 (up to 0.0001 allowed)\nRelative difference: 0.0015894034249824558 (up to 1.3e-06 allowed)"
+  },
+  "tests/test_norm.py::test_norm_scalar[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm_scalar[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm_scalar[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm_scalar"
+    ],
+    "reason": null
+  }
+}

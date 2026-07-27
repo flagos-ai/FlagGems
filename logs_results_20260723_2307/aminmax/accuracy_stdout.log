@@ -1,0 +1,463 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:14:53 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:14:55 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:14:55 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:14:55 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:14:55 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:14:55 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:14:55 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:14:55 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:14:55 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:14:55 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:14:56 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49930 deselected / 21 selected
+
+test_aminmax.py::test_aminmax[dtype0-True-0-shape0] PASSED
+test_aminmax.py::test_aminmax[dtype0-False-1-shape1] PASSED
+test_aminmax.py::test_aminmax[dtype0-True-dim2-shape2] FAILED
+test_aminmax.py::test_aminmax[dtype0-False-dim3-shape3] FAILED
+test_aminmax.py::test_aminmax[dtype1-True-0-shape0] PASSED
+test_aminmax.py::test_aminmax[dtype1-False-1-shape1] PASSED
+test_aminmax.py::test_aminmax[dtype1-True-dim2-shape2] FAILED
+test_aminmax.py::test_aminmax[dtype1-False-dim3-shape3] FAILED
+test_aminmax.py::test_aminmax[dtype2-True-0-shape0] PASSED
+test_aminmax.py::test_aminmax[dtype2-False-1-shape1] PASSED
+test_aminmax.py::test_aminmax[dtype2-True-dim2-shape2] FAILED
+test_aminmax.py::test_aminmax[dtype2-False-dim3-shape3] FAILED
+test_aminmax.py::test_accuracy_aminmax_no_dim[dtype0-shape0] PASSED
+test_aminmax.py::test_accuracy_aminmax_no_dim[dtype0-shape1] PASSED
+test_aminmax.py::test_accuracy_aminmax_no_dim[dtype0-shape2] FAILED
+test_aminmax.py::test_accuracy_aminmax_no_dim[dtype1-shape0] PASSED
+test_aminmax.py::test_accuracy_aminmax_no_dim[dtype1-shape1] PASSED
+test_aminmax.py::test_accuracy_aminmax_no_dim[dtype1-shape2] FAILED
+test_aminmax.py::test_accuracy_aminmax_no_dim[dtype2-shape0] PASSED
+test_aminmax.py::test_accuracy_aminmax_no_dim[dtype2-shape1] PASSED
+test_aminmax.py::test_accuracy_aminmax_no_dim[dtype2-shape2] FAILED
+
+=================================== FAILURES ===================================
+____________________ test_aminmax[dtype0-True-dim2-shape2] _____________________
+
+shape = (200, 40999, 3), dim = [0, 1], keepdim = True, dtype = torch.float16
+
+    @pytest.mark.aminmax
+    @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_aminmax(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        # torch.aminmax only supports single dim, use torch.amin/amax for multi-dim
+        if isinstance(dim, list):
+            ref_min = torch.amin(ref_inp, dim=dim, keepdim=keepdim)
+            ref_max = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
+        else:
+            ref_min, ref_max = torch.aminmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            if isinstance(dim, list):
+>               res_min = torch.amin(inp, dim=dim, keepdim=keepdim)
+
+test_aminmax.py:50: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/amin.py:134: in amin
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[        nan,         nan,         nan,  ...,  1.1802e-05,
+           0.0000e+00,         nan],
+         [  ...   [-0.0875, -0.0249,  1.1504,  ...,  0.2494,  1.7988,  1.5127]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+____________________ test_aminmax[dtype0-False-dim3-shape3] ____________________
+
+shape = (7, 4, 11, 1), dim = [1, 0], keepdim = False, dtype = torch.float16
+
+    @pytest.mark.aminmax
+    @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_aminmax(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        # torch.aminmax only supports single dim, use torch.amin/amax for multi-dim
+        if isinstance(dim, list):
+            ref_min = torch.amin(ref_inp, dim=dim, keepdim=keepdim)
+            ref_max = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
+        else:
+            ref_min, ref_max = torch.aminmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            if isinstance(dim, list):
+>               res_min = torch.amin(inp, dim=dim, keepdim=keepdim)
+
+test_aminmax.py:50: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/amin.py:134: in amin
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[ 0.0000e+00,  1.8086e+00,  5.1200e+02,  1.6553e+00],
+          [ 5.1200e+02,  1.2705e+00, -5.1200e+02,  1....0083,  0.4451],
+          [-0.9526, -0.2278, -0.5259,  0.9800]]]], device='cuda:0',
+       dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+____________________ test_aminmax[dtype1-True-dim2-shape2] _____________________
+
+shape = (200, 40999, 3), dim = [0, 1], keepdim = True, dtype = torch.float32
+
+    @pytest.mark.aminmax
+    @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_aminmax(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        # torch.aminmax only supports single dim, use torch.amin/amax for multi-dim
+        if isinstance(dim, list):
+            ref_min = torch.amin(ref_inp, dim=dim, keepdim=keepdim)
+            ref_max = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
+        else:
+            ref_min, ref_max = torch.aminmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            if isinstance(dim, list):
+>               res_min = torch.amin(inp, dim=dim, keepdim=keepdim)
+
+test_aminmax.py:50: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/amin.py:134: in amin
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0.,...576, -0.6575],
+         [ 1.5349,  0.8026, -0.2172,  ..., -0.1771, -0.5765,  0.4819]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+____________________ test_aminmax[dtype1-False-dim3-shape3] ____________________
+
+shape = (7, 4, 11, 1), dim = [1, 0], keepdim = False, dtype = torch.float32
+
+    @pytest.mark.aminmax
+    @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_aminmax(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        # torch.aminmax only supports single dim, use torch.amin/amax for multi-dim
+        if isinstance(dim, list):
+            ref_min = torch.amin(ref_inp, dim=dim, keepdim=keepdim)
+            ref_max = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
+        else:
+            ref_min, ref_max = torch.aminmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            if isinstance(dim, list):
+>               res_min = torch.amin(inp, dim=dim, keepdim=keepdim)
+
+test_aminmax.py:50: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/amin.py:134: in amin
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[ 0.1593, -0.2834,  0.9580, -0.0928],
+          [-0.1354, -0.9235, -2.4611,  1.0979],
+          [ 0.1275, -...2e-01, -8.7475e-02],
+          [ 9.9646e-01, -6.8366e-01,  2.4246e-01,  1.6024e+00]]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+____________________ test_aminmax[dtype2-True-dim2-shape2] _____________________
+
+shape = (200, 40999, 3), dim = [0, 1], keepdim = True, dtype = torch.bfloat16
+
+    @pytest.mark.aminmax
+    @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_aminmax(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        # torch.aminmax only supports single dim, use torch.amin/amax for multi-dim
+        if isinstance(dim, list):
+            ref_min = torch.amin(ref_inp, dim=dim, keepdim=keepdim)
+            ref_max = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
+        else:
+            ref_min, ref_max = torch.aminmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            if isinstance(dim, list):
+>               res_min = torch.amin(inp, dim=dim, keepdim=keepdim)
+
+test_aminmax.py:50: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/amin.py:134: in amin
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 0.0000e+00,  0.0000e+00,  0.0000e+00,  ...,  0.0000e+00,
+           0.0000e+00,  0.0000e+00],
+         [ 0...  [-1.0625,  0.1465,  1.1562,  ...,  0.7305,  1.2656, -0.6133]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+____________________ test_aminmax[dtype2-False-dim3-shape3] ____________________
+
+shape = (7, 4, 11, 1), dim = [1, 0], keepdim = False, dtype = torch.bfloat16
+
+    @pytest.mark.aminmax
+    @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_aminmax(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        # torch.aminmax only supports single dim, use torch.amin/amax for multi-dim
+        if isinstance(dim, list):
+            ref_min = torch.amin(ref_inp, dim=dim, keepdim=keepdim)
+            ref_max = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
+        else:
+            ref_min, ref_max = torch.aminmax(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+            if isinstance(dim, list):
+>               res_min = torch.amin(inp, dim=dim, keepdim=keepdim)
+
+test_aminmax.py:50: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/amin.py:134: in amin
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[ 0.0000,  0.1611,  0.0000,  2.0000],
+          [ 0.0000,  0.0928,  0.0000,  1.6328],
+          [ 0.0000,  ...891, -1.2734],
+          [-0.9844, -1.2969, -1.0234, -0.6523]]]], device='cuda:0',
+       dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_accuracy_aminmax_no_dim[dtype0-shape2] __________________
+
+shape = (200, 40999, 3), dtype = torch.float16
+
+    @pytest.mark.aminmax
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_aminmax_no_dim(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        ref_min, ref_max = torch.aminmax(ref_inp)
+        with flag_gems.use_gems():
+            res_min, res_max = torch.aminmax(inp)
+    
+        utils.gems_assert_equal(res_min, ref_min)
+>       utils.gems_assert_equal(res_max, ref_max)
+
+test_aminmax.py:71: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:319: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(inf, dtype=torch.float16)
+ref = tensor(5.4492, dtype=torch.float16), equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Scalars are not equal!
+E       
+E       Expected 5.44921875 but got inf.
+E       Absolute difference: inf
+E       Relative difference: inf
+
+../src/flag_gems/testing/__init__.py:91: AssertionError
+_________________ test_accuracy_aminmax_no_dim[dtype1-shape2] __________________
+
+shape = (200, 40999, 3), dtype = torch.float32
+
+    @pytest.mark.aminmax
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_aminmax_no_dim(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        ref_min, ref_max = torch.aminmax(ref_inp)
+        with flag_gems.use_gems():
+            res_min, res_max = torch.aminmax(inp)
+    
+        utils.gems_assert_equal(res_min, ref_min)
+>       utils.gems_assert_equal(res_max, ref_max)
+
+test_aminmax.py:71: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:319: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(inf), ref = tensor(5.2391), equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Scalars are not equal!
+E       
+E       Expected 5.239127159118652 but got inf.
+E       Absolute difference: inf
+E       Relative difference: inf
+
+../src/flag_gems/testing/__init__.py:91: AssertionError
+_________________ test_accuracy_aminmax_no_dim[dtype2-shape2] __________________
+
+shape = (200, 40999, 3), dtype = torch.bfloat16
+
+    @pytest.mark.aminmax
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_accuracy_aminmax_no_dim(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        ref_min, ref_max = torch.aminmax(ref_inp)
+        with flag_gems.use_gems():
+            res_min, res_max = torch.aminmax(inp)
+    
+        utils.gems_assert_equal(res_min, ref_min)
+>       utils.gems_assert_equal(res_max, ref_max)
+
+test_aminmax.py:71: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:319: in gems_assert_equal
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(inf, dtype=torch.bfloat16)
+ref = tensor(5.4062, dtype=torch.bfloat16), equal_nan = False
+
+    def assert_equal(res, ref, equal_nan=False):
+>       torch.testing.assert_close(res, ref, atol=0, rtol=0, equal_nan=equal_nan)
+E       AssertionError: Scalars are not equal!
+E       
+E       Expected 5.40625 but got inf.
+E       Absolute difference: inf
+E       Relative difference: inf
+
+../src/flag_gems/testing/__init__.py:91: AssertionError
+=========================== short test summary info ============================
+FAILED test_aminmax.py::test_aminmax[dtype0-True-dim2-shape2] - torch.Acceler...
+FAILED test_aminmax.py::test_aminmax[dtype0-False-dim3-shape3] - torch.Accele...
+FAILED test_aminmax.py::test_aminmax[dtype1-True-dim2-shape2] - torch.Acceler...
+FAILED test_aminmax.py::test_aminmax[dtype1-False-dim3-shape3] - torch.Accele...
+FAILED test_aminmax.py::test_aminmax[dtype2-True-dim2-shape2] - torch.Acceler...
+FAILED test_aminmax.py::test_aminmax[dtype2-False-dim3-shape3] - torch.Accele...
+FAILED test_aminmax.py::test_accuracy_aminmax_no_dim[dtype0-shape2] - Asserti...
+FAILED test_aminmax.py::test_accuracy_aminmax_no_dim[dtype1-shape2] - Asserti...
+FAILED test_aminmax.py::test_accuracy_aminmax_no_dim[dtype2-shape2] - Asserti...
+=============== 9 failed, 12 passed, 49930 deselected in 12.28s ================

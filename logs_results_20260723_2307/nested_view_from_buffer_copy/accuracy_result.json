@@ -1,0 +1,24 @@
+{
+  "tests/test_nested_view_from_buffer_copy.py::test_nested_view_from_buffer_copy[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "nested_view_from_buffer_copy",
+      "nested_view_from_buffer_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_nested_view_from_buffer_copy.py::test_nested_view_from_buffer_copy[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "nested_view_from_buffer_copy",
+      "nested_view_from_buffer_copy"
+    ],
+    "reason": null
+  }
+}

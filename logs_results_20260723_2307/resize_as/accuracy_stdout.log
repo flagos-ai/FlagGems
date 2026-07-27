@@ -1,0 +1,232 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 01:43:15 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 01:43:17 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:43:17 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:43:17 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:43:17 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:43:17 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:43:17 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:43:17 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:43:17 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:43:17 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 01:43:19 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49907 deselected / 44 selected
+
+test_resize_as.py::test_resize_as[dtype0-shape0] PASSED
+test_resize_as.py::test_resize_as[dtype0-shape1] PASSED
+test_resize_as.py::test_resize_as[dtype0-shape2] PASSED
+test_resize_as.py::test_resize_as[dtype0-shape3] PASSED
+test_resize_as.py::test_resize_as[dtype0-shape4] PASSED
+test_resize_as.py::test_resize_as[dtype1-shape0] PASSED
+test_resize_as.py::test_resize_as[dtype1-shape1] PASSED
+test_resize_as.py::test_resize_as[dtype1-shape2] PASSED
+test_resize_as.py::test_resize_as[dtype1-shape3] PASSED
+test_resize_as.py::test_resize_as[dtype1-shape4] PASSED
+test_resize_as.py::test_resize_as[dtype2-shape0] PASSED
+test_resize_as.py::test_resize_as[dtype2-shape1] PASSED
+test_resize_as.py::test_resize_as[dtype2-shape2] PASSED
+test_resize_as.py::test_resize_as[dtype2-shape3] PASSED
+test_resize_as.py::test_resize_as[dtype2-shape4] PASSED
+test_resize_as.py::test_resize_as_mismatched_numel PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape0-tgt_shape0] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape1-tgt_shape1] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape2-tgt_shape2] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape3-tgt_shape3] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape4-tgt_shape4] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape5-tgt_shape5] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape6-tgt_shape6] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape0-tgt_shape0] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape1-tgt_shape1] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape2-tgt_shape2] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape3-tgt_shape3] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape4-tgt_shape4] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape5-tgt_shape5] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape6-tgt_shape6] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape0-tgt_shape0] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape1-tgt_shape1] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape2-tgt_shape2] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape3-tgt_shape3] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape4-tgt_shape4] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape5-tgt_shape5] PASSED
+test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape6-tgt_shape6] PASSED
+test_resize_as.py::test_resize_as_empty PASSED
+test_resize_as.py::test_resize_as_non_contiguous[dtype0] FAILED
+test_resize_as.py::test_resize_as_non_contiguous[dtype1] FAILED
+test_resize_as.py::test_resize_as_non_contiguous[dtype2] FAILED
+test_resize_as.py::test_resize_as_non_contiguous_template[dtype0] PASSED
+test_resize_as.py::test_resize_as_non_contiguous_template[dtype1] PASSED
+test_resize_as.py::test_resize_as_non_contiguous_template[dtype2] PASSED
+
+=================================== FAILURES ===================================
+____________________ test_resize_as_non_contiguous[dtype0] _____________________
+
+dtype = torch.float16
+
+    @pytest.mark.resize_as
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_resize_as_non_contiguous(dtype):
+        # Exercises reshape's copy path on a non-contiguous source (transpose).
+        inp = torch.randn(
+            4, 3, dtype=dtype, device=flag_gems.device
+        ).T  # (3, 4) non-contiguous
+        template = torch.randn(2, 6, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = utils.to_reference(inp)
+        ref_template = utils.to_reference(template)
+    
+        ref_out = ref_inp.resize_as(ref_template)
+        with flag_gems.use_gems():
+>           res_out = inp.resize_as(template)
+
+test_resize_as.py:159: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_tensor.py:1013: in resize_as
+    return Resize.apply(self, tensor.size())
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/autograd/function.py:581: in apply
+    return super().apply(*args, **kwargs)  # type: ignore[misc]
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/autograd/_functions/tensor.py:60: in forward
+    return tensor.contiguous().view(*sizes)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[-0.2057, -0.9712, -1.3301, -0.4265],
+        [-0.5215, -0.7783,  0.1055, -0.7002],
+        [-0.2751,  0.0463...  0.1055, -0.7002],
+        [-0.2751,  0.0463,  1.7744,  0.6763]], device='cuda:0',
+       dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+____________________ test_resize_as_non_contiguous[dtype1] _____________________
+
+dtype = torch.float32
+
+    @pytest.mark.resize_as
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_resize_as_non_contiguous(dtype):
+        # Exercises reshape's copy path on a non-contiguous source (transpose).
+        inp = torch.randn(
+            4, 3, dtype=dtype, device=flag_gems.device
+        ).T  # (3, 4) non-contiguous
+        template = torch.randn(2, 6, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = utils.to_reference(inp)
+        ref_template = utils.to_reference(template)
+    
+        ref_out = ref_inp.resize_as(ref_template)
+        with flag_gems.use_gems():
+>           res_out = inp.resize_as(template)
+
+test_resize_as.py:159: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_tensor.py:1013: in resize_as
+    return Resize.apply(self, tensor.size())
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/autograd/function.py:581: in apply
+    return super().apply(*args, **kwargs)  # type: ignore[misc]
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/autograd/_functions/tensor.py:60: in forward
+    return tensor.contiguous().view(*sizes)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[ 0.4004,  1.6957, -0.8391,  0.9270],
+        [ 1.0045, -0.2928,  0.5655,  0.2037],
+        [-0.6009, -1.2488...,
+        [ 1.0045, -0.2928,  0.5655,  0.2037],
+        [-0.6009, -1.2488,  0.7515, -1.1944]], device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+____________________ test_resize_as_non_contiguous[dtype2] _____________________
+
+dtype = torch.bfloat16
+
+    @pytest.mark.resize_as
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_resize_as_non_contiguous(dtype):
+        # Exercises reshape's copy path on a non-contiguous source (transpose).
+        inp = torch.randn(
+            4, 3, dtype=dtype, device=flag_gems.device
+        ).T  # (3, 4) non-contiguous
+        template = torch.randn(2, 6, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = utils.to_reference(inp)
+        ref_template = utils.to_reference(template)
+    
+        ref_out = ref_inp.resize_as(ref_template)
+        with flag_gems.use_gems():
+>           res_out = inp.resize_as(template)
+
+test_resize_as.py:159: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_tensor.py:1013: in resize_as
+    return Resize.apply(self, tensor.size())
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/autograd/function.py:581: in apply
+    return super().apply(*args, **kwargs)  # type: ignore[misc]
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/autograd/_functions/tensor.py:60: in forward
+    return tensor.contiguous().view(*sizes)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[ 0.5469,  1.8750, -1.0625, -1.7656],
+        [-0.0452,  0.0073, -2.1875,  0.1396],
+        [ 0.8281, -2.3906...-2.1875,  0.1396],
+        [ 0.8281, -2.3906, -0.6562, -0.5234]], device='cuda:0',
+       dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+=============================== warnings summary ===============================
+tests/test_resize_as.py: 44 warnings
+  /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_tensor.py:1010: UserWarning: non-inplace resize_as is deprecated
+    warnings.warn("non-inplace resize_as is deprecated")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED test_resize_as.py::test_resize_as_non_contiguous[dtype0] - torch.Accel...
+FAILED test_resize_as.py::test_resize_as_non_contiguous[dtype1] - torch.Accel...
+FAILED test_resize_as.py::test_resize_as_non_contiguous[dtype2] - torch.Accel...
+========= 3 failed, 41 passed, 49907 deselected, 44 warnings in 19.26s =========

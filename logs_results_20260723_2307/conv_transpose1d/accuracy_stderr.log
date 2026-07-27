@@ -1,0 +1,485 @@
+[CMD] pytest -m "conv_transpose1d" --record json --output accuracy_conv_transpose1d.json --ref cpu --continue-on-collection-errors -vs
+[CWD] /workspace/FlagGems/tests
+
+XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+Processing function: conv_transpose1d_forward_kernel
+Removed 91 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 91 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 91 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 92 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 92 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 92 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 93 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 93 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 93 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 102 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 102 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 102 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 93 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 92 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 93 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 94 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 102 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 102 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 96 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 103 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 97 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 102 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 100 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 99 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 102 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 102 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 102 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 104 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 102 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 98 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 103 operations, kept essential structure
+Processing function: conv_transpose1d_forward_kernel
+Removed 101 operations, kept essential structure

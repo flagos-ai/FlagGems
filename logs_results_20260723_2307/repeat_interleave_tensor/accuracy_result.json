@@ -1,0 +1,119 @@
+{
+  "tests/test_repeat_interleave.py::test_repeat_interleave_tensor[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "repeat_interleave_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_repeat_interleave.py::test_repeat_interleave_tensor[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "repeat_interleave_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_repeat_interleave.py::test_repeat_interleave_tensor[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "repeat_interleave_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_repeat_interleave.py::test_repeat_interleave_tensor[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "repeat_interleave_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_repeat_interleave.py::test_repeat_interleave_tensor[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "repeat_interleave_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_repeat_interleave.py::test_repeat_interleave_tensor[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        33
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "repeat_interleave_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_repeat_interleave.py::test_repeat_interleave_tensor[dtype0-shape6]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        81
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "repeat_interleave_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_repeat_interleave.py::test_repeat_interleave_tensor[dtype0-shape7]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        273
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "repeat_interleave_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_repeat_interleave.py::test_repeat_interleave_tensor[dtype0-shape8]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1041
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "repeat_interleave_tensor"
+    ],
+    "reason": null
+  }
+}

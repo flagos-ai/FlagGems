@@ -1,0 +1,7 @@
+{
+  "margin_ranking_loss": {
+    "result": "failed",
+    "test_case": "benchmark/test_margin_ranking_loss.py::test_margin_ranking_loss",
+    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  }
+}

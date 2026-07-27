@@ -1,0 +1,260 @@
+{
+  "tests/test_atan2.py::test_atan2[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 1 / 1048576 (0.0%)\nGreatest absolute difference: 3.1415927410125732 at index (182, 47) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (182, 47) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_atan2.py::test_atan2[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 1 / 5924352 (0.0%)\nGreatest absolute difference: 3.1415927410125732 at index (11, 0, 42, 28, 24) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (11, 0, 42, 28, 24) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_atan2.py::test_atan2[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": null
+  },
+  "tests/test_atan2.py::test_atan2[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "atan2"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 2 / 5924352 (0.0%)\nGreatest absolute difference: 3.140625 at index (1, 2, 52, 24, 19) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (1, 2, 52, 24, 19) (up to 0.016 allowed)"
+  }
+}

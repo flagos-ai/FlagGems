@@ -1,0 +1,853 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:33:31 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:33:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:33:33 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:33:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:33:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:33:33 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:33:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:33:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:33:33 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:33:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:33:34 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49936 deselected / 15 selected
+
+test_col2im.py::test_col2im[dtype0-config0] FAILED
+test_col2im.py::test_col2im[dtype0-config1] FAILED
+test_col2im.py::test_col2im[dtype0-config2] PASSED
+test_col2im.py::test_col2im[dtype0-config3] FAILED
+test_col2im.py::test_col2im[dtype0-config4] FAILED
+test_col2im.py::test_col2im[dtype1-config0] FAILED
+test_col2im.py::test_col2im[dtype1-config1] FAILED
+test_col2im.py::test_col2im[dtype1-config2] PASSED
+test_col2im.py::test_col2im[dtype1-config3] FAILED
+test_col2im.py::test_col2im[dtype1-config4] FAILED
+test_col2im.py::test_col2im[dtype2-config0] FAILED
+test_col2im.py::test_col2im[dtype2-config1] FAILED
+test_col2im.py::test_col2im[dtype2-config2] PASSED
+test_col2im.py::test_col2im[dtype2-config3] FAILED
+test_col2im.py::test_col2im[dtype2-config4] FAILED
+
+=================================== FAILURES ===================================
+_________________________ test_col2im[dtype0-config0] __________________________
+
+config = (2, 3, (2, 2), (4, 5), (1, 1), (0, 0), ...), dtype = torch.float16
+
+    @pytest.mark.col2im
+    @pytest.mark.parametrize("config", COL2IM_CONFIGS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_col2im(config, dtype):
+        batch, channels, kernel_size, output_size, stride, padding, dilation = config
+        kernel_h, kernel_w = kernel_size
+        output_h, output_w = output_size
+        stride_h, stride_w = stride
+        padding_h, padding_w = padding
+        dilation_h, dilation_w = dilation
+    
+        L_h = (output_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+        L_w = (output_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+        L = L_h * L_w
+    
+        inp = torch.randn(
+            batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
+        )
+        ref_inp = to_reference(inp, True)
+    
+        ref_out = torch.ops.aten.col2im(
+            ref_inp, output_size, kernel_size, dilation, padding, stride
+        )
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.col2im(
+                inp, output_size, kernel_size, dilation, padding, stride
+            )
+    
+>       gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
+
+test_col2im.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 8.1201e-01,  3.7852e+00, -9.4727e-01, -3.7129e+00,  1.2156e+01],
+          [ 1.5273e+00,  1.8701e+00, -1.0....7840e+03],
+          [-2.0820e+00, -3.0994e-04, -1.6611e+00, -1.5720e+04,  1.4531e+00]]]],
+       dtype=torch.float16)
+ref = tensor([[[[-0.4829,  2.6328,  0.8257, -1.1318, -0.2629],
+          [ 1.0635,  1.8701, -1.0479,  0.3618,  1.1631],
+    ...11,  0.0896, -1.4111, -2.0273],
+          [-1.1172,  2.4766,  0.9043, -0.6372,  0.7920]]]],
+       dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 4, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 84 / 120 (70.0%)
+E       Greatest absolute difference: 15936.0 at index (1, 0, 3, 3) (up to 0.0004 allowed)
+E       Greatest relative difference: 24672.0 at index (1, 2, 3, 3) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________________ test_col2im[dtype0-config1] __________________________
+
+config = (1, 2, (3, 3), (8, 8), (2, 2), (0, 0), ...), dtype = torch.float16
+
+    @pytest.mark.col2im
+    @pytest.mark.parametrize("config", COL2IM_CONFIGS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_col2im(config, dtype):
+        batch, channels, kernel_size, output_size, stride, padding, dilation = config
+        kernel_h, kernel_w = kernel_size
+        output_h, output_w = output_size
+        stride_h, stride_w = stride
+        padding_h, padding_w = padding
+        dilation_h, dilation_w = dilation
+    
+        L_h = (output_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+        L_w = (output_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+        L = L_h * L_w
+    
+        inp = torch.randn(
+            batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
+        )
+        ref_inp = to_reference(inp, True)
+    
+        ref_out = torch.ops.aten.col2im(
+            ref_inp, output_size, kernel_size, dilation, padding, stride
+        )
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.col2im(
+                inp, output_size, kernel_size, dilation, padding, stride
+            )
+    
+>       gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
+
+test_col2im.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 8.3398e-01, -2.2012e+00, -1.4805e+00,  6.7139e-01,  2.2441e+00,
+           -2.2129e+00, -1.6238e+02, -1.79...e+00,  5.3558e-03,  1.6475e+00,  2.7359e+01,
+           -1.8809e+00,  5.6124e-04, -1.8467e+00]]]], dtype=torch.float16)
+ref = tensor([[[[ 1.8970e-01, -4.4312e-02, -1.8125e+00, -1.4941e-01,  3.8232e-01,
+           -4.7632e-01,  1.7261e-01,  0.00...e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,
+            0.0000e+00,  0.0000e+00,  0.0000e+00]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 9, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 126 / 128 (98.4%)
+E       Greatest absolute difference: nan at index (0, 1, 6, 4) (up to 0.0009000000000000001 allowed)
+E       Greatest relative difference: nan at index (0, 1, 6, 4) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________________ test_col2im[dtype0-config3] __________________________
+
+config = (1, 2, (2, 2), (8, 8), (1, 1), (0, 0), ...), dtype = torch.float16
+
+    @pytest.mark.col2im
+    @pytest.mark.parametrize("config", COL2IM_CONFIGS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_col2im(config, dtype):
+        batch, channels, kernel_size, output_size, stride, padding, dilation = config
+        kernel_h, kernel_w = kernel_size
+        output_h, output_w = output_size
+        stride_h, stride_w = stride
+        padding_h, padding_w = padding
+        dilation_h, dilation_w = dilation
+    
+        L_h = (output_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+        L_w = (output_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+        L = L_h * L_w
+    
+        inp = torch.randn(
+            batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
+        )
+        ref_inp = to_reference(inp, True)
+    
+        ref_out = torch.ops.aten.col2im(
+            ref_inp, output_size, kernel_size, dilation, padding, stride
+        )
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.col2im(
+                inp, output_size, kernel_size, dilation, padding, stride
+            )
+    
+>       gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
+
+test_col2im.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 1.4648e+00,  1.8994e+00,  2.7891e+00, -1.4551e+00,  4.0039e-01,
+            8.8135e-01,  1.8701e+00, -1.04...e+00,  2.1080e+03, -1.9209e+00, -5.0272e+04,
+            1.6777e+00, -6.2842e-01,  1.9639e+00]]]], dtype=torch.float16)
+ref = tensor([[[[ 0.3916,  0.0667,  2.0234, -3.0527, -0.6953,  1.2539,  0.8418,
+            1.3174],
+          [ 0.6216, -0....
+          [ 0.1680,  0.5332, -0.4692,  0.0542, -1.4746,  0.6060,  2.9121,
+           -0.3262]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 4, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 96 / 128 (75.0%)
+E       Greatest absolute difference: 50272.0 at index (0, 1, 7, 4) (up to 0.0004 allowed)
+E       Greatest relative difference: inf at index (0, 1, 1, 6) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________________ test_col2im[dtype0-config4] __________________________
+
+config = (2, 3, (3, 3), (10, 12), (2, 2), (1, 1), ...), dtype = torch.float16
+
+    @pytest.mark.col2im
+    @pytest.mark.parametrize("config", COL2IM_CONFIGS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_col2im(config, dtype):
+        batch, channels, kernel_size, output_size, stride, padding, dilation = config
+        kernel_h, kernel_w = kernel_size
+        output_h, output_w = output_size
+        stride_h, stride_w = stride
+        padding_h, padding_w = padding
+        dilation_h, dilation_w = dilation
+    
+        L_h = (output_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+        L_w = (output_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+        L = L_h * L_w
+    
+        inp = torch.randn(
+            batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
+        )
+        ref_inp = to_reference(inp, True)
+    
+        ref_out = torch.ops.aten.col2im(
+            ref_inp, output_size, kernel_size, dilation, padding, stride
+        )
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.col2im(
+                inp, output_size, kernel_size, dilation, padding, stride
+            )
+    
+>       gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
+
+test_col2im.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 1.5850e+00, -3.0391e+00, -6.8047e+00, -1.2646e+00, -1.2646e+00,
+           -3.2461e+00, -3.2461e+00,  2.17...e-02,  1.4502e-01,  6.2842e-01, -5.3271e-01, -1.0674e+00,
+           -1.3594e+00,  1.5518e+00]]]], dtype=torch.float16)
+ref = tensor([[[[ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+            0.0000,  0.0000,  0.0000,  0.000...450,  0.0000, -1.6250,  0.0000,
+            1.7949,  0.0000, -0.7842,  0.0000,  1.4453]]]],
+       dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 9, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 684 / 720 (95.0%)
+E       Greatest absolute difference: 8.25 at index (1, 0, 1, 4) (up to 0.0009000000000000001 allowed)
+E       Greatest relative difference: inf at index (0, 0, 0, 0) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________________ test_col2im[dtype1-config0] __________________________
+
+config = (2, 3, (2, 2), (4, 5), (1, 1), (0, 0), ...), dtype = torch.float32
+
+    @pytest.mark.col2im
+    @pytest.mark.parametrize("config", COL2IM_CONFIGS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_col2im(config, dtype):
+        batch, channels, kernel_size, output_size, stride, padding, dilation = config
+        kernel_h, kernel_w = kernel_size
+        output_h, output_w = output_size
+        stride_h, stride_w = stride
+        padding_h, padding_w = padding
+        dilation_h, dilation_w = dilation
+    
+        L_h = (output_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+        L_w = (output_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+        L = L_h * L_w
+    
+        inp = torch.randn(
+            batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
+        )
+        ref_inp = to_reference(inp, True)
+    
+        ref_out = torch.ops.aten.col2im(
+            ref_inp, output_size, kernel_size, dilation, padding, stride
+        )
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.col2im(
+                inp, output_size, kernel_size, dilation, padding, stride
+            )
+    
+>       gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
+
+test_col2im.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 1.4034e+00, -1.0249e-01, -4.6254e-01,  1.0983e+00,  1.8098e+00],
+          [-6.0952e-02, -2.3644e+00,  4.6...-3.6149e+00, -4.6387e-03, -1.6854e+00],
+          [ 4.8936e-02, -1.1250e-01, -8.6057e-01, -2.1441e+00, -8.1531e-01]]]])
+ref = tensor([[[[ 3.1828e-01,  2.0858e-01,  2.6140e+00, -1.5228e+00, -4.8547e-01],
+          [-5.9956e-02, -2.3644e+00,  4.6...-3.6149e+00, -4.6387e-03, -8.9942e-01],
+          [-3.0965e-02, -6.4756e-01, -5.0535e-01,  2.6059e-01, -7.4527e-01]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 4, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 84 / 120 (70.0%)
+E       Greatest absolute difference: 5.230123996734619 at index (0, 1, 3, 1) (up to 0.0004 allowed)
+E       Greatest relative difference: 75.42159271240234 at index (1, 1, 0, 4) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________________ test_col2im[dtype1-config1] __________________________
+
+config = (1, 2, (3, 3), (8, 8), (2, 2), (0, 0), ...), dtype = torch.float32
+
+    @pytest.mark.col2im
+    @pytest.mark.parametrize("config", COL2IM_CONFIGS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_col2im(config, dtype):
+        batch, channels, kernel_size, output_size, stride, padding, dilation = config
+        kernel_h, kernel_w = kernel_size
+        output_h, output_w = output_size
+        stride_h, stride_w = stride
+        padding_h, padding_w = padding
+        dilation_h, dilation_w = dilation
+    
+        L_h = (output_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+        L_w = (output_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+        L = L_h * L_w
+    
+        inp = torch.randn(
+            batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
+        )
+        ref_inp = to_reference(inp, True)
+    
+        ref_out = torch.ops.aten.col2im(
+            ref_inp, output_size, kernel_size, dilation, padding, stride
+        )
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.col2im(
+                inp, output_size, kernel_size, dilation, padding, stride
+            )
+    
+>       gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
+
+test_col2im.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 0.8568,  0.0766, -0.6918, -0.1092, -0.2092, -1.3228,  0.0000,
+            0.0000],
+          [ 4.5854,  2....
+            0.0000],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+            0.0000]]]])
+ref = tensor([[[[-0.5579,  0.1728, -1.2676, -0.2584, -0.3459, -0.1644, -0.1729,
+            0.0000],
+          [ 0.8518, -0....
+            0.0000],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+            0.0000]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 9, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 98 / 128 (76.6%)
+E       Greatest absolute difference: 9.681523323059082 at index (0, 1, 1, 3) (up to 0.0009000000000000001 allowed)
+E       Greatest relative difference: 564.6845703125 at index (0, 1, 0, 1) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________________ test_col2im[dtype1-config3] __________________________
+
+config = (1, 2, (2, 2), (8, 8), (1, 1), (0, 0), ...), dtype = torch.float32
+
+    @pytest.mark.col2im
+    @pytest.mark.parametrize("config", COL2IM_CONFIGS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_col2im(config, dtype):
+        batch, channels, kernel_size, output_size, stride, padding, dilation = config
+        kernel_h, kernel_w = kernel_size
+        output_h, output_w = output_size
+        stride_h, stride_w = stride
+        padding_h, padding_w = padding
+        dilation_h, dilation_w = dilation
+    
+        L_h = (output_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+        L_w = (output_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+        L = L_h * L_w
+    
+        inp = torch.randn(
+            batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
+        )
+        ref_inp = to_reference(inp, True)
+    
+        ref_out = torch.ops.aten.col2im(
+            ref_inp, output_size, kernel_size, dilation, padding, stride
+        )
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.col2im(
+                inp, output_size, kernel_size, dilation, padding, stride
+            )
+    
+>       gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
+
+test_col2im.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[-2.6270e+00,  2.7896e+00, -1.4887e+00,  8.3513e-02, -2.2679e+00,
+            6.8899e-02, -2.3644e+00,  4.65...[-6.3574e-01, -1.4076e+00, -2.5190e+00, -1.6365e+00, -6.2893e-01,
+            8.6120e-01, -3.8757e-02,  8.0591e-01]]]])
+ref = tensor([[[[ 0.6366, -0.0653,  0.5722,  1.0507, -1.0837,  0.2057, -1.6533,
+           -1.0181],
+          [ 1.0413, -0....
+            0.1987],
+          [-1.8043,  1.2172,  0.4205,  0.7463,  0.0317, -1.6984, -1.4133,
+            0.1864]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 4, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 96 / 128 (75.0%)
+E       Greatest absolute difference: 5.66901969909668 at index (0, 0, 0, 7) (up to 0.0004 allowed)
+E       Greatest relative difference: 43.722164154052734 at index (0, 0, 0, 1) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________________ test_col2im[dtype1-config4] __________________________
+
+config = (2, 3, (3, 3), (10, 12), (2, 2), (1, 1), ...), dtype = torch.float32
+
+    @pytest.mark.col2im
+    @pytest.mark.parametrize("config", COL2IM_CONFIGS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_col2im(config, dtype):
+        batch, channels, kernel_size, output_size, stride, padding, dilation = config
+        kernel_h, kernel_w = kernel_size
+        output_h, output_w = output_size
+        stride_h, stride_w = stride
+        padding_h, padding_w = padding
+        dilation_h, dilation_w = dilation
+    
+        L_h = (output_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+        L_w = (output_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+        L = L_h * L_w
+    
+        inp = torch.randn(
+            batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
+        )
+        ref_inp = to_reference(inp, True)
+    
+        ref_out = torch.ops.aten.col2im(
+            ref_inp, output_size, kernel_size, dilation, padding, stride
+        )
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.col2im(
+                inp, output_size, kernel_size, dilation, padding, stride
+            )
+    
+>       gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
+
+test_col2im.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 1.8603e+00,  4.7592e-01,  3.4506e+00,  5.2822e+00,  5.2822e+00,
+            3.8361e+00,  3.8361e+00,  4.77...1,
+           -1.8420e-02,  9.7574e-02, -2.2276e+00, -3.3610e-01, -2.4184e+00,
+           -3.2416e-01, -1.4394e+00]]]])
+ref = tensor([[[[ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+            0.0000,  0.0000,  0.0000,  0.000...0000, -0.7378,  0.0000, -2.7862,  0.0000,  0.4811,  0.0000,
+           -0.4649,  0.0000,  2.1958,  0.0000,  0.9927]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 9, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 684 / 720 (95.0%)
+E       Greatest absolute difference: 8.292523384094238 at index (1, 1, 0, 5) (up to 0.0009000000000000001 allowed)
+E       Greatest relative difference: inf at index (0, 0, 0, 0) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________________ test_col2im[dtype2-config0] __________________________
+
+config = (2, 3, (2, 2), (4, 5), (1, 1), (0, 0), ...), dtype = torch.bfloat16
+
+    @pytest.mark.col2im
+    @pytest.mark.parametrize("config", COL2IM_CONFIGS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_col2im(config, dtype):
+        batch, channels, kernel_size, output_size, stride, padding, dilation = config
+        kernel_h, kernel_w = kernel_size
+        output_h, output_w = output_size
+        stride_h, stride_w = stride
+        padding_h, padding_w = padding
+        dilation_h, dilation_w = dilation
+    
+        L_h = (output_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+        L_w = (output_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+        L = L_h * L_w
+    
+        inp = torch.randn(
+            batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
+        )
+        ref_inp = to_reference(inp, True)
+    
+        ref_out = torch.ops.aten.col2im(
+            ref_inp, output_size, kernel_size, dilation, padding, stride
+        )
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.col2im(
+                inp, output_size, kernel_size, dilation, padding, stride
+            )
+    
+>       gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
+
+test_col2im.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[-3.2188, -2.8281, -1.3281,  0.6289, -1.7500],
+          [-1.3516, -3.0938, -0.1992,  0.3789, -0.1465],
+    ...4,  4.1875,  1.9766, -0.2334],
+          [-0.1177,  0.3516, -0.9141,  1.0703, -1.0625]]]],
+       dtype=torch.bfloat16)
+ref = tensor([[[[-2.2656, -1.1484, -1.6250,  2.1562,  0.3984],
+          [-1.9844, -3.0938, -0.1992,  0.3789,  0.0586],
+    ...4,  4.1875,  1.9766,  0.2031],
+          [ 1.2188, -0.1582, -0.2188, -0.4590, -1.6484]]]],
+       dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 4, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 82 / 120 (68.3%)
+E       Greatest absolute difference: 3.21875 at index (1, 2, 0, 4) (up to 0.0004 allowed)
+E       Greatest relative difference: 25.875 at index (1, 0, 0, 4) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________________ test_col2im[dtype2-config1] __________________________
+
+config = (1, 2, (3, 3), (8, 8), (2, 2), (0, 0), ...), dtype = torch.bfloat16
+
+    @pytest.mark.col2im
+    @pytest.mark.parametrize("config", COL2IM_CONFIGS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_col2im(config, dtype):
+        batch, channels, kernel_size, output_size, stride, padding, dilation = config
+        kernel_h, kernel_w = kernel_size
+        output_h, output_w = output_size
+        stride_h, stride_w = stride
+        padding_h, padding_w = padding
+        dilation_h, dilation_w = dilation
+    
+        L_h = (output_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+        L_w = (output_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+        L = L_h * L_w
+    
+        inp = torch.randn(
+            batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
+        )
+        ref_inp = to_reference(inp, True)
+    
+        ref_out = torch.ops.aten.col2im(
+            ref_inp, output_size, kernel_size, dilation, padding, stride
+        )
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.col2im(
+                inp, output_size, kernel_size, dilation, padding, stride
+            )
+    
+>       gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
+
+test_col2im.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[-1.5625e-01, -2.3281e+00, -1.3906e+00, -1.2891e+00, -6.8359e-01,
+           -8.9453e-01,  1.2974e+30, -2.62...-01, -1.4262e+24, -1.0703e+00, -2.3304e-32,
+           -7.0703e-01, -4.2431e-34,  2.2168e-01]]]], dtype=torch.bfloat16)
+ref = tensor([[[[ 0.1475, -0.5352, -3.5625,  0.1475, -1.1094, -0.0542, -0.1079,
+            0.0000],
+          [ 0.0437,  0....          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+            0.0000]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 9, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 124 / 128 (96.9%)
+E       Greatest absolute difference: 4.0240300653644914e+35 at index (0, 1, 0, 6) (up to 0.0009000000000000001 allowed)
+E       Greatest relative difference: inf at index (0, 0, 0, 7) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________________ test_col2im[dtype2-config3] __________________________
+
+config = (1, 2, (2, 2), (8, 8), (1, 1), (0, 0), ...), dtype = torch.bfloat16
+
+    @pytest.mark.col2im
+    @pytest.mark.parametrize("config", COL2IM_CONFIGS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_col2im(config, dtype):
+        batch, channels, kernel_size, output_size, stride, padding, dilation = config
+        kernel_h, kernel_w = kernel_size
+        output_h, output_w = output_size
+        stride_h, stride_w = stride
+        padding_h, padding_w = padding
+        dilation_h, dilation_w = dilation
+    
+        L_h = (output_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+        L_w = (output_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+        L = L_h * L_w
+    
+        inp = torch.randn(
+            batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
+        )
+        ref_inp = to_reference(inp, True)
+    
+        ref_out = torch.ops.aten.col2im(
+            ref_inp, output_size, kernel_size, dilation, padding, stride
+        )
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.col2im(
+                inp, output_size, kernel_size, dilation, padding, stride
+            )
+    
+>       gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
+
+test_col2im.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 2.1875, -1.3047,  0.6133,  0.8281,  0.3789, -0.6484,  1.8594,
+           -1.5703],
+          [-0.2363,  1....          [ 0.3125, -0.3145,  0.1855, -1.1484, -1.5312,  0.4023,  0.4980,
+            0.4727]]]], dtype=torch.bfloat16)
+ref = tensor([[[[ 1.6797,  0.3125, -1.6172,  0.1113,  1.1562, -0.4512, -1.0859,
+            1.4453],
+          [ 0.1641,  1....          [ 0.7344,  0.8750, -0.8125,  1.3047, -1.0312,  0.0439, -1.0156,
+            0.2637]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 4, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 95 / 128 (74.2%)
+E       Greatest absolute difference: 5.125 at index (0, 0, 2, 6) (up to 0.0004 allowed)
+E       Greatest relative difference: 22.0 at index (0, 0, 1, 6) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_________________________ test_col2im[dtype2-config4] __________________________
+
+config = (2, 3, (3, 3), (10, 12), (2, 2), (1, 1), ...), dtype = torch.bfloat16
+
+    @pytest.mark.col2im
+    @pytest.mark.parametrize("config", COL2IM_CONFIGS)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_col2im(config, dtype):
+        batch, channels, kernel_size, output_size, stride, padding, dilation = config
+        kernel_h, kernel_w = kernel_size
+        output_h, output_w = output_size
+        stride_h, stride_w = stride
+        padding_h, padding_w = padding
+        dilation_h, dilation_w = dilation
+    
+        L_h = (output_h + 2 * padding_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+        L_w = (output_w + 2 * padding_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+        L = L_h * L_w
+    
+        inp = torch.randn(
+            batch, channels * kernel_h * kernel_w, L, device=flag_gems.device, dtype=dtype
+        )
+        ref_inp = to_reference(inp, True)
+    
+        ref_out = torch.ops.aten.col2im(
+            ref_inp, output_size, kernel_size, dilation, padding, stride
+        )
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.col2im(
+                inp, output_size, kernel_size, dilation, padding, stride
+            )
+    
+>       gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)
+
+test_col2im.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 1.0156e+00, -1.7188e+00,  4.8828e-02, -2.7031e+00, -2.7031e+00,
+           -1.0234e+00, -1.0234e+00,  5.84...-03, -1.4365e+08, -5.0000e-01, -6.3619e+10,  1.4141e+00,
+            5.4307e+23, -2.3926e-01]]]], dtype=torch.bfloat16)
+ref = tensor([[[[ 0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,
+            0.0000e+00,  0.0000e+00,  0.00...-01,  0.0000e+00, -3.3984e-01,  0.0000e+00, -1.8750e+00,
+            0.0000e+00,  1.4688e+00]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 9, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 633 / 720 (87.9%)
+E       Greatest absolute difference: 1.4289200954687846e+38 at index (1, 2, 0, 10) (up to 0.0009000000000000001 allowed)
+E       Greatest relative difference: inf at index (0, 0, 0, 0) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+=========================== short test summary info ============================
+FAILED test_col2im.py::test_col2im[dtype0-config0] - AssertionError: Tensor-l...
+FAILED test_col2im.py::test_col2im[dtype0-config1] - AssertionError: Tensor-l...
+FAILED test_col2im.py::test_col2im[dtype0-config3] - AssertionError: Tensor-l...
+FAILED test_col2im.py::test_col2im[dtype0-config4] - AssertionError: Tensor-l...
+FAILED test_col2im.py::test_col2im[dtype1-config0] - AssertionError: Tensor-l...
+FAILED test_col2im.py::test_col2im[dtype1-config1] - AssertionError: Tensor-l...
+FAILED test_col2im.py::test_col2im[dtype1-config3] - AssertionError: Tensor-l...
+FAILED test_col2im.py::test_col2im[dtype1-config4] - AssertionError: Tensor-l...
+FAILED test_col2im.py::test_col2im[dtype2-config0] - AssertionError: Tensor-l...
+FAILED test_col2im.py::test_col2im[dtype2-config1] - AssertionError: Tensor-l...
+FAILED test_col2im.py::test_col2im[dtype2-config3] - AssertionError: Tensor-l...
+FAILED test_col2im.py::test_col2im[dtype2-config4] - AssertionError: Tensor-l...
+=============== 12 failed, 3 passed, 49936 deselected in 44.78s ================

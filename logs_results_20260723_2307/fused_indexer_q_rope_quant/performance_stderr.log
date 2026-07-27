@@ -1,0 +1,3 @@
+[CMD] pytest -m "fused_indexer_q_rope_quant" --level core --record json --output benchmark_fused_indexer_q_rope_quant.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

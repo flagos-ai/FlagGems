@@ -1,0 +1,140 @@
+{
+  "tests/test_masked_scatter.py::test_accuracy_masked_scatter_[dtype0-0.3-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "threshold": 0.3,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "masked_scatter_"
+    ],
+    "reason": null
+  },
+  "tests/test_masked_scatter.py::test_accuracy_masked_scatter_[dtype0-0.5-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "threshold": 0.5,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "masked_scatter_"
+    ],
+    "reason": null
+  },
+  "tests/test_masked_scatter.py::test_accuracy_masked_scatter_[dtype0-0.7-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "threshold": 0.7,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "masked_scatter_"
+    ],
+    "reason": null
+  },
+  "tests/test_masked_scatter.py::test_accuracy_masked_scatter_[dtype1-0.3-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "threshold": 0.3,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "masked_scatter_"
+    ],
+    "reason": null
+  },
+  "tests/test_masked_scatter.py::test_accuracy_masked_scatter_[dtype1-0.5-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "threshold": 0.5,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "masked_scatter_"
+    ],
+    "reason": null
+  },
+  "tests/test_masked_scatter.py::test_accuracy_masked_scatter_[dtype1-0.7-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "threshold": 0.7,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "masked_scatter_"
+    ],
+    "reason": null
+  },
+  "tests/test_masked_scatter.py::test_accuracy_masked_scatter_[dtype2-0.3-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "threshold": 0.3,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "masked_scatter_"
+    ],
+    "reason": null
+  },
+  "tests/test_masked_scatter.py::test_accuracy_masked_scatter_[dtype2-0.5-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "threshold": 0.5,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "masked_scatter_"
+    ],
+    "reason": null
+  },
+  "tests/test_masked_scatter.py::test_accuracy_masked_scatter_[dtype2-0.7-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "threshold": 0.7,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "masked_scatter_"
+    ],
+    "reason": null
+  }
+}

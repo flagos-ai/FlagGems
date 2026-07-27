@@ -1,0 +1,1412 @@
+{
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype0-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype0-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype1-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype1-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype2-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter[dtype2-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype0-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype0-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype1-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype1-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype2-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_offset[dtype2-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype0-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype0-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype1-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype1-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype2-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        64,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_negative_offset[dtype2-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype0-shape0-0-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ],
+      "dim1": 0,
+      "dim2": 1
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype0-shape1-0-2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ],
+      "dim1": 0,
+      "dim2": 2
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype0-shape2-1-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ],
+      "dim1": 1,
+      "dim2": 0
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype0-shape3-0-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ],
+      "dim1": 0,
+      "dim2": 1
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype0-shape4-1-2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ],
+      "dim1": 1,
+      "dim2": 2
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype0-shape5-0-3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ],
+      "dim1": 0,
+      "dim2": 3
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype1-shape0-0-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ],
+      "dim1": 0,
+      "dim2": 1
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype1-shape1-0-2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ],
+      "dim1": 0,
+      "dim2": 2
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype1-shape2-1-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ],
+      "dim1": 1,
+      "dim2": 0
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype1-shape3-0-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ],
+      "dim1": 0,
+      "dim2": 1
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype1-shape4-1-2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ],
+      "dim1": 1,
+      "dim2": 2
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype1-shape5-0-3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ],
+      "dim1": 0,
+      "dim2": 3
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype2-shape0-0-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ],
+      "dim1": 0,
+      "dim2": 1
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype2-shape1-0-2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ],
+      "dim1": 0,
+      "dim2": 2
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype2-shape2-1-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ],
+      "dim1": 1,
+      "dim2": 0
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype2-shape3-0-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ],
+      "dim1": 0,
+      "dim2": 1
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype2-shape4-1-2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ],
+      "dim1": 1,
+      "dim2": 2
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_last_dims[dtype2-shape5-0-3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ],
+      "dim1": 0,
+      "dim2": 3
+    },
+    "result": "failed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_large_offset[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_large_offset[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_large_offset[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_square[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_square[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  },
+  "tests/test_diagonal_scatter.py::test_diagonal_scatter_non_square[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "diagonal_scatter"
+    ],
+    "reason": null
+  }
+}

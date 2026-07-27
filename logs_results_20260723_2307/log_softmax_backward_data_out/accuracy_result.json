@@ -1,0 +1,140 @@
+{
+  "tests/test_log_softmax.py::test_accuracy_log_softmax_backward_out[1-dtype0-shape0]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "log_softmax_backward_data_out"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 2 / 2 (100.0%)\nGreatest absolute difference: 8.78125 at index (0, 0) (up to 0.0002 allowed)\nGreatest relative difference: 17.171875 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_log_softmax.py::test_accuracy_log_softmax_backward_out[1-dtype0-shape1]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "log_softmax_backward_data_out"
+    ],
+    "reason": null
+  },
+  "tests/test_log_softmax.py::test_accuracy_log_softmax_backward_out[1-dtype0-shape2]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "log_softmax_backward_data_out"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 19433454 / 24599400 (79.0%)\nGreatest absolute difference: 10856.0 at index (142, 40546, 0) (up to 4.0999 allowed)\nGreatest relative difference: inf at index (19, 9182, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_log_softmax.py::test_accuracy_log_softmax_backward_out[1-dtype1-shape0]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "log_softmax_backward_data_out"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 2 / 2 (100.0%)\nGreatest absolute difference: 29.357454299926758 at index (0, 0) (up to 0.0002 allowed)\nGreatest relative difference: 11.600007057189941 at index (0, 1) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_log_softmax.py::test_accuracy_log_softmax_backward_out[1-dtype1-shape1]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "log_softmax_backward_data_out"
+    ],
+    "reason": null
+  },
+  "tests/test_log_softmax.py::test_accuracy_log_softmax_backward_out[1-dtype1-shape2]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "log_softmax_backward_data_out"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 22901353 / 24599400 (93.1%)\nGreatest absolute difference: 32201.625 at index (105, 11407, 0) (up to 4.0999 allowed)\nGreatest relative difference: 12402851.0 at index (105, 20974, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_log_softmax.py::test_accuracy_log_softmax_backward_out[1-dtype2-shape0]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "log_softmax_backward_data_out"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 2 / 2 (100.0%)\nGreatest absolute difference: 72.5 at index (0, 1) (up to 0.0002 allowed)\nGreatest relative difference: 52.75 at index (0, 1) (up to 0.016 allowed)"
+  },
+  "tests/test_log_softmax.py::test_accuracy_log_softmax_backward_out[1-dtype2-shape1]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "log_softmax_backward_data_out"
+    ],
+    "reason": null
+  },
+  "tests/test_log_softmax.py::test_accuracy_log_softmax_backward_out[1-dtype2-shape2]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "log_softmax_backward_data_out"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 22377363 / 24599400 (91.0%)\nGreatest absolute difference: 29184.0 at index (36, 13715, 2) (up to 4.0999 allowed)\nGreatest relative difference: 203423744.0 at index (167, 30132, 2) (up to 0.016 allowed)"
+  }
+}

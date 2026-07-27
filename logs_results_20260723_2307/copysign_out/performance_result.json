@@ -1,0 +1,321 @@
+{
+  "copysign_out": {
+    "details": [
+      {
+        "op_name": "copysign_out",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "out": [
+                  64,
+                  64
+                ]
+              }
+            ],
+            "latency_base": 0.005787999834865332,
+            "latency": 0.006920000072568655,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8364161523363781,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "out": [
+                  4096,
+                  4096
+                ]
+              }
+            ],
+            "latency_base": 0.06027999892830849,
+            "latency": 5.630745887756348,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.010705508671485783,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ],
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "out": [
+                  64,
+                  512,
+                  512
+                ]
+              }
+            ],
+            "latency_base": 0.06021599844098091,
+            "latency": 5.921634197235107,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.010168814289321787,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "copysign_out",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "out": [
+                  64,
+                  64
+                ]
+              }
+            ],
+            "latency_base": 0.005572000052779913,
+            "latency": 0.005778999999165535,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9641806633646804,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "out": [
+                  4096,
+                  4096
+                ]
+              }
+            ],
+            "latency_base": 0.11765799671411514,
+            "latency": 2.985879898071289,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.03940479883002515,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ],
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "out": [
+                  64,
+                  512,
+                  512
+                ]
+              }
+            ],
+            "latency_base": 0.11767400056123734,
+            "latency": 2.9882709980010986,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.039378624174297217,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "copysign_out",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "out": [
+                  64,
+                  64
+                ]
+              }
+            ],
+            "latency_base": 0.005915999878197908,
+            "latency": 0.006912000011652708,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8559027587130098,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "out": [
+                  4096,
+                  4096
+                ]
+              }
+            ],
+            "latency_base": 0.06060799956321716,
+            "latency": 5.654470920562744,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.010718597798922863,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ],
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "out": [
+                  64,
+                  512,
+                  512
+                ]
+              }
+            ],
+            "latency_base": 0.06049000099301338,
+            "latency": 5.958322048187256,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.010152187227176937,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_copysign.py::test_copysign_out",
+    "reason": null
+  }
+}

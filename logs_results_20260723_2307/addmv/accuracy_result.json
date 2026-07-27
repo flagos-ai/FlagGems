@@ -1,0 +1,470 @@
+{
+  "tests/test_addmv.py::test_addmv[dtype0-0.001-1-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "M": 1,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype0-0.001-160-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "M": 160,
+      "N": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype0-0.001-5333-497]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "M": 5333,
+      "N": 497
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype0--0.999-1-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "M": 1,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype0--0.999-160-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "M": 160,
+      "N": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype0--0.999-5333-497]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "M": 5333,
+      "N": 497
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype0-100.001-1-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "M": 1,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype0-100.001-160-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "M": 160,
+      "N": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype0-100.001-5333-497]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "M": 5333,
+      "N": 497
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype0--111.999-1-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "M": 1,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype0--111.999-160-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "M": 160,
+      "N": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype0--111.999-5333-497]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "M": 5333,
+      "N": 497
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype1-0.001-1-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "M": 1,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype1-0.001-160-1024]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "M": 160,
+      "N": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype1-0.001-5333-497]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "M": 5333,
+      "N": 497
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype1--0.999-1-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "M": 1,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype1--0.999-160-1024]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "M": 160,
+      "N": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype1--0.999-5333-497]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "M": 5333,
+      "N": 497
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype1-100.001-1-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "M": 1,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype1-100.001-160-1024]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "M": 160,
+      "N": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype1-100.001-5333-497]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "M": 5333,
+      "N": 497
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype1--111.999-1-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "M": 1,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype1--111.999-160-1024]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "M": 160,
+      "N": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype1--111.999-5333-497]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "M": 5333,
+      "N": 497
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype2-0.001-1-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "M": 1,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype2-0.001-160-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "M": 160,
+      "N": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype2-0.001-5333-497]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "M": 5333,
+      "N": 497
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype2--0.999-1-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "M": 1,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype2--0.999-160-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "M": 160,
+      "N": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype2--0.999-5333-497]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "M": 5333,
+      "N": 497
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype2-100.001-1-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "M": 1,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype2-100.001-160-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "M": 160,
+      "N": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype2-100.001-5333-497]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "M": 5333,
+      "N": 497
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype2--111.999-1-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "M": 1,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype2--111.999-160-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "M": 160,
+      "N": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  },
+  "tests/test_addmv.py::test_addmv[dtype2--111.999-5333-497]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "M": 5333,
+      "N": 497
+    },
+    "result": "passed",
+    "opname": [
+      "addmv"
+    ],
+    "reason": null
+  }
+}

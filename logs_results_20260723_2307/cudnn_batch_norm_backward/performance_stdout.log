@@ -1,0 +1,278 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_cudnn_batch_norm_backward.py F                                      [100%]
+
+=================================== FAILURES ===================================
+________________________ test_cudnn_batch_norm_backward ________________________
+
+shape = (4, 16, 64, 4), dtype = torch.float32, device = 'cuda'
+
+    def cudnn_batch_norm_backward_input_fn(shape, dtype, device):
+        for forward_args in batchnorm_input_fn(shape, dtype, device):
+            (
+                inp,
+                weight,
+                bias,
+                running_mean,
+                running_var,
+                training,
+                _,
+                eps,
+                _,
+            ) = forward_args
+    
+            grad_output = torch.randn_like(inp)
+            channels = weight.shape[0] if weight is not None else inp.shape[1]
+    
+            if weight is None:
+                # When affine=False, create a weight of ones
+                weight = torch.ones(channels, dtype=dtype, device=device)
+            if bias is None:
+                bias = torch.ones(channels, dtype=dtype, device=device)
+    
+            # Run forward pass to get save_mean and save_var
+            # Note: cudnn_batch_norm requires float32 for weight/bias
+            inp_f32 = inp.to(torch.float32)
+            weight_f32 = weight.to(torch.float32)
+            bias_f32 = bias.to(torch.float32)
+    
+>           out, save_mean, save_var, reserve = torch.ops.aten.cudnn_batch_norm(
+                inp_f32, weight_f32, bias_f32, None, None, training, eps, False
+            )
+
+test_cudnn_batch_norm_backward.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten.cudnn_batch_norm')>
+args = (tensor([[[[-1.4137e+00,  6.1206e-01, -5.0252e-01,  1.5183e+00],
+          [-7.6957e-01,  1.5232e-02,  1.0216e+00, -1....1.2373, -2.1806,  0.1971,  0.0913,  1.9061, -0.4250, -0.9316,  0.8305],
+       device='cuda:0'), None, None, True, ...)
+kwargs = {}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       NotImplementedError: Could not run 'aten::cudnn_batch_norm' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::cudnn_batch_norm' is only available for these backends: [CUDA, XLA, XPU, Meta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradMAIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastMTIA, AutocastMAIA, AutocastXPU, AutocastMPS, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
+E       
+E       CUDA: registered at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/lazy_tensor/ts_backend/ts_eager_fallback.cpp:375 [backend fallback]
+E       XLA: registered at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/lazy_tensor/ts_backend/ts_eager_fallback.cpp:364 [backend fallback]
+E       XPU: registered at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/lazy_tensor/ts_backend/ts_eager_fallback.cpp:371 [backend fallback]
+E       Meta: registered at /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_meta_registrations.py:50 [kernel]
+E       BackendSelect: fallthrough registered at /pytorch/aten/src/ATen/core/BackendSelectFallbackKernel.cpp:3 [backend fallback]
+E       Python: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:194 [backend fallback]
+E       FuncTorchDynamicLayerBackMode: registered at /pytorch/aten/src/ATen/functorch/DynamicLayer.cpp:479 [backend fallback]
+E       Functionalize: registered at /pytorch/aten/src/ATen/FunctionalizeFallbackKernel.cpp:387 [backend fallback]
+E       Named: registered at /pytorch/aten/src/ATen/core/NamedRegistrations.cpp:7 [backend fallback]
+E       Conjugate: registered at /pytorch/aten/src/ATen/ConjugateFallback.cpp:17 [backend fallback]
+E       Negative: registered at /pytorch/aten/src/ATen/native/NegateFallback.cpp:18 [backend fallback]
+E       ZeroTensor: registered at /pytorch/aten/src/ATen/ZeroTensorFallback.cpp:115 [backend fallback]
+E       ADInplaceOrView: fallthrough registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:104 [backend fallback]
+E       AutogradOther: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradCPU: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradCUDA: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradHIP: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradXLA: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradMPS: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradIPU: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradXPU: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradHPU: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradVE: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradLazy: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradMTIA: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradMAIA: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradPrivateUse1: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradPrivateUse2: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradPrivateUse3: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradMeta: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       AutogradNestedTensor: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E       Tracer: registered at /pytorch/torch/csrc/autograd/generated/TraceType_4.cpp:13600 [kernel]
+E       AutocastCPU: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:324 [backend fallback]
+E       AutocastMTIA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:468 [backend fallback]
+E       AutocastMAIA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:506 [backend fallback]
+E       AutocastXPU: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:544 [backend fallback]
+E       AutocastMPS: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:209 [backend fallback]
+E       AutocastCUDA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:165 [backend fallback]
+E       FuncTorchBatched: registered at /pytorch/aten/src/ATen/functorch/BatchRulesNorm.cpp:867 [kernel]
+E       BatchedNestedTensor: registered at /pytorch/aten/src/ATen/functorch/LegacyBatchingRegistrations.cpp:758 [backend fallback]
+E       FuncTorchVmapMode: fallthrough registered at /pytorch/aten/src/ATen/functorch/VmapModeRegistrations.cpp:27 [backend fallback]
+E       Batched: registered at /pytorch/aten/src/ATen/LegacyBatchingRegistrations.cpp:1075 [backend fallback]
+E       VmapMode: fallthrough registered at /pytorch/aten/src/ATen/VmapModeRegistrations.cpp:33 [backend fallback]
+E       FuncTorchGradWrapper: registered at /pytorch/aten/src/ATen/functorch/TensorWrapper.cpp:210 [backend fallback]
+E       PythonTLSSnapshot: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:202 [backend fallback]
+E       FuncTorchDynamicLayerFrontMode: registered at /pytorch/aten/src/ATen/functorch/DynamicLayer.cpp:475 [backend fallback]
+E       PreDispatch: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:206 [backend fallback]
+E       PythonDispatcher: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:198 [backend fallback]
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: NotImplementedError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.cudnn_batch_norm_backward
+    def test_cudnn_batch_norm_backward():
+        def cudnn_batch_norm_backward_input_fn(shape, dtype, device):
+            for forward_args in batchnorm_input_fn(shape, dtype, device):
+                (
+                    inp,
+                    weight,
+                    bias,
+                    running_mean,
+                    running_var,
+                    training,
+                    _,
+                    eps,
+                    _,
+                ) = forward_args
+    
+                grad_output = torch.randn_like(inp)
+                channels = weight.shape[0] if weight is not None else inp.shape[1]
+    
+                if weight is None:
+                    # When affine=False, create a weight of ones
+                    weight = torch.ones(channels, dtype=dtype, device=device)
+                if bias is None:
+                    bias = torch.ones(channels, dtype=dtype, device=device)
+    
+                # Run forward pass to get save_mean and save_var
+                # Note: cudnn_batch_norm requires float32 for weight/bias
+                inp_f32 = inp.to(torch.float32)
+                weight_f32 = weight.to(torch.float32)
+                bias_f32 = bias.to(torch.float32)
+    
+                out, save_mean, save_var, reserve = torch.ops.aten.cudnn_batch_norm(
+                    inp_f32, weight_f32, bias_f32, None, None, training, eps, False
+                )
+    
+                # Convert to test dtype
+                save_mean = save_mean.to(dtype)
+                save_var = save_var.to(dtype)
+                reserve = reserve.to(dtype)
+    
+                yield (
+                    inp,
+                    grad_output,
+                    weight,
+                    running_mean,
+                    running_var,
+                    save_mean,
+                    save_var,
+                    eps,
+                    reserve,
+                )
+    
+        bench = NormBenchmark(
+            input_fn=cudnn_batch_norm_backward_input_fn,
+            op_name="cudnn_batch_norm_backward",
+            torch_op=torch.ops.aten.cudnn_batch_norm_backward,
+            # cuDNN cudnn_batch_norm_backward only supports float32,
+            # so we hardcode float32 instead of using consts.FLOAT_DTYPES.
+            dtypes=[torch.float32],
+        )
+        bench.set_gems(flag_gems.cudnn_batch_norm_backward)
+>       bench.run()
+
+test_cudnn_batch_norm_backward.py:104: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.test_cudnn_batch_norm_backward.NormBenchmark object at 0x7f492b49f280>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+>                   pytest.fail(str(e))
+E                   Failed: Could not run 'aten::cudnn_batch_norm' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build process (if using custom build). If you are a Facebook employee using PyTorch on mobile, please visit https://fburl.com/ptmfixes for possible resolutions. 'aten::cudnn_batch_norm' is only available for these backends: [CUDA, XLA, XPU, Meta, BackendSelect, Python, FuncTorchDynamicLayerBackMode, Functionalize, Named, Conjugate, Negative, ZeroTensor, ADInplaceOrView, AutogradOther, AutogradCPU, AutogradCUDA, AutogradHIP, AutogradXLA, AutogradMPS, AutogradIPU, AutogradXPU, AutogradHPU, AutogradVE, AutogradLazy, AutogradMTIA, AutogradMAIA, AutogradPrivateUse1, AutogradPrivateUse2, AutogradPrivateUse3, AutogradMeta, AutogradNestedTensor, Tracer, AutocastCPU, AutocastMTIA, AutocastMAIA, AutocastXPU, AutocastMPS, AutocastCUDA, FuncTorchBatched, BatchedNestedTensor, FuncTorchVmapMode, Batched, VmapMode, FuncTorchGradWrapper, PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher].
+E                   
+E                   CUDA: registered at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/lazy_tensor/ts_backend/ts_eager_fallback.cpp:375 [backend fallback]
+E                   XLA: registered at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/lazy_tensor/ts_backend/ts_eager_fallback.cpp:364 [backend fallback]
+E                   XPU: registered at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/lazy_tensor/ts_backend/ts_eager_fallback.cpp:371 [backend fallback]
+E                   Meta: registered at /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_meta_registrations.py:50 [kernel]
+E                   BackendSelect: fallthrough registered at /pytorch/aten/src/ATen/core/BackendSelectFallbackKernel.cpp:3 [backend fallback]
+E                   Python: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:194 [backend fallback]
+E                   FuncTorchDynamicLayerBackMode: registered at /pytorch/aten/src/ATen/functorch/DynamicLayer.cpp:479 [backend fallback]
+E                   Functionalize: registered at /pytorch/aten/src/ATen/FunctionalizeFallbackKernel.cpp:387 [backend fallback]
+E                   Named: registered at /pytorch/aten/src/ATen/core/NamedRegistrations.cpp:7 [backend fallback]
+E                   Conjugate: registered at /pytorch/aten/src/ATen/ConjugateFallback.cpp:17 [backend fallback]
+E                   Negative: registered at /pytorch/aten/src/ATen/native/NegateFallback.cpp:18 [backend fallback]
+E                   ZeroTensor: registered at /pytorch/aten/src/ATen/ZeroTensorFallback.cpp:115 [backend fallback]
+E                   ADInplaceOrView: fallthrough registered at /pytorch/aten/src/ATen/core/VariableFallbackKernel.cpp:104 [backend fallback]
+E                   AutogradOther: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradCPU: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradCUDA: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradHIP: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradXLA: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradMPS: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradIPU: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradXPU: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradHPU: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradVE: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradLazy: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradMTIA: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradMAIA: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradPrivateUse1: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradPrivateUse2: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradPrivateUse3: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradMeta: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   AutogradNestedTensor: registered at /pytorch/torch/csrc/autograd/generated/VariableType_4.cpp:19571 [autograd kernel]
+E                   Tracer: registered at /pytorch/torch/csrc/autograd/generated/TraceType_4.cpp:13600 [kernel]
+E                   AutocastCPU: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:324 [backend fallback]
+E                   AutocastMTIA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:468 [backend fallback]
+E                   AutocastMAIA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:506 [backend fallback]
+E                   AutocastXPU: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:544 [backend fallback]
+E                   AutocastMPS: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:209 [backend fallback]
+E                   AutocastCUDA: fallthrough registered at /pytorch/aten/src/ATen/autocast_mode.cpp:165 [backend fallback]
+E                   FuncTorchBatched: registered at /pytorch/aten/src/ATen/functorch/BatchRulesNorm.cpp:867 [kernel]
+E                   BatchedNestedTensor: registered at /pytorch/aten/src/ATen/functorch/LegacyBatchingRegistrations.cpp:758 [backend fallback]
+E                   FuncTorchVmapMode: fallthrough registered at /pytorch/aten/src/ATen/functorch/VmapModeRegistrations.cpp:27 [backend fallback]
+E                   Batched: registered at /pytorch/aten/src/ATen/LegacyBatchingRegistrations.cpp:1075 [backend fallback]
+E                   VmapMode: fallthrough registered at /pytorch/aten/src/ATen/VmapModeRegistrations.cpp:33 [backend fallback]
+E                   FuncTorchGradWrapper: registered at /pytorch/aten/src/ATen/functorch/TensorWrapper.cpp:210 [backend fallback]
+E                   PythonTLSSnapshot: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:202 [backend fallback]
+E                   FuncTorchDynamicLayerFrontMode: registered at /pytorch/aten/src/ATen/functorch/DynamicLayer.cpp:475 [backend fallback]
+E                   PreDispatch: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:206 [backend fallback]
+E                   PythonDispatcher: registered at /pytorch/aten/src/ATen/core/PythonFallbackKernel.cpp:198 [backend fallback]
+
+base.py:433: Failed
+----------------------------- Captured stdout call -----------------------------
+[31mFAILED[0m: Operator=cudnn_batch_norm_backward dtype={dtype} err=<<<{e}>>>
+=========================== short test summary info ============================
+FAILED test_cudnn_batch_norm_backward.py::test_cudnn_batch_norm_backward - Fa...
+====================== 1 failed, 950 deselected in 7.80s =======================

@@ -1,0 +1,203 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:20:55 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:20:57 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:20:57 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:20:57 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:20:57 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:20:57 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:20:57 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:20:57 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:20:57 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:20:57 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:20:58 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49933 deselected / 18 selected
+
+test_atan2.py::test_atan2[dtype0-shape0] PASSED
+test_atan2.py::test_atan2[dtype0-shape1] PASSED
+test_atan2.py::test_atan2[dtype0-shape2] PASSED
+test_atan2.py::test_atan2[dtype0-shape3] PASSED
+test_atan2.py::test_atan2[dtype0-shape4] PASSED
+test_atan2.py::test_atan2[dtype0-shape5] PASSED
+test_atan2.py::test_atan2[dtype1-shape0] PASSED
+test_atan2.py::test_atan2[dtype1-shape1] PASSED
+test_atan2.py::test_atan2[dtype1-shape2] FAILED
+test_atan2.py::test_atan2[dtype1-shape3] PASSED
+test_atan2.py::test_atan2[dtype1-shape4] PASSED
+test_atan2.py::test_atan2[dtype1-shape5] FAILED
+test_atan2.py::test_atan2[dtype2-shape0] PASSED
+test_atan2.py::test_atan2[dtype2-shape1] PASSED
+test_atan2.py::test_atan2[dtype2-shape2] PASSED
+test_atan2.py::test_atan2[dtype2-shape3] PASSED
+test_atan2.py::test_atan2[dtype2-shape4] PASSED
+test_atan2.py::test_atan2[dtype2-shape5] FAILED
+
+=================================== FAILURES ===================================
+__________________________ test_atan2[dtype1-shape2] ___________________________
+
+shape = (1024, 1024), dtype = torch.float32
+
+    @pytest.mark.atan2
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_atan2(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.atan2(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.atan2(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_atan2.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[-2.6434,  2.3516, -0.1708,  ...,  1.3945,  2.9195, -1.5101],
+        [-0.1006, -1.1872,  2.2132,  ...,  2.347...9241, -3.1123,  ...,  0.0522, -0.9054,  1.5409],
+        [-0.1890,  1.3749, -2.9426,  ..., -1.7196,  1.0591,  2.8245]])
+ref = tensor([[-2.6434,  2.3516, -0.1708,  ...,  1.3945,  2.9195, -1.5101],
+        [-0.1006, -1.1872,  2.2132,  ...,  2.347...9241, -3.1123,  ...,  0.0522, -0.9054,  1.5409],
+        [-0.1890,  1.3749, -2.9426,  ..., -1.7196,  1.0591,  2.8245]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1048576 (0.0%)
+E       Greatest absolute difference: 3.1415927410125732 at index (182, 47) (up to 0.0001 allowed)
+E       Greatest relative difference: 1.0 at index (182, 47) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+__________________________ test_atan2[dtype1-shape5] ___________________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float32
+
+    @pytest.mark.atan2
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_atan2(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.atan2(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.atan2(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_atan2.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 2.0431e+00,  1.3291e+00,  1.4212e+00,  ..., -2.6163e+00,
+             1.2137e+00, -2.0929e+00],
+         ...e-01],
+           [-2.2006e+00,  2.8396e+00, -1.2963e+00,  ...,  2.5805e+00,
+            -1.7273e+00, -1.6576e+00]]]]])
+ref = tensor([[[[[ 2.0431e+00,  1.3291e+00,  1.4212e+00,  ..., -2.6163e+00,
+             1.2137e+00, -2.0929e+00],
+         ...e-01],
+           [-2.2006e+00,  2.8396e+00, -1.2963e+00,  ...,  2.5805e+00,
+            -1.7273e+00, -1.6576e+00]]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 5924352 (0.0%)
+E       Greatest absolute difference: 3.1415927410125732 at index (11, 0, 42, 28, 24) (up to 0.0001 allowed)
+E       Greatest relative difference: 1.0 at index (11, 0, 42, 28, 24) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+__________________________ test_atan2[dtype2-shape5] ___________________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.bfloat16
+
+    @pytest.mark.atan2
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_atan2(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.atan2(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.atan2(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_atan2.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[ 8.2031e-01,  1.7734e+00,  2.1875e+00,  ..., -7.4609e-01,
+            -2.2754e-01, -3.0625e+00],
+         ...0547e+00, -1.2500e+00,  1.4453e-01,  ...,  3.0762e-02,
+            -9.1406e-01,  6.1328e-01]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 8.2031e-01,  1.7734e+00,  2.1875e+00,  ..., -7.4609e-01,
+            -2.2754e-01, -3.0625e+00],
+         ...0547e+00, -1.2500e+00,  1.4453e-01,  ...,  3.0762e-02,
+            -9.1406e-01,  6.1328e-01]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 2 / 5924352 (0.0%)
+E       Greatest absolute difference: 3.140625 at index (1, 2, 52, 24, 19) (up to 0.0001 allowed)
+E       Greatest relative difference: 1.0 at index (1, 2, 52, 24, 19) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+=========================== short test summary info ============================
+FAILED test_atan2.py::test_atan2[dtype1-shape2] - AssertionError: Tensor-like...
+FAILED test_atan2.py::test_atan2[dtype1-shape5] - AssertionError: Tensor-like...
+FAILED test_atan2.py::test_atan2[dtype2-shape5] - AssertionError: Tensor-like...
+=============== 3 failed, 15 passed, 49933 deselected in 11.81s ================

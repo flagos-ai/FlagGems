@@ -1,0 +1,706 @@
+{
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_q_path_matches_reference[8-1]": {
+    "params": {
+      "n_heads": 8,
+      "num_tokens": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_q_path_matches_reference[8-4]": {
+    "params": {
+      "n_heads": 8,
+      "num_tokens": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_q_path_matches_reference[8-17]": {
+    "params": {
+      "n_heads": 8,
+      "num_tokens": 17
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_q_path_matches_reference[8-64]": {
+    "params": {
+      "n_heads": 8,
+      "num_tokens": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_q_path_matches_reference[64-1]": {
+    "params": {
+      "n_heads": 64,
+      "num_tokens": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_q_path_matches_reference[64-4]": {
+    "params": {
+      "n_heads": 64,
+      "num_tokens": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_q_path_matches_reference[64-17]": {
+    "params": {
+      "n_heads": 64,
+      "num_tokens": 17
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_q_path_matches_reference[64-64]": {
+    "params": {
+      "n_heads": 64,
+      "num_tokens": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_matches_reference[16-1]": {
+    "params": {
+      "block_size": 16,
+      "num_tokens": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_matches_reference[16-4]": {
+    "params": {
+      "block_size": 16,
+      "num_tokens": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_matches_reference[16-17]": {
+    "params": {
+      "block_size": 16,
+      "num_tokens": 17
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_matches_reference[16-64]": {
+    "params": {
+      "block_size": 16,
+      "num_tokens": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_matches_reference[64-1]": {
+    "params": {
+      "block_size": 64,
+      "num_tokens": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_matches_reference[64-4]": {
+    "params": {
+      "block_size": 64,
+      "num_tokens": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_matches_reference[64-17]": {
+    "params": {
+      "block_size": 64,
+      "num_tokens": 17
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_matches_reference[64-64]": {
+    "params": {
+      "block_size": 64,
+      "num_tokens": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_with_dp_padding[16-1-4]": {
+    "params": {
+      "block_size": 16,
+      "pad": 1,
+      "num_tokens": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_with_dp_padding[16-1-17]": {
+    "params": {
+      "block_size": 16,
+      "pad": 1,
+      "num_tokens": 17
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_with_dp_padding[16-5-4]": {
+    "params": {
+      "block_size": 16,
+      "pad": 5,
+      "num_tokens": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_with_dp_padding[16-5-17]": {
+    "params": {
+      "block_size": 16,
+      "pad": 5,
+      "num_tokens": 17
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_with_dp_padding[64-1-4]": {
+    "params": {
+      "block_size": 64,
+      "pad": 1,
+      "num_tokens": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_with_dp_padding[64-1-17]": {
+    "params": {
+      "block_size": 64,
+      "pad": 1,
+      "num_tokens": 17
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_with_dp_padding[64-5-4]": {
+    "params": {
+      "block_size": 64,
+      "pad": 5,
+      "num_tokens": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_kv_path_with_dp_padding[64-5-17]": {
+    "params": {
+      "block_size": 64,
+      "pad": 5,
+      "num_tokens": 17
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-64-1]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 64,
+      "num_tokens": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-64-4]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 64,
+      "num_tokens": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-64-17]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 64,
+      "num_tokens": 17
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-64-64]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 64,
+      "num_tokens": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-64-8192]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 64,
+      "num_tokens": 8192
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-64-32768]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 64,
+      "num_tokens": 32768
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-64-65536]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 64,
+      "num_tokens": 65536
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-64-98304]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 64,
+      "num_tokens": 98304
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-64-131072]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 64,
+      "num_tokens": 131072
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-128-1]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 128,
+      "num_tokens": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-128-4]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 128,
+      "num_tokens": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-128-17]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 128,
+      "num_tokens": 17
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-128-64]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 128,
+      "num_tokens": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-128-8192]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 128,
+      "num_tokens": 8192
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-128-32768]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 128,
+      "num_tokens": 32768
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-128-65536]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 128,
+      "num_tokens": 65536
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-128-98304]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 128,
+      "num_tokens": 98304
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[16-128-131072]": {
+    "params": {
+      "block_size": 16,
+      "n_heads": 128,
+      "num_tokens": 131072
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-64-1]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 64,
+      "num_tokens": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-64-4]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 64,
+      "num_tokens": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-64-17]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 64,
+      "num_tokens": 17
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-64-64]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 64,
+      "num_tokens": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-64-8192]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 64,
+      "num_tokens": 8192
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-64-32768]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 64,
+      "num_tokens": 32768
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-64-65536]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 64,
+      "num_tokens": 65536
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-64-98304]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 64,
+      "num_tokens": 98304
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-64-131072]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 64,
+      "num_tokens": 131072
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-128-1]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 128,
+      "num_tokens": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-128-4]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 128,
+      "num_tokens": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-128-17]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 128,
+      "num_tokens": 17
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-128-64]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 128,
+      "num_tokens": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-128-8192]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 128,
+      "num_tokens": 8192
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-128-32768]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 128,
+      "num_tokens": 32768
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-128-65536]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 128,
+      "num_tokens": 65536
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-128-98304]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 128,
+      "num_tokens": 98304
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  },
+  "tests/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_combined_q_and_kv[64-128-131072]": {
+    "params": {
+      "block_size": 64,
+      "n_heads": 128,
+      "num_tokens": 131072
+    },
+    "result": "skipped",
+    "opname": [
+      "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+    ],
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89"
+  }
+}

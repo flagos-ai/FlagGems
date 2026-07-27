@@ -1,0 +1,7 @@
+{
+  "fused_indexer_q_rope_quant": {
+    "result": "skipped",
+    "reason": "Skipped: requires native float8_e4m3fn support",
+    "test_case": "benchmark/test_fused_indexer_q_rope_quant.py::test_fused_indexer_q_rope_quant"
+  }
+}

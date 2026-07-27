@@ -1,0 +1,2663 @@
+{
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[W_in_1_upsample0-dtype0]": {
+    "params": {
+      "case": [
+        "W_in_1_upsample",
+        [
+          2,
+          3,
+          1
+        ],
+        [
+          5
+        ],
+        true,
+        null
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[W_in_1_upsample0-dtype1]": {
+    "params": {
+      "case": [
+        "W_in_1_upsample",
+        [
+          2,
+          3,
+          1
+        ],
+        [
+          5
+        ],
+        true,
+        null
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[W_in_1_upsample0-dtype2]": {
+    "params": {
+      "case": [
+        "W_in_1_upsample",
+        [
+          2,
+          3,
+          1
+        ],
+        [
+          5
+        ],
+        true,
+        null
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[W_in_1_upsample1-dtype0]": {
+    "params": {
+      "case": [
+        "W_in_1_upsample",
+        [
+          2,
+          3,
+          1
+        ],
+        [
+          5
+        ],
+        false,
+        null
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[W_in_1_upsample1-dtype1]": {
+    "params": {
+      "case": [
+        "W_in_1_upsample",
+        [
+          2,
+          3,
+          1
+        ],
+        [
+          5
+        ],
+        false,
+        null
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[W_in_1_upsample1-dtype2]": {
+    "params": {
+      "case": [
+        "W_in_1_upsample",
+        [
+          2,
+          3,
+          1
+        ],
+        [
+          5
+        ],
+        false,
+        null
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[W_out_1-dtype0]": {
+    "params": {
+      "case": [
+        "W_out_1",
+        [
+          1,
+          1,
+          10
+        ],
+        [
+          1
+        ],
+        false,
+        null
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[W_out_1-dtype1]": {
+    "params": {
+      "case": [
+        "W_out_1",
+        [
+          1,
+          1,
+          10
+        ],
+        [
+          1
+        ],
+        false,
+        null
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[W_out_1-dtype2]": {
+    "params": {
+      "case": [
+        "W_out_1",
+        [
+          1,
+          1,
+          10
+        ],
+        [
+          1
+        ],
+        false,
+        null
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[identity_scale_ac-dtype0]": {
+    "params": {
+      "case": [
+        "identity_scale_ac",
+        [
+          2,
+          2,
+          100
+        ],
+        [
+          100
+        ],
+        true,
+        null
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[identity_scale_ac-dtype1]": {
+    "params": {
+      "case": [
+        "identity_scale_ac",
+        [
+          2,
+          2,
+          100
+        ],
+        [
+          100
+        ],
+        true,
+        null
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[identity_scale_ac-dtype2]": {
+    "params": {
+      "case": [
+        "identity_scale_ac",
+        [
+          2,
+          2,
+          100
+        ],
+        [
+          100
+        ],
+        true,
+        null
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[identity_scale_nc-dtype0]": {
+    "params": {
+      "case": [
+        "identity_scale_nc",
+        [
+          2,
+          2,
+          100
+        ],
+        [
+          100
+        ],
+        false,
+        null
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[identity_scale_nc-dtype1]": {
+    "params": {
+      "case": [
+        "identity_scale_nc",
+        [
+          2,
+          2,
+          100
+        ],
+        [
+          100
+        ],
+        false,
+        null
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[identity_scale_nc-dtype2]": {
+    "params": {
+      "case": [
+        "identity_scale_nc",
+        [
+          2,
+          2,
+          100
+        ],
+        [
+          100
+        ],
+        false,
+        null
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[value_nan-dtype0]": {
+    "params": {
+      "case": [
+        "value_nan",
+        [
+          1,
+          1,
+          10
+        ],
+        [
+          20
+        ],
+        false,
+        "nan"
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[value_nan-dtype1]": {
+    "params": {
+      "case": [
+        "value_nan",
+        [
+          1,
+          1,
+          10
+        ],
+        [
+          20
+        ],
+        false,
+        "nan"
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[value_nan-dtype2]": {
+    "params": {
+      "case": [
+        "value_nan",
+        [
+          1,
+          1,
+          10
+        ],
+        [
+          20
+        ],
+        false,
+        "nan"
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[value_inf-dtype0]": {
+    "params": {
+      "case": [
+        "value_inf",
+        [
+          1,
+          1,
+          10
+        ],
+        [
+          20
+        ],
+        false,
+        "inf"
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[value_inf-dtype1]": {
+    "params": {
+      "case": [
+        "value_inf",
+        [
+          1,
+          1,
+          10
+        ],
+        [
+          20
+        ],
+        false,
+        "inf"
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[value_inf-dtype2]": {
+    "params": {
+      "case": [
+        "value_inf",
+        [
+          1,
+          1,
+          10
+        ],
+        [
+          20
+        ],
+        false,
+        "inf"
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": null
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[non_contiguous0-dtype0]": {
+    "params": {
+      "case": [
+        "non_contiguous",
+        [
+          2,
+          4,
+          10
+        ],
+        [
+          15
+        ],
+        true,
+        "non_contiguous"
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[non_contiguous0-dtype1]": {
+    "params": {
+      "case": [
+        "non_contiguous",
+        [
+          2,
+          4,
+          10
+        ],
+        [
+          15
+        ],
+        true,
+        "non_contiguous"
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[non_contiguous0-dtype2]": {
+    "params": {
+      "case": [
+        "non_contiguous",
+        [
+          2,
+          4,
+          10
+        ],
+        [
+          15
+        ],
+        true,
+        "non_contiguous"
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[non_contiguous1-dtype0]": {
+    "params": {
+      "case": [
+        "non_contiguous",
+        [
+          2,
+          4,
+          10
+        ],
+        [
+          15
+        ],
+        false,
+        "non_contiguous"
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[non_contiguous1-dtype1]": {
+    "params": {
+      "case": [
+        "non_contiguous",
+        [
+          2,
+          4,
+          10
+        ],
+        [
+          15
+        ],
+        false,
+        "non_contiguous"
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d_boundaries[non_contiguous1-dtype2]": {
+    "params": {
+      "case": [
+        "non_contiguous",
+        [
+          2,
+          4,
+          10
+        ],
+        [
+          15
+        ],
+        false,
+        "non_contiguous"
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape0-2-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape0-2-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape0-2.5-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape0-2.5-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape0-0.3-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape0-0.3-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape0-0.7-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape0-0.7-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape1-2-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape1-2-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape1-2.5-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape1-2.5-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape1-0.3-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape1-0.3-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape1-0.7-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape1-0.7-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape2-2-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape2-2-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape2-2.5-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape2-2.5-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape2-0.3-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape2-0.3-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape2-0.7-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape2-0.7-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape3-2-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape3-2-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape3-2.5-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape3-2.5-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape3-0.3-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape3-0.3-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape3-0.7-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape3-0.7-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape4-2-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape4-2-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape4-2.5-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape4-2.5-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape4-0.3-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape4-0.3-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape4-0.7-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype0-shape4-0.7-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape0-2-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape0-2-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape0-2.5-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape0-2.5-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape0-0.3-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape0-0.3-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape0-0.7-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape0-0.7-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape1-2-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape1-2-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape1-2.5-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape1-2.5-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape1-0.3-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape1-0.3-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape1-0.7-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape1-0.7-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape2-2-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape2-2-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape2-2.5-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape2-2.5-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape2-0.3-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape2-0.3-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape2-0.7-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape2-0.7-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape3-2-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape3-2-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape3-2.5-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape3-2.5-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape3-0.3-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape3-0.3-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape3-0.7-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape3-0.7-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape4-2-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape4-2-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape4-2.5-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape4-2.5-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape4-0.3-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape4-0.3-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape4-0.7-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype1-shape4-0.7-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape0-2-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape0-2-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape0-2.5-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape0-2.5-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape0-0.3-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape0-0.3-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape0-0.7-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape0-0.7-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape1-2-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape1-2-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape1-2.5-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape1-2.5-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape1-0.3-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape1-0.3-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape1-0.7-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape1-0.7-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        15,
+        37,
+        256
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape2-2-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape2-2-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape2-2.5-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape2-2.5-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape2-0.3-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape2-0.3-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape2-0.7-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape2-0.7-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        5,
+        127
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape3-2-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape3-2-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape3-2.5-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape3-2.5-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape3-0.3-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape3-0.3-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape3-0.7-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape3-0.7-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        192,
+        42
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape4-2-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 2,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape4-2-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 2,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape4-2.5-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 2.5,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape4-2.5-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 2.5,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape4-0.3-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 0.3,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape4-0.3-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 0.3,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape4-0.7-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 0.7,
+      "align_corners": false
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  },
+  "tests/test_upsample_linear1d.py::test_upsample_linear1d[dtype2-shape4-0.7-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        7,
+        1023
+      ],
+      "scale": 0.7,
+      "align_corners": true
+    },
+    "result": "skipped",
+    "opname": [
+      "upsample_linear1d"
+    ],
+    "reason": "Skipped: Issue #2498: Result not close."
+  }
+}

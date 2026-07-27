@@ -1,0 +1,7 @@
+{
+  "fp8_fp4_paged_mqa_logits": {
+    "result": "skipped",
+    "reason": "Skipped: vLLM not available",
+    "test_case": "benchmark/test_fp8_fp4_paged_mqa_logits.py::test_fp8_fp4_paged_mqa_logits"
+  }
+}

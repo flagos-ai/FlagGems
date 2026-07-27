@@ -1,0 +1,246 @@
+{
+  "permute_copy": {
+    "details": [
+      {
+        "op_name": "permute_copy",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                128
+              ],
+              [
+                1,
+                0
+              ]
+            ],
+            "latency_base": 0.005446999799460173,
+            "latency": 0.05701100081205368,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.09554296051418427,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                128,
+                256
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "latency_base": 0.0050940001383423805,
+            "latency": 0.005200000014156103,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9796154085528546,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                32,
+                64,
+                128
+              ],
+              [
+                2,
+                0,
+                1
+              ]
+            ],
+            "latency_base": 0.011386999860405922,
+            "latency": 1.7277779579162598,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.006590545855868486,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "permute_copy",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                128
+              ],
+              [
+                1,
+                0
+              ]
+            ],
+            "latency_base": 0.005572000052779913,
+            "latency": 0.05550500005483627,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.10038735334249248,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                128,
+                256
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "latency_base": 0.005549000110477209,
+            "latency": 0.005532999988645315,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0028917624913662,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                32,
+                64,
+                128
+              ],
+              [
+                2,
+                0,
+                1
+              ]
+            ],
+            "latency_base": 0.0075090001337230206,
+            "latency": 1.38168203830719,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.005434680284997337,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "permute_copy",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                128
+              ],
+              [
+                1,
+                0
+              ]
+            ],
+            "latency_base": 0.005437999963760376,
+            "latency": 0.05708099901676178,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.0952681287544304,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                128,
+                256
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "latency_base": 0.005204000044614077,
+            "latency": 0.00519599998369813,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0015396576099012,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                32,
+                64,
+                128
+              ],
+              [
+                2,
+                0,
+                1
+              ]
+            ],
+            "latency_base": 0.011355999857187271,
+            "latency": 1.6944210529327393,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.006701994074927286,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_permute_copy.py::test_permute_copy",
+    "reason": null
+  }
+}

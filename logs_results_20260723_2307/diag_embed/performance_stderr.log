@@ -1,0 +1,3 @@
+[CMD] pytest -m "diag_embed" --level core --record json --output benchmark_diag_embed.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

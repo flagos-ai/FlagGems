@@ -1,0 +1,186 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_arcsinh.py F                                                        [100%]
+
+=================================== FAILURES ===================================
+_______________________________ test_arcsinh_out _______________________________
+
+self = <benchmark.base.UnaryPointwiseOutBenchmark object at 0x7fab5eaa5e10>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+>                       metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+
+base.py:440: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+base.py:318: in get_latency
+    latency = do_bench(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/testing.py:103: in do_bench
+    fn()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+>   fn = lambda: op(*args, **kwargs)
+E   RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:3975)
+
+base.py:288: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.arcsinh_out
+    def test_arcsinh_out():
+        bench = base.UnaryPointwiseOutBenchmark(
+            op_name="arcsinh_out",
+            torch_op=torch.arcsinh,
+            dtypes=consts.FLOAT_DTYPES,
+        )
+>       bench.run()
+
+test_arcsinh.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.base.UnaryPointwiseOutBenchmark object at 0x7fab5eaa5e10>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+    
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+    
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+>                   pytest.fail(str(e))  # raise exception again
+E                   Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:3975)
+
+base.py:480: Failed
+----------------------------- Captured stdout call -----------------------------
+
+Operator: arcsinh_out  Performance Test (dtype=torch.float16, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup               TFLOPS          Size Detail
+--------------------------------------------------------------------------------------------------------------------
+SUCCESS               0.031233            0.005337               5.852               0.001          ([torch.Size([64, 64])], {'out': torch.Size([64, 64])})
+SUCCESS               1.179148            1.391156               0.848               0.012          ([torch.Size([4096, 4096])], {'out': torch.Size([4096, 4096])})
+SUCCESS               1.179256            1.391068               0.848               0.012          ([torch.Size([64, 512, 512])], {'out': torch.Size([64, 512, 512])})
+
+
+Operator: arcsinh_out  Performance Test (dtype=torch.float32, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup               TFLOPS          Size Detail
+--------------------------------------------------------------------------------------------------------------------
+SUCCESS               0.030957            0.005489               5.640               0.001          ([torch.Size([64, 64])], {'out': torch.Size([64, 64])})
+SUCCESS               1.164213            1.306324               0.891               0.013          ([torch.Size([4096, 4096])], {'out': torch.Size([4096, 4096])})
+SUCCESS               1.163799            1.305185               0.892               0.013          ([torch.Size([64, 512, 512])], {'out': torch.Size([64, 512, 512])})
+
+[[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/asinh.cpp:33]scalar type of ret : kbfloat16 is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/asinh.cpp:33]
+=========================== short test summary info ============================
+FAILED test_arcsinh.py::test_arcsinh_out - Failed: [NOT IMPLEMENTED]: error c...
+====================== 1 failed, 950 deselected in 19.29s ======================

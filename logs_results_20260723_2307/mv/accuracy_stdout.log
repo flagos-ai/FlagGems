@@ -1,0 +1,30 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 01:12:39 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 01:12:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:12:41 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:12:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:12:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:12:41 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:12:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:12:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:12:41 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:12:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 01:12:42 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49942 deselected / 9 selected
+
+test_mv.py::test_mv[dtype0-1-32] PASSED
+test_mv.py::test_mv[dtype0-160-1024] PASSED
+test_mv.py::test_mv[dtype0-5333-497] PASSED
+test_mv.py::test_mv[dtype1-1-32] PASSED
+test_mv.py::test_mv[dtype1-160-1024] PASSED
+test_mv.py::test_mv[dtype1-5333-497] PASSED
+test_mv.py::test_mv[dtype2-1-32] PASSED
+test_mv.py::test_mv[dtype2-160-1024] PASSED
+test_mv.py::test_mv[dtype2-5333-497] PASSED
+
+===================== 9 passed, 49942 deselected in 15.36s =====================

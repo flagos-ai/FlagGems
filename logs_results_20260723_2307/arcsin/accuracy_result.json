@@ -1,0 +1,320 @@
+{
+  "tests/test_arcsin.py::test_arcsin[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 63220 / 1048576 (6.0%)\nGreatest absolute difference: 0.00341796875 at index (0, 778) (up to 0.0001 allowed)\nGreatest relative difference: 0.005100250244140625 at index (0, 778) (up to 0.001 allowed)"
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5724 / 96000 (6.0%)\nGreatest absolute difference: 0.00341796875 at index (0, 33, 2) (up to 0.0001 allowed)\nGreatest relative difference: 0.005100250244140625 at index (0, 33, 2) (up to 0.001 allowed)"
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 475677 / 7864320 (6.0%)\nGreatest absolute difference: 0.00341796875 at index (0, 0, 4, 21) (up to 0.0001 allowed)\nGreatest relative difference: 0.005100250244140625 at index (0, 0, 4, 21) (up to 0.001 allowed)"
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 358361 / 5924352 (6.0%)\nGreatest absolute difference: 0.00341796875 at index (0, 0, 0, 3, 19) (up to 0.0001 allowed)\nGreatest relative difference: 0.005100250244140625 at index (0, 0, 0, 3, 19) (up to 0.001 allowed)"
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 137631 / 1048576 (13.1%)\nGreatest absolute difference: 0.003056645393371582 at index (886, 531) (up to 0.0001 allowed)\nGreatest relative difference: 0.004570714198052883 at index (886, 531) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 12700 / 96000 (13.2%)\nGreatest absolute difference: 0.003056764602661133 at index (3, 248, 11) (up to 0.0001 allowed)\nGreatest relative difference: 0.0045709083788096905 at index (3, 248, 11) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 1031640 / 7864320 (13.1%)\nGreatest absolute difference: 0.003056764602661133 at index (5, 23, 32, 39) (up to 0.0001 allowed)\nGreatest relative difference: 0.004570912104099989 at index (5, 23, 32, 39) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 776421 / 5924352 (13.1%)\nGreatest absolute difference: 0.003056824207305908 at index (2, 0, 19, 14, 9) (up to 0.0001 allowed)\nGreatest relative difference: 0.00457100011408329 at index (2, 0, 19, 14, 9) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin_boundaries_and_out_of_domain[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin_boundaries_and_out_of_domain[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin_boundaries_and_out_of_domain[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin_empty_and_scalar[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin_empty_and_scalar[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  },
+  "tests/test_arcsin.py::test_arcsin_empty_and_scalar[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "arcsin"
+    ],
+    "reason": null
+  }
+}

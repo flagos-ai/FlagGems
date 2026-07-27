@@ -1,0 +1,3 @@
+[CMD] pytest -m "mm" --level core --record json --output benchmark_mm.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

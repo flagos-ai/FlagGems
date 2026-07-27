@@ -1,0 +1,186 @@
+{
+  "tests/test_index_add.py::test_index_add_[dtype0-0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_add_"
+    ],
+    "reason": null
+  },
+  "tests/test_index_add.py::test_index_add_[dtype0-0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_add_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_add.py::test_index_add_[dtype0-0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_add_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_add.py::test_index_add_[dtype0-1-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_add_"
+    ],
+    "reason": null
+  },
+  "tests/test_index_add.py::test_index_add_[dtype0-1-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_add_"
+    ],
+    "reason": null
+  },
+  "tests/test_index_add.py::test_index_add_[dtype0-1-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_add_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_add.py::test_index_add_[dtype1-0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_add_"
+    ],
+    "reason": null
+  },
+  "tests/test_index_add.py::test_index_add_[dtype1-0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_add_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_add.py::test_index_add_[dtype1-0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_add_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_add.py::test_index_add_[dtype1-1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_add_"
+    ],
+    "reason": null
+  },
+  "tests/test_index_add.py::test_index_add_[dtype1-1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_add_"
+    ],
+    "reason": null
+  },
+  "tests/test_index_add.py::test_index_add_[dtype1-1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_add_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

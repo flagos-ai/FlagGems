@@ -1,0 +1,3 @@
+[CMD] pytest -m "addcdiv" --level core --record json --output benchmark_addcdiv.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

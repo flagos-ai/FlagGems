@@ -1,0 +1,84 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_grouped_mm.py F                                                     [100%]
+
+=================================== FAILURES ===================================
+_______________________________ test_grouped_mm ________________________________
+
+self = <benchmark.test_grouped_mm.GroupmmBenchmark object at 0x7f69a7e931f0>
+dtype = torch.bfloat16
+
+    def get_input_iter(self, dtype) -> Generator:
+>       for groups, n, k in self.shapes:
+E       ValueError: too many values to unpack (expected 3)
+
+test_grouped_mm.py:28: ValueError
+
+During handling of the above exception, another exception occurred:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f69a7e92410>
+
+    @pytest.mark.grouped_mm
+    @pytest.mark.skipif(
+        utils.SkipVersion("torch", "<2.8"),
+        reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
+    )
+    def test_grouped_mm(monkeypatch):
+        bench = GroupmmBenchmark(
+            op_name="grouped_mm",
+            input_fn=_input_fn,
+            torch_op=torch._grouped_mm,
+            gems_op=flag_gems.group_mm,
+            dtypes=[torch.bfloat16],
+        )
+    
+>       bench.run()
+
+test_grouped_mm.py:88: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.test_grouped_mm.GroupmmBenchmark object at 0x7f69a7e931f0>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+>                   pytest.fail(str(e))
+E                   Failed: too many values to unpack (expected 3)
+
+base.py:433: Failed
+----------------------------- Captured stdout call -----------------------------
+[31mFAILED[0m: Operator=grouped_mm dtype={dtype} err=<<<{e}>>>
+=========================== short test summary info ============================
+FAILED test_grouped_mm.py::test_grouped_mm - Failed: too many values to unpac...
+====================== 1 failed, 950 deselected in 7.76s =======================

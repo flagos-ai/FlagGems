@@ -1,0 +1,452 @@
+{
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype0-False-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "wb_none": false,
+      "shape": [
+        200,
+        36
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype0-False-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "wb_none": false,
+      "shape": [
+        4096,
+        100
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype0-False-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "wb_none": false,
+      "shape": [
+        1,
+        40999
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype0-False-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "wb_none": false,
+      "shape": [
+        100,
+        40499
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype0-False-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "wb_none": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype0-True-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "wb_none": true,
+      "shape": [
+        200,
+        36
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype0-True-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "wb_none": true,
+      "shape": [
+        4096,
+        100
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype0-True-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "wb_none": true,
+      "shape": [
+        1,
+        40999
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype0-True-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "wb_none": true,
+      "shape": [
+        100,
+        40499
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype0-True-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "wb_none": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype1-False-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "wb_none": false,
+      "shape": [
+        200,
+        36
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype1-False-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "wb_none": false,
+      "shape": [
+        4096,
+        100
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype1-False-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "wb_none": false,
+      "shape": [
+        1,
+        40999
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype1-False-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "wb_none": false,
+      "shape": [
+        100,
+        40499
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype1-False-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "wb_none": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype1-True-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "wb_none": true,
+      "shape": [
+        200,
+        36
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype1-True-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "wb_none": true,
+      "shape": [
+        4096,
+        100
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype1-True-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "wb_none": true,
+      "shape": [
+        1,
+        40999
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype1-True-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "wb_none": true,
+      "shape": [
+        100,
+        40499
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype1-True-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "wb_none": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype2-False-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "wb_none": false,
+      "shape": [
+        200,
+        36
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype2-False-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "wb_none": false,
+      "shape": [
+        4096,
+        100
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype2-False-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "wb_none": false,
+      "shape": [
+        1,
+        40999
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype2-False-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "wb_none": false,
+      "shape": [
+        100,
+        40499
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype2-False-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "wb_none": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype2-True-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "wb_none": true,
+      "shape": [
+        200,
+        36
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype2-True-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "wb_none": true,
+      "shape": [
+        4096,
+        100
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype2-True-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "wb_none": true,
+      "shape": [
+        1,
+        40999
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype2-True-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "wb_none": true,
+      "shape": [
+        100,
+        40499
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_layer_norm.py::test_layer_norm_backward[dtype2-True-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "wb_none": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "layer_norm_backward"
+    ],
+    "reason": null
+  }
+}

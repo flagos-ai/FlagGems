@@ -1,0 +1,346 @@
+{
+  "tests/test_irshift.py::test_irshift[dtype0-shapes0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype0-shapes1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype0-shapes2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype0-shapes3]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype1-shapes0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype1-shapes1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype1-shapes2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype1-shapes3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype2-shapes0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype2-shapes1]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype2-shapes2]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype2-shapes3]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype3-shapes0]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype3-shapes1]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype3-shapes2]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift[dtype3-shapes3]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift_edge_cases[dtype0]": {
+    "params": {
+      "dtype": "torch.int8"
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift_edge_cases[dtype1]": {
+    "params": {
+      "dtype": "torch.int16"
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift_edge_cases[dtype2]": {
+    "params": {
+      "dtype": "torch.int32"
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  },
+  "tests/test_irshift.py::test_irshift_edge_cases[dtype3]": {
+    "params": {
+      "dtype": "torch.int64"
+    },
+    "result": "passed",
+    "opname": [
+      "irshift"
+    ],
+    "reason": null
+  }
+}

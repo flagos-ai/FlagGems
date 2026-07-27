@@ -1,0 +1,306 @@
+{
+  "tests/test_ilshift.py::test_ilshift[dtype0-shapes0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype0-shapes1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype0-shapes2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype0-shapes3]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype1-shapes0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype1-shapes1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype1-shapes2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype1-shapes3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype2-shapes0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype2-shapes1]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype2-shapes2]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype2-shapes3]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype3-shapes0]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          512,
+          1024
+        ],
+        [
+          512,
+          1024
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype3-shapes1]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          1,
+          512
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype3-shapes2]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          256,
+          512
+        ],
+        [
+          256,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  },
+  "tests/test_ilshift.py::test_ilshift[dtype3-shapes3]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shapes": [
+        [
+          1024
+        ],
+        []
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "ilshift"
+    ],
+    "reason": null
+  }
+}

@@ -1,0 +1,945 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 01:45:01 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 01:45:03 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:45:03 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:45:03 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:45:03 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:45:03 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:45:03 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:45:03 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:45:03 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:45:03 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 01:45:04 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49663 deselected / 288 selected
+
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype0-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype0-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype0-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype0-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype0-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype0-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype1-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype1-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype1-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype1-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype1-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype1-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype2-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype2-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype2-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype2-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype2-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype2-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype3-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype3-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype3-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype3-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype3-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype3-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype4-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype4-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype4-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype4-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype4-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype4-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype5-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype5-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype5-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype5-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype5-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims0-dtype5-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype0-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype0-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype0-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype0-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype0-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype0-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype1-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype1-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype1-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype1-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype1-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype1-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype2-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype2-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype2-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype2-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype2-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype2-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype3-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype3-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype3-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype3-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype3-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype3-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype4-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype4-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype4-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype4-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype4-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype4-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype5-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype5-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype5-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype5-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype5-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims1-dtype5-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype0-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype0-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype0-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype0-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype0-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype0-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype1-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype1-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype1-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype1-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype1-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype1-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype2-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype2-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype2-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype2-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype2-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype2-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype3-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype3-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype3-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype3-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype3-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype3-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype4-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype4-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype4-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype4-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype4-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype4-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype5-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype5-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype5-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype5-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype5-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims2-dtype5-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype0-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype0-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype0-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype0-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype0-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype0-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype1-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype1-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype1-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype1-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype1-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype1-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype2-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype2-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype2-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype2-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype2-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype2-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype3-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype3-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype3-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype3-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype3-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype3-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype4-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype4-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype4-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype4-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype4-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype4-shape5] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype5-shape0] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype5-shape1] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype5-shape2] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype5-shape3] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype5-shape4] PASSED
+test_roll.py::test_roll_single_dim[shifts_dims3-dtype5-shape5] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype0-shape0] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype0-shape1] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype0-shape2] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype0-shape3] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype0-shape4] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype0-shape5] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype1-shape0] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype1-shape1] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype1-shape2] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype1-shape3] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype1-shape4] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype1-shape5] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype2-shape0] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype2-shape1] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype2-shape2] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype2-shape3] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype2-shape4] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims0-dtype2-shape5] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype0-shape0] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype0-shape1] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype0-shape2] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype0-shape3] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype0-shape4] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype0-shape5] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype1-shape0] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype1-shape1] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype1-shape2] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype1-shape3] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype1-shape4] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype1-shape5] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype2-shape0] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype2-shape1] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype2-shape2] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype2-shape3] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype2-shape4] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims1-dtype2-shape5] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype0-shape0] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype0-shape1] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype0-shape2] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype0-shape3] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype0-shape4] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype0-shape5] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype1-shape0] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype1-shape1] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype1-shape2] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype1-shape3] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype1-shape4] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype1-shape5] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype2-shape0] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype2-shape1] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype2-shape2] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype2-shape3] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype2-shape4] PASSED
+test_roll.py::test_roll_multi_dims[shifts_dims2-dtype2-shape5] PASSED
+test_roll.py::test_roll_flatten[1-dtype0-shape0] PASSED
+test_roll.py::test_roll_flatten[1-dtype0-shape1] PASSED
+test_roll.py::test_roll_flatten[1-dtype0-shape2] PASSED
+test_roll.py::test_roll_flatten[1-dtype0-shape3] PASSED
+test_roll.py::test_roll_flatten[1-dtype0-shape4] PASSED
+test_roll.py::test_roll_flatten[1-dtype0-shape5] PASSED
+test_roll.py::test_roll_flatten[1-dtype1-shape0] PASSED
+test_roll.py::test_roll_flatten[1-dtype1-shape1] PASSED
+test_roll.py::test_roll_flatten[1-dtype1-shape2] PASSED
+test_roll.py::test_roll_flatten[1-dtype1-shape3] PASSED
+test_roll.py::test_roll_flatten[1-dtype1-shape4] PASSED
+test_roll.py::test_roll_flatten[1-dtype1-shape5] PASSED
+test_roll.py::test_roll_flatten[1-dtype2-shape0] PASSED
+test_roll.py::test_roll_flatten[1-dtype2-shape1] PASSED
+test_roll.py::test_roll_flatten[1-dtype2-shape2] PASSED
+test_roll.py::test_roll_flatten[1-dtype2-shape3] PASSED
+test_roll.py::test_roll_flatten[1-dtype2-shape4] PASSED
+test_roll.py::test_roll_flatten[1-dtype2-shape5] PASSED
+test_roll.py::test_roll_flatten[-1-dtype0-shape0] PASSED
+test_roll.py::test_roll_flatten[-1-dtype0-shape1] PASSED
+test_roll.py::test_roll_flatten[-1-dtype0-shape2] PASSED
+test_roll.py::test_roll_flatten[-1-dtype0-shape3] PASSED
+test_roll.py::test_roll_flatten[-1-dtype0-shape4] PASSED
+test_roll.py::test_roll_flatten[-1-dtype0-shape5] PASSED
+test_roll.py::test_roll_flatten[-1-dtype1-shape0] PASSED
+test_roll.py::test_roll_flatten[-1-dtype1-shape1] PASSED
+test_roll.py::test_roll_flatten[-1-dtype1-shape2] PASSED
+test_roll.py::test_roll_flatten[-1-dtype1-shape3] PASSED
+test_roll.py::test_roll_flatten[-1-dtype1-shape4] PASSED
+test_roll.py::test_roll_flatten[-1-dtype1-shape5] PASSED
+test_roll.py::test_roll_flatten[-1-dtype2-shape0] PASSED
+test_roll.py::test_roll_flatten[-1-dtype2-shape1] PASSED
+test_roll.py::test_roll_flatten[-1-dtype2-shape2] PASSED
+test_roll.py::test_roll_flatten[-1-dtype2-shape3] PASSED
+test_roll.py::test_roll_flatten[-1-dtype2-shape4] PASSED
+test_roll.py::test_roll_flatten[-1-dtype2-shape5] PASSED
+test_roll.py::test_roll_flatten[5-dtype0-shape0] PASSED
+test_roll.py::test_roll_flatten[5-dtype0-shape1] PASSED
+test_roll.py::test_roll_flatten[5-dtype0-shape2] PASSED
+test_roll.py::test_roll_flatten[5-dtype0-shape3] PASSED
+test_roll.py::test_roll_flatten[5-dtype0-shape4] PASSED
+test_roll.py::test_roll_flatten[5-dtype0-shape5] PASSED
+test_roll.py::test_roll_flatten[5-dtype1-shape0] PASSED
+test_roll.py::test_roll_flatten[5-dtype1-shape1] PASSED
+test_roll.py::test_roll_flatten[5-dtype1-shape2] PASSED
+test_roll.py::test_roll_flatten[5-dtype1-shape3] PASSED
+test_roll.py::test_roll_flatten[5-dtype1-shape4] PASSED
+test_roll.py::test_roll_flatten[5-dtype1-shape5] PASSED
+test_roll.py::test_roll_flatten[5-dtype2-shape0] PASSED
+test_roll.py::test_roll_flatten[5-dtype2-shape1] PASSED
+test_roll.py::test_roll_flatten[5-dtype2-shape2] PASSED
+test_roll.py::test_roll_flatten[5-dtype2-shape3] PASSED
+test_roll.py::test_roll_flatten[5-dtype2-shape4] PASSED
+test_roll.py::test_roll_flatten[5-dtype2-shape5] PASSED
+test_roll.py::test_roll_flatten[-3-dtype0-shape0] PASSED
+test_roll.py::test_roll_flatten[-3-dtype0-shape1] PASSED
+test_roll.py::test_roll_flatten[-3-dtype0-shape2] PASSED
+test_roll.py::test_roll_flatten[-3-dtype0-shape3] PASSED
+test_roll.py::test_roll_flatten[-3-dtype0-shape4] PASSED
+test_roll.py::test_roll_flatten[-3-dtype0-shape5] PASSED
+test_roll.py::test_roll_flatten[-3-dtype1-shape0] PASSED
+test_roll.py::test_roll_flatten[-3-dtype1-shape1] PASSED
+test_roll.py::test_roll_flatten[-3-dtype1-shape2] PASSED
+test_roll.py::test_roll_flatten[-3-dtype1-shape3] PASSED
+test_roll.py::test_roll_flatten[-3-dtype1-shape4] PASSED
+test_roll.py::test_roll_flatten[-3-dtype1-shape5] PASSED
+test_roll.py::test_roll_flatten[-3-dtype2-shape0] PASSED
+test_roll.py::test_roll_flatten[-3-dtype2-shape1] PASSED
+test_roll.py::test_roll_flatten[-3-dtype2-shape2] PASSED
+test_roll.py::test_roll_flatten[-3-dtype2-shape3] PASSED
+test_roll.py::test_roll_flatten[-3-dtype2-shape4] PASSED
+test_roll.py::test_roll_flatten[-3-dtype2-shape5] PASSED
+test_roll.py::test_roll_with_non_dense_input[dtype0-shape0] PASSED
+test_roll.py::test_roll_with_non_dense_input[dtype0-shape1] PASSED
+test_roll.py::test_roll_with_non_dense_input[dtype0-shape2] FAILED
+test_roll.py::test_roll_with_non_dense_input[dtype0-shape3] FAILED
+test_roll.py::test_roll_with_non_dense_input[dtype0-shape4] FAILED
+test_roll.py::test_roll_with_non_dense_input[dtype0-shape5] FAILED
+test_roll.py::test_roll_with_non_dense_input[dtype1-shape0] PASSED
+test_roll.py::test_roll_with_non_dense_input[dtype1-shape1] PASSED
+test_roll.py::test_roll_with_non_dense_input[dtype1-shape2] FAILED
+test_roll.py::test_roll_with_non_dense_input[dtype1-shape3] FAILED
+test_roll.py::test_roll_with_non_dense_input[dtype1-shape4] FAILED
+test_roll.py::test_roll_with_non_dense_input[dtype1-shape5] FAILED
+test_roll.py::test_roll_with_non_dense_input[dtype2-shape0] PASSED
+test_roll.py::test_roll_with_non_dense_input[dtype2-shape1] PASSED
+test_roll.py::test_roll_with_non_dense_input[dtype2-shape2] FAILED
+test_roll.py::test_roll_with_non_dense_input[dtype2-shape3] FAILED
+test_roll.py::test_roll_with_non_dense_input[dtype2-shape4] FAILED
+test_roll.py::test_roll_with_non_dense_input[dtype2-shape5] FAILED
+
+=================================== FAILURES ===================================
+________________ test_roll_with_non_dense_input[dtype0-shape2] _________________
+
+shape = (1024, 1024), dtype = torch.float16
+
+    @pytest.mark.roll
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_roll_with_non_dense_input(shape, dtype):
+        if len(shape) < 2:
+            # Need at least 2D for non-dense test
+            return
+    
+        shape_dilated = tuple(item * 2 for item in shape)
+        inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        ref_inp = utils.to_reference(inp, False)
+    
+        shifts = 2
+        dims = 0
+    
+        ref_out = torch.roll(ref_inp, shifts, dims)
+        with flag_gems.use_gems():
+>           res_out = torch.roll(inp, shifts, dims)
+
+test_roll.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/roll.py:44: in roll
+    return _candidate_triton_single_dim(
+../src/flag_gems/ops/roll.py:116: in _candidate_triton_single_dim
+    inp_contig = inp.contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[ 1.4287,  0.3628, -0.2042,  ...,  0.5273, -1.5322, -0.6509],
+        [-0.5869,  0.0441,  2.1094,  ...,  0.99...    [-1.3770, -1.0234, -1.1348,  ...,  1.1416, -0.3430, -0.3901]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________ test_roll_with_non_dense_input[dtype0-shape3] _________________
+
+shape = (20, 320, 15), dtype = torch.float16
+
+    @pytest.mark.roll
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_roll_with_non_dense_input(shape, dtype):
+        if len(shape) < 2:
+            # Need at least 2D for non-dense test
+            return
+    
+        shape_dilated = tuple(item * 2 for item in shape)
+        inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        ref_inp = utils.to_reference(inp, False)
+    
+        shifts = 2
+        dims = 0
+    
+        ref_out = torch.roll(ref_inp, shifts, dims)
+        with flag_gems.use_gems():
+>           res_out = torch.roll(inp, shifts, dims)
+
+test_roll.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/roll.py:44: in roll
+    return _candidate_triton_single_dim(
+../src/flag_gems/ops/roll.py:116: in _candidate_triton_single_dim
+    inp_contig = inp.contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-0.0827,  2.0059,  0.3142,  ...,  0.5371, -0.1492,  0.5127],
+         [-1.5498,  0.1411,  0.5605,  ..., -1....   [-0.2627, -0.1709,  1.3984,  ...,  1.6113, -0.4602,  0.2240]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________ test_roll_with_non_dense_input[dtype0-shape4] _________________
+
+shape = (16, 128, 64, 60), dtype = torch.float16
+
+    @pytest.mark.roll
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_roll_with_non_dense_input(shape, dtype):
+        if len(shape) < 2:
+            # Need at least 2D for non-dense test
+            return
+    
+        shape_dilated = tuple(item * 2 for item in shape)
+        inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        ref_inp = utils.to_reference(inp, False)
+    
+        shifts = 2
+        dims = 0
+    
+        ref_out = torch.roll(ref_inp, shifts, dims)
+        with flag_gems.use_gems():
+>           res_out = torch.roll(inp, shifts, dims)
+
+test_roll.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/roll.py:44: in roll
+    return _candidate_triton_single_dim(
+../src/flag_gems/ops/roll.py:116: in _candidate_triton_single_dim
+    inp_contig = inp.contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[-1.4551e+00,  8.5547e-01, -1.1270e+00,  ...,  8.4131e-01,
+           -8.3801e-02, -2.9160e-02],
+          ...  1.5986e+00,  ...,  7.7197e-01,
+            1.5156e+00,  9.8779e-01]]]], device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________ test_roll_with_non_dense_input[dtype0-shape5] _________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float16
+
+    @pytest.mark.roll
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_roll_with_non_dense_input(shape, dtype):
+        if len(shape) < 2:
+            # Need at least 2D for non-dense test
+            return
+    
+        shape_dilated = tuple(item * 2 for item in shape)
+        inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        ref_inp = utils.to_reference(inp, False)
+    
+        shifts = 2
+        dims = 0
+    
+        ref_out = torch.roll(ref_inp, shifts, dims)
+        with flag_gems.use_gems():
+>           res_out = torch.roll(inp, shifts, dims)
+
+test_roll.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/roll.py:44: in roll
+    return _candidate_triton_single_dim(
+../src/flag_gems/ops/roll.py:116: in _candidate_triton_single_dim
+    inp_contig = inp.contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[[ 5.3613e-01,  2.4500e-01, -1.0586e+00,  ...,  1.2568e+00,
+             1.0272e-01,  1.2932e-02],
+        ...-01,  ...,  3.6407e-02,
+             4.7949e-01, -1.1416e+00]]]]], device='cuda:0',
+       dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________ test_roll_with_non_dense_input[dtype1-shape2] _________________
+
+shape = (1024, 1024), dtype = torch.float32
+
+    @pytest.mark.roll
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_roll_with_non_dense_input(shape, dtype):
+        if len(shape) < 2:
+            # Need at least 2D for non-dense test
+            return
+    
+        shape_dilated = tuple(item * 2 for item in shape)
+        inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        ref_inp = utils.to_reference(inp, False)
+    
+        shifts = 2
+        dims = 0
+    
+        ref_out = torch.roll(ref_inp, shifts, dims)
+        with flag_gems.use_gems():
+>           res_out = torch.roll(inp, shifts, dims)
+
+test_roll.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/roll.py:44: in roll
+    return _candidate_triton_single_dim(
+../src/flag_gems/ops/roll.py:116: in _candidate_triton_single_dim
+    inp_contig = inp.contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[-0.4891,  0.8674, -1.4196,  ..., -0.7266, -0.1814,  0.8495],
+        [ 0.0041,  0.4492, -0.8000,  ...,  0.19....3085, -0.8709],
+        [-0.4691,  1.4893, -0.7985,  ...,  0.8885,  0.0350, -0.4001]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________ test_roll_with_non_dense_input[dtype1-shape3] _________________
+
+shape = (20, 320, 15), dtype = torch.float32
+
+    @pytest.mark.roll
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_roll_with_non_dense_input(shape, dtype):
+        if len(shape) < 2:
+            # Need at least 2D for non-dense test
+            return
+    
+        shape_dilated = tuple(item * 2 for item in shape)
+        inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        ref_inp = utils.to_reference(inp, False)
+    
+        shifts = 2
+        dims = 0
+    
+        ref_out = torch.roll(ref_inp, shifts, dims)
+        with flag_gems.use_gems():
+>           res_out = torch.roll(inp, shifts, dims)
+
+test_roll.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/roll.py:44: in roll
+    return _candidate_triton_single_dim(
+../src/flag_gems/ops/roll.py:116: in _candidate_triton_single_dim
+    inp_contig = inp.contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 1.0508,  0.1312, -1.4811,  ..., -0.7152,  0.6584, -0.0778],
+         [ 1.2734, -0.4040,  1.6401,  ...,  0....240,  0.5800],
+         [ 0.2166, -0.1634, -1.1230,  ..., -0.3869,  1.7680, -0.1799]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________ test_roll_with_non_dense_input[dtype1-shape4] _________________
+
+shape = (16, 128, 64, 60), dtype = torch.float32
+
+    @pytest.mark.roll
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_roll_with_non_dense_input(shape, dtype):
+        if len(shape) < 2:
+            # Need at least 2D for non-dense test
+            return
+    
+        shape_dilated = tuple(item * 2 for item in shape)
+        inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        ref_inp = utils.to_reference(inp, False)
+    
+        shifts = 2
+        dims = 0
+    
+        ref_out = torch.roll(ref_inp, shifts, dims)
+        with flag_gems.use_gems():
+>           res_out = torch.roll(inp, shifts, dims)
+
+test_roll.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/roll.py:44: in roll
+    return _candidate_triton_single_dim(
+../src/flag_gems/ops/roll.py:116: in _candidate_triton_single_dim
+    inp_contig = inp.contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[ 7.5546e-01, -5.2489e-01, -1.5270e+00,  ...,  1.1495e+00,
+           -5.4304e-01, -1.5777e+00],
+          ...975e-02,  9.3189e-01, -8.3603e-01,  ..., -6.6938e-01,
+           -1.2064e+00, -8.6790e-01]]]], device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________ test_roll_with_non_dense_input[dtype1-shape5] _________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float32
+
+    @pytest.mark.roll
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_roll_with_non_dense_input(shape, dtype):
+        if len(shape) < 2:
+            # Need at least 2D for non-dense test
+            return
+    
+        shape_dilated = tuple(item * 2 for item in shape)
+        inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        ref_inp = utils.to_reference(inp, False)
+    
+        shifts = 2
+        dims = 0
+    
+        ref_out = torch.roll(ref_inp, shifts, dims)
+        with flag_gems.use_gems():
+>           res_out = torch.roll(inp, shifts, dims)
+
+test_roll.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/roll.py:44: in roll
+    return _candidate_triton_single_dim(
+../src/flag_gems/ops/roll.py:116: in _candidate_triton_single_dim
+    inp_contig = inp.contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[[ 1.5969e-01,  1.2315e+00, -9.6174e-02,  ..., -4.7258e-01,
+             4.6730e-02,  7.0630e-01],
+        ...2e+00, -1.4950e+00, -1.0095e+00,  ...,  7.9890e-01,
+             9.0952e-01,  2.1992e-01]]]]], device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________ test_roll_with_non_dense_input[dtype2-shape2] _________________
+
+shape = (1024, 1024), dtype = torch.bfloat16
+
+    @pytest.mark.roll
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_roll_with_non_dense_input(shape, dtype):
+        if len(shape) < 2:
+            # Need at least 2D for non-dense test
+            return
+    
+        shape_dilated = tuple(item * 2 for item in shape)
+        inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        ref_inp = utils.to_reference(inp, False)
+    
+        shifts = 2
+        dims = 0
+    
+        ref_out = torch.roll(ref_inp, shifts, dims)
+        with flag_gems.use_gems():
+>           res_out = torch.roll(inp, shifts, dims)
+
+test_roll.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/roll.py:44: in roll
+    return _candidate_triton_single_dim(
+../src/flag_gems/ops/roll.py:116: in _candidate_triton_single_dim
+    inp_contig = inp.contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[-2.7969,  1.4688, -0.1816,  ...,  1.6406, -0.9102,  2.3594],
+        [ 0.5664, -0.5859, -1.9375,  ..., -0.55...   [ 1.3125,  2.6250,  0.6641,  ...,  0.6953,  0.6055,  1.2734]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________ test_roll_with_non_dense_input[dtype2-shape3] _________________
+
+shape = (20, 320, 15), dtype = torch.bfloat16
+
+    @pytest.mark.roll
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_roll_with_non_dense_input(shape, dtype):
+        if len(shape) < 2:
+            # Need at least 2D for non-dense test
+            return
+    
+        shape_dilated = tuple(item * 2 for item in shape)
+        inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        ref_inp = utils.to_reference(inp, False)
+    
+        shifts = 2
+        dims = 0
+    
+        ref_out = torch.roll(ref_inp, shifts, dims)
+        with flag_gems.use_gems():
+>           res_out = torch.roll(inp, shifts, dims)
+
+test_roll.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/roll.py:44: in roll
+    return _candidate_triton_single_dim(
+../src/flag_gems/ops/roll.py:116: in _candidate_triton_single_dim
+    inp_contig = inp.contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 0.9609,  0.6250,  2.2344,  ..., -1.4531, -0.2656, -0.3613],
+         [-0.6484,  0.3359,  1.2656,  ..., -1....  [-0.7500, -0.7227, -2.2656,  ...,  0.2188, -0.1699, -0.2090]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________ test_roll_with_non_dense_input[dtype2-shape4] _________________
+
+shape = (16, 128, 64, 60), dtype = torch.bfloat16
+
+    @pytest.mark.roll
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_roll_with_non_dense_input(shape, dtype):
+        if len(shape) < 2:
+            # Need at least 2D for non-dense test
+            return
+    
+        shape_dilated = tuple(item * 2 for item in shape)
+        inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        ref_inp = utils.to_reference(inp, False)
+    
+        shifts = 2
+        dims = 0
+    
+        ref_out = torch.roll(ref_inp, shifts, dims)
+        with flag_gems.use_gems():
+>           res_out = torch.roll(inp, shifts, dims)
+
+test_roll.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/roll.py:44: in roll
+    return _candidate_triton_single_dim(
+../src/flag_gems/ops/roll.py:116: in _candidate_triton_single_dim
+    inp_contig = inp.contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[-6.7969e-01, -3.1641e-01,  8.1250e-01,  ..., -1.9336e-01,
+           -1.5703e+00,  2.3682e-02],
+          ...-7.7148e-02,  ..., -1.9531e-01,
+           -1.5391e+00, -4.5898e-01]]]], device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________ test_roll_with_non_dense_input[dtype2-shape5] _________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.bfloat16
+
+    @pytest.mark.roll
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_roll_with_non_dense_input(shape, dtype):
+        if len(shape) < 2:
+            # Need at least 2D for non-dense test
+            return
+    
+        shape_dilated = tuple(item * 2 for item in shape)
+        inp = torch.randn(shape_dilated, dtype=dtype, device=flag_gems.device)[::2, ::2]
+        ref_inp = utils.to_reference(inp, False)
+    
+        shifts = 2
+        dims = 0
+    
+        ref_out = torch.roll(ref_inp, shifts, dims)
+        with flag_gems.use_gems():
+>           res_out = torch.roll(inp, shifts, dims)
+
+test_roll.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/roll.py:44: in roll
+    return _candidate_triton_single_dim(
+../src/flag_gems/ops/roll.py:116: in _candidate_triton_single_dim
+    inp_contig = inp.contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[[-5.0000e-01, -5.0000e-01,  8.4375e-01,  ..., -1.6113e-01,
+             2.5000e-01, -1.5820e-01],
+        ...01,  ..., -1.4375e+00,
+            -2.2969e+00,  6.9531e-01]]]]], device='cuda:0',
+       dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+=========================== short test summary info ============================
+FAILED test_roll.py::test_roll_with_non_dense_input[dtype0-shape2] - torch.Ac...
+FAILED test_roll.py::test_roll_with_non_dense_input[dtype0-shape3] - torch.Ac...
+FAILED test_roll.py::test_roll_with_non_dense_input[dtype0-shape4] - torch.Ac...
+FAILED test_roll.py::test_roll_with_non_dense_input[dtype0-shape5] - torch.Ac...
+FAILED test_roll.py::test_roll_with_non_dense_input[dtype1-shape2] - torch.Ac...
+FAILED test_roll.py::test_roll_with_non_dense_input[dtype1-shape3] - torch.Ac...
+FAILED test_roll.py::test_roll_with_non_dense_input[dtype1-shape4] - torch.Ac...
+FAILED test_roll.py::test_roll_with_non_dense_input[dtype1-shape5] - torch.Ac...
+FAILED test_roll.py::test_roll_with_non_dense_input[dtype2-shape2] - torch.Ac...
+FAILED test_roll.py::test_roll_with_non_dense_input[dtype2-shape3] - torch.Ac...
+FAILED test_roll.py::test_roll_with_non_dense_input[dtype2-shape4] - torch.Ac...
+FAILED test_roll.py::test_roll_with_non_dense_input[dtype2-shape5] - torch.Ac...
+============== 12 failed, 276 passed, 49663 deselected in 29.16s ===============

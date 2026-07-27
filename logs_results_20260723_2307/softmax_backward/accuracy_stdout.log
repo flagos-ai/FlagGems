@@ -1,0 +1,1065 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 02:10:50 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 02:10:52 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:10:52 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:10:52 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:10:52 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:10:52 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:10:52 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:10:52 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:10:52 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:10:52 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 02:10:54 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49915 deselected / 36 selected
+
+test_softmax.py::test_softmax_backward[True-0-dtype0-shape0] PASSED
+test_softmax.py::test_softmax_backward[True-0-dtype0-shape1] FAILED
+test_softmax.py::test_softmax_backward[True-0-dtype0-shape2] FAILED
+test_softmax.py::test_softmax_backward[True-0-dtype1-shape0] PASSED
+test_softmax.py::test_softmax_backward[True-0-dtype1-shape1] FAILED
+test_softmax.py::test_softmax_backward[True-0-dtype1-shape2] FAILED
+test_softmax.py::test_softmax_backward[True-0-dtype2-shape0] PASSED
+test_softmax.py::test_softmax_backward[True-0-dtype2-shape1] FAILED
+test_softmax.py::test_softmax_backward[True-0-dtype2-shape2] FAILED
+test_softmax.py::test_softmax_backward[True-1-dtype0-shape0] PASSED
+test_softmax.py::test_softmax_backward[True-1-dtype0-shape1] PASSED
+test_softmax.py::test_softmax_backward[True-1-dtype0-shape2] FAILED
+test_softmax.py::test_softmax_backward[True-1-dtype1-shape0] PASSED
+test_softmax.py::test_softmax_backward[True-1-dtype1-shape1] PASSED
+test_softmax.py::test_softmax_backward[True-1-dtype1-shape2] FAILED
+test_softmax.py::test_softmax_backward[True-1-dtype2-shape0] PASSED
+test_softmax.py::test_softmax_backward[True-1-dtype2-shape1] PASSED
+test_softmax.py::test_softmax_backward[True-1-dtype2-shape2] FAILED
+test_softmax.py::test_softmax_backward[False-0-dtype0-shape0] PASSED
+test_softmax.py::test_softmax_backward[False-0-dtype0-shape1] FAILED
+test_softmax.py::test_softmax_backward[False-0-dtype0-shape2] FAILED
+test_softmax.py::test_softmax_backward[False-0-dtype1-shape0] PASSED
+test_softmax.py::test_softmax_backward[False-0-dtype1-shape1] FAILED
+test_softmax.py::test_softmax_backward[False-0-dtype1-shape2] FAILED
+test_softmax.py::test_softmax_backward[False-0-dtype2-shape0] PASSED
+test_softmax.py::test_softmax_backward[False-0-dtype2-shape1] FAILED
+test_softmax.py::test_softmax_backward[False-0-dtype2-shape2] FAILED
+test_softmax.py::test_softmax_backward[False-1-dtype0-shape0] PASSED
+test_softmax.py::test_softmax_backward[False-1-dtype0-shape1] PASSED
+test_softmax.py::test_softmax_backward[False-1-dtype0-shape2] FAILED
+test_softmax.py::test_softmax_backward[False-1-dtype1-shape0] PASSED
+test_softmax.py::test_softmax_backward[False-1-dtype1-shape1] PASSED
+test_softmax.py::test_softmax_backward[False-1-dtype1-shape2] FAILED
+test_softmax.py::test_softmax_backward[False-1-dtype2-shape0] PASSED
+test_softmax.py::test_softmax_backward[False-1-dtype2-shape1] PASSED
+test_softmax.py::test_softmax_backward[False-1-dtype2-shape2] FAILED
+
+=================================== FAILURES ===================================
+_________________ test_softmax_backward[True-0-dtype0-shape1] __________________
+
+shape = (4096, 256), dtype = torch.float16, dim = 0, neg_inf = True
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[1.9209, 1.9531, 1.9268,  ..., 1.8281, 1.6611, 1.9697],
+         [1.6318, 1.7012, 1.9473,  ..., 1.8086, 1.75...         [1.8438, 0.8247,   -inf,  ...,   -inf,   -inf,   -inf]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[True-0-dtype0-shape2] __________________
+
+shape = (200, 2560, 3), dtype = torch.float16, dim = 0, neg_inf = True
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[1.7988, 1.9082, 1.8408,  ..., 1.9307, 1.8848, 1.9609],
+         [1.8379, 1.9736, 1.6963,  ..., 1.7139, 1.45...         [  -inf,   -inf, 0.6084,  ...,   -inf,   -inf, 0.2155]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[True-0-dtype1-shape1] __________________
+
+shape = (4096, 256), dtype = torch.float32, dim = 0, neg_inf = True
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-1.0019, -1.0058, -1.0019,  ...,  1.0058, -1.0058,  1.0019],
+         [-1.0019, -1.0019,  1.0019,  ..., -1....28,   -inf, 1.2215],
+         [1.1915, 1.3305,   -inf,  ...,   -inf, 0.5341, 0.9273]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[True-0-dtype1-shape2] __________________
+
+shape = (200, 2560, 3), dtype = torch.float32, dim = 0, neg_inf = True
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 0.9707, -0.5899, -0.9975,  ..., -0.2109, -2.3152, -0.7113],
+         [ 0.7079,  1.8395,  0.9357,  ..., -1....nf,   -inf, 0.0442],
+         [0.6495,   -inf,   -inf,  ...,   -inf,   -inf,   -inf]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[True-0-dtype2-shape1] __________________
+
+shape = (4096, 256), dtype = torch.bfloat16, dim = 0, neg_inf = True
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 3.5499e-29, -5.7031e-01, -5.2278e-22,  ..., -8.0859e-01,
+           7.0000e+00, -7.7344e-01],
+         [-5...        [0.0165, 0.6523, 0.2500,  ..., 0.1855,   -inf, 0.8516]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[True-0-dtype2-shape2] __________________
+
+shape = (200, 2560, 3), dtype = torch.bfloat16, dim = 0, neg_inf = True
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 1.5286e+38, -5.1953e-01, -4.9270e+29,  ...,  1.7109e+00,
+          -4.9000e+01, -1.8164e-01],
+         [ 1...        [  -inf,   -inf,   -inf,  ..., 1.1172,   -inf, 0.3867]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[True-1-dtype0-shape2] __________________
+
+shape = (200, 2560, 3), dtype = torch.float16, dim = 1, neg_inf = True
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 1.7519e-03,  1.6318e+00, -6.9141e+00,  ..., -1.7441e+00,
+           1.8753e-02, -1.6016e+00],
+         [-4...         [1.5703,   -inf,   -inf,  ...,   -inf,   -inf,   -inf]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[True-1-dtype1-shape2] __________________
+
+shape = (200, 2560, 3), dtype = torch.float32, dim = 1, neg_inf = True
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-1.0918,  0.4233,  0.9111,  ...,  2.9101, -1.3301, -1.1699],
+         [-0.0538, -0.7217, -0.1262,  ..., -0....41,   -inf,   -inf],
+         [  -inf, 1.4240, 1.0473,  ..., 0.0566, 0.3526, 0.4538]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[True-1-dtype2-shape2] __________________
+
+shape = (200, 2560, 3), dtype = torch.bfloat16, dim = 1, neg_inf = True
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-0.7148, -0.9766, -0.4414,  ...,  0.3984, -0.5625, -0.4883],
+         [-1.2969, -1.7500, -1.2031,  ...,  0....        [1.5000,   -inf, 0.1465,  ..., 0.0603, 0.4395,   -inf]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[False-0-dtype0-shape1] _________________
+
+shape = (4096, 256), dtype = torch.float16, dim = 0, neg_inf = False
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[nan, nan, nan,  ..., nan, nan, nan],
+         [nan, nan, nan,  ..., nan, nan, nan],
+         [nan, nan, nan...0, -7.8711e-01,  ...,  2.7051e-01,
+           2.5940e-02,  9.2773e-01]]], device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[False-0-dtype0-shape2] _________________
+
+shape = (200, 2560, 3), dtype = torch.float16, dim = 0, neg_inf = False
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 1.8750, -1.8750, -1.8750,  ...,  1.8750,  1.8750, -1.8750],
+         [-1.8750,  1.8750,  1.8750,  ..., -1....   [-0.4346,  0.2671, -0.8057,  ...,  1.4795,  1.6084, -0.1409]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[False-0-dtype1-shape1] _________________
+
+shape = (4096, 256), dtype = torch.float32, dim = 0, neg_inf = False
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 1.6269e+00,  2.4414e+00,  1.9629e+00,  ...,  1.0657e-01,
+           7.3534e-01,  2.3266e-01],
+         [ 1...818, -1.8258],
+         [ 0.7034,  0.4040,  0.4122,  ...,  0.7511, -2.0255, -1.0076]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[False-0-dtype1-shape2] _________________
+
+shape = (200, 2560, 3), dtype = torch.float32, dim = 0, neg_inf = False
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-0.0742, -1.1388, -0.7759,  ..., -0.2047,  0.0141,  1.8209],
+         [-0.2943, -0.4382,  0.1323,  ...,  0....657, -0.9896],
+         [-0.3096,  0.1726,  0.3308,  ...,  0.3002,  0.2373,  0.4488]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[False-0-dtype2-shape1] _________________
+
+shape = (4096, 256), dtype = torch.bfloat16, dim = 0, neg_inf = False
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 1., -1., -1.,  ...,  1., -1.,  1.],
+         [-1., -1.,  1.,  ..., -1.,  1.,  1.],
+         [ 1., -1.,  1....,  8.6328e-01,  ...,  4.6289e-01,
+          -8.0078e-01, -9.6875e-01]]], device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[False-0-dtype2-shape2] _________________
+
+shape = (200, 2560, 3), dtype = torch.bfloat16, dim = 0, neg_inf = False
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[0., -inf, 0.,  ..., -inf, 0., -inf],
+         [0., -inf, 0.,  ..., -inf, 0., -inf],
+         [0., -inf, 0.,...  [ 0.0249, -0.9023, -0.1973,  ...,  0.9766,  0.1982, -0.6914]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[False-1-dtype0-shape2] _________________
+
+shape = (200, 2560, 3), dtype = torch.float16, dim = 1, neg_inf = False
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 8.1250e+00,  1.4043e+00, -1.9608e-02,  ..., -1.7236e+00,
+          -1.8890e+03, -1.8916e+00],
+         [-1...   [ 0.2546,  0.7949,  0.8232,  ..., -3.1660, -1.4346,  1.6016]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[False-1-dtype1-shape2] _________________
+
+shape = (200, 2560, 3), dtype = torch.float32, dim = 1, neg_inf = False
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 1.0595e-01,  1.7623e-03, -2.6630e+36,  ..., -2.6635e+36,
+          -2.6611e+36,  7.6653e-02],
+         [ 2...678, -1.3665],
+         [-0.9680, -1.6782,  0.3043,  ..., -1.8339, -0.1959, -0.7800]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________ test_softmax_backward[False-1-dtype2-shape2] _________________
+
+shape = (200, 2560, 3), dtype = torch.bfloat16, dim = 1, neg_inf = False
+
+    @pytest.mark.softmax_backward
+    @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("neg_inf", [True, False])
+    def test_softmax_backward(shape, dtype, dim, neg_inf):
+        res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        if neg_inf:
+            res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
+        res_out = torch.randn_like(res_grad)
+    
+        ref_grad = utils.to_reference(res_grad, True)
+        ref_out = utils.to_reference(res_out, True)
+    
+        ref_in_grad = torch.ops.aten._softmax_backward_data(
+            ref_grad, ref_out, dim, ref_grad.dtype
+        )
+        with flag_gems.use_gems():
+>           res_in_grad = torch.ops.aten._softmax_backward_data(
+                res_grad, res_out, dim, dtype
+            )
+
+test_softmax.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/softmax.py:304: in softmax_backward
+    out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 0.0000e+00,        -inf,  7.2692e+35,  ...,  8.1250e-01,
+           2.7361e+06,  3.7695e-01],
+         [ 0...  [ 0.7773,  1.5391, -0.1533,  ..., -0.1758, -0.0972,  0.2930]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+=========================== short test summary info ============================
+FAILED test_softmax.py::test_softmax_backward[True-0-dtype0-shape1] - torch.A...
+FAILED test_softmax.py::test_softmax_backward[True-0-dtype0-shape2] - torch.A...
+FAILED test_softmax.py::test_softmax_backward[True-0-dtype1-shape1] - torch.A...
+FAILED test_softmax.py::test_softmax_backward[True-0-dtype1-shape2] - torch.A...
+FAILED test_softmax.py::test_softmax_backward[True-0-dtype2-shape1] - torch.A...
+FAILED test_softmax.py::test_softmax_backward[True-0-dtype2-shape2] - torch.A...
+FAILED test_softmax.py::test_softmax_backward[True-1-dtype0-shape2] - torch.A...
+FAILED test_softmax.py::test_softmax_backward[True-1-dtype1-shape2] - torch.A...
+FAILED test_softmax.py::test_softmax_backward[True-1-dtype2-shape2] - torch.A...
+FAILED test_softmax.py::test_softmax_backward[False-0-dtype0-shape1] - torch....
+FAILED test_softmax.py::test_softmax_backward[False-0-dtype0-shape2] - torch....
+FAILED test_softmax.py::test_softmax_backward[False-0-dtype1-shape1] - torch....
+FAILED test_softmax.py::test_softmax_backward[False-0-dtype1-shape2] - torch....
+FAILED test_softmax.py::test_softmax_backward[False-0-dtype2-shape1] - torch....
+FAILED test_softmax.py::test_softmax_backward[False-0-dtype2-shape2] - torch....
+FAILED test_softmax.py::test_softmax_backward[False-1-dtype0-shape2] - torch....
+FAILED test_softmax.py::test_softmax_backward[False-1-dtype1-shape2] - torch....
+FAILED test_softmax.py::test_softmax_backward[False-1-dtype2-shape2] - torch....
+=============== 18 failed, 18 passed, 49915 deselected in 17.41s ===============

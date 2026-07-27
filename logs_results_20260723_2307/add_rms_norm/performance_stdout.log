@@ -1,0 +1,205 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_add_rms_norm.py F                                                   [100%]
+
+=================================== FAILURES ===================================
+______________________________ test_add_rms_norm _______________________________
+
+self = <benchmark.base.GenericBenchmark2DOnly object at 0x7f51b8098760>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+>                           metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+
+base.py:445: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+base.py:318: in get_latency
+    latency = do_bench(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/testing.py:103: in do_bench
+    fn()
+base.py:288: in <lambda>
+    fn = lambda: op(*args, **kwargs)
+../src/flag_gems/fused/add_rms_norm.py:204: in add_rms_norm
+    add_rms_norm_kernel[M,](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:716: in default_run
+    kernel.run(grid_0, grid_1, grid_2, stream, kernel.function, kernel.packed_metadata, launch_metadata,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <.XPULauncher object at 0x7f51b9306050>
+args = (64, 1, 1, 0, 94629877131568, (1, 1, 1), ...)
+
+    def __call__(self, *args):
+>       self.launch(*args)
+E       RuntimeError: /tmp/tmp06kyrhmw/main.c:71: xpuLaunchKernel("add_rms_norm_kernel", function, gridX, gridY, gridZ, nclusters, ncores, stream, (void **)&kernel_params[0][0], (void **)&kernel_consts[0][0], &extra_data[0]) -> Operation not permitted(err_code: 1)
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/driver.py:454: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.add_rms_norm
+    def test_add_rms_norm():
+        def add_rms_norm_input_fn(shape, dtype, device):
+            M, N = shape
+            inp1 = torch.randn(shape, dtype=dtype, device=device)
+            inp2 = torch.randn(shape, dtype=dtype, device=device)
+            weight = torch.randn(N, dtype=dtype, device=device)
+            yield (inp1, inp2, (N,), weight)
+    
+        # Use a custom wrapper for torch implementation
+        def torch_add_rms_norm(x1, x2, normalized_shape, weight, eps=1e-5):
+            x = x1 + x2
+            variance = x.pow(2).mean(-1, keepdim=True)
+            hidden_states = x * torch.rsqrt(variance + eps)
+            return weight * hidden_states
+    
+        bench = base.GenericBenchmark2DOnly(
+            input_fn=add_rms_norm_input_fn,
+            op_name="add_rms_norm",
+            torch_op=torch_add_rms_norm,
+            dtypes=consts.FLOAT_DTYPES,
+        )
+        bench.set_gems(flag_gems.add_rms_norm)
+>       bench.run()
+
+test_add_rms_norm.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.base.GenericBenchmark2DOnly object at 0x7f51b8098760>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+    
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+    
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+>                   pytest.fail(str(e))  # raise exception again
+E                   Failed: /tmp/tmp06kyrhmw/main.c:71: xpuLaunchKernel("add_rms_norm_kernel", function, gridX, gridY, gridZ, nclusters, ncores, stream, (void **)&kernel_params[0][0], (void **)&kernel_consts[0][0], &extra_data[0]) -> Operation not permitted(err_code: 1)
+
+base.py:480: Failed
+----------------------------- Captured stderr call -----------------------------
+RMSNORM FWD execution failed with error: 1
+=========================== short test summary info ============================
+FAILED test_add_rms_norm.py::test_add_rms_norm - Failed: /tmp/tmp06kyrhmw/mai...
+====================== 1 failed, 950 deselected in 10.08s ======================

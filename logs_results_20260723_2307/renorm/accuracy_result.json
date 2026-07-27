@@ -1,0 +1,2270 @@
+{
+  "tests/test_renorm.py::test_renorm[0-1-dtype0-shape0]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpvbb8rxyg/kernel.o', '/tmp/tmpvbb8rxyg/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype0-shape1]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpow63h19y/kernel.o', '/tmp/tmpow63h19y/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype0-shape2]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpdrbp6iwc/kernel.o', '/tmp/tmpdrbp6iwc/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype0-shape3]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp791b5nqd/kernel.o', '/tmp/tmp791b5nqd/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype0-shape4]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpyofkfajj/kernel.o', '/tmp/tmpyofkfajj/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype1-shape0]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpz3rnh4_p/kernel.o', '/tmp/tmpz3rnh4_p/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype1-shape1]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpmarl4bwc/kernel.o', '/tmp/tmpmarl4bwc/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype1-shape2]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpoty3abel/kernel.o', '/tmp/tmpoty3abel/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype1-shape3]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpyh93txpo/kernel.o', '/tmp/tmpyh93txpo/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype1-shape4]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpt9c5swdp/kernel.o', '/tmp/tmpt9c5swdp/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype2-shape0]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp14q2jiyt/kernel.o', '/tmp/tmp14q2jiyt/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype2-shape1]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp8zsbl1p6/kernel.o', '/tmp/tmp8zsbl1p6/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype2-shape2]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmptod3k5tz/kernel.o', '/tmp/tmptod3k5tz/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype2-shape3]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp65s2t0k6/kernel.o', '/tmp/tmp65s2t0k6/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-1-dtype2-shape4]": {
+    "params": {
+      "dim": 0,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpamyxlxi7/kernel.o', '/tmp/tmpamyxlxi7/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype0-shape0]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype0-shape1]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype0-shape2]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype0-shape3]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype0-shape4]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype1-shape0]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpzi_urdy2/kernel.o', '/tmp/tmpzi_urdy2/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype1-shape1]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpw93yrx0z/kernel.o', '/tmp/tmpw93yrx0z/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype1-shape2]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmptmq1biio/kernel.o', '/tmp/tmptmq1biio/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype1-shape3]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpf9y5atae/kernel.o', '/tmp/tmpf9y5atae/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype1-shape4]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp2kui70as/kernel.o', '/tmp/tmp2kui70as/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype2-shape0]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpevr627bj/kernel.o', '/tmp/tmpevr627bj/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype2-shape1]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp_yuwopgr/kernel.o', '/tmp/tmp_yuwopgr/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype2-shape2]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp11sngilh/kernel.o', '/tmp/tmp11sngilh/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype2-shape3]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpxkgv865y/kernel.o', '/tmp/tmpxkgv865y/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-2-dtype2-shape4]": {
+    "params": {
+      "dim": 0,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp0lsg80lu/kernel.o', '/tmp/tmp0lsg80lu/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype0-shape0]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype0-shape1]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype0-shape2]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype0-shape3]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype0-shape4]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype1-shape0]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp7wjbn143/kernel.o', '/tmp/tmp7wjbn143/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype1-shape1]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpitmka8i5/kernel.o', '/tmp/tmpitmka8i5/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype1-shape2]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpo22w331e/kernel.o', '/tmp/tmpo22w331e/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype1-shape3]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp4g88nevq/kernel.o', '/tmp/tmp4g88nevq/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype1-shape4]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpdvxbuizk/kernel.o', '/tmp/tmpdvxbuizk/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype2-shape0]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp86o_cyab/kernel.o', '/tmp/tmp86o_cyab/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype2-shape1]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpn8hgr_za/kernel.o', '/tmp/tmpn8hgr_za/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype2-shape2]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp79x5qlu9/kernel.o', '/tmp/tmp79x5qlu9/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype2-shape3]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpm962tvjz/kernel.o', '/tmp/tmpm962tvjz/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[0-3-dtype2-shape4]": {
+    "params": {
+      "dim": 0,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp3vvmlh8v/kernel.o', '/tmp/tmp3vvmlh8v/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype0-shape0]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype0-shape1]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype0-shape2]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype0-shape3]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype0-shape4]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype1-shape0]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype1-shape1]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype1-shape2]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype1-shape3]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype1-shape4]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype2-shape0]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype2-shape1]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype2-shape2]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype2-shape3]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-1-dtype2-shape4]": {
+    "params": {
+      "dim": 1,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype0-shape0]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype0-shape1]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype0-shape2]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype0-shape3]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype0-shape4]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype1-shape0]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype1-shape1]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype1-shape2]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype1-shape3]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype1-shape4]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype2-shape0]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype2-shape1]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype2-shape2]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype2-shape3]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-2-dtype2-shape4]": {
+    "params": {
+      "dim": 1,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype0-shape0]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype0-shape1]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype0-shape2]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype0-shape3]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype0-shape4]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype1-shape0]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype1-shape1]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype1-shape2]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype1-shape3]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype1-shape4]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype2-shape0]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype2-shape1]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype2-shape2]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype2-shape3]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[1-3-dtype2-shape4]": {
+    "params": {
+      "dim": 1,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype0-shape0]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype0-shape1]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype0-shape2]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype0-shape3]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype0-shape4]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype1-shape0]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype1-shape1]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype1-shape2]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype1-shape3]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype1-shape4]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype2-shape0]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype2-shape1]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype2-shape2]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype2-shape3]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-1-dtype2-shape4]": {
+    "params": {
+      "dim": -1,
+      "p": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype0-shape0]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype0-shape1]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype0-shape2]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype0-shape3]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype0-shape4]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype1-shape0]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype1-shape1]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype1-shape2]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype1-shape3]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype1-shape4]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype2-shape0]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype2-shape1]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype2-shape2]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype2-shape3]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-2-dtype2-shape4]": {
+    "params": {
+      "dim": -1,
+      "p": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype0-shape0]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype0-shape1]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype0-shape2]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype0-shape3]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype0-shape4]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype1-shape0]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype1-shape1]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype1-shape2]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype1-shape3]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype1-shape4]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype2-shape0]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype2-shape1]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype2-shape2]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        5,
+        32,
+        20
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype2-shape3]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_renorm.py::test_renorm[-1-3-dtype2-shape4]": {
+    "params": {
+      "dim": -1,
+      "p": 3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "renorm"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

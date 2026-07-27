@@ -1,0 +1,66 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0 -- /workspace/FlagGems/.venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: md-report-0.8.0
+collecting ... vLLM not installed, the native pytorch implementation of FlashMLA for comparison
+collected 49951 items / 49902 deselected / 49 selected
+
+test_slice_scatter.py::test_slice_scatter[1-1024-16-dtype0-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[1-1024-16-dtype0-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[1-1024-16-dtype1-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[1-1024-16-dtype1-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[1-1024-16-dtype2-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[1-1024-16-dtype2-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[1-1024-64-dtype0-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[1-1024-64-dtype0-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[1-1024-64-dtype1-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[1-1024-64-dtype1-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[1-1024-64-dtype2-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[1-1024-64-dtype2-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[1-256-16-dtype0-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[1-256-16-dtype0-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[1-256-16-dtype1-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[1-256-16-dtype1-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[1-256-16-dtype2-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[1-256-16-dtype2-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[1-256-64-dtype0-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[1-256-64-dtype0-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[1-256-64-dtype1-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[1-256-64-dtype1-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[1-256-64-dtype2-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[1-256-64-dtype2-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[2-1024-16-dtype0-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[2-1024-16-dtype0-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[2-1024-16-dtype1-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[2-1024-16-dtype1-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[2-1024-16-dtype2-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[2-1024-16-dtype2-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[2-1024-64-dtype0-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[2-1024-64-dtype0-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[2-1024-64-dtype1-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[2-1024-64-dtype1-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[2-1024-64-dtype2-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[2-1024-64-dtype2-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[2-256-16-dtype0-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[2-256-16-dtype0-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[2-256-16-dtype1-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[2-256-16-dtype1-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[2-256-16-dtype2-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[2-256-16-dtype2-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[2-256-64-dtype0-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[2-256-64-dtype0-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[2-256-64-dtype1-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[2-256-64-dtype1-0-shape1-stride1] PASSED
+test_slice_scatter.py::test_slice_scatter[2-256-64-dtype2-0-shape0-stride0] PASSED
+test_slice_scatter.py::test_slice_scatter[2-256-64-dtype2-0-shape1-stride1] PASSED
+test_slice_scatter.py::testslice_scatter_with_self_overlapping_input PASSED
+
+=============================== warnings summary ===============================
+../.venv/lib/python3.10/site-packages/torch/__init__.py:1617
+  /workspace/FlagGems/.venv/lib/python3.10/site-packages/torch/__init__.py:1617: UserWarning: Please use the new API settings to control TF32 behavior, such as torch.backends.cudnn.conv.fp32_precision = 'tf32' or torch.backends.cuda.matmul.fp32_precision = 'ieee'. Old settings, e.g, torch.backends.cuda.matmul.allow_tf32 = True, torch.backends.cudnn.allow_tf32 = True, allowTF32CuDNN() and allowTF32CuBLAS() will be deprecated after Pytorch 2.9. Please see https://pytorch.org/docs/main/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices (Triggered internally at /pytorch/aten/src/ATen/Context.cpp:80.)
+    _C._set_float32_matmul_precision(precision)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 49 passed, 49902 deselected, 1 warning in 7.99s ================

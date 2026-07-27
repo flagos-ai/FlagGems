@@ -1,0 +1,373 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 00:18:20 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 00:18:22 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:18:22 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:18:22 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:18:22 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:18:22 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:18:22 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:18:22 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:18:22 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:18:22 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 00:18:23 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49939 deselected / 12 selected
+
+test_index_add.py::test_index_add_[dtype0-0-shape0] PASSED
+test_index_add.py::test_index_add_[dtype0-0-shape1] FAILED
+test_index_add.py::test_index_add_[dtype0-0-shape2] FAILED
+test_index_add.py::test_index_add_[dtype0-1-shape0] PASSED
+test_index_add.py::test_index_add_[dtype0-1-shape1] PASSED
+test_index_add.py::test_index_add_[dtype0-1-shape2] FAILED
+test_index_add.py::test_index_add_[dtype1-0-shape0] PASSED
+test_index_add.py::test_index_add_[dtype1-0-shape1] FAILED
+test_index_add.py::test_index_add_[dtype1-0-shape2] FAILED
+test_index_add.py::test_index_add_[dtype1-1-shape0] PASSED
+test_index_add.py::test_index_add_[dtype1-1-shape1] PASSED
+test_index_add.py::test_index_add_[dtype1-1-shape2] FAILED
+
+=================================== FAILURES ===================================
+_______________________ test_index_add_[dtype0-0-shape1] _______________________
+
+shape = (4096, 256), dim = 0, dtype = torch.float16
+
+    @pytest.mark.index_add_
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+    def test_index_add_(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        src_shape = list(inp.shape)
+        index_max = src_shape[dim]
+        index_len = index_max
+        index = torch.randperm(index_len, device=flag_gems.device)
+        src_shape[dim] = index_len
+        src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+        alpha = 2
+    
+        ref_inp = utils.to_reference(inp)
+        ref_src = utils.to_reference(src)
+        ref_index = utils.to_reference(index)
+        ref_inp.index_add_(dim, ref_index, ref_src, alpha=alpha)
+        with flag_gems.use_gems():
+>           inp.index_add_(dim, index, src, alpha=alpha)
+
+test_index_add.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/index_add.py:163: in index_add_
+    inp_cont = dim_compress(inp_cont, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[4.1723e-07, 0.0000e+00, 0.0000e+00,  ..., 0.0000e+00, 0.0000e+00,
+         0.0000e+00],
+        [2.9802e-07,...    [-0.7959,  2.2383, -0.1256,  ..., -1.5742,  0.3879, -0.0625]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_______________________ test_index_add_[dtype0-0-shape2] _______________________
+
+shape = (200, 40999, 3), dim = 0, dtype = torch.float16
+
+    @pytest.mark.index_add_
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+    def test_index_add_(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        src_shape = list(inp.shape)
+        index_max = src_shape[dim]
+        index_len = index_max
+        index = torch.randperm(index_len, device=flag_gems.device)
+        src_shape[dim] = index_len
+        src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+        alpha = 2
+    
+        ref_inp = utils.to_reference(inp)
+        ref_src = utils.to_reference(src)
+        ref_index = utils.to_reference(index)
+        ref_inp.index_add_(dim, ref_index, ref_src, alpha=alpha)
+        with flag_gems.use_gems():
+>           inp.index_add_(dim, index, src, alpha=alpha)
+
+test_index_add.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/index_add.py:163: in index_add_
+    inp_cont = dim_compress(inp_cont, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 0.0000e+00,  0.0000e+00,  0.0000e+00,  ...,  0.0000e+00,
+           0.0000e+00,  0.0000e+00],
+         [ 0...   [-0.0383,  0.9438, -0.1434,  ..., -1.0137,  0.6221, -0.1477]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_______________________ test_index_add_[dtype0-1-shape2] _______________________
+
+shape = (200, 40999, 3), dim = 1, dtype = torch.float16
+
+    @pytest.mark.index_add_
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+    def test_index_add_(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        src_shape = list(inp.shape)
+        index_max = src_shape[dim]
+        index_len = index_max
+        index = torch.randperm(index_len, device=flag_gems.device)
+        src_shape[dim] = index_len
+        src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+        alpha = 2
+    
+        ref_inp = utils.to_reference(inp)
+        ref_src = utils.to_reference(src)
+        ref_index = utils.to_reference(index)
+        ref_inp.index_add_(dim, ref_index, ref_src, alpha=alpha)
+        with flag_gems.use_gems():
+>           inp.index_add_(dim, index, src, alpha=alpha)
+
+test_index_add.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/index_add.py:163: in index_add_
+    inp_cont = dim_compress(inp_cont, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 0.0000e+00,  0.0000e+00,  0.0000e+00,  ...,  0.0000e+00,
+           0.0000e+00,  0.0000e+00],
+         [ 0...   [ 0.4614, -0.4282, -0.2788,  ..., -1.9082,  0.9263, -0.2910]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_______________________ test_index_add_[dtype1-0-shape1] _______________________
+
+shape = (4096, 256), dim = 0, dtype = torch.float32
+
+    @pytest.mark.index_add_
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+    def test_index_add_(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        src_shape = list(inp.shape)
+        index_max = src_shape[dim]
+        index_len = index_max
+        index = torch.randperm(index_len, device=flag_gems.device)
+        src_shape[dim] = index_len
+        src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+        alpha = 2
+    
+        ref_inp = utils.to_reference(inp)
+        ref_src = utils.to_reference(src)
+        ref_index = utils.to_reference(index)
+        ref_inp.index_add_(dim, ref_index, ref_src, alpha=alpha)
+        with flag_gems.use_gems():
+>           inp.index_add_(dim, index, src, alpha=alpha)
+
+test_index_add.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/index_add.py:163: in index_add_
+    inp_cont = dim_compress(inp_cont, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[-1.2787e+26, -5.6762e+16, -2.2111e+20,  ..., -2.4053e-31,
+         -1.0188e-32,  9.0359e-33],
+        [-7.13....3513,  0.3743],
+        [ 0.5451,  1.4608, -0.7506,  ..., -0.2117,  0.9058, -0.0692]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_______________________ test_index_add_[dtype1-0-shape2] _______________________
+
+shape = (200, 40999, 3), dim = 0, dtype = torch.float32
+
+    @pytest.mark.index_add_
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+    def test_index_add_(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        src_shape = list(inp.shape)
+        index_max = src_shape[dim]
+        index_len = index_max
+        index = torch.randperm(index_len, device=flag_gems.device)
+        src_shape[dim] = index_len
+        src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+        alpha = 2
+    
+        ref_inp = utils.to_reference(inp)
+        ref_src = utils.to_reference(src)
+        ref_index = utils.to_reference(index)
+        ref_inp.index_add_(dim, ref_index, ref_src, alpha=alpha)
+        with flag_gems.use_gems():
+>           inp.index_add_(dim, index, src, alpha=alpha)
+
+test_index_add.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/index_add.py:163: in index_add_
+    inp_cont = dim_compress(inp_cont, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0.,...870, -0.0703],
+         [-0.8167, -0.2074,  0.5395,  ...,  2.2635,  0.7885,  1.2338]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_______________________ test_index_add_[dtype1-1-shape2] _______________________
+
+shape = (200, 40999, 3), dim = 1, dtype = torch.float32
+
+    @pytest.mark.index_add_
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+    @pytest.mark.parametrize("dim", DIM_LIST)
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+    def test_index_add_(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        src_shape = list(inp.shape)
+        index_max = src_shape[dim]
+        index_len = index_max
+        index = torch.randperm(index_len, device=flag_gems.device)
+        src_shape[dim] = index_len
+        src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
+        alpha = 2
+    
+        ref_inp = utils.to_reference(inp)
+        ref_src = utils.to_reference(src)
+        ref_index = utils.to_reference(index)
+        ref_inp.index_add_(dim, ref_index, ref_src, alpha=alpha)
+        with flag_gems.use_gems():
+>           inp.index_add_(dim, index, src, alpha=alpha)
+
+test_index_add.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/index_add.py:163: in index_add_
+    inp_cont = dim_compress(inp_cont, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[0.7275, 0.4946, 0.8135,  ..., 0.3052, 0.8017, 0.7783],
+         [0.0175, 0.9463, 0.2209,  ..., 0.9541, 0.26...676, -0.7674],
+         [ 1.1295,  0.6479, -0.4955,  ..., -0.1122,  0.4465, -1.3777]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+=========================== short test summary info ============================
+FAILED test_index_add.py::test_index_add_[dtype0-0-shape1] - torch.Accelerato...
+FAILED test_index_add.py::test_index_add_[dtype0-0-shape2] - torch.Accelerato...
+FAILED test_index_add.py::test_index_add_[dtype0-1-shape2] - torch.Accelerato...
+FAILED test_index_add.py::test_index_add_[dtype1-0-shape1] - torch.Accelerato...
+FAILED test_index_add.py::test_index_add_[dtype1-0-shape2] - torch.Accelerato...
+FAILED test_index_add.py::test_index_add_[dtype1-1-shape2] - torch.Accelerato...
+================ 6 failed, 6 passed, 49939 deselected in 16.46s ================

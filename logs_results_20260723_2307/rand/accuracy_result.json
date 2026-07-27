@@ -1,0 +1,47 @@
+{
+  "tests/test_rand.py::test_rand[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rand"
+    ],
+    "reason": null
+  },
+  "tests/test_rand.py::test_rand[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rand"
+    ],
+    "reason": null
+  },
+  "tests/test_rand.py::test_rand[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rand"
+    ],
+    "reason": null
+  }
+}

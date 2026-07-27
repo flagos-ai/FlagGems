@@ -1,0 +1,303 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 941 deselected / 10 selected
+
+test_einsum.py ....F...F.                                                [100%]
+
+=================================== FAILURES ===================================
+______________________________ test_einsum_trace _______________________________
+
+A = tensor([[-0.1000, -0.1508, -0.2056,  ..., -0.2549, -2.0449,  0.0422],
+        [-0.0678, -0.8428,  0.1043,  ..., -0.370...3],
+        [-0.5571,  0.1664, -0.5449,  ..., -1.1221,  0.3638, -1.0576]],
+       device='cuda:0', dtype=torch.float16)
+
+>       torch_op=lambda A: torch.einsum("ii->", A),
+        dtypes=consts.FLOAT_DTYPES,
+    )
+
+test_einsum.py:142: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([-9.7656,  1.7529,  1.8867,  ..., -1.1660, -1.9619,  1.7529],
+       device='cuda:0', dtype=torch.float16), tensor([-0.1000, -0.8428, -1.4199,  ...,  1.2637, -0.2832, -1.0576],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.einsum
+    def test_einsum_trace():
+        bench = EinsumGenericBenchmark(
+            input_fn=unary_2d_input_fn,
+            op_name="einsum",
+            torch_op=lambda A: torch.einsum("ii->", A),
+            dtypes=consts.FLOAT_DTYPES,
+        )
+        bench.shapes = [(1024, 1024), (4096, 4096)]
+>       bench.run()
+
+test_einsum.py:146: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.test_einsum.EinsumGenericBenchmark object at 0x7ef7f1d44190>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+    
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+    
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+>                   pytest.fail(str(e))  # raise exception again
+E                   Failed: CUDA error: invalid device function
+E                   Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E                   CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E                   For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E                   Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+base.py:480: Failed
+_____________________________ test_einsum_sum_dim ______________________________
+
+A = tensor([[[ 3.5010e-01,  7.9150e-01, -9.2725e-01,  ...,  3.8672e-01,
+          -3.0005e-01,  1.5173e-01],
+         [ 7.....8301e+00, -2.9736e-01,  ...,  2.0154e-01,
+           2.0430e+00,  1.1230e+00]]], device='cuda:0', dtype=torch.float16)
+
+>       torch_op=lambda A: torch.einsum("ijk->j", A),
+        dtypes=consts.FLOAT_DTYPES,
+    )
+
+test_einsum.py:190: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-4.2500e+01,  1.1862e+02,  3.1703e+01,  ...,  2.7875e+01,
+           6.4812e+01,  6.8562e+01],
+         [ 3...0, -2.9736e-01,  ...,  2.0154e-01,
+           2.0430e+00,  1.1230e+00]]], device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.einsum
+    def test_einsum_sum_dim():
+        bench = EinsumGenericBenchmark(
+            input_fn=unary_3d_input_fn,
+            op_name="einsum",
+            torch_op=lambda A: torch.einsum("ijk->j", A),
+            dtypes=consts.FLOAT_DTYPES,
+        )
+        bench.shapes = [(64, 64, 64), (128, 128, 128)]
+>       bench.run()
+
+test_einsum.py:194: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.test_einsum.EinsumGenericBenchmark object at 0x7ef7f1d81030>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+    
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+    
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+>                   pytest.fail(str(e))  # raise exception again
+E                   Failed: CUDA error: invalid device function
+E                   Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E                   CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E                   For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E                   Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+base.py:480: Failed
+=========================== short test summary info ============================
+FAILED test_einsum.py::test_einsum_trace - Failed: CUDA error: invalid device...
+FAILED test_einsum.py::test_einsum_sum_dim - Failed: CUDA error: invalid devi...
+=========== 2 failed, 8 passed, 941 deselected in 158.38s (0:02:38) ============

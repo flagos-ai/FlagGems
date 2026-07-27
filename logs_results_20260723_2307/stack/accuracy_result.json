@@ -1,0 +1,1362 @@
+{
+  "tests/test_stack.py::test_stack[dtype0--2-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": -2,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype0--2-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": -2,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype0--2-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": -2,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype0--1-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": -1,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype0--1-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": -1,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype0--1-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": -1,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype0-0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype0-0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype0-0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype0-1-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype0-1-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype0-1-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype1--2-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": -2,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype1--2-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": -2,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype1--2-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": -2,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype1--1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": -1,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype1--1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": -1,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype1--1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": -1,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype1-0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype1-0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype1-0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype1-1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype1-1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype1-1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype2--2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": -2,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype2--2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": -2,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype2--2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": -2,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype2--1-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": -1,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype2--1-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": -1,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype2--1-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": -1,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype2-0-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype2-0-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype2-0-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype2-1-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype2-1-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype2-1-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype3--2-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": -2,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype3--2-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": -2,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype3--2-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": -2,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype3--1-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": -1,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype3--1-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": -1,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype3--1-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": -1,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype3-0-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 0,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype3-0-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 0,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype3-0-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 0,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype3-1-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 1,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype3-1-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 1,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype3-1-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 1,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype4--2-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": -2,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype4--2-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": -2,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype4--2-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": -2,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype4--1-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": -1,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype4--1-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": -1,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype4--1-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": -1,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype4-0-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 0,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype4-0-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 0,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype4-0-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 0,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype4-1-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 1,
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype4-1-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 1,
+      "shape": [
+        [
+          16,
+          256
+        ],
+        [
+          16,
+          256
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  },
+  "tests/test_stack.py::test_stack[dtype4-1-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 1,
+      "shape": [
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ],
+        [
+          20,
+          320,
+          15
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "stack"
+    ],
+    "reason": null
+  }
+}

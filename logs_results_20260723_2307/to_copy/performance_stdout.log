@@ -1,0 +1,315 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_to_copy.py F                                                        [100%]
+
+=================================== FAILURES ===================================
+_________________________________ test_to_copy _________________________________
+
+self = <benchmark.test_to_copy.ToCopyBenchmark object at 0x7f46f7f10160>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+>                                   metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+
+base.py:458: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+base.py:318: in get_latency
+    latency = do_bench(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/testing.py:103: in do_bench
+    fn()
+base.py:288: in <lambda>
+    fn = lambda: op(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: in __call__
+    return self._op(*args, **kwargs)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/to.py:175: in to_copy
+    res = to_dtype_fn(x, out0=out)
+../src/flag_gems/runtime/backend/_kunlunxin/utils/pointwise_dynamic.py:1186: in __call__
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_87eea6392d5eed8860f3f25cceb5dfc31709b3972c1c1ed07771c02f12d0624732__to_copy_func_kernel_rank_1_1d_tile_pid_2056934.py:40: in _to_copy_func_wrapper_rank_1
+    _to_copy_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpnexkq78r/kernel.o', '/tmp/tmpnexkq78r/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.to_copy
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_to_copy():
+        base_dtypes = [torch.float16, torch.bfloat16]
+        if fp64_is_supported:
+            base_dtypes.append(torch.float64)
+    
+        float_dtypes = [torch.float32, torch.float16, torch.bfloat16]
+        # if fp64_is_supported:
+        #     float_dtypes.append(torch.float64)
+    
+        int_dtypes = [torch.int8, torch.int16, torch.int32, torch.int64]
+        uint_dtypes = [torch.uint8]
+    
+        for src_dtype in float_dtypes:
+            for dst_dtype in base_dtypes:
+                if src_dtype == dst_dtype:
+                    continue
+    
+                bench = ToCopyBenchmark(
+                    op_name=f"to_copy_{src_dtype}_to_{dst_dtype}",
+                    torch_op=torch.ops.aten._to_copy,
+                    dtypes=[dst_dtype],
+                    src_dtype=src_dtype,
+                )
+>               bench.run()
+
+test_to_copy.py:92: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.test_to_copy.ToCopyBenchmark object at 0x7f46f7f10160>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+    
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+    
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+>                   pytest.fail(str(e))  # raise exception again
+E                   Failed: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpnexkq78r/kernel.o', '/tmp/tmpnexkq78r/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+base.py:480: Failed
+----------------------------- Captured stdout call -----------------------------
+
+Operator: to_copy_torch.float32_to_torch.float16  Performance Test (dtype=torch.float16, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup               TFLOPS          Size Detail
+--------------------------------------------------------------------------------------------------------------------
+SUCCESS               0.005337            0.007935               0.673               0.001          ([torch.Size([64, 64])], {'dtype': torch.float16})
+SUCCESS               0.056294            0.060540               0.930               0.277          ([torch.Size([4096, 4096])], {'dtype': torch.float16})
+SUCCESS               0.056101            0.060557               0.926               0.277          ([torch.Size([64, 512, 512])], {'dtype': torch.float16})
+
+
+Operator: to_copy_torch.float32_to_torch.bfloat16  Performance Test (dtype=torch.bfloat16, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup               TFLOPS          Size Detail
+--------------------------------------------------------------------------------------------------------------------
+SUCCESS               0.005571            0.007235               0.770               0.001          ([torch.Size([64, 64])], {'dtype': torch.bfloat16})
+SUCCESS               0.065312            0.097692               0.669               0.172          ([torch.Size([4096, 4096])], {'dtype': torch.bfloat16})
+SUCCESS               0.065686            0.097965               0.671               0.171          ([torch.Size([64, 512, 512])], {'dtype': torch.bfloat16})
+
+=========================== short test summary info ============================
+FAILED test_to_copy.py::test_to_copy - Failed: Command '['/root/miniconda/env...
+====================== 1 failed, 950 deselected in 15.84s ======================

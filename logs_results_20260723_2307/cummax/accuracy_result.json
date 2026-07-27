@@ -1,0 +1,1041 @@
+{
+  "tests/test_cummax.py::test_cummax[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": null
+  },
+  "tests/test_cummax.py::test_cummax[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": null
+  },
+  "tests/test_cummax.py::test_cummax[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "RuntimeError: [RUNTIME ERROR]: error code= 719, unspecified launch failure;"
+  },
+  "tests/test_cummax.py::test_cummax[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype3-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype3-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype3-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype3-shape3]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype3-shape4]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype4-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype4-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype4-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype4-shape3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax[dtype4-shape4]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype0-shape0]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype0-shape1]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype0-shape2]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype0-shape3]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.float16",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype0-shape4]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype1-shape0]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype1-shape1]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype1-shape2]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype1-shape3]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.float32",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype1-shape4]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype2-shape0]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype2-shape1]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype2-shape2]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype2-shape3]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.1-dtype2-shape4]": {
+    "params": {
+      "nan_ratio": 0.1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype0-shape0]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype0-shape1]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype0-shape2]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype0-shape3]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.float16",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype0-shape4]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype1-shape0]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype1-shape1]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype1-shape2]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype1-shape3]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.float32",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype1-shape4]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype2-shape0]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype2-shape1]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype2-shape2]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype2-shape3]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.3-dtype2-shape4]": {
+    "params": {
+      "nan_ratio": 0.3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype0-shape0]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype0-shape1]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype0-shape2]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype0-shape3]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype0-shape4]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype1-shape0]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype1-shape1]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype1-shape2]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype1-shape3]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype1-shape4]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype2-shape0]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype2-shape1]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype2-shape2]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype2-shape3]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2637
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_cummax.py::test_cummax_with_nan[0.5-dtype2-shape4]": {
+    "params": {
+      "nan_ratio": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        1025,
+        255
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "cummax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

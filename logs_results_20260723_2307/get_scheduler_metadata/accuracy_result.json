@@ -1,0 +1,450 @@
+{
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-64-512-1]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 64,
+      "max_seqlen_k": 512,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-64-512-8]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 64,
+      "max_seqlen_k": 512,
+      "batch_size": 8
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-64-512-256]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 64,
+      "max_seqlen_k": 512,
+      "batch_size": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-64-512-512]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 64,
+      "max_seqlen_k": 512,
+      "batch_size": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-64-2048-1]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 64,
+      "max_seqlen_k": 2048,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-64-2048-8]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 64,
+      "max_seqlen_k": 2048,
+      "batch_size": 8
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-64-2048-256]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 64,
+      "max_seqlen_k": 2048,
+      "batch_size": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-64-2048-512]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 64,
+      "max_seqlen_k": 2048,
+      "batch_size": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-128-512-1]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 128,
+      "max_seqlen_k": 512,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-128-512-8]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 128,
+      "max_seqlen_k": 512,
+      "batch_size": 8
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-128-512-256]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 128,
+      "max_seqlen_k": 512,
+      "batch_size": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-128-512-512]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 128,
+      "max_seqlen_k": 512,
+      "batch_size": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-128-2048-1]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 128,
+      "max_seqlen_k": 2048,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-128-2048-8]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 128,
+      "max_seqlen_k": 2048,
+      "batch_size": 8
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-128-2048-256]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 128,
+      "max_seqlen_k": 2048,
+      "batch_size": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-0-128-2048-512]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 0,
+      "headdim": 128,
+      "max_seqlen_k": 2048,
+      "batch_size": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-64-512-1]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 64,
+      "max_seqlen_k": 512,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-64-512-8]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 64,
+      "max_seqlen_k": 512,
+      "batch_size": 8
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-64-512-256]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 64,
+      "max_seqlen_k": 512,
+      "batch_size": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-64-512-512]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 64,
+      "max_seqlen_k": 512,
+      "batch_size": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-64-2048-1]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 64,
+      "max_seqlen_k": 2048,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-64-2048-8]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 64,
+      "max_seqlen_k": 2048,
+      "batch_size": 8
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-64-2048-256]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 64,
+      "max_seqlen_k": 2048,
+      "batch_size": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-64-2048-512]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 64,
+      "max_seqlen_k": 2048,
+      "batch_size": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-128-512-1]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 128,
+      "max_seqlen_k": 512,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-128-512-8]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 128,
+      "max_seqlen_k": 512,
+      "batch_size": 8
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-128-512-256]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 128,
+      "max_seqlen_k": 512,
+      "batch_size": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-128-512-512]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 128,
+      "max_seqlen_k": 512,
+      "batch_size": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-128-2048-1]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 128,
+      "max_seqlen_k": 2048,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-128-2048-8]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 128,
+      "max_seqlen_k": 2048,
+      "batch_size": 8
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-128-2048-256]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 128,
+      "max_seqlen_k": 2048,
+      "batch_size": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  },
+  "tests/test_get_scheduler_metadata.py::test_scheduler_metadata_correctness[42-4-128-2048-512]": {
+    "params": {
+      "seed": 42,
+      "num_splits_static": 4,
+      "headdim": 128,
+      "max_seqlen_k": 2048,
+      "batch_size": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "get_scheduler_metadata"
+    ],
+    "reason": "Skipped: vLLM not installed"
+  }
+}

@@ -1,0 +1,2018 @@
+{
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.0-shape0]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.0-shape1]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.0-shape2]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.0-shape3]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.0-shape4]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.0-shape5]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.0-shape6]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.2-shape0]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.2-shape1]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.2-shape2]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.2-shape3]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.2-shape4]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.2-shape5]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.2-shape6]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.5-shape0]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.5-shape1]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.5-shape2]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.5-shape3]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.5-shape4]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.5-shape5]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype0-1.5-shape6]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.0-shape0]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.0-shape1]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.0-shape2]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.0-shape3]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.0-shape4]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.0-shape5]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.0-shape6]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.2-shape0]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.2-shape1]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.2-shape2]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.2-shape3]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.2-shape4]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.2-shape5]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.2-shape6]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.5-shape0]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.5-shape1]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.5-shape2]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.5-shape3]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.5-shape4]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.5-shape5]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype1-1.5-shape6]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.0-shape0]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.0-shape1]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.0-shape2]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.0-shape3]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.0-shape4]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.0-shape5]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.0-shape6]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.2-shape0]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.2-shape1]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.2-shape2]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.2-shape3]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.2-shape4]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.2-shape5]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.2-shape6]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.5-shape0]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.5-shape1]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.5-shape2]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.5-shape3]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.5-shape4]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.5-shape5]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[random-dtype2-1.5-shape6]": {
+    "params": {
+      "mask_mode": "random",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.0-shape0]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.0-shape1]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.0-shape2]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.0-shape3]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.0-shape4]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.0-shape5]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.0-shape6]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.0,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.2-shape0]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.2-shape1]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.2-shape2]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.2-shape3]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.2-shape4]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.2-shape5]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.2-shape6]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.2,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.5-shape0]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.5-shape1]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.5-shape2]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.5-shape3]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.5-shape4]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.5-shape5]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype0-1.5-shape6]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float16",
+      "penalty": 1.5,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.0-shape0]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.0-shape1]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.0-shape2]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.0-shape3]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.0-shape4]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.0-shape5]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.0-shape6]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.0,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.2-shape0]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.2-shape1]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.2-shape2]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.2-shape3]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.2-shape4]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.2-shape5]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.2-shape6]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.2,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.5-shape0]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.5-shape1]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.5-shape2]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.5-shape3]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.5-shape4]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.5-shape5]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype1-1.5-shape6]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.float32",
+      "penalty": 1.5,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.0-shape0]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.0-shape1]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.0-shape2]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.0-shape3]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.0-shape4]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.0-shape5]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.0-shape6]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.0,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.2-shape0]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.2-shape1]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.2-shape2]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.2-shape3]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.2-shape4]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.2-shape5]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.2-shape6]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.2,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.5-shape0]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.5-shape1]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.5-shape2]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        1,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.5-shape3]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        8,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.5-shape4]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        16,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.5-shape5]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        32,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_repetition_penalties.py::test_apply_repetition_penalty[empty-dtype2-1.5-shape6]": {
+    "params": {
+      "mask_mode": "empty",
+      "dtype": "torch.bfloat16",
+      "penalty": 1.5,
+      "shape": [
+        8,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "apply_repetition_penalties"
+    ],
+    "reason": null
+  }
+}

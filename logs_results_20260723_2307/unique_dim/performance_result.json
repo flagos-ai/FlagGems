@@ -1,0 +1,7 @@
+{
+  "unique_dim": {
+    "result": "failed",
+    "test_case": "benchmark/test_unique_dim.py::test_unique_dim_dim1",
+    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/unique_dim.cpp:149)"
+  }
+}

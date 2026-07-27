@@ -1,0 +1,2522 @@
+{
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-0-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-0-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-0-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-0-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-0-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-0-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-1-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-1-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-1-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-1-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-1-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-1-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-8-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-8-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-8-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-8-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-8-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-8-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-17-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-17-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-17-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-17-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-17-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype0-1.2-17-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-0-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-0-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-0-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-0-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-0-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-0-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-1-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-1-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-1-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-1-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-1-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-1-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-8-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-8-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-8-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-8-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-8-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-8-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-17-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-17-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-17-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-17-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-17-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype1-1.2-17-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.float32",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-0-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-0-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-0-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-0-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-0-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-0-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-1-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-1-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-1-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-1-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-1-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-1-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-8-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-8-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-8-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-8-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-8-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-8-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-17-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-17-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-17-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-17-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-17-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype2-1.2-17-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.bfloat16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-0-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-0-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-0-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-0-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-0-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-0-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-1-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-1-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-1-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-1-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-1-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-1-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-8-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-8-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-8-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-8-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-8-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-8-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-17-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-17-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-17-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-17-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-17-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype3-1.2-17-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int16",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-0-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-0-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-0-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-0-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-0-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-0-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-1-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-1-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-1-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-1-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-1-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-1-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-8-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-8-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-8-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-8-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-8-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-8-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-17-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-17-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-17-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-17-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-17-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype4-1.2-17-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int32",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-0-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-0-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-0-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-0-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-0-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-0-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-1-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-1-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-1-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-1-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-1-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-1-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-8-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-8-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-8-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-8-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-8-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-8-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-17-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-17-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-17-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-17-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-17-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-dtype5-1.2-17-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": "torch.int64",
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-0-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-0-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-0-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 0,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-0-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-0-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-0-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 0,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-1-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-1-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-1-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 1,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-1-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-1-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-1-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 1,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-8-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-8-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-8-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 8,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-8-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-8-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-8-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 8,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-17-32-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-17-32-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-17-32-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 17,
+      "end": 32,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-17-40-0]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 0
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-17-40-2]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 2
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  },
+  "tests/test_logspace.py::test_logspace[False-None-1.2-17-40-4]": {
+    "params": {
+      "pin_memory": false,
+      "dtype": null,
+      "base": 1.2,
+      "steps": 17,
+      "end": 40,
+      "start": 4
+    },
+    "result": "passed",
+    "opname": [
+      "logspace"
+    ],
+    "reason": null
+  }
+}

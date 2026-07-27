@@ -1,0 +1,554 @@
+{
+  "tests/test_gelu.py::test_gelu[none-dtype0-shape0]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype0-shape1]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype0-shape2]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype0-shape3]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype0-shape4]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype0-shape5]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype1-shape0]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype1-shape1]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype1-shape2]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype1-shape3]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype1-shape4]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype1-shape5]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype2-shape0]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype2-shape1]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype2-shape2]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype2-shape3]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype2-shape4]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[none-dtype2-shape5]": {
+    "params": {
+      "approximate": "none",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype0-shape0]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype0-shape1]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype0-shape2]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype0-shape3]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype0-shape4]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype0-shape5]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype1-shape0]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype1-shape1]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype1-shape2]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype1-shape3]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype1-shape4]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype1-shape5]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype2-shape0]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype2-shape1]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype2-shape2]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype2-shape3]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype2-shape4]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  },
+  "tests/test_gelu.py::test_gelu[tanh-dtype2-shape5]": {
+    "params": {
+      "approximate": "tanh",
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "gelu"
+    ],
+    "reason": null
+  }
+}

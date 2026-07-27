@@ -1,0 +1,1002 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 00:23:59 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 00:24:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:24:01 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:24:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:24:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:24:01 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:24:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:24:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:24:01 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:24:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 00:24:02 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49911 deselected / 40 selected
+
+test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype0-shape0] PASSED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype0-shape1] PASSED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype0-shape2] PASSED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype0-shape3] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype0-shape4] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype1-shape0] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype1-shape1] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype1-shape2] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype1-shape3] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype1-shape4] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype0-shape0] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype0-shape1] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype0-shape2] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype0-shape3] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype0-shape4] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype1-shape0] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype1-shape1] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype1-shape2] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype1-shape3] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype1-shape4] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype0-shape0] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype0-shape1] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype0-shape2] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype0-shape3] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype0-shape4] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype1-shape0] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype1-shape1] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype1-shape2] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype1-shape3] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype1-shape4] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype0-shape0] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype0-shape1] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype0-shape2] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype0-shape3] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype0-shape4] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype1-shape0] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype1-shape1] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype1-shape2] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype1-shape3] FAILED
+test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype1-shape4] FAILED
+
+=================================== FAILURES ===================================
+_________ test_accuracy_isin_scalar_tensor[False-False-dtype0-shape3] __________
+
+shape = (16, 128, 64, 1280), dtype = torch.int16, assume_unique = False
+invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+        inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+    
+        if assume_unique:
+            inp2 = torch.unique(inp2.cpu()).to(flag_gems.device)
+    
+        scalar_val = int(inp2.ravel()[0].item())
+    
+        ref_inp2 = utils.to_reference(inp2, False)
+    
+        with flag_gems.use_gems():
+            res_out = torch.isin(
+                scalar_val, inp2, assume_unique=assume_unique, invert=invert
+            )
+        ref_out = torch.isin(
+            scalar_val, ref_inp2, assume_unique=assume_unique, invert=invert
+        )
+    
+>       utils.gems_assert_equal(res_out, ref_out)
+
+test_isin.py:110: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:318: in gems_assert_equal
+    res = to_cpu(res, ref)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = <[RuntimeError('[RUNTIME ERROR]: error code= 719, unspecified launch failure;') raised in repr()] Tensor object at 0x7fd4b08f7f60>
+ref = tensor(True)
+
+    def to_cpu(res, ref):
+        if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
+>           res = res.to("cpu")
+E           RuntimeError: [RUNTIME ERROR]: error code= 719, unspecified launch failure;
+
+accuracy_utils.py:305: RuntimeError
+_________ test_accuracy_isin_scalar_tensor[False-False-dtype0-shape4] __________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.int16, assume_unique = False
+invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+_________ test_accuracy_isin_scalar_tensor[False-False-dtype1-shape0] __________
+
+shape = (1,), dtype = torch.int32, assume_unique = False, invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+_________ test_accuracy_isin_scalar_tensor[False-False-dtype1-shape1] __________
+
+shape = (1024, 1024), dtype = torch.int32, assume_unique = False, invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+_________ test_accuracy_isin_scalar_tensor[False-False-dtype1-shape2] __________
+
+shape = (20, 320, 15), dtype = torch.int32, assume_unique = False
+invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+_________ test_accuracy_isin_scalar_tensor[False-False-dtype1-shape3] __________
+
+shape = (16, 128, 64, 1280), dtype = torch.int32, assume_unique = False
+invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+_________ test_accuracy_isin_scalar_tensor[False-False-dtype1-shape4] __________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.int32, assume_unique = False
+invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[False-True-dtype0-shape0] __________
+
+shape = (1,), dtype = torch.int16, assume_unique = True, invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[False-True-dtype0-shape1] __________
+
+shape = (1024, 1024), dtype = torch.int16, assume_unique = True, invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[False-True-dtype0-shape2] __________
+
+shape = (20, 320, 15), dtype = torch.int16, assume_unique = True, invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[False-True-dtype0-shape3] __________
+
+shape = (16, 128, 64, 1280), dtype = torch.int16, assume_unique = True
+invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[False-True-dtype0-shape4] __________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.int16, assume_unique = True
+invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[False-True-dtype1-shape0] __________
+
+shape = (1,), dtype = torch.int32, assume_unique = True, invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[False-True-dtype1-shape1] __________
+
+shape = (1024, 1024), dtype = torch.int32, assume_unique = True, invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[False-True-dtype1-shape2] __________
+
+shape = (20, 320, 15), dtype = torch.int32, assume_unique = True, invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[False-True-dtype1-shape3] __________
+
+shape = (16, 128, 64, 1280), dtype = torch.int32, assume_unique = True
+invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[False-True-dtype1-shape4] __________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.int32, assume_unique = True
+invert = False
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-False-dtype0-shape0] __________
+
+shape = (1,), dtype = torch.int16, assume_unique = False, invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-False-dtype0-shape1] __________
+
+shape = (1024, 1024), dtype = torch.int16, assume_unique = False, invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-False-dtype0-shape2] __________
+
+shape = (20, 320, 15), dtype = torch.int16, assume_unique = False, invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-False-dtype0-shape3] __________
+
+shape = (16, 128, 64, 1280), dtype = torch.int16, assume_unique = False
+invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-False-dtype0-shape4] __________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.int16, assume_unique = False
+invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-False-dtype1-shape0] __________
+
+shape = (1,), dtype = torch.int32, assume_unique = False, invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-False-dtype1-shape1] __________
+
+shape = (1024, 1024), dtype = torch.int32, assume_unique = False, invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-False-dtype1-shape2] __________
+
+shape = (20, 320, 15), dtype = torch.int32, assume_unique = False, invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-False-dtype1-shape3] __________
+
+shape = (16, 128, 64, 1280), dtype = torch.int32, assume_unique = False
+invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-False-dtype1-shape4] __________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.int32, assume_unique = False
+invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-True-dtype0-shape0] ___________
+
+shape = (1,), dtype = torch.int16, assume_unique = True, invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-True-dtype0-shape1] ___________
+
+shape = (1024, 1024), dtype = torch.int16, assume_unique = True, invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-True-dtype0-shape2] ___________
+
+shape = (20, 320, 15), dtype = torch.int16, assume_unique = True, invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-True-dtype0-shape3] ___________
+
+shape = (16, 128, 64, 1280), dtype = torch.int16, assume_unique = True
+invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-True-dtype0-shape4] ___________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.int16, assume_unique = True
+invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-True-dtype1-shape0] ___________
+
+shape = (1,), dtype = torch.int32, assume_unique = True, invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-True-dtype1-shape1] ___________
+
+shape = (1024, 1024), dtype = torch.int32, assume_unique = True, invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-True-dtype1-shape2] ___________
+
+shape = (20, 320, 15), dtype = torch.int32, assume_unique = True, invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-True-dtype1-shape3] ___________
+
+shape = (16, 128, 64, 1280), dtype = torch.int32, assume_unique = True
+invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+__________ test_accuracy_isin_scalar_tensor[True-True-dtype1-shape4] ___________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.int32, assume_unique = True
+invert = True
+
+    @pytest.mark.isin_scalar_tensor
+    @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+    @pytest.mark.parametrize("assume_unique", [False, True])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_accuracy_isin_scalar_tensor(shape, dtype, assume_unique, invert):
+        if flag_gems.vendor_name == "sunrise" and shape == (16, 128, 64, 1280):
+            pytest.skip("Issue #3836: Skip for big shape, '--ref cpu' too slow.")
+>       inp2 = torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_isin.py:93: AcceleratorError
+=============================== warnings summary ===============================
+tests/test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype0-shape3]
+tests/test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype0-shape3]
+tests/test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype0-shape3]
+  /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:222: UserWarning: XRE Version Must Be More than 5.0.21.37 (After 2025.07.22). And echo 1 > /proc/kunlun/dev4/dma_excp_mask
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype0-shape3]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype0-shape4]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype1-shape0]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype1-shape1]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype1-shape2]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype1-shape3]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-False-dtype1-shape4]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype0-shape0]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype0-shape1]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype0-shape2]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype0-shape3]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype0-shape4]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype1-shape0]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype1-shape1]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype1-shape2]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype1-shape3]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[False-True-dtype1-shape4]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype0-shape0]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype0-shape1]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype0-shape2]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype0-shape3]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype0-shape4]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype1-shape0]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype1-shape1]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype1-shape2]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype1-shape3]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-False-dtype1-shape4]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype0-shape0]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype0-shape1]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype0-shape2]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype0-shape3]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype0-shape4]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype1-shape0]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype1-shape1]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype1-shape2]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype1-shape3]
+FAILED test_isin.py::test_accuracy_isin_scalar_tensor[True-True-dtype1-shape4]
+========= 37 failed, 3 passed, 49911 deselected, 3 warnings in 57.21s ==========

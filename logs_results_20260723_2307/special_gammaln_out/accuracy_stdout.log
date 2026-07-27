@@ -1,0 +1,2165 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 02:16:54 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 02:16:56 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:16:56 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:16:56 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:16:56 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:16:56 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:16:56 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:16:56 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:16:56 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:16:56 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 02:16:57 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49933 deselected / 18 selected
+
+test_special_gammaln.py::test_special_gammaln_out[dtype0-shape0] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype0-shape1] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype0-shape2] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype0-shape3] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype0-shape4] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype0-shape5] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype1-shape0] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype1-shape1] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype1-shape2] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype1-shape3] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype1-shape4] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype1-shape5] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype2-shape0] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype2-shape1] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype2-shape2] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype2-shape3] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype2-shape4] FAILED
+test_special_gammaln.py::test_special_gammaln_out[dtype2-shape5] FAILED
+
+=================================== FAILURES ===================================
+___________________ test_special_gammaln_out[dtype0-shape0] ____________________
+
+shape = (), dtype = torch.float16
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp0oqzn5e1/kernel.o', '/tmp/tmp0oqzn5e1/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype0-shape1] ____________________
+
+shape = (1,), dtype = torch.float16
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpmjhb0ht7/kernel.o', '/tmp/tmpmjhb0ht7/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype0-shape2] ____________________
+
+shape = (1024, 1024), dtype = torch.float16
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp7v2tv8ru/kernel.o', '/tmp/tmp7v2tv8ru/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype0-shape3] ____________________
+
+shape = (20, 320, 15), dtype = torch.float16
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpcj3_kf14/kernel.o', '/tmp/tmpcj3_kf14/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype0-shape4] ____________________
+
+shape = (16, 128, 64, 60), dtype = torch.float16
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpfqbl1bat/kernel.o', '/tmp/tmpfqbl1bat/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype0-shape5] ____________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float16
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpi3a496xp/kernel.o', '/tmp/tmpi3a496xp/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype1-shape0] ____________________
+
+shape = (), dtype = torch.float32
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpf725zc4n/kernel.o', '/tmp/tmpf725zc4n/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype1-shape1] ____________________
+
+shape = (1,), dtype = torch.float32
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpj6xubusz/kernel.o', '/tmp/tmpj6xubusz/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype1-shape2] ____________________
+
+shape = (1024, 1024), dtype = torch.float32
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpmhc4z89x/kernel.o', '/tmp/tmpmhc4z89x/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype1-shape3] ____________________
+
+shape = (20, 320, 15), dtype = torch.float32
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpiwkmrfwg/kernel.o', '/tmp/tmpiwkmrfwg/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype1-shape4] ____________________
+
+shape = (16, 128, 64, 60), dtype = torch.float32
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpm9ebn2ar/kernel.o', '/tmp/tmpm9ebn2ar/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype1-shape5] ____________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float32
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpvowb_ap7/kernel.o', '/tmp/tmpvowb_ap7/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype2-shape0] ____________________
+
+shape = (), dtype = torch.bfloat16
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpsnyywe32/kernel.o', '/tmp/tmpsnyywe32/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype2-shape1] ____________________
+
+shape = (1,), dtype = torch.bfloat16
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpkfd1gpi_/kernel.o', '/tmp/tmpkfd1gpi_/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype2-shape2] ____________________
+
+shape = (1024, 1024), dtype = torch.bfloat16
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpwutzkan_/kernel.o', '/tmp/tmpwutzkan_/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype2-shape3] ____________________
+
+shape = (20, 320, 15), dtype = torch.bfloat16
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpgx8bc228/kernel.o', '/tmp/tmpgx8bc228/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype2-shape4] ____________________
+
+shape = (16, 128, 64, 60), dtype = torch.bfloat16
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpsfmgpwr6/kernel.o', '/tmp/tmpsfmgpwr6/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+___________________ test_special_gammaln_out[dtype2-shape5] ____________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.bfloat16
+
+    @pytest.mark.special_gammaln_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_special_gammaln_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+        out = torch.empty_like(inp)
+        ref_out = torch.empty_like(ref_inp)
+    
+        torch.special.gammaln(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+>           torch.special.gammaln(inp, out=out)
+
+test_special_gammaln.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammaln.py:44: in special_gammaln_out
+    special_gammaln_func(A, out0=out)
+../src/flag_gems/utils/pointwise_dynamic.py:1317: in __call__
+    return self._call_real_impl(*args, **kwargs)
+../src/flag_gems/utils/pointwise_dynamic.py:1323: in _call_real_impl
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_a81c609111220ba05cc7458aeb2ed64b732a6f470038f0cd2ad8ea97f97bd4c926_special_gammaln_func_kernel_rank_1_1d_tile__t512.py:38: in special_gammaln_func_wrapper_rank_1
+    special_gammaln_func_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:336: in compile
+    next_module = compile_ir(module, metadata)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:519: in <lambda>
+    stages["xpubin"] = lambda src, metadata: self.make_xpubin(src, metadata, options)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:487: in make_xpubin
+    out = subprocess.run(cmd, check=True, capture_output=True)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/t...kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin'],)
+kwargs = {'stdout': -1, 'stderr': -1}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpof_ouhxp/kernel.o', '/tmp/tmpof_ouhxp/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/subprocess.py:526: CalledProcessError
+=========================== short test summary info ============================
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype0-shape0] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype0-shape1] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype0-shape2] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype0-shape3] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype0-shape4] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype0-shape5] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype1-shape0] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype1-shape1] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype1-shape2] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype1-shape3] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype1-shape4] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype1-shape5] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype2-shape0] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype2-shape1] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype2-shape2] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype2-shape3] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype2-shape4] - sub...
+FAILED test_special_gammaln.py::test_special_gammaln_out[dtype2-shape5] - sub...
+==================== 18 failed, 49933 deselected in 15.68s =====================

@@ -1,0 +1,3 @@
+[CMD] pytest -m "silu_and_mul" --level core --record json --output benchmark_silu_and_mul.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

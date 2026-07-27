@@ -1,0 +1,246 @@
+{
+  "silu_and_mul_out": {
+    "details": [
+      {
+        "op_name": "silu_and_mul_out",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.010564000345766544,
+            "latency": 0.006705999840050936,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.5753057855256831,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.2593249976634979,
+            "latency": 0.42028000950813293,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6170291039228685,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.2592329978942871,
+            "latency": 0.4202190041542053,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6168997483016211,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "silu_and_mul_out",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.010288000106811523,
+            "latency": 0.005623000208288431,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.8296282635107812,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.2888379991054535,
+            "latency": 0.44452598690986633,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6497662850114077,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.2888700067996979,
+            "latency": 0.4448710083961487,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6493343044338483,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "silu_and_mul_out",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.011593000032007694,
+            "latency": 0.0067170001566410065,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.7259192737320175,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.3040669858455658,
+            "latency": 0.4359210133552551,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6975277092177373,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.30419400334358215,
+            "latency": 0.43554601073265076,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6984199047808618,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_silu_and_mul.py::test_silu_and_mul_out",
+    "reason": null
+  }
+}

@@ -1,0 +1,151 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:59:31 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:59:34 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:59:34 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:59:34 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:59:34 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:59:34 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:59:34 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:59:34 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:59:34 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:59:34 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:59:35 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49942 deselected / 9 selected
+
+test_floor_divide.py::test_floor_divide_mixed[dtype10-dtype20] PASSED
+test_floor_divide.py::test_floor_divide_mixed[dtype11-dtype21] PASSED
+test_floor_divide.py::test_floor_divide_mixed[dtype12-dtype22] PASSED
+test_floor_divide.py::test_floor_divide_scalar_tensor[x_dtype0-y_dtype0] PASSED
+test_floor_divide.py::test_floor_divide_scalar_tensor[x_dtype1-y_dtype1] FAILED
+test_floor_divide.py::test_floor_divide_scalar_tensor[x_dtype2-y_dtype2] PASSED
+test_floor_divide.py::test_floor_divide_scalar_tensor[x_dtype3-y_dtype3] PASSED
+test_floor_divide.py::test_floor_divide_scalar_scalar[dtype0] PASSED
+test_floor_divide.py::test_floor_divide_scalar_scalar[dtype1] PASSED
+
+=================================== FAILURES ===================================
+______________ test_floor_divide_scalar_tensor[x_dtype1-y_dtype1] ______________
+triton.compiler.errors.CompilationError: at 18:29:
+    #     (x - np.remainder(x, y)) y
+    # The results show a one off difference when
+    #     C1) x and y have opposite signs
+    # and C2) x is not multiples of y.
+    # Apart from the above, there's an erroneous case x // 0 returns -1
+    # whereas in Pytorch x // 0 returns -1 if x >=0 and -2 if x < 0
+    # but this special case is coalesced into the c1 and c2 check so
+    # there's extra handling.
+    r = x % y
+    c1 = r != 0
+    c2 = (x < 0) ^ (y < 0)
+    return tl.where(c1 & c2, x // y - 1, x // y)
+                             ^
+TypeError('unexpected type fp32')
+
+The above exception was the direct cause of the following exception:
+triton.compiler.errors.CompilationError: at 18:29:
+    #     (x - np.remainder(x, y)) y
+    # The results show a one off difference when
+    #     C1) x and y have opposite signs
+    # and C2) x is not multiples of y.
+    # Apart from the above, there's an erroneous case x // 0 returns -1
+    # whereas in Pytorch x // 0 returns -1 if x >=0 and -2 if x < 0
+    # but this special case is coalesced into the c1 and c2 check so
+    # there's extra handling.
+    r = x % y
+    c1 = r != 0
+    c2 = (x < 0) ^ (y < 0)
+    return tl.where(c1 & c2, x // y - 1, x // y)
+                             ^
+TypeError('unexpected type fp32')
+
+The above exception was the direct cause of the following exception:
+
+triton.compiler.errors.CompilationError: at 3:15:
+def floor_div_func_scalar_tensor(x, y):
+    if x.type.scalar.is_int() & x.type.scalar.is_int():
+        return _int_floordiv(x, y)
+               ^
+
+The above exception was the direct cause of the following exception:
+
+x_dtype = torch.int32, y_dtype = torch.float32
+
+    @pytest.mark.floor_divide_scalar
+    @pytest.mark.parametrize(
+        "x_dtype,y_dtype",
+        [
+            (torch.int32, torch.int32),
+            (torch.int32, torch.float32),
+            (torch.float32, torch.int32),
+            (torch.float32, torch.float32),
+        ],
+    )
+    def test_floor_divide_scalar_tensor(x_dtype, y_dtype):
+        def make_tensor(shape, dtype):
+            if dtype.is_floating_point:
+                return torch.randn(shape, device=device, dtype=dtype)
+            else:
+                return torch.randint(1, 10, (shape,), device=device, dtype=dtype)
+    
+        y = make_tensor(128, y_dtype)
+    
+        if x_dtype.is_floating_point:
+            x = torch.randn(1, device=device, dtype=x_dtype).squeeze(0)
+        else:
+            x = torch.randint(1, 10, (), device=device, dtype=x_dtype).item()
+    
+        ref = torch.div(x, y, rounding_mode="floor")
+    
+        # flaggems
+>       out = flag_gems.floor_divide(x, y)
+
+test_floor_divide.py:88: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/div.py:256: in floor_divide
+    return floor_div_func_scalar_tensor(A, B)
+../src/flag_gems/runtime/backend/_kunlunxin/utils/pointwise_dynamic.py:1186: in __call__
+    out = overload(*args, **kwargs)
+/root/.flaggems/code_cache/pointwise_dynamic_5c5c0fb10e33a7e85f9492290d21870170ee9c870206eabae4c91279fc88a34c240_floor_div_func_scalar_tensor_kernel_rank_1_1d_tile_pid_1470489.py:40: in floor_div_func_scalar_tensor_wrapper_rank_1
+    floor_div_func_scalar_tensor_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:686: in default_run
+    kernel = self.compile(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:285: in compile
+    module = src.make_ir(options, codegen_fns, context)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <triton.compiler.compiler.ASTSource object at 0x7f3fc3a4bf70>
+options = XPUOptions(arch=3, grid=(12, 1, 1), debug=None, cluster_num=12, core_num=64, buffer_size_limit=2048, groups_per_cluste...wed_dot_input_precisions=('ieee', 'tf32'), exp_range=':0', num_warps=4, num_ctas=-1, num_stages=1, use_int4_w4a8=False)
+codegen_fns = {}
+context = <triton._C.libtriton.ir.context object at 0x7f3fcbb73670>
+
+    def make_ir(self, options, codegen_fns, context):
+>       return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns)
+E       triton.compiler.errors.CompilationError: at 24:15:
+E           pid = ext.program_id(0)
+E           if one_tile_per_cta: # monolitic kernel style
+E               tile_id = pid
+E               tid = tile_id * tile_size + tl.arange(0, tile_size)
+E               mask = tid < num_tasks
+E               i0 = tid
+E       
+E               # loads
+E               in0 = tl.load(in0_ptr + i0 * in0_stride0, mask=mask).to(in0_ptr.type.element_ty)
+E       
+E               # compute
+E               out0 = floor_div_func_scalar_tensor(val0, in0)
+E                      ^
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py:122: CompilationError
+=========================== short test summary info ============================
+FAILED test_floor_divide.py::test_floor_divide_scalar_tensor[x_dtype1-y_dtype1]
+================ 1 failed, 8 passed, 49942 deselected in 13.39s ================

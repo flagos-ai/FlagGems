@@ -1,0 +1,207 @@
+{
+  "leaky_relu": {
+    "details": [
+      {
+        "op_name": "leaky_relu",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.004991999827325344,
+            "latency": 0.008080000057816505,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6178217563867635,
+            "accuracy": null,
+            "tflops": 0.0005069306894419603,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.03898699954152107,
+            "latency": 0.04726799950003624,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8248074797726775,
+            "accuracy": null,
+            "tflops": 0.3549381437220997,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.03895900025963783,
+            "latency": 0.047269001603126526,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.824197654664679,
+            "accuracy": null,
+            "tflops": 0.3549306190315283,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "leaky_relu",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.0051020001992583275,
+            "latency": 0.005994999781250954,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8510425997369616,
+            "accuracy": null,
+            "tflops": 0.0006832360549553354,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.06897400319576263,
+            "latency": 0.07116899639368057,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9691580138944766,
+            "accuracy": null,
+            "tflops": 0.2357377067282872,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.06909099966287613,
+            "latency": 0.07110200077295303,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9717166733957523,
+            "accuracy": null,
+            "tflops": 0.2359598297883904,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "leaky_relu",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.0051380000077188015,
+            "latency": 0.007902000099420547,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6502151282047656,
+            "accuracy": null,
+            "tflops": 0.0005183497783428728,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.04176799952983856,
+            "latency": 0.05983399972319603,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6980646408908919,
+            "accuracy": null,
+            "tflops": 0.28039603031077204,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.041847001761198044,
+            "latency": 0.05994100123643875,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6981365158738593,
+            "accuracy": null,
+            "tflops": 0.27989549146538045,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_leaky_relu.py::test_leaky_relu",
+    "reason": null
+  }
+}

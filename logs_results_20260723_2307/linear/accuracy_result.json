@@ -1,0 +1,122 @@
+{
+  "tests/test_linear.py::test_linear_2d_with_bias[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "linear"
+    ],
+    "reason": null
+  },
+  "tests/test_linear.py::test_linear_2d_with_bias[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "linear"
+    ],
+    "reason": null
+  },
+  "tests/test_linear.py::test_linear_2d_with_bias[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "linear"
+    ],
+    "reason": null
+  },
+  "tests/test_linear.py::test_linear_2d_without_bias[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "linear"
+    ],
+    "reason": null
+  },
+  "tests/test_linear.py::test_linear_2d_without_bias[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "linear"
+    ],
+    "reason": null
+  },
+  "tests/test_linear.py::test_linear_2d_without_bias[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "linear"
+    ],
+    "reason": null
+  },
+  "tests/test_linear.py::test_linear_3d_with_bias[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "linear"
+    ],
+    "reason": null
+  },
+  "tests/test_linear.py::test_linear_3d_with_bias[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "linear"
+    ],
+    "reason": null
+  },
+  "tests/test_linear.py::test_linear_3d_with_bias[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "linear"
+    ],
+    "reason": null
+  },
+  "tests/test_linear.py::test_linear_1d_with_bias[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "linear"
+    ],
+    "reason": null
+  },
+  "tests/test_linear.py::test_linear_1d_with_bias[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "linear"
+    ],
+    "reason": null
+  },
+  "tests/test_linear.py::test_linear_1d_with_bias[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "linear"
+    ],
+    "reason": null
+  }
+}

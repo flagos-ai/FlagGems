@@ -1,0 +1,227 @@
+{
+  "tests/test_reglu.py::test_reglu[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        32,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        30
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        32,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        30
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        32,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  },
+  "tests/test_reglu.py::test_reglu[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        30
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "reglu"
+    ],
+    "reason": "TypeError: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  }
+}

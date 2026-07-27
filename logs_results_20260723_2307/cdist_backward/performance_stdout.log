@@ -1,0 +1,78 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_cdist_backward.py F                                                 [100%]
+
+=================================== FAILURES ===================================
+_____________________________ test_cdist_backward ______________________________
+
+self = <benchmark.test_cdist_backward.CdistBackwardBenchmark object at 0x7f2f08cd73d0>
+cur_dtype = torch.float32
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+>           batch, n1, dim = shape
+E           ValueError: not enough values to unpack (expected 3, got 2)
+
+test_cdist_backward.py:34: ValueError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.cdist_backward
+    def test_cdist_backward():
+        bench = CdistBackwardBenchmark(
+            op_name="cdist_backward",
+            torch_op=torch.ops.aten._cdist_backward,
+            # _cdist_backward uses fp32 accumulation; only float32 is numerically stable
+            dtypes=[torch.float32],
+        )
+        bench.set_gems(flag_gems._cdist_backward)
+>       bench.run()
+
+test_cdist_backward.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.test_cdist_backward.CdistBackwardBenchmark object at 0x7f2f08cd73d0>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+>                   pytest.fail(str(e))
+E                   Failed: not enough values to unpack (expected 3, got 2)
+
+base.py:433: Failed
+----------------------------- Captured stdout call -----------------------------
+[31mFAILED[0m: Operator=cdist_backward dtype={dtype} err=<<<{e}>>>
+=========================== short test summary info ============================
+FAILED test_cdist_backward.py::test_cdist_backward - Failed: not enough value...
+====================== 1 failed, 950 deselected in 7.80s =======================

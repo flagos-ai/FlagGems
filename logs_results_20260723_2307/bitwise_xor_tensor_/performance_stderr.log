@@ -1,0 +1,3 @@
+[CMD] pytest -m "bitwise_xor_tensor_" --level core --record json --output benchmark_bitwise_xor_tensor_.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

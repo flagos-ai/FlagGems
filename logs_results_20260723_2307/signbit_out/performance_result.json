@@ -1,0 +1,7 @@
+{
+  "signbit_out": {
+    "result": "skipped",
+    "reason": "Skipped: No support to non-boolean outputs: issue #2689.",
+    "test_case": "benchmark/test_signbit.py::test_signbit_out"
+  }
+}

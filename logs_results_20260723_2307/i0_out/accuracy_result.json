@@ -1,0 +1,137 @@
+{
+  "tests/test_i0.py::test_i0_out[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "i0_out"
+    ],
+    "reason": null
+  },
+  "tests/test_i0.py::test_i0_out[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "i0_out"
+    ],
+    "reason": null
+  },
+  "tests/test_i0.py::test_i0_out[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "i0_out"
+    ],
+    "reason": null
+  },
+  "tests/test_i0.py::test_i0_out[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "i0_out"
+    ],
+    "reason": null
+  },
+  "tests/test_i0.py::test_i0_out[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "i0_out"
+    ],
+    "reason": null
+  },
+  "tests/test_i0.py::test_i0_out[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "i0_out"
+    ],
+    "reason": null
+  },
+  "tests/test_i0.py::test_i0_out[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "i0_out"
+    ],
+    "reason": null
+  },
+  "tests/test_i0.py::test_i0_out[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "i0_out"
+    ],
+    "reason": null
+  },
+  "tests/test_i0.py::test_i0_out[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "i0_out"
+    ],
+    "reason": null
+  }
+}

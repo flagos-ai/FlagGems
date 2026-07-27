@@ -1,0 +1,356 @@
+{
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_same_dtype[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_broadcast": {
+    "params": {},
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_dtype_fallback": {
+    "params": {},
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_float8_e8m0fnu[shape0]": {
+    "params": {
+      "shape": [
+        8
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:14771)"
+  },
+  "tests/test_copy.py::test_copy_inplace_float8_e8m0fnu[shape1]": {
+    "params": {
+      "shape": [
+        4,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:14771)"
+  },
+  "tests/test_copy.py::test_copy_inplace_float8_e8m0fnu[shape2]": {
+    "params": {
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:14771)"
+  },
+  "tests/test_copy.py::test_copy_inplace_float8_e8m0fnu_to_float32": {
+    "params": {},
+    "result": "failed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": "KeyError: 'float8_e8m0fnu'"
+  },
+  "tests/test_copy.py::test_copy_inplace_mixed_dtype_triton[src_dtype0-dst_dtype0]": {
+    "params": {
+      "src_dtype": "torch.float32",
+      "dst_dtype": "torch.int32"
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_mixed_dtype_triton[src_dtype1-dst_dtype1]": {
+    "params": {
+      "src_dtype": "torch.int16",
+      "dst_dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  },
+  "tests/test_copy.py::test_copy_inplace_mixed_dtype_triton[src_dtype2-dst_dtype2]": {
+    "params": {
+      "src_dtype": "torch.bool",
+      "dst_dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "copy_"
+    ],
+    "reason": null
+  }
+}

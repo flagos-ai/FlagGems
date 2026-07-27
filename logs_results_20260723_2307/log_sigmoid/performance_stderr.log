@@ -1,0 +1,3 @@
+[CMD] pytest -m "log_sigmoid" --level core --record json --output benchmark_log_sigmoid.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

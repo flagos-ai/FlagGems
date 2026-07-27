@@ -1,0 +1,818 @@
+{
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-True-dtype0-8-8-1-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": true,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-True-dtype0-8-6-2-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": true,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 6,
+      "k_heads": 2,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-True-dtype0-8-1-1-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": true,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 1,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-True-dtype0-8-8-8-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": true,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 8,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-True-dtype1-8-8-1-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": true,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-True-dtype1-8-6-2-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": true,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 6,
+      "k_heads": 2,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-True-dtype1-8-1-1-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": true,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 1,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-True-dtype1-8-8-8-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": true,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 8,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-True-dtype2-8-8-1-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": true,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-True-dtype2-8-6-2-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": true,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 6,
+      "k_heads": 2,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-True-dtype2-8-1-1-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": true,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 1,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-True-dtype2-8-8-8-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": true,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 8,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-False-dtype0-8-8-1-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": false,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-False-dtype0-8-6-2-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": false,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 6,
+      "k_heads": 2,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-False-dtype0-8-1-1-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": false,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 1,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-False-dtype0-8-8-8-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": false,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 8,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-False-dtype1-8-8-1-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": false,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-False-dtype1-8-6-2-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": false,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 6,
+      "k_heads": 2,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-False-dtype1-8-1-1-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": false,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 1,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-False-dtype1-8-8-8-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": false,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 8,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-False-dtype2-8-8-1-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": false,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-False-dtype2-8-6-2-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": false,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 6,
+      "k_heads": 2,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-False-dtype2-8-1-1-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": false,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 1,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[True-False-dtype2-8-8-8-16-2]": {
+    "params": {
+      "has_pos_id": true,
+      "rotary_interleaved": false,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 8,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-True-dtype0-8-8-1-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": true,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-True-dtype0-8-6-2-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": true,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 6,
+      "k_heads": 2,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-True-dtype0-8-1-1-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": true,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 1,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-True-dtype0-8-8-8-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": true,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 8,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-True-dtype1-8-8-1-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": true,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-True-dtype1-8-6-2-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": true,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 6,
+      "k_heads": 2,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-True-dtype1-8-1-1-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": true,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 1,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-True-dtype1-8-8-8-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": true,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 8,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-True-dtype2-8-8-1-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": true,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-True-dtype2-8-6-2-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": true,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 6,
+      "k_heads": 2,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-True-dtype2-8-1-1-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": true,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 1,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-True-dtype2-8-8-8-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": true,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 8,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-False-dtype0-8-8-1-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": false,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-False-dtype0-8-6-2-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": false,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 6,
+      "k_heads": 2,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-False-dtype0-8-1-1-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": false,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 1,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-False-dtype0-8-8-8-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": false,
+      "dtype": "torch.float16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 8,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-False-dtype1-8-8-1-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": false,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-False-dtype1-8-6-2-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": false,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 6,
+      "k_heads": 2,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-False-dtype1-8-1-1-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": false,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 1,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-False-dtype1-8-8-8-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": false,
+      "dtype": "torch.float32",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 8,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-False-dtype2-8-8-1-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": false,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-False-dtype2-8-6-2-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": false,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 6,
+      "k_heads": 2,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-False-dtype2-8-1-1-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": false,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 1,
+      "k_heads": 1,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  },
+  "tests/test_apply_rotary_pos_emb.py::test_apply_rotary_pos_emb[False-False-dtype2-8-8-8-16-2]": {
+    "params": {
+      "has_pos_id": false,
+      "rotary_interleaved": false,
+      "dtype": "torch.bfloat16",
+      "head_dim": 8,
+      "q_heads": 8,
+      "k_heads": 8,
+      "max_seq_len": 16,
+      "batch_size": 2
+    },
+    "result": "passed",
+    "opname": [
+      "apply_rotary_pos_emb"
+    ],
+    "reason": null
+  }
+}

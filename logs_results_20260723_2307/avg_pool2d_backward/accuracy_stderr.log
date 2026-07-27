@@ -1,0 +1,53 @@
+[CMD] pytest -m "avg_pool2d_backward" --record json --output accuracy_avg_pool2d_backward.json --ref cpu --continue-on-collection-errors -vs
+[CWD] /workspace/FlagGems/tests
+
+XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+Processing function: avg_pool2d_backward_kernel
+Removed 666 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 647 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 1329 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 666 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 192 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 666 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 255 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 264 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 656 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 637 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 1313 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 656 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 187 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 656 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 250 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 259 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 666 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 647 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 1329 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 666 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 192 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 666 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 255 operations, kept essential structure
+Processing function: avg_pool2d_backward_kernel
+Removed 264 operations, kept essential structure

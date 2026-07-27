@@ -1,0 +1,7 @@
+{
+  "nll_loss_backward": {
+    "result": "failed",
+    "test_case": "benchmark/test_nll_loss.py::test_nll_loss_backward",
+    "reason": "Failed: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

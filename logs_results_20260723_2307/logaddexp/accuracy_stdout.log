@@ -1,0 +1,979 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 00:49:22 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 00:49:24 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:49:24 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:49:24 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:49:24 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:49:24 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:49:24 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:49:24 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:49:24 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:49:24 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 00:49:26 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49933 deselected / 18 selected
+
+test_logaddexp.py::test_logaddexp[dtype0-shape0] FAILED
+test_logaddexp.py::test_logaddexp[dtype0-shape1] FAILED
+test_logaddexp.py::test_logaddexp[dtype0-shape2] FAILED
+test_logaddexp.py::test_logaddexp[dtype0-shape3] FAILED
+test_logaddexp.py::test_logaddexp[dtype0-shape4] FAILED
+test_logaddexp.py::test_logaddexp[dtype0-shape5] FAILED
+test_logaddexp.py::test_logaddexp[dtype1-shape0] FAILED
+test_logaddexp.py::test_logaddexp[dtype1-shape1] FAILED
+test_logaddexp.py::test_logaddexp[dtype1-shape2] FAILED
+test_logaddexp.py::test_logaddexp[dtype1-shape3] FAILED
+test_logaddexp.py::test_logaddexp[dtype1-shape4] FAILED
+test_logaddexp.py::test_logaddexp[dtype1-shape5] FAILED
+test_logaddexp.py::test_logaddexp[dtype2-shape0] FAILED
+test_logaddexp.py::test_logaddexp[dtype2-shape1] FAILED
+test_logaddexp.py::test_logaddexp[dtype2-shape2] FAILED
+test_logaddexp.py::test_logaddexp[dtype2-shape3] FAILED
+test_logaddexp.py::test_logaddexp[dtype2-shape4] FAILED
+test_logaddexp.py::test_logaddexp[dtype2-shape5] FAILED
+
+=================================== FAILURES ===================================
+________________________ test_logaddexp[dtype0-shape0] _________________________
+
+shape = (), dtype = torch.float16
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(-0.1907, dtype=torch.float16)
+ref = tensor(0.2015, dtype=torch.float16), dtype = torch.float16
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Scalars are not close!
+E       
+E       Expected 0.2015380859375 but got -0.190673828125.
+E       Absolute difference: 0.3922119140625 (up to 0.0001 allowed)
+E       Relative difference: 1.946093276801938 (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype0-shape1] _________________________
+
+shape = (1,), dtype = torch.float16
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([-26.1094], dtype=torch.float16)
+ref = tensor([0.6826], dtype=torch.float16), dtype = torch.float16
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 26.796875 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 39.25 at index (0,) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype0-shape2] _________________________
+
+shape = (1024, 1024), dtype = torch.float16
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[ 1.9277,  1.5645, -1.7598,  ..., -1.8555, -1.6357, -0.8770],
+        [-1.9395, -1.6934, -1.8809,  ...,  1.572..., -1.7207, -1.3076],
+        [ 1.8037,  1.5166, -1.9111,  ...,  1.8623,  1.8438,  1.8848]],
+       dtype=torch.float16)
+ref = tensor([[ 0.6265,  1.4180,  1.1621,  ...,  0.8857,  1.9482,  0.3567],
+        [ 1.8652,  0.7622,  1.0078,  ..., -0.424...,  1.1836,  0.1056],
+        [ 1.7783,  1.1719,  0.2744,  ...,  0.0258,  0.4954,  0.5684]],
+       dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1048074 / 1048576 (100.0%)
+E       Greatest absolute difference: 6.75390625 at index (741, 294) (up to 0.0001 allowed)
+E       Greatest relative difference: inf at index (60, 443) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype0-shape3] _________________________
+
+shape = (20, 320, 15), dtype = torch.float16
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[-1.7695e+00,  2.0957e+00, -1.3877e+00,  ..., -1.8135e+00,
+           1.7637e+00,  1.7871e+00],
+         [ 1.... [ 2.0449e+00,  8.0811e-02,  2.2910e+00,  ...,  2.0293e+00,
+           4.6900e+02,  1.9688e+00]]], dtype=torch.float16)
+ref = tensor([[[-0.2126,  0.3066,  0.4004,  ...,  0.4150,  1.0068,  1.5029],
+         [ 0.7720,  0.4993,  0.1770,  ...,  0.1... 1.6768, -0.8101],
+         [ 0.4053,  2.2129,  1.1318,  ...,  0.8232,  2.4062, -0.5981]]],
+       dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 95954 / 96000 (100.0%)
+E       Greatest absolute difference: nan at index (19, 224, 4) (up to 0.0001 allowed)
+E       Greatest relative difference: nan at index (19, 224, 4) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype0-shape4] _________________________
+
+shape = (16, 128, 64, 60), dtype = torch.float16
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 6.0654e-04,  1.9805e+00, -5.8234e-05,  ..., -1.9316e+00,
+            3.0127e-01,  2.0527e+00],
+          [...-2.1422e-04,  1.7959e+00,  2.2304e+04,  ...,  1.8613e+00,
+           -2.7285e+00,  1.7529e+00]]]], dtype=torch.float16)
+ref = tensor([[[[ 2.3425e-01,  2.5195e+00,  1.2197e+00,  ...,  9.8193e-01,
+            7.5928e-01,  8.1934e-01],
+          [...-6.3525e-01,  4.9048e-01,  8.5596e-01,  ...,  1.2158e+00,
+            1.3066e+00, -4.0259e-01]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 7862164 / 7864320 (100.0%)
+E       Greatest absolute difference: nan at index (0, 0, 1, 26) (up to 0.0001 allowed)
+E       Greatest relative difference: nan at index (0, 0, 1, 26) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype0-shape5] _________________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float16
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-1.5662e-01, -1.9111e+00, -1.5062e+01,  ...,  2.4266e+01,
+             1.9189e+00,  1.7594e+01],
+         ....2637e+00,  1.6153e-05,  2.1562e+00,  ...,  2.0859e+00,
+            -4.2081e-05,  1.7148e+00]]]]], dtype=torch.float16)
+ref = tensor([[[[[-7.2070e-01, -6.3110e-02, -4.4067e-01,  ..., -6.0645e-01,
+             2.9077e-01,  8.5156e-01],
+         ....9658e-01,  1.3076e+00,  1.4893e+00,  ...,  1.0205e+00,
+             2.0215e+00, -7.8516e-01]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 5921908 / 5924352 (100.0%)
+E       Greatest absolute difference: nan at index (0, 0, 0, 0, 6) (up to 0.0001 allowed)
+E       Greatest relative difference: nan at index (0, 0, 0, 0, 6) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype1-shape0] _________________________
+
+shape = (), dtype = torch.float32
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(-1.9351), ref = tensor(-0.0335), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Scalars are not close!
+E       
+E       Expected -0.03354719281196594 but got -1.9351227283477783.
+E       Absolute difference: 1.9015755355358124 (up to 0.0001 allowed)
+E       Relative difference: 56.683596335295746 (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype1-shape1] _________________________
+
+shape = (1,), dtype = torch.float32
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([3.6130e-12]), ref = tensor([-0.0003]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.0003192424774169922 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 1.0 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype1-shape2] _________________________
+
+shape = (1024, 1024), dtype = torch.float32
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[4.7621, 0.5343, 3.2399,  ..., 0.1367, 0.0677, 0.7103],
+        [2.9212, 4.3508, 4.0751,  ..., 3.6461, 3.3900,...2.5907, 3.4194, 0.6015,  ..., 1.3256, 2.7891, 0.1876],
+        [4.9800, 2.8061, 3.7126,  ..., 1.6166, 4.0335, 0.1558]])
+ref = tensor([[ 0.0089,  0.9021,  1.1145,  ...,  1.5448,  0.6223,  0.3726],
+        [ 0.9601,  0.6213,  1.0661,  ...,  1.109...0165,  0.2238,  ...,  2.1071,  1.3599,  1.6277],
+        [ 1.1769,  2.3834,  0.1319,  ...,  0.1506,  1.5896,  0.5626]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1048540 / 1048576 (100.0%)
+E       Greatest absolute difference: 7.076509475708008 at index (944, 100) (up to 0.0001 allowed)
+E       Greatest relative difference: 1046856.625 at index (422, 728) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype1-shape3] _________________________
+
+shape = (20, 320, 15), dtype = torch.float32
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[-8.1716e-01,  4.7828e-03, -7.1657e-01,  ...,  5.2413e-01,
+          -1.2093e+00, -1.8120e+00],
+         [-4....5.5565e-01],
+         [ 4.2919e-01, -9.1308e-01, -2.7099e-01,  ...,  2.7773e+00,
+          -3.6767e-01,  1.9995e-01]]])
+ref = tensor([[[ 7.4081e-02,  6.1705e-02,  1.4019e+00,  ...,  6.8519e-01,
+           9.2799e-01,  6.8541e-01],
+         [ 1....2.7735e-01],
+         [ 1.3269e+00,  9.0236e-01,  1.9539e+00,  ...,  2.0054e+00,
+           1.0845e+00,  1.2994e+00]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 95993 / 96000 (100.0%)
+E       Greatest absolute difference: 14.461298942565918 at index (15, 291, 2) (up to 0.0001 allowed)
+E       Greatest relative difference: 104883.21875 at index (16, 304, 0) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype1-shape4] _________________________
+
+shape = (16, 128, 64, 60), dtype = torch.float32
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[-1.5747e-01,  8.7399e-01, -3.8134e-01,  ..., -1.0510e-01,
+           -2.9569e+00,  5.5370e-01],
+          [...000e+00],
+          [ 0.0000e+00,  0.0000e+00,  0.0000e+00,  ...,  0.0000e+00,
+            0.0000e+00,  0.0000e+00]]]])
+ref = tensor([[[[ 0.8296,  0.2401,  1.4321,  ...,  2.6715, -0.4067,  0.7085],
+          [ 0.0594,  0.7520,  1.5295,  ...,  0...,  0.4246,  ...,  1.1911, -0.3340,  0.5503],
+          [ 0.7113,  0.2512,  1.6835,  ...,  1.8413, -0.1582,  0.2881]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 7863890 / 7864320 (100.0%)
+E       Greatest absolute difference: 17.743247985839844 at index (0, 55, 4, 20) (up to 0.0001 allowed)
+E       Greatest relative difference: 1039365.5625 at index (1, 68, 51, 28) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype1-shape5] _________________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float32
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[0., 0., 0.,  ..., 0., 0., 0.],
+           [0., 0., 0.,  ..., 0., 0., 0.],
+           [0., 0., 0.,  ..., 0....., 0., 0.,  ..., 0., 0., 0.],
+           [0., 0., 0.,  ..., 0., 0., 0.],
+           [0., 0., 0.,  ..., 0., 0., 0.]]]]])
+ref = tensor([[[[[ 1.9041e+00,  1.8601e+00,  1.1948e+00,  ..., -6.1342e-01,
+             1.3636e+00, -4.0998e-01],
+         ...e+00],
+           [-1.6146e-01,  5.8707e-01,  6.4028e-01,  ...,  8.2114e-01,
+             4.1557e-01,  1.0216e-01]]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 5924029 / 5924352 (100.0%)
+E       Greatest absolute difference: 5.281056880950928 at index (9, 3, 40, 5, 4) (up to 0.0001 allowed)
+E       Greatest relative difference: 1.0 at index (0, 0, 0, 0, 0) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype2-shape0] _________________________
+
+shape = (), dtype = torch.bfloat16
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor(-2.2630e-33, dtype=torch.bfloat16)
+ref = tensor(1.0547, dtype=torch.bfloat16), dtype = torch.bfloat16
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Scalars are not close!
+E       
+E       Expected 1.0546875 but got -2.262967684655002e-33.
+E       Absolute difference: 1.0546875 (up to 0.0001 allowed)
+E       Relative difference: 1.0 (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype2-shape1] _________________________
+
+shape = (1,), dtype = torch.bfloat16
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([-2800.], dtype=torch.bfloat16)
+ref = tensor([0.9805], dtype=torch.bfloat16), dtype = torch.bfloat16
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 2800.0 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 2848.0 at index (0,) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype2-shape2] _________________________
+
+shape = (1024, 1024), dtype = torch.bfloat16
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[-3.5890e+24,  1.5234e+00, -4.6386e+12,  ...,  2.6094e+00,
+          2.8273e-27,  1.4766e+00],
+        [-7.517...  [-2.5400e+02,  3.8594e+00, -4.5358e+30,  ...,  1.5312e+00,
+          1.1915e-26,  1.4219e+00]], dtype=torch.bfloat16)
+ref = tensor([[ 1.8828, -0.1147,  1.2656,  ...,  0.5781,  0.1387,  0.6445],
+        [ 0.8281,  0.4414,  0.9961,  ...,  0.063...  0.8438,  1.8906],
+        [ 2.6719,  0.6484,  1.1562,  ...,  0.5391,  0.7344,  1.9766]],
+       dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1045272 / 1048576 (99.7%)
+E       Greatest absolute difference: nan at index (0, 508) (up to 0.0001 allowed)
+E       Greatest relative difference: nan at index (0, 508) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype2-shape3] _________________________
+
+shape = (20, 320, 15), dtype = torch.bfloat16
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[ 2.4989e+38, -2.6367e-01, -4.0109e+29,  ...,  9.1642e-07,
+           1.4062e+00, -1.8936e+31],
+         [-1....[ 1.1953e+00,  1.8058e+25,  9.0820e-02,  ..., -1.3574e-01,
+          -4.0882e+31,  1.0469e+00]]], dtype=torch.bfloat16)
+ref = tensor([[[ 1.1133e-01,  1.3203e+00,  5.1562e-01,  ...,  3.1641e-01,
+           2.3906e+00,  1.2422e+00],
+         [ 1....[ 9.6875e-01,  1.2188e+00,  2.2188e+00,  ...,  1.6484e+00,
+           1.4297e+00,  8.5156e-01]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 95719 / 96000 (99.7%)
+E       Greatest absolute difference: nan at index (0, 36, 8) (up to 0.0001 allowed)
+E       Greatest relative difference: nan at index (0, 36, 8) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype2-shape4] _________________________
+
+shape = (16, 128, 64, 60), dtype = torch.bfloat16
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[0., 0., 0.,  ..., 0., 0., 0.],
+          [0., 0., 0.,  ..., 0., 0., 0.],
+          [0., 0., 0.,  ..., 0., 0..., 0., 0.],
+          [0., 0., 0.,  ..., 0., 0., 0.],
+          [0., 0., 0.,  ..., 0., 0., 0.]]]], dtype=torch.bfloat16)
+ref = tensor([[[[ 1.6719,  1.9141,  1.0469,  ...,  0.0645,  0.1270,  0.2100],
+          [ 0.9180,  0.7383,  0.4336,  ...,  0...3438,  0.1836],
+          [-0.4395,  1.3750,  1.0156,  ...,  1.1328,  0.3125,  1.1641]]]],
+       dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 7863843 / 7864320 (100.0%)
+E       Greatest absolute difference: 5.34375 at index (1, 39, 39, 58) (up to 0.0001 allowed)
+E       Greatest relative difference: 1.0 at index (0, 0, 0, 0) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_logaddexp[dtype2-shape5] _________________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.bfloat16
+
+    @pytest.mark.logaddexp
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_logaddexp(shape, dtype):
+        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.logaddexp(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+            res_out = torch.logaddexp(x, y)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_logaddexp.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[0., 0., 0.,  ..., 0., 0., 0.],
+           [0., 0., 0.,  ..., 0., 0., 0.],
+           [0., 0., 0.,  ..., 0....., 0.],
+           [0., 0., 0.,  ..., 0., 0., 0.],
+           [0., 0., 0.,  ..., 0., 0., 0.]]]]], dtype=torch.bfloat16)
+ref = tensor([[[[[ 1.0625e+00,  1.3047e+00,  8.4766e-01,  ...,  8.1250e-01,
+             1.6953e+00,  2.8125e-01],
+         ...1250e-01,  6.1328e-01,  1.7812e+00,  ...,  8.8672e-01,
+             8.6328e-01,  1.2734e+00]]]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 5924033 / 5924352 (100.0%)
+E       Greatest absolute difference: 5.375 at index (7, 3, 14, 22, 11) (up to 0.0001 allowed)
+E       Greatest relative difference: 1.0 at index (0, 0, 0, 0, 0) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+=========================== short test summary info ============================
+FAILED test_logaddexp.py::test_logaddexp[dtype0-shape0] - AssertionError: Sca...
+FAILED test_logaddexp.py::test_logaddexp[dtype0-shape1] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype0-shape2] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype0-shape3] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype0-shape4] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype0-shape5] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype1-shape0] - AssertionError: Sca...
+FAILED test_logaddexp.py::test_logaddexp[dtype1-shape1] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype1-shape2] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype1-shape3] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype1-shape4] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype1-shape5] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype2-shape0] - AssertionError: Sca...
+FAILED test_logaddexp.py::test_logaddexp[dtype2-shape1] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype2-shape2] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype2-shape3] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype2-shape4] - AssertionError: Ten...
+FAILED test_logaddexp.py::test_logaddexp[dtype2-shape5] - AssertionError: Ten...
+==================== 18 failed, 49933 deselected in 11.91s =====================

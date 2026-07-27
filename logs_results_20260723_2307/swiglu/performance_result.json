@@ -1,0 +1,7 @@
+{
+  "swiglu": {
+    "result": "failed",
+    "test_case": "benchmark/test_swiglu.py::test_swiglu",
+    "reason": "Failed: swiglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  }
+}

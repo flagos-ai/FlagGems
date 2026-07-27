@@ -1,0 +1,3116 @@
+{
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-2-8-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 2 / 64 (3.1%)\nGreatest absolute difference: 0.00048828125 at index (0, 0, 6) (up to 0.0001 allowed)\nGreatest relative difference: 0.002105712890625 at index (0, 0, 6) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-2-8-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 64 (7.8%)\nGreatest absolute difference: 0.00146484375 at index (1, 3, 1) (up to 0.0001 allowed)\nGreatest relative difference: 0.0043487548828125 at index (1, 3, 3) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-2-8-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 1 / 64 (1.6%)\nGreatest absolute difference: 0.000732421875 at index (3, 1, 0) (up to 0.0001 allowed)\nGreatest relative difference: 0.0036106109619140625 at index (3, 1, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-2-8-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 64 (4.7%)\nGreatest absolute difference: 0.0009765625 at index (0, 2, 6) (up to 0.0001 allowed)\nGreatest relative difference: 0.00725555419921875 at index (0, 3, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-2-16-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 8 / 128 (6.2%)\nGreatest absolute difference: 0.001953125 at index (3, 1, 5) (up to 0.0001 allowed)\nGreatest relative difference: 0.0227203369140625 at index (3, 0, 5) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-2-16-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 128 (2.3%)\nGreatest absolute difference: 0.000732421875 at index (0, 2, 13) (up to 0.0001 allowed)\nGreatest relative difference: 0.00609588623046875 at index (1, 1, 11) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-2-16-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 2 / 128 (1.6%)\nGreatest absolute difference: 0.000244140625 at index (1, 1, 1) (up to 0.0001 allowed)\nGreatest relative difference: 0.00847625732421875 at index (3, 1, 3) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-2-16-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 128 (2.3%)\nGreatest absolute difference: 0.001953125 at index (0, 2, 7) (up to 0.0001 allowed)\nGreatest relative difference: 0.01025390625 at index (1, 1, 3) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-4-8-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 11 / 128 (8.6%)\nGreatest absolute difference: 0.0009765625 at index (0, 1, 3) (up to 0.0001 allowed)\nGreatest relative difference: 0.0142822265625 at index (2, 3, 1) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-4-8-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 128 (3.9%)\nGreatest absolute difference: 0.001953125 at index (1, 0, 4) (up to 0.0001 allowed)\nGreatest relative difference: 0.00609588623046875 at index (3, 1, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-4-8-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 128 (3.9%)\nGreatest absolute difference: 0.0009765625 at index (0, 3, 0) (up to 0.0001 allowed)\nGreatest relative difference: 0.199951171875 at index (3, 3, 4) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-4-8-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 6 / 128 (4.7%)\nGreatest absolute difference: 0.0009765625 at index (0, 0, 6) (up to 0.0001 allowed)\nGreatest relative difference: 0.0101318359375 at index (2, 3, 3) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-4-16-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 14 / 256 (5.5%)\nGreatest absolute difference: 0.00048828125 at index (1, 2, 15) (up to 0.0001 allowed)\nGreatest relative difference: inf at index (3, 1, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-4-16-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 13 / 256 (5.1%)\nGreatest absolute difference: 0.00048828125 at index (0, 0, 7) (up to 0.0001 allowed)\nGreatest relative difference: inf at index (2, 3, 7) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-4-16-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 11 / 256 (4.3%)\nGreatest absolute difference: 0.00146484375 at index (0, 1, 12) (up to 0.0001 allowed)\nGreatest relative difference: 0.0200042724609375 at index (2, 2, 8) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-4-4-16-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 15 / 256 (5.9%)\nGreatest absolute difference: 0.0009765625 at index (0, 1, 14) (up to 0.0001 allowed)\nGreatest relative difference: 0.01074981689453125 at index (1, 2, 7) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-2-8-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 7 / 128 (5.5%)\nGreatest absolute difference: 0.0009765625 at index (2, 0, 7) (up to 0.0001 allowed)\nGreatest relative difference: 0.05712890625 at index (4, 0, 2) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-2-8-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 11 / 128 (8.6%)\nGreatest absolute difference: 0.00048828125 at index (0, 2, 7) (up to 0.0001 allowed)\nGreatest relative difference: 0.017242431640625 at index (0, 4, 7) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-2-8-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 128 (2.3%)\nGreatest absolute difference: 0.0009765625 at index (6, 1, 0) (up to 0.0001 allowed)\nGreatest relative difference: 0.0121917724609375 at index (7, 0, 5) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-2-8-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 6 / 128 (4.7%)\nGreatest absolute difference: 0.0009765625 at index (1, 5, 4) (up to 0.0001 allowed)\nGreatest relative difference: 0.008697509765625 at index (1, 6, 5) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-2-16-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 6 / 256 (2.3%)\nGreatest absolute difference: 0.00048828125 at index (0, 1, 4) (up to 0.0001 allowed)\nGreatest relative difference: 0.058837890625 at index (3, 0, 7) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-2-16-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 256 (2.0%)\nGreatest absolute difference: 0.000732421875 at index (0, 7, 10) (up to 0.0001 allowed)\nGreatest relative difference: 0.006328582763671875 at index (0, 4, 4) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-2-16-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 8 / 256 (3.1%)\nGreatest absolute difference: 0.0009765625 at index (5, 1, 8) (up to 0.0001 allowed)\nGreatest relative difference: 0.0181884765625 at index (5, 1, 12) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-2-16-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 14 / 256 (5.5%)\nGreatest absolute difference: 0.0009765625 at index (0, 2, 12) (up to 0.0001 allowed)\nGreatest relative difference: 0.066650390625 at index (0, 2, 14) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-4-8-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 18 / 256 (7.0%)\nGreatest absolute difference: 0.0009765625 at index (2, 0, 1) (up to 0.0001 allowed)\nGreatest relative difference: 0.020751953125 at index (5, 1, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-4-8-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 18 / 256 (7.0%)\nGreatest absolute difference: 0.001953125 at index (0, 5, 4) (up to 0.0001 allowed)\nGreatest relative difference: 0.0196075439453125 at index (3, 5, 6) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-4-8-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 11 / 256 (4.3%)\nGreatest absolute difference: 0.0009765625 at index (0, 2, 0) (up to 0.0001 allowed)\nGreatest relative difference: 0.0217437744140625 at index (3, 1, 4) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-4-8-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 16 / 256 (6.2%)\nGreatest absolute difference: 0.001953125 at index (1, 7, 2) (up to 0.0001 allowed)\nGreatest relative difference: 0.013702392578125 at index (0, 1, 4) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-4-16-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 18 / 512 (3.5%)\nGreatest absolute difference: 0.0009765625 at index (7, 0, 15) (up to 0.0001 allowed)\nGreatest relative difference: 0.08331298828125 at index (6, 3, 6) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-4-16-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 26 / 512 (5.1%)\nGreatest absolute difference: 0.0009765625 at index (0, 7, 9) (up to 0.0001 allowed)\nGreatest relative difference: inf at index (3, 6, 15) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-4-16-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 18 / 512 (3.5%)\nGreatest absolute difference: 0.0009765625 at index (3, 3, 14) (up to 0.0001 allowed)\nGreatest relative difference: 0.0227203369140625 at index (2, 3, 12) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype0-8-4-16-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 16 / 512 (3.1%)\nGreatest absolute difference: 0.001953125 at index (1, 0, 15) (up to 0.0001 allowed)\nGreatest relative difference: 0.03570556640625 at index (0, 6, 2) (up to 0.001 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-2-8-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-2-8-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-2-8-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-2-8-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-2-16-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-2-16-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-2-16-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-2-16-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-4-8-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-4-8-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-4-8-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-4-8-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-4-16-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-4-16-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-4-16-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-4-4-16-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-2-8-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-2-8-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-2-8-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-2-8-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-2-16-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-2-16-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-2-16-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-2-16-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-4-8-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-4-8-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-4-8-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-4-8-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-4-16-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-4-16-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-4-16-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype1-8-4-16-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-2-8-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 64 (4.7%)\nGreatest absolute difference: 0.00390625 at index (3, 1, 0) (up to 0.0001 allowed)\nGreatest relative difference: 0.050048828125 at index (3, 0, 6) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-2-8-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "passed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": null
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-2-8-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 64 (4.7%)\nGreatest absolute difference: 0.00390625 at index (1, 0, 1) (up to 0.0001 allowed)\nGreatest relative difference: 0.047607421875 at index (0, 1, 6) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-2-8-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 1 / 64 (1.6%)\nGreatest absolute difference: 0.00390625 at index (1, 2, 5) (up to 0.0001 allowed)\nGreatest relative difference: 0.06884765625 at index (1, 2, 5) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-2-16-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 7 / 128 (5.5%)\nGreatest absolute difference: 0.005859375 at index (3, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 0.0712890625 at index (0, 1, 7) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-2-16-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 12 / 128 (9.4%)\nGreatest absolute difference: 0.0078125 at index (1, 1, 0) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (0, 3, 1) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-2-16-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 128 (3.1%)\nGreatest absolute difference: 0.00390625 at index (2, 0, 1) (up to 0.0001 allowed)\nGreatest relative difference: 0.22265625 at index (2, 0, 1) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-2-16-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 6 / 128 (4.7%)\nGreatest absolute difference: 0.0048828125 at index (1, 3, 9) (up to 0.0001 allowed)\nGreatest relative difference: 0.0625 at index (0, 0, 5) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-4-8-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 128 (3.1%)\nGreatest absolute difference: 0.0068359375 at index (3, 2, 0) (up to 0.0001 allowed)\nGreatest relative difference: 0.333984375 at index (3, 3, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-4-8-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 128 (3.1%)\nGreatest absolute difference: 0.0029296875 at index (2, 2, 4) (up to 0.0001 allowed)\nGreatest relative difference: 0.283203125 at index (3, 2, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-4-8-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 8 / 128 (6.2%)\nGreatest absolute difference: 0.0078125 at index (1, 0, 5) (up to 0.0001 allowed)\nGreatest relative difference: 0.5 at index (1, 0, 2) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-4-8-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 128 (3.9%)\nGreatest absolute difference: 0.00390625 at index (0, 3, 2) (up to 0.0001 allowed)\nGreatest relative difference: 0.035400390625 at index (3, 3, 5) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-4-16-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 13 / 256 (5.1%)\nGreatest absolute difference: 0.0078125 at index (1, 0, 5) (up to 0.0001 allowed)\nGreatest relative difference: 0.125 at index (2, 0, 6) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-4-16-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 11 / 256 (4.3%)\nGreatest absolute difference: 0.00390625 at index (0, 3, 7) (up to 0.0001 allowed)\nGreatest relative difference: 2.0 at index (1, 3, 15) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-4-16-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 18 / 256 (7.0%)\nGreatest absolute difference: 0.005859375 at index (3, 0, 11) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (3, 0, 3) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-4-4-16-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 9 / 256 (3.5%)\nGreatest absolute difference: 0.005859375 at index (2, 3, 14) (up to 0.0001 allowed)\nGreatest relative difference: inf at index (3, 2, 6) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-2-8-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 9 / 128 (7.0%)\nGreatest absolute difference: 0.005859375 at index (3, 0, 1) (up to 0.0001 allowed)\nGreatest relative difference: 0.111328125 at index (4, 1, 6) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-2-8-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 8 / 128 (6.2%)\nGreatest absolute difference: 0.00390625 at index (0, 4, 7) (up to 0.0001 allowed)\nGreatest relative difference: 0.046630859375 at index (1, 6, 3) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-2-8-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 5 / 128 (3.9%)\nGreatest absolute difference: 0.00390625 at index (2, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 0.10009765625 at index (1, 1, 4) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-2-8-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 2 / 128 (1.6%)\nGreatest absolute difference: 0.0078125 at index (0, 1, 4) (up to 0.0001 allowed)\nGreatest relative difference: 0.08349609375 at index (1, 2, 6) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-2-16-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 15 / 256 (5.9%)\nGreatest absolute difference: 0.0078125 at index (7, 0, 8) (up to 0.0001 allowed)\nGreatest relative difference: 0.333984375 at index (1, 1, 12) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-2-16-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 13 / 256 (5.1%)\nGreatest absolute difference: 0.00390625 at index (0, 3, 13) (up to 0.0001 allowed)\nGreatest relative difference: 0.2001953125 at index (0, 6, 10) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-2-16-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 9 / 256 (3.5%)\nGreatest absolute difference: 0.005859375 at index (3, 0, 9) (up to 0.0001 allowed)\nGreatest relative difference: 0.28515625 at index (4, 1, 9) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-2-16-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 8 / 256 (3.1%)\nGreatest absolute difference: 0.0078125 at index (1, 5, 10) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (1, 3, 10) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-4-8-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 9 / 256 (3.5%)\nGreatest absolute difference: 0.0078125 at index (0, 1, 7) (up to 0.0001 allowed)\nGreatest relative difference: 0.1669921875 at index (0, 1, 7) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-4-8-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 14 / 256 (5.5%)\nGreatest absolute difference: 0.0078125 at index (0, 7, 6) (up to 0.0001 allowed)\nGreatest relative difference: 0.5 at index (2, 2, 7) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-4-8-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 10 / 256 (3.9%)\nGreatest absolute difference: 0.0078125 at index (4, 0, 4) (up to 0.0001 allowed)\nGreatest relative difference: 0.333984375 at index (1, 0, 2) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-4-8-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 9 / 256 (3.5%)\nGreatest absolute difference: 0.01171875 at index (0, 5, 7) (up to 0.0001 allowed)\nGreatest relative difference: 0.142578125 at index (1, 2, 4) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-4-16-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 23 / 512 (4.5%)\nGreatest absolute difference: 0.005859375 at index (1, 3, 12) (up to 0.0001 allowed)\nGreatest relative difference: inf at index (0, 0, 7) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-4-16-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 26 / 512 (5.1%)\nGreatest absolute difference: 0.0078125 at index (2, 1, 11) (up to 0.0001 allowed)\nGreatest relative difference: inf at index (2, 4, 11) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-4-16-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 19 / 512 (3.7%)\nGreatest absolute difference: 0.01171875 at index (6, 2, 14) (up to 0.0001 allowed)\nGreatest relative difference: 0.22265625 at index (7, 0, 3) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu[dtype2-8-4-16-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 18 / 512 (3.5%)\nGreatest absolute difference: 0.0078125 at index (0, 0, 11) (up to 0.0001 allowed)\nGreatest relative difference: 0.400390625 at index (1, 5, 12) (up to 0.016 allowed)"
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-2-8-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-2-8-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-2-8-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-2-8-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-2-16-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-2-16-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-2-16-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-2-16-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-4-8-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-4-8-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-4-8-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-4-8-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-4-16-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-4-16-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-4-16-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-4-4-16-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-2-8-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-2-8-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-2-8-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-2-8-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-2-16-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-2-16-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-2-16-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-2-16-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-4-8-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-4-8-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-4-8-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-4-8-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-4-16-8-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-4-16-8-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-4-16-16-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype0-8-4-16-16-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-2-8-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-2-8-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-2-8-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-2-8-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-2-16-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-2-16-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-2-16-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-2-16-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-4-8-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-4-8-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-4-8-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-4-8-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-4-16-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-4-16-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-4-16-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-4-4-16-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-2-8-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-2-8-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-2-8-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-2-8-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-2-16-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-2-16-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-2-16-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-2-16-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-4-8-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-4-8-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-4-8-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-4-8-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-4-16-8-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-4-16-8-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-4-16-16-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype1-8-4-16-16-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-2-8-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-2-8-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-2-8-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-2-8-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-2-16-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-2-16-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-2-16-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-2-16-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-4-8-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-4-8-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-4-8-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-4-8-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-4-16-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-4-16-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-4-16-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-4-4-16-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 4,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-2-8-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-2-8-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-2-8-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-2-8-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-2-16-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-2-16-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-2-16-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-2-16-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 2,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-4-8-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-4-8-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-4-8-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-4-8-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 8,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-4-16-8-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-4-16-8-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 8,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-4-16-16-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": false
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_wrapper[dtype2-8-4-16-16-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "seq_len": 8,
+      "batch_size": 4,
+      "hidden_size": 16,
+      "input_size": 16,
+      "batch_first": true
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_direct_backward": {
+    "params": {},
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_large_hidden[128]": {
+    "params": {
+      "hidden_size": 128
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_large_hidden[256]": {
+    "params": {
+      "hidden_size": 256
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_rnn_relu.py::test_rnn_relu_large_hidden[512]": {
+    "params": {
+      "hidden_size": 512
+    },
+    "result": "failed",
+    "opname": [
+      "rnn_relu",
+      "rnn_relu"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  }
+}

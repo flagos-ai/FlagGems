@@ -1,0 +1,16 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 949 deselected / 2 selected
+
+test_scatter_reduce.py ..                                                [100%]
+
+=============================== warnings summary ===============================
+benchmark/test_scatter_reduce.py::test_scatter_reduce_add_inplace
+  /workspace/FlagGems/benchmark/base.py:288: UserWarning: The reduce argument of torch.scatter with Tensor src is deprecated and will be removed in a future PyTorch release. Use torch.scatter_reduce instead for more reduction options. (Triggered internally at /pytorch/aten/src/ATen/native/TensorAdvancedIndexing.cpp:232.)
+    fn = lambda: op(*args, **kwargs)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========== 2 passed, 949 deselected, 1 warning in 372.18s (0:06:12) ===========

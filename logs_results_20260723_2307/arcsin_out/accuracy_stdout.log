@@ -1,0 +1,469 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:17:21 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:17:23 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:17:23 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:17:23 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:17:23 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:17:23 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:17:23 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:17:23 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:17:23 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:17:23 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:17:24 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49933 deselected / 18 selected
+
+test_arcsin.py::test_arcsin_out[dtype0-shape0] PASSED
+test_arcsin.py::test_arcsin_out[dtype0-shape1] PASSED
+test_arcsin.py::test_arcsin_out[dtype0-shape2] FAILED
+test_arcsin.py::test_arcsin_out[dtype0-shape3] FAILED
+test_arcsin.py::test_arcsin_out[dtype0-shape4] FAILED
+test_arcsin.py::test_arcsin_out[dtype0-shape5] FAILED
+test_arcsin.py::test_arcsin_out[dtype1-shape0] PASSED
+test_arcsin.py::test_arcsin_out[dtype1-shape1] PASSED
+test_arcsin.py::test_arcsin_out[dtype1-shape2] FAILED
+test_arcsin.py::test_arcsin_out[dtype1-shape3] FAILED
+test_arcsin.py::test_arcsin_out[dtype1-shape4] FAILED
+test_arcsin.py::test_arcsin_out[dtype1-shape5] FAILED
+test_arcsin.py::test_arcsin_out[dtype2-shape0] PASSED
+test_arcsin.py::test_arcsin_out[dtype2-shape1] PASSED
+test_arcsin.py::test_arcsin_out[dtype2-shape2] PASSED
+test_arcsin.py::test_arcsin_out[dtype2-shape3] PASSED
+test_arcsin.py::test_arcsin_out[dtype2-shape4] PASSED
+test_arcsin.py::test_arcsin_out[dtype2-shape5] PASSED
+
+=================================== FAILURES ===================================
+________________________ test_arcsin_out[dtype0-shape2] ________________________
+
+shape = (1024, 1024), dtype = torch.float16
+
+    @pytest.mark.arcsin_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_arcsin_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.empty_like(ref_inp)
+        torch.arcsin(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+            res_out = torch.empty_like(inp)
+            torch.arcsin(inp, out=res_out)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype, True)
+
+test_arcsin.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[ 0.1709,  0.6318,  0.7021,  ...,     nan,     nan,     nan],
+        [    nan,     nan,  0.2546,  ...,  0.176..., -0.1865,  0.7935],
+        [-0.0100,  0.4846, -0.7319,  ...,  1.0049, -0.0719, -0.0626]],
+       dtype=torch.float16)
+ref = tensor([[ 0.1709,  0.6318,  0.6997,  ...,     nan,     nan,     nan],
+        [    nan,     nan,  0.2546,  ...,  0.176..., -0.1865,  0.7930],
+        [-0.0100,  0.4846, -0.7300,  ...,  1.0049, -0.0719, -0.0626]],
+       dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 63220 / 1048576 (6.0%)
+E       Greatest absolute difference: 0.00341796875 at index (0, 778) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.005100250244140625 at index (0, 778) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_arcsin_out[dtype0-shape3] ________________________
+
+shape = (20, 320, 15), dtype = torch.float16
+
+    @pytest.mark.arcsin_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_arcsin_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.empty_like(ref_inp)
+        torch.arcsin(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+            res_out = torch.empty_like(inp)
+            torch.arcsin(inp, out=res_out)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype, True)
+
+test_arcsin.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[    nan,  0.1863,  0.5635,  ..., -0.2191,  0.4314,  0.8369],
+         [-1.1084,     nan,     nan,  ...,     ...    nan,     nan],
+         [-0.6187, -0.4436, -0.1155,  ...,  0.2408,  0.2003, -0.8672]]],
+       dtype=torch.float16)
+ref = tensor([[[    nan,  0.1863,  0.5635,  ..., -0.2191,  0.4314,  0.8364],
+         [-1.1084,     nan,     nan,  ...,     ...    nan,     nan],
+         [-0.6187, -0.4436, -0.1155,  ...,  0.2408,  0.2003, -0.8667]]],
+       dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 5724 / 96000 (6.0%)
+E       Greatest absolute difference: 0.00341796875 at index (0, 33, 2) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.005100250244140625 at index (0, 33, 2) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_arcsin_out[dtype0-shape4] ________________________
+
+shape = (16, 128, 64, 60), dtype = torch.float16
+
+    @pytest.mark.arcsin_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_arcsin_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.empty_like(ref_inp)
+        torch.arcsin(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+            res_out = torch.empty_like(inp)
+            torch.arcsin(inp, out=res_out)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype, True)
+
+test_arcsin.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[-7.3291e-01,  9.2480e-01, -4.7021e-01,  ...,         nan,
+            3.9526e-01, -3.4521e-01],
+          [... 4.2505e-01,  8.2520e-01, -8.3740e-01,  ...,  1.1688e-01,
+                   nan,  1.8689e-01]]]], dtype=torch.float16)
+ref = tensor([[[[-7.3145e-01,  9.2432e-01, -4.7021e-01,  ...,         nan,
+            3.9526e-01, -3.4521e-01],
+          [... 4.2505e-01,  8.2471e-01, -8.3691e-01,  ...,  1.1688e-01,
+                   nan,  1.8689e-01]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 475677 / 7864320 (6.0%)
+E       Greatest absolute difference: 0.00341796875 at index (0, 0, 4, 21) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.005100250244140625 at index (0, 0, 4, 21) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_arcsin_out[dtype0-shape5] ________________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float16
+
+    @pytest.mark.arcsin_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_arcsin_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.empty_like(ref_inp)
+        torch.arcsin(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+            res_out = torch.empty_like(inp)
+            torch.arcsin(inp, out=res_out)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype, True)
+
+test_arcsin.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-9.2773e-01,  2.3352e-01,         nan,  ...,         nan,
+            -3.9966e-01,         nan],
+         ...      nan,  5.7812e-01,  8.7549e-01,  ...,  2.4219e-01,
+                    nan, -9.9414e-01]]]]], dtype=torch.float16)
+ref = tensor([[[[[-9.2773e-01,  2.3352e-01,         nan,  ...,         nan,
+            -3.9966e-01,         nan],
+         ...      nan,  5.7812e-01,  8.7500e-01,  ...,  2.4219e-01,
+                    nan, -9.9414e-01]]]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 358361 / 5924352 (6.0%)
+E       Greatest absolute difference: 0.00341796875 at index (0, 0, 0, 3, 19) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.005100250244140625 at index (0, 0, 0, 3, 19) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_arcsin_out[dtype1-shape2] ________________________
+
+shape = (1024, 1024), dtype = torch.float32
+
+    @pytest.mark.arcsin_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_arcsin_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.empty_like(ref_inp)
+        torch.arcsin(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+            res_out = torch.empty_like(inp)
+            torch.arcsin(inp, out=res_out)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype, True)
+
+test_arcsin.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[ 0.9666,     nan, -0.2039,  ...,     nan,  0.5316,  0.4824],
+        [-0.4268,     nan,  0.5378,  ...,  0.613... nan,  0.3832,  ..., -0.0697,     nan,  0.4413],
+        [ 0.5579, -0.0116, -0.1440,  ...,  0.8308,     nan,  0.3893]])
+ref = tensor([[ 0.9665,     nan, -0.2039,  ...,     nan,  0.5316,  0.4824],
+        [-0.4268,     nan,  0.5378,  ...,  0.613... nan,  0.3832,  ..., -0.0697,     nan,  0.4413],
+        [ 0.5580, -0.0116, -0.1440,  ...,  0.8304,     nan,  0.3893]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 137631 / 1048576 (13.1%)
+E       Greatest absolute difference: 0.003056645393371582 at index (886, 531) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.004570714198052883 at index (886, 531) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_arcsin_out[dtype1-shape3] ________________________
+
+shape = (20, 320, 15), dtype = torch.float32
+
+    @pytest.mark.arcsin_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_arcsin_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.empty_like(ref_inp)
+        torch.arcsin(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+            res_out = torch.empty_like(inp)
+            torch.arcsin(inp, out=res_out)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype, True)
+
+test_arcsin.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[ 7.9399e-01, -7.3071e-01, -1.1846e+00,  ...,  2.0088e-01,
+          -4.3121e-01, -7.0204e-03],
+         [ 3....9.6513e-01],
+         [ 9.5547e-01,         nan,         nan,  ...,  6.1636e-01,
+                  nan,  4.5430e-01]]])
+ref = tensor([[[ 7.9324e-01, -7.2912e-01, -1.1846e+00,  ...,  2.0088e-01,
+          -4.3122e-01, -7.0204e-03],
+         [ 3....9.6507e-01],
+         [ 9.5540e-01,         nan,         nan,  ...,  6.1643e-01,
+                  nan,  4.5430e-01]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 12700 / 96000 (13.2%)
+E       Greatest absolute difference: 0.003056764602661133 at index (3, 248, 11) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.0045709083788096905 at index (3, 248, 11) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_arcsin_out[dtype1-shape4] ________________________
+
+shape = (16, 128, 64, 60), dtype = torch.float32
+
+    @pytest.mark.arcsin_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_arcsin_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.empty_like(ref_inp)
+        torch.arcsin(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+            res_out = torch.empty_like(inp)
+            torch.arcsin(inp, out=res_out)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype, True)
+
+test_arcsin.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[-2.2366e-02, -3.0449e-02,  2.8418e-01,  ...,         nan,
+            2.9995e-01,  9.9205e-01],
+          [...    nan],
+          [-4.4153e-01,         nan,         nan,  ...,         nan,
+           -4.2791e-01, -3.0847e-01]]]])
+ref = tensor([[[[-2.2366e-02, -3.0449e-02,  2.8418e-01,  ...,         nan,
+            2.9995e-01,  9.9201e-01],
+          [...    nan],
+          [-4.4153e-01,         nan,         nan,  ...,         nan,
+           -4.2791e-01, -3.0847e-01]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1031640 / 7864320 (13.1%)
+E       Greatest absolute difference: 0.003056764602661133 at index (5, 23, 32, 39) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.004570912104099989 at index (5, 23, 32, 39) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________________ test_arcsin_out[dtype1-shape5] ________________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float32
+
+    @pytest.mark.arcsin_out
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    def test_arcsin_out(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.empty_like(ref_inp)
+        torch.arcsin(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+            res_out = torch.empty_like(inp)
+            torch.arcsin(inp, out=res_out)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype, True)
+
+test_arcsin.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-1.3614e+00, -2.5433e-01,         nan,  ..., -1.1881e+00,
+                    nan,         nan],
+         ...e-01],
+           [ 4.3789e-01,  1.3677e+00,         nan,  ...,  7.7018e-01,
+                    nan,         nan]]]]])
+ref = tensor([[[[[-1.3614e+00, -2.5433e-01,         nan,  ..., -1.1881e+00,
+                    nan,         nan],
+         ...e-01],
+           [ 4.3789e-01,  1.3677e+00,         nan,  ...,  7.6918e-01,
+                    nan,         nan]]]]])
+dtype = torch.float32, equal_nan = True, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 776421 / 5924352 (13.1%)
+E       Greatest absolute difference: 0.003056824207305908 at index (2, 0, 19, 14, 9) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.00457100011408329 at index (2, 0, 19, 14, 9) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+=========================== short test summary info ============================
+FAILED test_arcsin.py::test_arcsin_out[dtype0-shape2] - AssertionError: Tenso...
+FAILED test_arcsin.py::test_arcsin_out[dtype0-shape3] - AssertionError: Tenso...
+FAILED test_arcsin.py::test_arcsin_out[dtype0-shape4] - AssertionError: Tenso...
+FAILED test_arcsin.py::test_arcsin_out[dtype0-shape5] - AssertionError: Tenso...
+FAILED test_arcsin.py::test_arcsin_out[dtype1-shape2] - AssertionError: Tenso...
+FAILED test_arcsin.py::test_arcsin_out[dtype1-shape3] - AssertionError: Tenso...
+FAILED test_arcsin.py::test_arcsin_out[dtype1-shape4] - AssertionError: Tenso...
+FAILED test_arcsin.py::test_arcsin_out[dtype1-shape5] - AssertionError: Tenso...
+=============== 8 failed, 10 passed, 49933 deselected in 13.00s ================

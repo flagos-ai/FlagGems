@@ -1,0 +1,7 @@
+{
+  "isneginf_out": {
+    "result": "skipped",
+    "reason": "Skipped: No support to non-boolean outputs: issue #2687",
+    "test_case": "benchmark/test_isneginf.py::test_isneginf_out"
+  }
+}

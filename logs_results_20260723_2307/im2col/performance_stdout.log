@@ -1,0 +1,231 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_im2col.py F                                                         [100%]
+
+=================================== FAILURES ===================================
+_________________________________ test_im2col __________________________________
+
+self = <benchmark.test_im2col.Im2colBenchmark object at 0x7fd23a32c7c0>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+>                       metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+
+base.py:440: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+base.py:318: in get_latency
+    latency = do_bench(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/testing.py:103: in do_bench
+    fn()
+base.py:288: in <lambda>
+    fn = lambda: op(*args, **kwargs)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten.im2col')>
+args = (tensor([[[[-7.5781e-01,  1.9043e-01, -3.0625e+00, -1.0352e-01,  9.0625e-01,
+            2.7148e-01, -3.9648e-01,  1.2...0e-01, -5.5469e-01,
+           -2.5156e+00]]]], device='cuda:0', dtype=torch.bfloat16), (3, 3), (1, 1), (1, 1), (1, 1))
+kwargs = {}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:8235)
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.im2col
+    def test_im2col():
+        bench = Im2colBenchmark(
+            op_name="im2col",
+            torch_op=torch.ops.aten.im2col,
+            dtypes=consts.FLOAT_DTYPES,
+        )
+>       bench.run()
+
+test_im2col.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.test_im2col.Im2colBenchmark object at 0x7fd23a32c7c0>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+    
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+    
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+>                   pytest.fail(str(e))  # raise exception again
+E                   Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:8235)
+
+base.py:480: Failed
+----------------------------- Captured stdout call -----------------------------
+
+Operator: im2col  Performance Test (dtype=torch.float16, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup          Size Detail
+-----------------------------------------------------------------------------------------------
+SUCCESS               0.007664            0.044457               0.172          [torch.Size([1, 3, 16, 16]), [3, 3], [1, 1], [1, 1], [1, 1]]
+SUCCESS               0.007183            0.047786               0.150          [torch.Size([1, 3, 16, 16]), [3, 3], [1, 1], [0, 0], [2, 2]]
+SUCCESS               0.007041            0.063130               0.112          [torch.Size([1, 3, 16, 16]), [5, 4], [2, 2], [2, 1], [1, 2]]
+SUCCESS               0.006980            0.029500               0.237          [torch.Size([1, 3, 16, 16]), [1, 1], [1, 1], [0, 0], [1, 1]]
+SUCCESS               0.008928            0.117848               0.076          [torch.Size([1, 3, 32, 32]), [3, 3], [1, 1], [1, 1], [1, 1]]
+SUCCESS               0.007685            0.047916               0.160          [torch.Size([1, 3, 32, 32]), [3, 3], [1, 1], [0, 0], [2, 2]]
+SUCCESS               0.008720            0.082628               0.106          [torch.Size([1, 3, 32, 32]), [5, 4], [2, 2], [2, 1], [1, 2]]
+SUCCESS               0.007745            0.033868               0.229          [torch.Size([1, 3, 32, 32]), [1, 1], [1, 1], [0, 0], [1, 1]]
+SUCCESS               0.018959            1.442852               0.013          [torch.Size([2, 16, 64, 64]), [3, 3], [1, 1], [1, 1], [1, 1]]
+SUCCESS               0.017167            0.462405               0.037          [torch.Size([2, 16, 64, 64]), [3, 3], [1, 1], [0, 0], [2, 2]]
+SUCCESS               0.023566            1.508332               0.016          [torch.Size([2, 16, 64, 64]), [5, 4], [2, 2], [2, 1], [1, 2]]
+SUCCESS               0.017545            0.283917               0.062          [torch.Size([2, 16, 64, 64]), [1, 1], [1, 1], [0, 0], [1, 1]]
+SUCCESS               0.073446           16.614225               0.004          [torch.Size([4, 32, 128, 128]), [3, 3], [1, 1], [1, 1], [1, 1]]
+SUCCESS               0.066180            4.236756               0.016          [torch.Size([4, 32, 128, 128]), [3, 3], [1, 1], [0, 0], [2, 2]]
+SUCCESS               0.175100           13.521761               0.013          [torch.Size([4, 32, 128, 128]), [5, 4], [2, 2], [2, 1], [1, 2]]
+SUCCESS               0.022758            2.761049               0.008          [torch.Size([4, 32, 128, 128]), [1, 1], [1, 1], [0, 0], [1, 1]]
+
+
+Operator: im2col  Performance Test (dtype=torch.float32, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup          Size Detail
+-----------------------------------------------------------------------------------------------
+SUCCESS               0.007907            0.038864               0.203          [torch.Size([1, 3, 16, 16]), [3, 3], [1, 1], [1, 1], [1, 1]]
+SUCCESS               0.007194            0.029692               0.242          [torch.Size([1, 3, 16, 16]), [3, 3], [1, 1], [0, 0], [2, 2]]
+SUCCESS               0.007748            0.044791               0.173          [torch.Size([1, 3, 16, 16]), [5, 4], [2, 2], [2, 1], [1, 2]]
+SUCCESS               0.008315            0.015449               0.538          [torch.Size([1, 3, 16, 16]), [1, 1], [1, 1], [0, 0], [1, 1]]
+SUCCESS               0.010295            0.091746               0.112          [torch.Size([1, 3, 32, 32]), [3, 3], [1, 1], [1, 1], [1, 1]]
+SUCCESS               0.008087            0.035140               0.230          [torch.Size([1, 3, 32, 32]), [3, 3], [1, 1], [0, 0], [2, 2]]
+SUCCESS               0.009941            0.081212               0.122          [torch.Size([1, 3, 32, 32]), [5, 4], [2, 2], [2, 1], [1, 2]]
+SUCCESS               0.008999            0.021804               0.413          [torch.Size([1, 3, 32, 32]), [1, 1], [1, 1], [0, 0], [1, 1]]
+SUCCESS               0.021273            1.393289               0.015          [torch.Size([2, 16, 64, 64]), [3, 3], [1, 1], [1, 1], [1, 1]]
+SUCCESS               0.020267            0.448176               0.045          [torch.Size([2, 16, 64, 64]), [3, 3], [1, 1], [0, 0], [2, 2]]
+SUCCESS               0.020627            1.315302               0.016          [torch.Size([2, 16, 64, 64]), [5, 4], [2, 2], [2, 1], [1, 2]]
+SUCCESS               0.016177            0.242421               0.067          [torch.Size([2, 16, 64, 64]), [1, 1], [1, 1], [0, 0], [1, 1]]
+SUCCESS               0.155208           15.517787               0.010          [torch.Size([4, 32, 128, 128]), [3, 3], [1, 1], [1, 1], [1, 1]]
+SUCCESS               0.117807            3.598037               0.033          [torch.Size([4, 32, 128, 128]), [3, 3], [1, 1], [0, 0], [2, 2]]
+SUCCESS               0.178691           12.385371               0.014          [torch.Size([4, 32, 128, 128]), [5, 4], [2, 2], [2, 1], [1, 2]]
+SUCCESS               0.028383            2.564216               0.011          [torch.Size([4, 32, 128, 128]), [1, 1], [1, 1], [0, 0], [1, 1]]
+
+[[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/im2col.cpp:71]scalar type of self : kbfloat16 is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/im2col.cpp:71]
+=========================== short test summary info ============================
+FAILED test_im2col.py::test_im2col - Failed: [NOT IMPLEMENTED]: error code= 4...
+================= 1 failed, 950 deselected in 71.24s (0:01:11) =================

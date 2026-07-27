@@ -1,0 +1,350 @@
+{
+  "tests/test_gcd.py::test_gcd[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": []
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": []
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": []
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        1
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd_special_values[dtype0]": {
+    "params": {
+      "dtype": "torch.int16"
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd_special_values[dtype1]": {
+    "params": {
+      "dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd_special_values[dtype2]": {
+    "params": {
+      "dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_gcd.py::test_gcd_empty[dtype0]": {
+    "params": {
+      "dtype": "torch.int16"
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "RuntimeError: The expanded size of the tensor (1) must match the existing size (0) at non-singleton dimension 1"
+  },
+  "tests/test_gcd.py::test_gcd_empty[dtype1]": {
+    "params": {
+      "dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "RuntimeError: The expanded size of the tensor (1) must match the existing size (0) at non-singleton dimension 1"
+  },
+  "tests/test_gcd.py::test_gcd_empty[dtype2]": {
+    "params": {
+      "dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "RuntimeError: The expanded size of the tensor (1) must match the existing size (0) at non-singleton dimension 1"
+  },
+  "tests/test_gcd.py::test_gcd_noncontiguous_broadcast[dtype0]": {
+    "params": {
+      "dtype": "torch.int16"
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_gcd.py::test_gcd_noncontiguous_broadcast[dtype1]": {
+    "params": {
+      "dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_gcd.py::test_gcd_noncontiguous_broadcast[dtype2]": {
+    "params": {
+      "dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "gcd"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

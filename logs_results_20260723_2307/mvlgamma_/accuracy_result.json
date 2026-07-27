@@ -1,0 +1,866 @@
+{
+  "tests/test_mvlgamma_.py::test_mvlgamma_[1-shape0-dtype0]": {
+    "params": {
+      "p": 1,
+      "shape": [],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpev_2i3x8/kernel.o', '/tmp/tmpev_2i3x8/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[1-shape1-dtype1]": {
+    "params": {
+      "p": 1,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp3nun2h9j/kernel.o', '/tmp/tmp3nun2h9j/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[1-shape2-dtype2]": {
+    "params": {
+      "p": 1,
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmphcbjllwu/kernel.o', '/tmp/tmphcbjllwu/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[1-shape3-dtype3]": {
+    "params": {
+      "p": 1,
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpof7zhxu0/kernel.o', '/tmp/tmpof7zhxu0/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[1-shape4-dtype4]": {
+    "params": {
+      "p": 1,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpd0sfn26v/kernel.o', '/tmp/tmpd0sfn26v/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[1-shape5-dtype5]": {
+    "params": {
+      "p": 1,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp_7lsvec2/kernel.o', '/tmp/tmp_7lsvec2/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[1-shape6-dtype6]": {
+    "params": {
+      "p": 1,
+      "shape": [],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpeso2wl0w/kernel.o', '/tmp/tmpeso2wl0w/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[1-shape7-dtype7]": {
+    "params": {
+      "p": 1,
+      "shape": [],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpeyw9dezm/kernel.o', '/tmp/tmpeyw9dezm/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[1-shape8-dtype8]": {
+    "params": {
+      "p": 1,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpeahkg5ye/kernel.o', '/tmp/tmpeahkg5ye/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[1-shape9-dtype9]": {
+    "params": {
+      "p": 1,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpe3ch8rtk/kernel.o', '/tmp/tmpe3ch8rtk/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[2-shape0-dtype0]": {
+    "params": {
+      "p": 2,
+      "shape": [],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpu8lmbxq7/kernel.o', '/tmp/tmpu8lmbxq7/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[2-shape1-dtype1]": {
+    "params": {
+      "p": 2,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmps6d13wbo/kernel.o', '/tmp/tmps6d13wbo/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[2-shape2-dtype2]": {
+    "params": {
+      "p": 2,
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpf4qxzsfp/kernel.o', '/tmp/tmpf4qxzsfp/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[2-shape3-dtype3]": {
+    "params": {
+      "p": 2,
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp_6v3pkw4/kernel.o', '/tmp/tmp_6v3pkw4/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[2-shape4-dtype4]": {
+    "params": {
+      "p": 2,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp7_yjurzv/kernel.o', '/tmp/tmp7_yjurzv/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[2-shape5-dtype5]": {
+    "params": {
+      "p": 2,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp96s8po16/kernel.o', '/tmp/tmp96s8po16/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[2-shape6-dtype6]": {
+    "params": {
+      "p": 2,
+      "shape": [],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpq06vozym/kernel.o', '/tmp/tmpq06vozym/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[2-shape7-dtype7]": {
+    "params": {
+      "p": 2,
+      "shape": [],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpr64ydjgy/kernel.o', '/tmp/tmpr64ydjgy/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[2-shape8-dtype8]": {
+    "params": {
+      "p": 2,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpll11734s/kernel.o', '/tmp/tmpll11734s/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[2-shape9-dtype9]": {
+    "params": {
+      "p": 2,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpidu0xthy/kernel.o', '/tmp/tmpidu0xthy/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[3-shape0-dtype0]": {
+    "params": {
+      "p": 3,
+      "shape": [],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpz123fkon/kernel.o', '/tmp/tmpz123fkon/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[3-shape1-dtype1]": {
+    "params": {
+      "p": 3,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmplxrcrn_0/kernel.o', '/tmp/tmplxrcrn_0/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[3-shape2-dtype2]": {
+    "params": {
+      "p": 3,
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpah6q5at9/kernel.o', '/tmp/tmpah6q5at9/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[3-shape3-dtype3]": {
+    "params": {
+      "p": 3,
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmppot742w5/kernel.o', '/tmp/tmppot742w5/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[3-shape4-dtype4]": {
+    "params": {
+      "p": 3,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpdodv9lp0/kernel.o', '/tmp/tmpdodv9lp0/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[3-shape5-dtype5]": {
+    "params": {
+      "p": 3,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp3mvaig48/kernel.o', '/tmp/tmp3mvaig48/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[3-shape6-dtype6]": {
+    "params": {
+      "p": 3,
+      "shape": [],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpyb688va3/kernel.o', '/tmp/tmpyb688va3/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[3-shape7-dtype7]": {
+    "params": {
+      "p": 3,
+      "shape": [],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpjf11gjly/kernel.o', '/tmp/tmpjf11gjly/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[3-shape8-dtype8]": {
+    "params": {
+      "p": 3,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmplwj1rj1z/kernel.o', '/tmp/tmplwj1rj1z/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[3-shape9-dtype9]": {
+    "params": {
+      "p": 3,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmphowoocsw/kernel.o', '/tmp/tmphowoocsw/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[5-shape0-dtype0]": {
+    "params": {
+      "p": 5,
+      "shape": [],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp9qhn4sxo/kernel.o', '/tmp/tmp9qhn4sxo/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[5-shape1-dtype1]": {
+    "params": {
+      "p": 5,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmputxu5csj/kernel.o', '/tmp/tmputxu5csj/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[5-shape2-dtype2]": {
+    "params": {
+      "p": 5,
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp0tt107jd/kernel.o', '/tmp/tmp0tt107jd/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[5-shape3-dtype3]": {
+    "params": {
+      "p": 5,
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpcy3rs0ir/kernel.o', '/tmp/tmpcy3rs0ir/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[5-shape4-dtype4]": {
+    "params": {
+      "p": 5,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmph_1mp72f/kernel.o', '/tmp/tmph_1mp72f/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[5-shape5-dtype5]": {
+    "params": {
+      "p": 5,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpi90qv5yp/kernel.o', '/tmp/tmpi90qv5yp/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[5-shape6-dtype6]": {
+    "params": {
+      "p": 5,
+      "shape": [],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp1pb27l3p/kernel.o', '/tmp/tmp1pb27l3p/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[5-shape7-dtype7]": {
+    "params": {
+      "p": 5,
+      "shape": [],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp7e1xxcml/kernel.o', '/tmp/tmp7e1xxcml/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[5-shape8-dtype8]": {
+    "params": {
+      "p": 5,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpgxw3khxh/kernel.o', '/tmp/tmpgxw3khxh/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[5-shape9-dtype9]": {
+    "params": {
+      "p": 5,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp3g8d4vr_/kernel.o', '/tmp/tmp3g8d4vr_/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[8-shape0-dtype0]": {
+    "params": {
+      "p": 8,
+      "shape": [],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpqubx65xw/kernel.o', '/tmp/tmpqubx65xw/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[8-shape1-dtype1]": {
+    "params": {
+      "p": 8,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpefnpjqta/kernel.o', '/tmp/tmpefnpjqta/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[8-shape2-dtype2]": {
+    "params": {
+      "p": 8,
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpn3050gid/kernel.o', '/tmp/tmpn3050gid/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[8-shape3-dtype3]": {
+    "params": {
+      "p": 8,
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmps8xkmt0b/kernel.o', '/tmp/tmps8xkmt0b/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[8-shape4-dtype4]": {
+    "params": {
+      "p": 8,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpvf8d563l/kernel.o', '/tmp/tmpvf8d563l/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[8-shape5-dtype5]": {
+    "params": {
+      "p": 8,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpe9f0ypu0/kernel.o', '/tmp/tmpe9f0ypu0/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[8-shape6-dtype6]": {
+    "params": {
+      "p": 8,
+      "shape": [],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpqle5xlm_/kernel.o', '/tmp/tmpqle5xlm_/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[8-shape7-dtype7]": {
+    "params": {
+      "p": 8,
+      "shape": [],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp7ltl5vw3/kernel.o', '/tmp/tmp7ltl5vw3/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[8-shape8-dtype8]": {
+    "params": {
+      "p": 8,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp8n2kkox_/kernel.o', '/tmp/tmp8n2kkox_/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[8-shape9-dtype9]": {
+    "params": {
+      "p": 8,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp3tzqs5ro/kernel.o', '/tmp/tmp3tzqs5ro/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[12-shape0-dtype0]": {
+    "params": {
+      "p": 12,
+      "shape": [],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp3455d4it/kernel.o', '/tmp/tmp3455d4it/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[12-shape1-dtype1]": {
+    "params": {
+      "p": 12,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp83ehrt9i/kernel.o', '/tmp/tmp83ehrt9i/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[12-shape2-dtype2]": {
+    "params": {
+      "p": 12,
+      "shape": [
+        1024,
+        1024
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpjs8iyr0d/kernel.o', '/tmp/tmpjs8iyr0d/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[12-shape3-dtype3]": {
+    "params": {
+      "p": 12,
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpy21n9pw1/kernel.o', '/tmp/tmpy21n9pw1/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[12-shape4-dtype4]": {
+    "params": {
+      "p": 12,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpk06lh3jl/kernel.o', '/tmp/tmpk06lh3jl/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[12-shape5-dtype5]": {
+    "params": {
+      "p": 12,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp7ub1dm4e/kernel.o', '/tmp/tmp7ub1dm4e/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[12-shape6-dtype6]": {
+    "params": {
+      "p": 12,
+      "shape": [],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpr3m1ey62/kernel.o', '/tmp/tmpr3m1ey62/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[12-shape7-dtype7]": {
+    "params": {
+      "p": 12,
+      "shape": [],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp5bq1c056/kernel.o', '/tmp/tmp5bq1c056/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[12-shape8-dtype8]": {
+    "params": {
+      "p": 12,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpsfkm33lw/kernel.o', '/tmp/tmpsfkm33lw/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  },
+  "tests/test_mvlgamma_.py::test_mvlgamma_[12-shape9-dtype9]": {
+    "params": {
+      "p": 12,
+      "shape": [
+        1
+      ],
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "mvlgamma_"
+    ],
+    "reason": "subprocess.CalledProcessError: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpku7fh5va/kernel.o', '/tmp/tmpku7fh5va/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  }
+}

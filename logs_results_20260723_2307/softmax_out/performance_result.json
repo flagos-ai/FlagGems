@@ -1,0 +1,7 @@
+{
+  "softmax_out": {
+    "result": "failed",
+    "test_case": "benchmark/test_softmax.py::test_softmax_out",
+    "reason": "Failed: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  }
+}

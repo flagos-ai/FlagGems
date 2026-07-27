@@ -1,0 +1,117 @@
+{
+  "timestamp": "2026-07-24 20:17:58",
+  "total_duration": "0:00:39",
+  "env": {
+    "architecture": "x86_64",
+    "os_name": "ubuntu",
+    "os_release": "22.04",
+    "python": "3.10.20",
+    "torch": {
+      "version": "2.9.0+cu129",
+      "cuda_available": true,
+      "device_name": "GPU",
+      "device_count": 8
+    },
+    "flagtree": "0.5.1+xpu3.0",
+    "triton": {
+      "version": "3.0.0",
+      "has_config": true
+    },
+    "flag_gems": {
+      "version": "5.3.1.post1.dev53+g68573e211.d20260724",
+      "vendor": "kunlunxin",
+      "device": "cuda"
+    },
+    "vllm": {
+      "version": null
+    }
+  },
+  "result": {
+    "abs": {
+      "customized": true,
+      "accuracy": {
+        "total": 18,
+        "skipped": 0,
+        "failed": 0,
+        "passed": 18,
+        "details": {},
+        "status": "Passed",
+        "exit_code": 0,
+        "duration": 17.622812509536743,
+        "data_file": "abs/accuracy_result.json"
+      },
+      "performance": {
+        "duration": 21.689143896102905,
+        "exit_code": 0,
+        "data_file": "abs/performance_result.json",
+        "data": {
+          "fp16": {
+            "result": "OK",
+            "details": {
+              "[[64,64]]": {
+                "base": 0.0053090001456439495,
+                "gems": 0.007288999855518341,
+                "speedup": 0.7283578338425433
+              },
+              "[[4096,4096]]": {
+                "base": 0.03791600093245506,
+                "gems": 0.04233400151133537,
+                "speedup": 0.8956394288005743
+              },
+              "[[64,512,512]]": {
+                "base": 0.03791999816894531,
+                "gems": 0.04217299818992615,
+                "speedup": 0.8991534820022176
+              }
+            },
+            "speedup": 0.8410502482151117
+          },
+          "fp32": {
+            "result": "OK",
+            "details": {
+              "[[64,64]]": {
+                "base": 0.005379999987781048,
+                "gems": 0.0052709998562932014,
+                "speedup": 1.0206792135191785
+              },
+              "[[4096,4096]]": {
+                "base": 0.06940100342035294,
+                "gems": 0.0755539983510971,
+                "speedup": 0.9185616239374733
+              },
+              "[[64,512,512]]": {
+                "base": 0.06934700161218643,
+                "gems": 0.07559099793434143,
+                "speedup": 0.9173976201825176
+              }
+            },
+            "speedup": 0.9522128192130564
+          },
+          "bf16": {
+            "result": "OK",
+            "details": {
+              "[[64,64]]": {
+                "base": 0.0052999998442828655,
+                "gems": 0.007253000047057867,
+                "speedup": 0.7307320846403105
+              },
+              "[[4096,4096]]": {
+                "base": 0.03780499845743179,
+                "gems": 0.06386800110340118,
+                "speedup": 0.5919239338056965
+              },
+              "[[64,512,512]]": {
+                "base": 0.03787299990653992,
+                "gems": 0.06383399665355682,
+                "speedup": 0.5933045382084757
+              }
+            },
+            "speedup": 0.6386535188848276
+          }
+        },
+        "status": "Passed",
+        "test_case": "benchmark/test_abs.py::test_abs"
+      }
+    }
+  }
+}

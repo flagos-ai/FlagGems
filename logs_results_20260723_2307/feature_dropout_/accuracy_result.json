@@ -1,0 +1,398 @@
+{
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype0-0.3-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "p": 0.3,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype0-0.3-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "p": 0.3,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype0-0.3-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "p": 0.3,
+      "shape": [
+        2,
+        16,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype0-0.3-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "p": 0.3,
+      "shape": [
+        2,
+        32,
+        4,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype0-0.5-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "p": 0.5,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype0-0.5-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "p": 0.5,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype0-0.5-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "p": 0.5,
+      "shape": [
+        2,
+        16,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype0-0.5-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "p": 0.5,
+      "shape": [
+        2,
+        32,
+        4,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype1-0.3-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "p": 0.3,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype1-0.3-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "p": 0.3,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype1-0.3-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "p": 0.3,
+      "shape": [
+        2,
+        16,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype1-0.3-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "p": 0.3,
+      "shape": [
+        2,
+        32,
+        4,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype1-0.5-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "p": 0.5,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype1-0.5-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "p": 0.5,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype1-0.5-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "p": 0.5,
+      "shape": [
+        2,
+        16,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype1-0.5-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "p": 0.5,
+      "shape": [
+        2,
+        32,
+        4,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype2-0.3-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "p": 0.3,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype2-0.3-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "p": 0.3,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype2-0.3-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "p": 0.3,
+      "shape": [
+        2,
+        16,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype2-0.3-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "p": 0.3,
+      "shape": [
+        2,
+        32,
+        4,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype2-0.5-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "p": 0.5,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype2-0.5-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "p": 0.5,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype2-0.5-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "p": 0.5,
+      "shape": [
+        2,
+        16,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  },
+  "tests/test_feature_dropout.py::test_feature_dropout_inplace[dtype2-0.5-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "p": 0.5,
+      "shape": [
+        2,
+        32,
+        4,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "feature_dropout_"
+    ],
+    "reason": null
+  }
+}

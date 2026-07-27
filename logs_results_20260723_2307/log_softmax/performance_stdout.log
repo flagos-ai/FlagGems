@@ -1,0 +1,16 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_log_softmax.py .                                                    [100%]
+
+=============================== warnings summary ===============================
+benchmark/test_log_softmax.py::test_log_softmax
+  /workspace/FlagGems/benchmark/base.py:288: UserWarning: Implicit dimension choice for log_softmax has been deprecated. Change the call to include dim=X as an argument.
+    fn = lambda: op(*args, **kwargs)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================ 1 passed, 950 deselected, 1 warning in 32.99s =================

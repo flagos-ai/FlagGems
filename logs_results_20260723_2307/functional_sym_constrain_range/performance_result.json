@@ -1,0 +1,234 @@
+{
+  "functional_sym_constrain_range": {
+    "details": [
+      {
+        "op_name": "functional_sym_constrain_range",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              5,
+              1,
+              10,
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.005189999938011169,
+            "latency": 0.0072639998979866505,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.7144823803548885,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              5,
+              1,
+              10,
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.036938998848199844,
+            "latency": 0.037769000977277756,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9780242498450714,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              5,
+              1,
+              10,
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.03693300113081932,
+            "latency": 0.03772899881005287,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.978902231590056,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "functional_sym_constrain_range",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              5,
+              1,
+              10,
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.005235000047832727,
+            "latency": 0.005229000002145767,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0011474556673357,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              5,
+              1,
+              10,
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.0668099969625473,
+            "latency": 0.0687209963798523,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9721919134183965,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              5,
+              1,
+              10,
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.06683100014925003,
+            "latency": 0.06874000281095505,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9722286502234361,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "functional_sym_constrain_range",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              5,
+              1,
+              10,
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.0051739998161792755,
+            "latency": 0.007141999900341034,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.7244469180029273,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              5,
+              1,
+              10,
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.03676699846982956,
+            "latency": 0.03764000162482262,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9768065059163724,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              5,
+              1,
+              10,
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.03677000105381012,
+            "latency": 0.037842001765966415,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9716716700457319,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_functional_sym_constrain_range.py::test_functional_sym_constrain_range",
+    "reason": null
+  }
+}

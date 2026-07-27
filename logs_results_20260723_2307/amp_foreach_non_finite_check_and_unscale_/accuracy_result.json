@@ -1,0 +1,62 @@
+{
+  "tests/test_amp_foreach_non_finite_check_and_unscale_.py::test_amp_foreach_non_finite_check_and_unscale_[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "amp_foreach_non_finite_check_and_unscale_"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 512 / 512 (100.0%)\nGreatest absolute difference: 2.818359375 at index (7, 13) (up to 0.0001 allowed)\nGreatest relative difference: 0.5 at index (0, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_amp_foreach_non_finite_check_and_unscale_.py::test_amp_foreach_non_finite_check_and_unscale_[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "amp_foreach_non_finite_check_and_unscale_"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 512 / 512 (100.0%)\nGreatest absolute difference: 3.426358938217163 at index (13, 8) (up to 0.0001 allowed)\nGreatest relative difference: 0.5 at index (0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_amp_foreach_non_finite_check_and_unscale_.py::test_amp_foreach_non_finite_check_and_unscale__inf[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "amp_foreach_non_finite_check_and_unscale_"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 4 (75.0%)\nGreatest absolute difference: 4.0 at index (3,) (up to 0.0001 allowed)\nGreatest relative difference: 0.5 at index (0,) (up to 0.001 allowed)"
+  },
+  "tests/test_amp_foreach_non_finite_check_and_unscale_.py::test_amp_foreach_non_finite_check_and_unscale__inf[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "amp_foreach_non_finite_check_and_unscale_"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 4 (75.0%)\nGreatest absolute difference: 4.0 at index (3,) (up to 0.0001 allowed)\nGreatest relative difference: 0.5 at index (0,) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_amp_foreach_non_finite_check_and_unscale_.py::test_amp_foreach_non_finite_check_and_unscale__nan[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "amp_foreach_non_finite_check_and_unscale_"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 4 (75.0%)\nGreatest absolute difference: 4.0 at index (3,) (up to 0.0001 allowed)\nGreatest relative difference: 0.5 at index (0,) (up to 0.001 allowed)"
+  },
+  "tests/test_amp_foreach_non_finite_check_and_unscale_.py::test_amp_foreach_non_finite_check_and_unscale__nan[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "amp_foreach_non_finite_check_and_unscale_"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 4 (75.0%)\nGreatest absolute difference: 4.0 at index (3,) (up to 0.0001 allowed)\nGreatest relative difference: 0.5 at index (0,) (up to 1.3e-06 allowed)"
+  }
+}

@@ -1,0 +1,740 @@
+{
+  "tests/test_einsum.py::test_einsum_matmul[dtype0-32-64-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "M": 32,
+      "K": 64,
+      "N": 128
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_matmul[dtype0-16-256-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "M": 16,
+      "K": 256,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_matmul[dtype1-32-64-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "M": 32,
+      "K": 64,
+      "N": 128
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_matmul[dtype1-16-256-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "M": 16,
+      "K": 256,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_matmul[dtype2-32-64-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "M": 32,
+      "K": 64,
+      "N": 128
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_matmul[dtype2-16-256-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "M": 16,
+      "K": 256,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_bmm[dtype0-4-32-64-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "B": 4,
+      "M": 32,
+      "K": 64,
+      "N": 128
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_bmm[dtype0-8-16-256-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "B": 8,
+      "M": 16,
+      "K": 256,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_bmm[dtype1-4-32-64-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "B": 4,
+      "M": 32,
+      "K": 64,
+      "N": 128
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_bmm[dtype1-8-16-256-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "B": 8,
+      "M": 16,
+      "K": 256,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_bmm[dtype2-4-32-64-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "B": 4,
+      "M": 32,
+      "K": 64,
+      "N": 128
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_bmm[dtype2-8-16-256-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "B": 8,
+      "M": 16,
+      "K": 256,
+      "N": 32
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_dot[dtype0-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "size": 64
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_dot[dtype0-256]": {
+    "params": {
+      "dtype": "torch.float16",
+      "size": 256
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_dot[dtype0-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "size": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_dot[dtype1-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "size": 64
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_dot[dtype1-256]": {
+    "params": {
+      "dtype": "torch.float32",
+      "size": 256
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_dot[dtype1-1024]": {
+    "params": {
+      "dtype": "torch.float32",
+      "size": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_dot[dtype2-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "size": 64
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_dot[dtype2-256]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "size": 256
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_dot[dtype2-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "size": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_outer[dtype0-32-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "M": 32,
+      "N": 64
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_outer[dtype0-128-256]": {
+    "params": {
+      "dtype": "torch.float16",
+      "M": 128,
+      "N": 256
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_outer[dtype1-32-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "M": 32,
+      "N": 64
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_outer[dtype1-128-256]": {
+    "params": {
+      "dtype": "torch.float32",
+      "M": 128,
+      "N": 256
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_outer[dtype2-32-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "M": 32,
+      "N": 64
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_outer[dtype2-128-256]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "M": 128,
+      "N": 256
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_trace[dtype0-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "size": 32
+    },
+    "result": "failed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_einsum.py::test_einsum_trace[dtype0-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "size": 64
+    },
+    "result": "failed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_einsum.py::test_einsum_trace[dtype0-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "size": 128
+    },
+    "result": "failed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_einsum.py::test_einsum_trace[dtype1-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "size": 32
+    },
+    "result": "failed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_einsum.py::test_einsum_trace[dtype1-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "size": 64
+    },
+    "result": "failed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_einsum.py::test_einsum_trace[dtype1-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "size": 128
+    },
+    "result": "failed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_einsum.py::test_einsum_trace[dtype2-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "size": 32
+    },
+    "result": "failed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_einsum.py::test_einsum_trace[dtype2-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "size": 64
+    },
+    "result": "failed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_einsum.py::test_einsum_trace[dtype2-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "size": 128
+    },
+    "result": "failed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_einsum.py::test_einsum_diagonal[dtype0-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "size": 32
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_diagonal[dtype0-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "size": 64
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_diagonal[dtype0-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "size": 128
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_diagonal[dtype1-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "size": 32
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_diagonal[dtype1-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "size": 64
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_diagonal[dtype1-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "size": 128
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_diagonal[dtype2-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "size": 32
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_diagonal[dtype2-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "size": 64
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_diagonal[dtype2-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "size": 128
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_transpose[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_transpose[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_transpose[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_transpose[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_transpose[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_transpose[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_sum_all[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_sum_all[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_sum_all[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_sum_dim[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        64,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_einsum.py::test_einsum_sum_dim[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        64,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_einsum.py::test_einsum_sum_dim[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        64,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_einsum.py::test_einsum_ellipsis[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_ellipsis[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  },
+  "tests/test_einsum.py::test_einsum_ellipsis[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "einsum"
+    ],
+    "reason": null
+  }
+}

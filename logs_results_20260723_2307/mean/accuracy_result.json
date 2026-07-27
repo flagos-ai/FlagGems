@@ -1,0 +1,131 @@
+{
+  "tests/test_mean.py::test_mean[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "mean"
+    ],
+    "reason": null
+  },
+  "tests/test_mean.py::test_mean[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "mean"
+    ],
+    "reason": null
+  },
+  "tests/test_mean.py::test_mean[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "mean"
+    ],
+    "reason": null
+  },
+  "tests/test_mean.py::test_mean[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "mean"
+    ],
+    "reason": null
+  },
+  "tests/test_mean.py::test_mean[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "mean"
+    ],
+    "reason": null
+  },
+  "tests/test_mean.py::test_mean[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "mean"
+    ],
+    "reason": null
+  },
+  "tests/test_mean.py::test_mean[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "mean"
+    ],
+    "reason": null
+  },
+  "tests/test_mean.py::test_mean[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "mean"
+    ],
+    "reason": null
+  },
+  "tests/test_mean.py::test_mean[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "mean"
+    ],
+    "reason": null
+  }
+}

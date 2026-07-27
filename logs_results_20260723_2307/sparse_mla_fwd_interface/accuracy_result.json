@@ -1,0 +1,2977 @@
+{
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-64-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-128-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-1-256-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-64-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-64-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-64-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-64-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-64-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-64-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-64-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-64-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-64-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-128-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-128-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-128-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-128-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-128-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-128-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-128-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-128-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-128-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-256-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-256-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-256-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-256-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-256-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-256-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-256-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-256-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-64-512-576-2-256-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 64,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-64-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-128-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-1-256-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-64-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-64-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-64-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-64-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-64-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-64-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-64-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-64-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-64-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-128-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-128-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-128-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-128-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-128-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-128-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-128-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-128-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-128-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-256-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-256-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-256-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-256-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-256-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-256-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-256-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-256-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-128-512-576-2-256-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 128,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-64-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-128-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-1-256-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 1,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-64-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-64-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-64-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-64-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-64-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-64-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-64-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-64-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-64-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[32, 32], fp16>, but the then block redefines it as <[32, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-128-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-128-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-128-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-128-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-128-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-128-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-128-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-128-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-128-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 128,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-256-1024-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-256-1024-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-256-1024-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 1024,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-256-2048-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-256-2048-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-256-2048-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 2048,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-256-4096-64-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 64,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-256-4096-128-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 128,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward[dtype0-256-512-576-2-256-4096-512-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "topk": 256,
+      "d_v": 512,
+      "qk_dim": 576,
+      "num_kv_heads": 2,
+      "num_heads": 256,
+      "seq_len_kv": 4096,
+      "seq_len_q": 512,
+      "batch_size": 1
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward_edge_cases[config0]": {
+    "params": {
+      "config": {
+        "batch_size": 1,
+        "seq_len_q": 1,
+        "seq_len_kv": 1,
+        "num_heads": 1,
+        "num_kv_heads": 1,
+        "topk": 1
+      }
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[16, 32], fp16>, but the then block redefines it as <[16, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward_edge_cases[config1]": {
+    "params": {
+      "config": {
+        "batch_size": 1,
+        "seq_len_q": 2,
+        "seq_len_kv": 100,
+        "num_heads": 4,
+        "num_kv_heads": 1,
+        "topk": 50
+      }
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[16, 32], fp16>, but the then block redefines it as <[16, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_forward_edge_cases[config2]": {
+    "params": {
+      "config": {
+        "batch_size": 1,
+        "seq_len_q": 17,
+        "seq_len_kv": 1030,
+        "num_heads": 8,
+        "num_kv_heads": 1,
+        "topk": 256
+      }
+    },
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[16, 32], fp16>, but the then block redefines it as <[16, 32], fp32>')"
+  },
+  "tests/test_DSA/test_sparse_mla_ops.py::test_sparse_mla_device_compatibility": {
+    "params": {},
+    "result": "failed",
+    "opname": [
+      "sparse_mla_fwd_interface"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[16, 32], fp16>, but the then block redefines it as <[16, 32], fp32>')"
+  }
+}

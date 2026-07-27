@@ -1,0 +1,546 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:22:41 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:22:43 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:22:43 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:22:43 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:22:43 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:22:43 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:22:43 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:22:43 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:22:43 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:22:43 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:22:44 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49921 deselected / 30 selected
+
+test_batch_norm.py::test_batch_norm[True-dtype0-shape0] PASSED
+test_batch_norm.py::test_batch_norm[True-dtype0-shape1] FAILED
+test_batch_norm.py::test_batch_norm[True-dtype0-shape2] PASSED
+test_batch_norm.py::test_batch_norm[True-dtype0-shape3] PASSED
+test_batch_norm.py::test_batch_norm[True-dtype0-shape4] PASSED
+test_batch_norm.py::test_batch_norm[True-dtype1-shape0] PASSED
+test_batch_norm.py::test_batch_norm[True-dtype1-shape1] FAILED
+test_batch_norm.py::test_batch_norm[True-dtype1-shape2] PASSED
+test_batch_norm.py::test_batch_norm[True-dtype1-shape3] PASSED
+test_batch_norm.py::test_batch_norm[True-dtype1-shape4] PASSED
+test_batch_norm.py::test_batch_norm[True-dtype2-shape0] PASSED
+test_batch_norm.py::test_batch_norm[True-dtype2-shape1] FAILED
+test_batch_norm.py::test_batch_norm[True-dtype2-shape2] PASSED
+test_batch_norm.py::test_batch_norm[True-dtype2-shape3] PASSED
+test_batch_norm.py::test_batch_norm[True-dtype2-shape4] PASSED
+test_batch_norm.py::test_batch_norm[False-dtype0-shape0] PASSED
+test_batch_norm.py::test_batch_norm[False-dtype0-shape1] FAILED
+test_batch_norm.py::test_batch_norm[False-dtype0-shape2] PASSED
+test_batch_norm.py::test_batch_norm[False-dtype0-shape3] PASSED
+test_batch_norm.py::test_batch_norm[False-dtype0-shape4] PASSED
+test_batch_norm.py::test_batch_norm[False-dtype1-shape0] PASSED
+test_batch_norm.py::test_batch_norm[False-dtype1-shape1] FAILED
+test_batch_norm.py::test_batch_norm[False-dtype1-shape2] PASSED
+test_batch_norm.py::test_batch_norm[False-dtype1-shape3] PASSED
+test_batch_norm.py::test_batch_norm[False-dtype1-shape4] PASSED
+test_batch_norm.py::test_batch_norm[False-dtype2-shape0] PASSED
+test_batch_norm.py::test_batch_norm[False-dtype2-shape1] FAILED
+test_batch_norm.py::test_batch_norm[False-dtype2-shape2] PASSED
+test_batch_norm.py::test_batch_norm[False-dtype2-shape3] PASSED
+test_batch_norm.py::test_batch_norm[False-dtype2-shape4] PASSED
+
+=================================== FAILURES ===================================
+_____________________ test_batch_norm[True-dtype0-shape1] ______________________
+
+shape = (32, 32, 32), dtype = torch.float16, affine = True
+
+    @pytest.mark.batch_norm
+    @pytest.mark.parametrize("shape", SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("affine", [True, False])
+    def test_batch_norm(shape, dtype, affine):
+        if flag_gems.vendor_name == "cambricon":
+            torch.manual_seed(23)
+            torch.mlu.manual_seed_all(23)
+    
+        C = shape[1]
+        inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+        weight = None
+        bias = None
+        if affine:
+            weight = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+            bias = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+    
+        running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
+        running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
+    
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+        ref_running_mean = utils.to_reference(running_mean, True)
+        ref_running_var = utils.to_reference(running_var, True)
+    
+        ref_out = torch.nn.functional.batch_norm(
+            ref_inp,
+            ref_running_mean,
+            ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            eps=eps,
+        )
+    
+        with flag_gems.use_gems():
+>           res_out = torch.nn.functional.batch_norm(
+                inp,
+                running_mean,
+                running_var,
+                weight=weight,
+                bias=bias,
+                eps=eps,
+            )
+
+test_batch_norm.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/nn/functional.py:2813: in batch_norm
+    return torch.batch_norm(
+../src/flag_gems/runtime/backend/_kunlunxin/ops/batch_norm.py:544: in batch_norm
+    return _batch_norm_fused_infer(
+../src/flag_gems/runtime/backend/_kunlunxin/ops/batch_norm.py:488: in _batch_norm_fused_infer
+    input_3d_f = input_3d_i.permute(0, 2, 1).reshape(-1, n)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 1.7393,  1.9268,  1.5342,  ..., -1.8057, -1.7959,  1.8838],
+         [-1.7979,  1.8311, -1.9111,  ...,  1....   [ 0.6406, -0.1164, -1.1260,  ...,  0.8452,  0.8350, -0.8750]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_batch_norm[True-dtype1-shape1] ______________________
+
+shape = (32, 32, 32), dtype = torch.float32, affine = True
+
+    @pytest.mark.batch_norm
+    @pytest.mark.parametrize("shape", SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("affine", [True, False])
+    def test_batch_norm(shape, dtype, affine):
+        if flag_gems.vendor_name == "cambricon":
+            torch.manual_seed(23)
+            torch.mlu.manual_seed_all(23)
+    
+        C = shape[1]
+        inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+        weight = None
+        bias = None
+        if affine:
+            weight = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+            bias = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+    
+        running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
+        running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
+    
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+        ref_running_mean = utils.to_reference(running_mean, True)
+        ref_running_var = utils.to_reference(running_var, True)
+    
+        ref_out = torch.nn.functional.batch_norm(
+            ref_inp,
+            ref_running_mean,
+            ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            eps=eps,
+        )
+    
+        with flag_gems.use_gems():
+>           res_out = torch.nn.functional.batch_norm(
+                inp,
+                running_mean,
+                running_var,
+                weight=weight,
+                bias=bias,
+                eps=eps,
+            )
+
+test_batch_norm.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/nn/functional.py:2813: in batch_norm
+    return torch.batch_norm(
+../src/flag_gems/runtime/backend/_kunlunxin/ops/batch_norm.py:544: in batch_norm
+    return _batch_norm_fused_infer(
+../src/flag_gems/runtime/backend/_kunlunxin/ops/batch_norm.py:488: in _batch_norm_fused_infer
+    input_3d_f = input_3d_i.permute(0, 2, 1).reshape(-1, n)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 0.2895, -0.8662,  0.2749,  ...,  2.0429, -0.1790, -0.6396],
+         [-3.1132, -0.4106, -0.2856,  ..., -0.....4373e+00,  5.4050e-01, -1.2854e+00,  ...,  8.1116e-01,
+          -8.6797e-01,  4.2520e-01]]], device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_batch_norm[True-dtype2-shape1] ______________________
+
+shape = (32, 32, 32), dtype = torch.bfloat16, affine = True
+
+    @pytest.mark.batch_norm
+    @pytest.mark.parametrize("shape", SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("affine", [True, False])
+    def test_batch_norm(shape, dtype, affine):
+        if flag_gems.vendor_name == "cambricon":
+            torch.manual_seed(23)
+            torch.mlu.manual_seed_all(23)
+    
+        C = shape[1]
+        inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+        weight = None
+        bias = None
+        if affine:
+            weight = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+            bias = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+    
+        running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
+        running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
+    
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+        ref_running_mean = utils.to_reference(running_mean, True)
+        ref_running_var = utils.to_reference(running_var, True)
+    
+        ref_out = torch.nn.functional.batch_norm(
+            ref_inp,
+            ref_running_mean,
+            ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            eps=eps,
+        )
+    
+        with flag_gems.use_gems():
+>           res_out = torch.nn.functional.batch_norm(
+                inp,
+                running_mean,
+                running_var,
+                weight=weight,
+                bias=bias,
+                eps=eps,
+            )
+
+test_batch_norm.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/nn/functional.py:2813: in batch_norm
+    return torch.batch_norm(
+../src/flag_gems/runtime/backend/_kunlunxin/ops/batch_norm.py:544: in batch_norm
+    return _batch_norm_fused_infer(
+../src/flag_gems/runtime/backend/_kunlunxin/ops/batch_norm.py:488: in _batch_norm_fused_infer
+    input_3d_f = input_3d_i.permute(0, 2, 1).reshape(-1, n)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 0.4844,  2.0156, -0.9609,  ..., -0.6875, -0.3320,  1.5703],
+         [-0.8281,  1.2109, -1.0938,  ..., -1...., -8.1250e-01,  ...,  7.7344e-01,
+           3.7305e-01, -1.0781e+00]]], device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_batch_norm[False-dtype0-shape1] _____________________
+
+shape = (32, 32, 32), dtype = torch.float16, affine = False
+
+    @pytest.mark.batch_norm
+    @pytest.mark.parametrize("shape", SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("affine", [True, False])
+    def test_batch_norm(shape, dtype, affine):
+        if flag_gems.vendor_name == "cambricon":
+            torch.manual_seed(23)
+            torch.mlu.manual_seed_all(23)
+    
+        C = shape[1]
+        inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+        weight = None
+        bias = None
+        if affine:
+            weight = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+            bias = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+    
+        running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
+        running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
+    
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+        ref_running_mean = utils.to_reference(running_mean, True)
+        ref_running_var = utils.to_reference(running_var, True)
+    
+        ref_out = torch.nn.functional.batch_norm(
+            ref_inp,
+            ref_running_mean,
+            ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            eps=eps,
+        )
+    
+        with flag_gems.use_gems():
+>           res_out = torch.nn.functional.batch_norm(
+                inp,
+                running_mean,
+                running_var,
+                weight=weight,
+                bias=bias,
+                eps=eps,
+            )
+
+test_batch_norm.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/nn/functional.py:2813: in batch_norm
+    return torch.batch_norm(
+../src/flag_gems/runtime/backend/_kunlunxin/ops/batch_norm.py:544: in batch_norm
+    return _batch_norm_fused_infer(
+../src/flag_gems/runtime/backend/_kunlunxin/ops/batch_norm.py:488: in _batch_norm_fused_infer
+    input_3d_f = input_3d_i.permute(0, 2, 1).reshape(-1, n)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 1.7197, -1.8789, -1.8330,  ...,  1.5654,  1.7266,  1.3750],
+         [-1.3799, -1.7861, -1.8789,  ...,  1....0, -8.0664e-01,  ...,  1.2451e-01,
+           1.3818e+00,  9.9219e-01]]], device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_batch_norm[False-dtype1-shape1] _____________________
+
+shape = (32, 32, 32), dtype = torch.float32, affine = False
+
+    @pytest.mark.batch_norm
+    @pytest.mark.parametrize("shape", SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("affine", [True, False])
+    def test_batch_norm(shape, dtype, affine):
+        if flag_gems.vendor_name == "cambricon":
+            torch.manual_seed(23)
+            torch.mlu.manual_seed_all(23)
+    
+        C = shape[1]
+        inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+        weight = None
+        bias = None
+        if affine:
+            weight = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+            bias = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+    
+        running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
+        running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
+    
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+        ref_running_mean = utils.to_reference(running_mean, True)
+        ref_running_var = utils.to_reference(running_var, True)
+    
+        ref_out = torch.nn.functional.batch_norm(
+            ref_inp,
+            ref_running_mean,
+            ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            eps=eps,
+        )
+    
+        with flag_gems.use_gems():
+>           res_out = torch.nn.functional.batch_norm(
+                inp,
+                running_mean,
+                running_var,
+                weight=weight,
+                bias=bias,
+                eps=eps,
+            )
+
+test_batch_norm.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/nn/functional.py:2813: in batch_norm
+    return torch.batch_norm(
+../src/flag_gems/runtime/backend/_kunlunxin/ops/batch_norm.py:544: in batch_norm
+    return _batch_norm_fused_infer(
+../src/flag_gems/runtime/backend/_kunlunxin/ops/batch_norm.py:488: in _batch_norm_fused_infer
+    input_3d_f = input_3d_i.permute(0, 2, 1).reshape(-1, n)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 0.1205, -0.6592, -0.9834,  ...,  1.0019, -0.3452,  0.6533],
+         [ 1.9980,  0.4233,  1.2129,  ...,  0....744, -0.4639],
+         [ 0.9639,  1.7200, -0.6536,  ..., -1.1375,  0.0029, -0.0672]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_batch_norm[False-dtype2-shape1] _____________________
+
+shape = (32, 32, 32), dtype = torch.bfloat16, affine = False
+
+    @pytest.mark.batch_norm
+    @pytest.mark.parametrize("shape", SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    @pytest.mark.parametrize("affine", [True, False])
+    def test_batch_norm(shape, dtype, affine):
+        if flag_gems.vendor_name == "cambricon":
+            torch.manual_seed(23)
+            torch.mlu.manual_seed_all(23)
+    
+        C = shape[1]
+        inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+        weight = None
+        bias = None
+        if affine:
+            weight = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+            bias = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+    
+        running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
+        running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
+    
+        eps = 1e-5
+    
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
+        ref_bias = utils.to_reference(bias, True)
+        ref_running_mean = utils.to_reference(running_mean, True)
+        ref_running_var = utils.to_reference(running_var, True)
+    
+        ref_out = torch.nn.functional.batch_norm(
+            ref_inp,
+            ref_running_mean,
+            ref_running_var,
+            weight=ref_weight,
+            bias=ref_bias,
+            eps=eps,
+        )
+    
+        with flag_gems.use_gems():
+>           res_out = torch.nn.functional.batch_norm(
+                inp,
+                running_mean,
+                running_var,
+                weight=weight,
+                bias=bias,
+                eps=eps,
+            )
+
+test_batch_norm.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/nn/functional.py:2813: in batch_norm
+    return torch.batch_norm(
+../src/flag_gems/runtime/backend/_kunlunxin/ops/batch_norm.py:544: in batch_norm
+    return _batch_norm_fused_infer(
+../src/flag_gems/runtime/backend/_kunlunxin/ops/batch_norm.py:488: in _batch_norm_fused_infer
+    input_3d_f = input_3d_i.permute(0, 2, 1).reshape(-1, n)
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 0.3555,  1.0000, -0.7188,  ..., -1.1406,  0.4922, -2.2188],
+         [-1.7812, -0.3262,  1.2734,  ..., -1...., -5.1953e-01,  ..., -9.3750e-01,
+          -5.4443e-02, -9.5703e-01]]], device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+=========================== short test summary info ============================
+FAILED test_batch_norm.py::test_batch_norm[True-dtype0-shape1] - torch.Accele...
+FAILED test_batch_norm.py::test_batch_norm[True-dtype1-shape1] - torch.Accele...
+FAILED test_batch_norm.py::test_batch_norm[True-dtype2-shape1] - torch.Accele...
+FAILED test_batch_norm.py::test_batch_norm[False-dtype0-shape1] - torch.Accel...
+FAILED test_batch_norm.py::test_batch_norm[False-dtype1-shape1] - torch.Accel...
+FAILED test_batch_norm.py::test_batch_norm[False-dtype2-shape1] - torch.Accel...
+=============== 6 failed, 24 passed, 49921 deselected in 14.98s ================

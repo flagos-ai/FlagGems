@@ -1,0 +1,1048 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 02:25:31 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 02:25:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:25:33 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:25:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:25:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:25:33 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:25:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:25:34 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:25:34 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:25:34 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 02:25:35 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49879 deselected / 72 selected
+
+test_sum.py::test_sum_dim[dtype0-0-True-shape0] PASSED
+test_sum.py::test_sum_dim[dtype0-0-True-shape1] FAILED
+test_sum.py::test_sum_dim[dtype0-0-True-shape2] FAILED
+test_sum.py::test_sum_dim[dtype0-0-True-shape3] PASSED
+test_sum.py::test_sum_dim[dtype0-0-True-shape4] PASSED
+test_sum.py::test_sum_dim[dtype0-0-True-shape5] PASSED
+test_sum.py::test_sum_dim[dtype0-0-False-shape0] PASSED
+test_sum.py::test_sum_dim[dtype0-0-False-shape1] FAILED
+test_sum.py::test_sum_dim[dtype0-0-False-shape2] FAILED
+test_sum.py::test_sum_dim[dtype0-0-False-shape3] PASSED
+test_sum.py::test_sum_dim[dtype0-0-False-shape4] PASSED
+test_sum.py::test_sum_dim[dtype0-0-False-shape5] PASSED
+test_sum.py::test_sum_dim[dtype0-1-True-shape0] PASSED
+test_sum.py::test_sum_dim[dtype0-1-True-shape1] PASSED
+test_sum.py::test_sum_dim[dtype0-1-True-shape2] FAILED
+test_sum.py::test_sum_dim[dtype0-1-True-shape3] PASSED
+test_sum.py::test_sum_dim[dtype0-1-True-shape4] PASSED
+test_sum.py::test_sum_dim[dtype0-1-True-shape5] PASSED
+test_sum.py::test_sum_dim[dtype0-1-False-shape0] PASSED
+test_sum.py::test_sum_dim[dtype0-1-False-shape1] PASSED
+test_sum.py::test_sum_dim[dtype0-1-False-shape2] FAILED
+test_sum.py::test_sum_dim[dtype0-1-False-shape3] PASSED
+test_sum.py::test_sum_dim[dtype0-1-False-shape4] PASSED
+test_sum.py::test_sum_dim[dtype0-1-False-shape5] PASSED
+test_sum.py::test_sum_dim[dtype1-0-True-shape0] PASSED
+test_sum.py::test_sum_dim[dtype1-0-True-shape1] FAILED
+test_sum.py::test_sum_dim[dtype1-0-True-shape2] FAILED
+test_sum.py::test_sum_dim[dtype1-0-True-shape3] PASSED
+test_sum.py::test_sum_dim[dtype1-0-True-shape4] PASSED
+test_sum.py::test_sum_dim[dtype1-0-True-shape5] PASSED
+test_sum.py::test_sum_dim[dtype1-0-False-shape0] PASSED
+test_sum.py::test_sum_dim[dtype1-0-False-shape1] FAILED
+test_sum.py::test_sum_dim[dtype1-0-False-shape2] FAILED
+test_sum.py::test_sum_dim[dtype1-0-False-shape3] PASSED
+test_sum.py::test_sum_dim[dtype1-0-False-shape4] PASSED
+test_sum.py::test_sum_dim[dtype1-0-False-shape5] PASSED
+test_sum.py::test_sum_dim[dtype1-1-True-shape0] PASSED
+test_sum.py::test_sum_dim[dtype1-1-True-shape1] PASSED
+test_sum.py::test_sum_dim[dtype1-1-True-shape2] FAILED
+test_sum.py::test_sum_dim[dtype1-1-True-shape3] PASSED
+test_sum.py::test_sum_dim[dtype1-1-True-shape4] PASSED
+test_sum.py::test_sum_dim[dtype1-1-True-shape5] PASSED
+test_sum.py::test_sum_dim[dtype1-1-False-shape0] PASSED
+test_sum.py::test_sum_dim[dtype1-1-False-shape1] PASSED
+test_sum.py::test_sum_dim[dtype1-1-False-shape2] FAILED
+test_sum.py::test_sum_dim[dtype1-1-False-shape3] PASSED
+test_sum.py::test_sum_dim[dtype1-1-False-shape4] PASSED
+test_sum.py::test_sum_dim[dtype1-1-False-shape5] PASSED
+test_sum.py::test_sum_dim[dtype2-0-True-shape0] PASSED
+test_sum.py::test_sum_dim[dtype2-0-True-shape1] FAILED
+test_sum.py::test_sum_dim[dtype2-0-True-shape2] FAILED
+test_sum.py::test_sum_dim[dtype2-0-True-shape3] PASSED
+test_sum.py::test_sum_dim[dtype2-0-True-shape4] PASSED
+test_sum.py::test_sum_dim[dtype2-0-True-shape5] PASSED
+test_sum.py::test_sum_dim[dtype2-0-False-shape0] PASSED
+test_sum.py::test_sum_dim[dtype2-0-False-shape1] FAILED
+test_sum.py::test_sum_dim[dtype2-0-False-shape2] FAILED
+test_sum.py::test_sum_dim[dtype2-0-False-shape3] PASSED
+test_sum.py::test_sum_dim[dtype2-0-False-shape4] PASSED
+test_sum.py::test_sum_dim[dtype2-0-False-shape5] PASSED
+test_sum.py::test_sum_dim[dtype2-1-True-shape0] PASSED
+test_sum.py::test_sum_dim[dtype2-1-True-shape1] PASSED
+test_sum.py::test_sum_dim[dtype2-1-True-shape2] FAILED
+test_sum.py::test_sum_dim[dtype2-1-True-shape3] PASSED
+test_sum.py::test_sum_dim[dtype2-1-True-shape4] PASSED
+test_sum.py::test_sum_dim[dtype2-1-True-shape5] PASSED
+test_sum.py::test_sum_dim[dtype2-1-False-shape0] PASSED
+test_sum.py::test_sum_dim[dtype2-1-False-shape1] PASSED
+test_sum.py::test_sum_dim[dtype2-1-False-shape2] FAILED
+test_sum.py::test_sum_dim[dtype2-1-False-shape3] PASSED
+test_sum.py::test_sum_dim[dtype2-1-False-shape4] PASSED
+test_sum.py::test_sum_dim[dtype2-1-False-shape5] PASSED
+
+=================================== FAILURES ===================================
+______________________ test_sum_dim[dtype0-0-True-shape1] ______________________
+
+shape = (4096, 256), dim = 0, keepdim = True, dtype = torch.float16
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[-1.9131,  1.8770,  1.8701,  ...,  1.8936, -1.4502,  1.7129],
+        [ 1.3457,  1.5498, -1.6777,  ..., -1.82...    [ 0.1750, -1.5986, -1.2578,  ..., -0.2488,  1.6162,  0.6040]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_sum_dim[dtype0-0-True-shape2] ______________________
+
+shape = (200, 40999, 3), dim = 0, keepdim = True, dtype = torch.float16
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 4.7386e-05, -6.2656e+00, -6.4640e+04,  ..., -6.2656e+00,
+          -5.6288e+04, -6.2617e+00],
+         [ 1...   [ 1.3369, -0.5820, -0.6821,  ...,  0.4768, -0.2482,  1.5127]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_sum_dim[dtype0-0-False-shape1] ______________________
+
+shape = (4096, 256), dim = 0, keepdim = False, dtype = torch.float16
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[ 1.7598,  1.4229,  1.9404,  ..., -1.9307, -1.6035, -1.9238],
+        [ 1.9834, -1.9326,  1.7949,  ...,  1.67...    [ 0.4973, -0.5684,  0.3228,  ...,  0.2046, -0.2908, -2.0879]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_sum_dim[dtype0-0-False-shape2] ______________________
+
+shape = (200, 40999, 3), dim = 0, keepdim = False, dtype = torch.float16
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-1.9639,  1.8975, -2.0508,  ..., -1.6904, -1.4785,  1.3672],
+         [ 2.0527, -1.7979,  1.8799,  ...,  1....1,  3.2501e-02,  ...,  5.1514e-01,
+          -3.6835e-02,  5.4883e-01]]], device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_sum_dim[dtype0-1-True-shape2] ______________________
+
+shape = (200, 40999, 3), dim = 1, keepdim = True, dtype = torch.float16
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0.,...   [-0.1757, -0.2262, -0.2433,  ...,  0.7598, -0.6230, -1.1025]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_sum_dim[dtype0-1-False-shape2] ______________________
+
+shape = (200, 40999, 3), dim = 1, keepdim = False, dtype = torch.float16
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0.,...   [-0.3418, -1.5996, -0.5010,  ..., -0.6851,  0.1171, -0.9023]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_sum_dim[dtype1-0-True-shape1] ______________________
+
+shape = (4096, 256), dim = 0, keepdim = True, dtype = torch.float32
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[-0.2554, -1.4824,  1.3418,  ..., -1.0605, -1.1269, -1.7597],
+        [ 0.1306, -0.2346,  1.0371,  ...,  0.31....1196, -1.5888],
+        [ 2.4067, -0.1118,  0.3978,  ...,  1.1177,  0.3616, -0.0095]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_sum_dim[dtype1-0-True-shape2] ______________________
+
+shape = (200, 40999, 3), dim = 0, keepdim = True, dtype = torch.float32
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0.,...324, -1.4872],
+         [ 0.3909,  0.0893, -1.5369,  ..., -0.1469,  0.9327,  0.5714]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_sum_dim[dtype1-0-False-shape1] ______________________
+
+shape = (4096, 256), dim = 0, keepdim = False, dtype = torch.float32
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[0., 0., 0.,  ..., 0., 0., 0.],
+        [0., 0., 0.,  ..., 0., 0., 0.],
+        [0., 0., 0.,  ..., 0., 0., 0.....0875, -0.0753],
+        [ 1.6450,  1.7001,  0.6811,  ...,  0.1184, -0.5456, -0.1572]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_sum_dim[dtype1-0-False-shape2] ______________________
+
+shape = (200, 40999, 3), dim = 0, keepdim = False, dtype = torch.float32
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0.,...244,  0.1959],
+         [ 0.9630,  0.4575, -0.5602,  ..., -0.9390, -1.6913,  0.9192]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_sum_dim[dtype1-1-True-shape2] ______________________
+
+shape = (200, 40999, 3), dim = 1, keepdim = True, dtype = torch.float32
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0.,...906, -2.2980],
+         [ 0.1565,  0.5643, -1.2775,  ...,  0.0258, -0.3974, -0.7952]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_sum_dim[dtype1-1-False-shape2] ______________________
+
+shape = (200, 40999, 3), dim = 1, keepdim = False, dtype = torch.float32
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-1.7480, -0.7520, -1.0982,  ...,  1.1179, -1.2105,  1.2729],
+         [-1.2687,  1.1953, -0.1395,  ..., -0.....9323e-01, -1.4373e+00,  3.5535e-01,  ..., -5.3655e-01,
+           1.8725e+00, -4.1775e-01]]], device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_sum_dim[dtype2-0-True-shape1] ______________________
+
+shape = (4096, 256), dim = 0, keepdim = True, dtype = torch.bfloat16
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[ 1.1368e-03, -2.3926e-01, -1.9426e-29,  ...,  2.1719e+00,
+         -2.1537e-08, -1.0547e+00],
+        [-2.37...   [-0.3008,  0.4609, -0.1855,  ...,  1.0391, -1.8516,  1.3516]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_sum_dim[dtype2-0-True-shape2] ______________________
+
+shape = (200, 40999, 3), dim = 0, keepdim = True, dtype = torch.bfloat16
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 4.5550e-37, -1.2544e+04, -2.3677e+36,  ..., -1.2544e+04,
+          -5.7894e+35, -1.2480e+04],
+         [ 2...  [ 0.5820, -0.4277,  0.0491,  ..., -0.0227,  0.6523,  0.3613]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_sum_dim[dtype2-0-False-shape1] ______________________
+
+shape = (4096, 256), dim = 0, keepdim = False, dtype = torch.bfloat16
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[ 0.5391,  0.0864,  1.5234,  ..., -1.4453, -0.2285, -1.3906],
+        [ 1.8672, -1.4609,  0.6797,  ...,  0.34...   [-0.4199,  0.6133,  0.6445,  ...,  1.0312, -0.2002,  0.5547]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_sum_dim[dtype2-0-False-shape2] ______________________
+
+shape = (200, 40999, 3), dim = 0, keepdim = False, dtype = torch.bfloat16
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-1.7109e+00,  1.1797e+00, -2.4062e+00,  ..., -3.8086e-01,
+          -1.1426e-01,  6.0547e-02],
+         [ 2...  [ 1.2422, -0.5625, -0.5859,  ..., -0.7695,  1.0234,  1.0469]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_sum_dim[dtype2-1-True-shape2] ______________________
+
+shape = (200, 40999, 3), dim = 1, keepdim = True, dtype = torch.bfloat16
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0.,...  [ 1.3359,  0.7266, -0.6836,  ..., -1.0703, -1.1562, -1.5938]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_____________________ test_sum_dim[dtype2-1-False-shape2] ______________________
+
+shape = (200, 40999, 3), dim = 1, keepdim = False, dtype = torch.bfloat16
+
+    @pytest.mark.sum_dim
+    @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES + INCLUDE_0_SHAPES)
+    @pytest.mark.parametrize("keepdim", [True, False])
+    @pytest.mark.parametrize(
+        "dim",
+        [
+            0,
+            1,
+        ],
+    )
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_sum_dim(shape, dim, keepdim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = utils.to_reference(inp, True)
+    
+        ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+        with flag_gems.use_gems():
+>           res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+test_sum.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0., 0.],
+         [0., 0., 0.,  ..., 0., 0.,...  [ 0.9219,  1.9453, -0.0728,  ...,  0.2354,  2.2656, -1.8906]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+=========================== short test summary info ============================
+FAILED test_sum.py::test_sum_dim[dtype0-0-True-shape1] - torch.AcceleratorErr...
+FAILED test_sum.py::test_sum_dim[dtype0-0-True-shape2] - torch.AcceleratorErr...
+FAILED test_sum.py::test_sum_dim[dtype0-0-False-shape1] - torch.AcceleratorEr...
+FAILED test_sum.py::test_sum_dim[dtype0-0-False-shape2] - torch.AcceleratorEr...
+FAILED test_sum.py::test_sum_dim[dtype0-1-True-shape2] - torch.AcceleratorErr...
+FAILED test_sum.py::test_sum_dim[dtype0-1-False-shape2] - torch.AcceleratorEr...
+FAILED test_sum.py::test_sum_dim[dtype1-0-True-shape1] - torch.AcceleratorErr...
+FAILED test_sum.py::test_sum_dim[dtype1-0-True-shape2] - torch.AcceleratorErr...
+FAILED test_sum.py::test_sum_dim[dtype1-0-False-shape1] - torch.AcceleratorEr...
+FAILED test_sum.py::test_sum_dim[dtype1-0-False-shape2] - torch.AcceleratorEr...
+FAILED test_sum.py::test_sum_dim[dtype1-1-True-shape2] - torch.AcceleratorErr...
+FAILED test_sum.py::test_sum_dim[dtype1-1-False-shape2] - torch.AcceleratorEr...
+FAILED test_sum.py::test_sum_dim[dtype2-0-True-shape1] - torch.AcceleratorErr...
+FAILED test_sum.py::test_sum_dim[dtype2-0-True-shape2] - torch.AcceleratorErr...
+FAILED test_sum.py::test_sum_dim[dtype2-0-False-shape1] - torch.AcceleratorEr...
+FAILED test_sum.py::test_sum_dim[dtype2-0-False-shape2] - torch.AcceleratorEr...
+FAILED test_sum.py::test_sum_dim[dtype2-1-True-shape2] - torch.AcceleratorErr...
+FAILED test_sum.py::test_sum_dim[dtype2-1-False-shape2] - torch.AcceleratorEr...
+=============== 18 failed, 54 passed, 49879 deselected in 15.32s ===============

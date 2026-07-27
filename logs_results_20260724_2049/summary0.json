@@ -1,0 +1,25 @@
+{
+  "add": {
+    "customized": true,
+    "accuracy": {
+      "total": 698,
+      "skipped": 0,
+      "failed": 0,
+      "passed": 698,
+      "details": {},
+      "status": "Passed",
+      "exit_code": 0,
+      "duration": 30.95960807800293,
+      "data_file": "add/accuracy_result.json"
+    },
+    "performance": {
+      "duration": 12.078168153762817,
+      "exit_code": 1,
+      "data_file": "add/performance_result.json",
+      "data": {},
+      "status": "Failed",
+      "reason": "Failed: float division by zero",
+      "test_case": "benchmark/test_add.py::test_add"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+[CMD] pytest -m "conv3d_padding" --record json --output accuracy_conv3d_padding.json --ref cpu --continue-on-collection-errors -vs
+[CWD] /workspace/FlagGems/tests
+
+XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+Processing function: conv3d_forward_kernel
+Removed 131 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 132 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 137 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 136 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 136 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 137 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 136 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 87 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 133 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 137 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 137 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 95 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 131 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 137 operations, kept essential structure
+Processing function: conv3d_forward_kernel
+Removed 137 operations, kept essential structure

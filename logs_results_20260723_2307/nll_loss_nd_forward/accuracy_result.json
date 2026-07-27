@@ -1,0 +1,3998 @@
+{
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape0-True-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "RuntimeError: [RUNTIME ERROR]: error code= 719, unspecified launch failure;"
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape0-True-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape0-True-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape0-False-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape0-False-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape0-False-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape1-True-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape1-True-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape1-True-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape1-False-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape1-False-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape1-False-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape2-True-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape2-True-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape2-True-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape2-False-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape2-False-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape2-False-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape3-True-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape3-True-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape3-True-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape3-False-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape3-False-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype0-shape3-False-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape0-True-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape0-True-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape0-True-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape0-False-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape0-False-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape0-False-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape1-True-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape1-True-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape1-True-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape1-False-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape1-False-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape1-False-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape2-True-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape2-True-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape2-True-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape2-False-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape2-False-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape2-False-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape3-True-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape3-True-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape3-True-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape3-False-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape3-False-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype1-shape3-False-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape0-True-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape0-True-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape0-True-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape0-False-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape0-False-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape0-False-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape1-True-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape1-True-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape1-True-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape1-False-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape1-False-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape1-False-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape2-True-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape2-True-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape2-True-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape2-False-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape2-False-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape2-False-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape3-True-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape3-True-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape3-True-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape3-False-mean]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape3-False-none]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[1-dtype2-shape3-False-sum]": {
+    "params": {
+      "ignore_index": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape0-True-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape0-True-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape0-True-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape0-False-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape0-False-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape0-False-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape1-True-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape1-True-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape1-True-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape1-False-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape1-False-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape1-False-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape2-True-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape2-True-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape2-True-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape2-False-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape2-False-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape2-False-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape3-True-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape3-True-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape3-True-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape3-False-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape3-False-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype0-shape3-False-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape0-True-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape0-True-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape0-True-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape0-False-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape0-False-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape0-False-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape1-True-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape1-True-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape1-True-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape1-False-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape1-False-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape1-False-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape2-True-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape2-True-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape2-True-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape2-False-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape2-False-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape2-False-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape3-True-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape3-True-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape3-True-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape3-False-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape3-False-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype1-shape3-False-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape0-True-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape0-True-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape0-True-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape0-False-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape0-False-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape0-False-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape1-True-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape1-True-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape1-True-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape1-False-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape1-False-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape1-False-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape2-True-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape2-True-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape2-True-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape2-False-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape2-False-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape2-False-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape3-True-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape3-True-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape3-True-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape3-False-mean]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape3-False-none]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[200-dtype2-shape3-False-sum]": {
+    "params": {
+      "ignore_index": 200,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape0-True-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape0-True-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape0-True-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape0-False-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape0-False-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape0-False-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape1-True-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape1-True-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape1-True-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape1-False-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape1-False-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape1-False-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape2-True-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape2-True-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape2-True-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape2-False-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape2-False-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape2-False-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape3-True-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape3-True-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape3-True-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape3-False-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape3-False-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype0-shape3-False-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape0-True-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape0-True-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape0-True-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape0-False-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape0-False-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape0-False-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape1-True-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape1-True-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape1-True-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape1-False-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape1-False-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape1-False-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape2-True-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape2-True-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape2-True-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape2-False-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape2-False-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape2-False-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape3-True-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape3-True-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape3-True-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape3-False-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape3-False-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype1-shape3-False-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape0-True-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape0-True-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape0-True-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape0-False-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape0-False-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape0-False-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        32
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape1-True-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape1-True-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape1-True-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape1-False-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape1-False-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape1-False-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        50,
+        128
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape2-True-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape2-True-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape2-True-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape2-False-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape2-False-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape2-False-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        5,
+        5
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape3-True-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape3-True-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape3-True-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": true,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape3-False-mean]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "mean"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape3-False-none]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "none"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_nll_loss_nd.py::test_nll_loss_nd_forward[-100-dtype2-shape3-False-sum]": {
+    "params": {
+      "ignore_index": -100,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        10,
+        8,
+        16,
+        16
+      ],
+      "weight": false,
+      "reduction": "sum"
+    },
+    "result": "failed",
+    "opname": [
+      "nll_loss_nd_forward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

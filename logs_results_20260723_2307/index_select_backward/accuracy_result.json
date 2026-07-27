@@ -1,0 +1,287 @@
+{
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        5,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward_1d[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward_1d[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select_backward.py::test_index_select_backward_1d[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "index_select_backward"
+    ],
+    "reason": null
+  }
+}

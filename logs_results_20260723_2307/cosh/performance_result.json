@@ -1,0 +1,141 @@
+{
+  "cosh": {
+    "details": [
+      {
+        "op_name": "cosh",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.01845099963247776,
+            "latency": 0.007424999959766865,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 2.48498312895036,
+            "accuracy": null,
+            "tflops": 0.0005516498346390037,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.6459810137748718,
+            "latency": 4.072412014007568,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.1586236882596701,
+            "accuracy": null,
+            "tflops": 0.004119724610941299,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.6457769870758057,
+            "latency": 4.07272481918335,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.15856140931350596,
+            "accuracy": null,
+            "tflops": 0.00411940819595175,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "cosh",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.01806499995291233,
+            "latency": 0.005274000111967325,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.4252938129297203,
+            "accuracy": null,
+            "tflops": 0.0007766401048619046,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.6184219717979431,
+            "latency": 2.1146349906921387,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.292448566546952,
+            "accuracy": null,
+            "tflops": 0.007933859069696313,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.61838698387146,
+            "latency": 2.115786075592041,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.29227292447249065,
+            "accuracy": null,
+            "tflops": 0.007929542685597544,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "failed",
+    "test_case": "benchmark/test_cosh.py::test_cosh",
+    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:5721)"
+  }
+}

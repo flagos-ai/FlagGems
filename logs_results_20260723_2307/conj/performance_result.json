@@ -1,0 +1,75 @@
+{
+  "conj": {
+    "details": [
+      {
+        "op_name": "conj",
+        "dtype": "torch.complex64",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.002930999966338277,
+            "latency": 0.023926999419927597,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.12249759842001727,
+            "accuracy": null,
+            "tflops": 0.00017118736570824033,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.002950000111013651,
+            "latency": 48.70096969604492,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 6.0573744823262214e-05,
+            "accuracy": null,
+            "tflops": 0.00034449449579157976,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.0029460000805556774,
+            "latency": 48.582244873046875,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 6.063943912542625e-05,
+            "accuracy": null,
+            "tflops": 0.0003453363681287584,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_conj.py::test_conj",
+    "reason": null
+  }
+}

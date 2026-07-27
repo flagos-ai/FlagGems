@@ -1,0 +1,233 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:37:31 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:37:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:37:33 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:37:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:37:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:37:33 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:37:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:37:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:37:33 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:37:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:37:34 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49924 deselected / 27 selected
+
+test_copy.py::test_copy_inplace_same_dtype[dtype0-shape0] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype0-shape1] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype0-shape2] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype0-shape3] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype0-shape4] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype0-shape5] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype1-shape0] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype1-shape1] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype1-shape2] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype1-shape3] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype1-shape4] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype1-shape5] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype2-shape0] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype2-shape1] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype2-shape2] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype2-shape3] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype2-shape4] PASSED
+test_copy.py::test_copy_inplace_same_dtype[dtype2-shape5] PASSED
+test_copy.py::test_copy_inplace_broadcast PASSED
+test_copy.py::test_copy_inplace_dtype_fallback PASSED
+test_copy.py::test_copy_inplace_float8_e8m0fnu[shape0] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/zero_.cpp:78]scalar type of ret : UnknownScalarType is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/zero_.cpp:78]
+FAILED
+test_copy.py::test_copy_inplace_float8_e8m0fnu[shape1] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/zero_.cpp:78]scalar type of ret : UnknownScalarType is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/zero_.cpp:78]
+FAILED
+test_copy.py::test_copy_inplace_float8_e8m0fnu[shape2] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/zero_.cpp:78]scalar type of ret : UnknownScalarType is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/zero_.cpp:78]
+FAILED
+test_copy.py::test_copy_inplace_float8_e8m0fnu_to_float32 [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/isfinite.cpp:40]scalar type of (self, ret) : (UnknownScalarType, kbool) combined is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/isfinite.cpp:40]
+FAILED
+test_copy.py::test_copy_inplace_mixed_dtype_triton[src_dtype0-dst_dtype0] PASSED
+test_copy.py::test_copy_inplace_mixed_dtype_triton[src_dtype1-dst_dtype1] PASSED
+test_copy.py::test_copy_inplace_mixed_dtype_triton[src_dtype2-dst_dtype2] PASSED
+
+=================================== FAILURES ===================================
+___________________ test_copy_inplace_float8_e8m0fnu[shape0] ___________________
+
+shape = (8,)
+
+    @pytest.mark.copy_
+    @pytest.mark.skipif(
+        not hasattr(torch, "float8_e8m0fnu"),
+        reason="PyTorch does not support float8_e8m0fnu",
+    )
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    @pytest.mark.parametrize("shape", [(8,), (4, 4), (2, 3, 4)])
+    def test_copy_inplace_float8_e8m0fnu(shape):
+        """Test that copy_ works correctly with float8_e8m0fnu (e8m0) dtype tensors.
+    
+        Triton does not recognize float8_e8m0fnu, so FlagGems should fallback to
+        PyTorch's native copy_ implementation for this dtype.
+        """
+        device = flag_gems.device
+    
+        # e8m0 is an exponent-only format, create via view from uint8
+        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
+        src = src_uint8.view(torch.float8_e8m0fnu)
+        ref_src = utils.to_reference(src)
+    
+        ref_dst = utils.to_reference(
+>           torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
+        )
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:14771)
+
+test_copy.py:125: RuntimeError
+___________________ test_copy_inplace_float8_e8m0fnu[shape1] ___________________
+
+shape = (4, 4)
+
+    @pytest.mark.copy_
+    @pytest.mark.skipif(
+        not hasattr(torch, "float8_e8m0fnu"),
+        reason="PyTorch does not support float8_e8m0fnu",
+    )
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    @pytest.mark.parametrize("shape", [(8,), (4, 4), (2, 3, 4)])
+    def test_copy_inplace_float8_e8m0fnu(shape):
+        """Test that copy_ works correctly with float8_e8m0fnu (e8m0) dtype tensors.
+    
+        Triton does not recognize float8_e8m0fnu, so FlagGems should fallback to
+        PyTorch's native copy_ implementation for this dtype.
+        """
+        device = flag_gems.device
+    
+        # e8m0 is an exponent-only format, create via view from uint8
+        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
+        src = src_uint8.view(torch.float8_e8m0fnu)
+        ref_src = utils.to_reference(src)
+    
+        ref_dst = utils.to_reference(
+>           torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
+        )
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:14771)
+
+test_copy.py:125: RuntimeError
+___________________ test_copy_inplace_float8_e8m0fnu[shape2] ___________________
+
+shape = (2, 3, 4)
+
+    @pytest.mark.copy_
+    @pytest.mark.skipif(
+        not hasattr(torch, "float8_e8m0fnu"),
+        reason="PyTorch does not support float8_e8m0fnu",
+    )
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    @pytest.mark.parametrize("shape", [(8,), (4, 4), (2, 3, 4)])
+    def test_copy_inplace_float8_e8m0fnu(shape):
+        """Test that copy_ works correctly with float8_e8m0fnu (e8m0) dtype tensors.
+    
+        Triton does not recognize float8_e8m0fnu, so FlagGems should fallback to
+        PyTorch's native copy_ implementation for this dtype.
+        """
+        device = flag_gems.device
+    
+        # e8m0 is an exponent-only format, create via view from uint8
+        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
+        src = src_uint8.view(torch.float8_e8m0fnu)
+        ref_src = utils.to_reference(src)
+    
+        ref_dst = utils.to_reference(
+>           torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
+        )
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:14771)
+
+test_copy.py:125: RuntimeError
+_________________ test_copy_inplace_float8_e8m0fnu_to_float32 __________________
+
+    @pytest.mark.copy_
+    @pytest.mark.skipif(
+        not hasattr(torch, "float8_e8m0fnu"),
+        reason="PyTorch does not support float8_e8m0fnu",
+    )
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_copy_inplace_float8_e8m0fnu_to_float32():
+        """Test copy_ from float8_e8m0fnu to float32."""
+        device = flag_gems.device
+        shape = (8,)
+    
+        src_uint8 = torch.randint(1, 200, shape, dtype=torch.uint8, device=device)
+        src = src_uint8.view(torch.float8_e8m0fnu)
+        ref_src = utils.to_reference(src)
+    
+        ref_dst = utils.to_reference(torch.zeros(shape, dtype=torch.float32, device=device))
+        res_dst = torch.zeros(shape, dtype=torch.float32, device=device)
+        ref_dst.copy_(ref_src)
+    
+        with flag_gems.use_gems():
+>           res_dst.copy_(src)
+
+test_copy.py:158: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:145: in copy_
+    overload(expanded_src, out0=dst)
+/root/.flaggems/code_cache/pointwise_dynamic_e48511204de20f9b7de40e250713f1eca7c0ff50e7e81c5eb5aaa357068c386c54__copy_kernel_kernel_rank_1_1d_tile_pid_1380222.py:40: in _copy_kernel_wrapper_rank_1
+    _copy_kernel_kernel_rank_1[grid](
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:364: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+../src/flag_gems/utils/libentry.py:889: in run
+    kernel = self.fn.run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:795: in run
+    kernel = self.default_run(*args, **kwargs)
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:638: in default_run
+    bound_args, sig_and_spec, constexpr_vals, non_constexpr_vals, excess_kwargs = self.binder(*args, **kwargs)
+<string>:2: in dynamic_func
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+arg = <[RuntimeError('[NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab0...ch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:8454)') raised in repr()] Tensor object at 0x7fcba973d990>
+is_const = False
+
+    def mangle_type(arg, is_const=False):
+    
+        if arg is None:
+            return "none"
+        elif isinstance(arg, bool):
+            return "i1"
+        elif isinstance(arg, int):
+            if -(2**31) <= arg and arg <= 2**31 - 1:
+                return "i32"
+            elif 2**63 <= arg and arg <= 2**64 - 1:
+                return "u64"
+            else:
+                return "i64"
+        elif isinstance(arg, float):
+            return "fp32"
+        else:
+            # dtypes are hashable so we can memoize this mapping:
+            dsk = (arg.dtype, is_const)
+            res = dtype2str.get(dsk, None)
+            if res is None:
+>               res = ("*k" if dsk[1] else "*") + type_canonicalisation_dict[str(dsk[0]).split('.')[-1]]
+E               KeyError: 'float8_e8m0fnu'
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py:350: KeyError
+=========================== short test summary info ============================
+FAILED test_copy.py::test_copy_inplace_float8_e8m0fnu[shape0] - RuntimeError:...
+FAILED test_copy.py::test_copy_inplace_float8_e8m0fnu[shape1] - RuntimeError:...
+FAILED test_copy.py::test_copy_inplace_float8_e8m0fnu[shape2] - RuntimeError:...
+FAILED test_copy.py::test_copy_inplace_float8_e8m0fnu_to_float32 - KeyError: ...
+=============== 4 failed, 23 passed, 49924 deselected in 11.69s ================

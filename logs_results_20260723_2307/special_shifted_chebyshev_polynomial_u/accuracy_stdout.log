@@ -1,0 +1,531 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 02:19:25 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 02:19:27 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:19:27 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:19:27 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:19:27 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:19:27 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:19:27 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:19:27 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:19:27 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:19:27 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 02:19:28 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49939 deselected / 12 selected
+
+test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u[dtype0-shape0] PASSED
+test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u[dtype0-shape1] PASSED
+test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u[dtype0-shape2] FAILED
+test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u[dtype0-shape3] FAILED
+test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u[dtype0-shape4] FAILED
+test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u[dtype0-shape5] FAILED
+test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape0] PASSED
+test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape1] FAILED
+test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape2] FAILED
+test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape3] FAILED
+test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape4] FAILED
+test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape5] FAILED
+
+=================================== FAILURES ===================================
+__________ test_special_shifted_chebyshev_polynomial_u[dtype0-shape2] __________
+
+shape = (1024, 1024), dtype = torch.float32
+
+    @pytest.mark.special_shifted_chebyshev_polynomial_u
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # shifted_chebyshev_polynomial_u_cuda does not support Half/BFloat16
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_shifted_chebyshev_polynomial_u(shape, dtype):
+        # x in [0, 1] for shifted Chebyshev polynomial
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+        n = torch.randint(0, 10, shape, dtype=torch.long, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_n = n.to(ref_x.device).to(ref_x.dtype)
+    
+        ref_out = torch.special.shifted_chebyshev_polynomial_u(ref_x, ref_n)
+        with flag_gems.use_gems():
+            res_out = torch.special.shifted_chebyshev_polynomial_u(x, n)
+    
+        # Use larger tolerance for float32 due to trigonometric function precision
+>       utils.gems_assert_close(res_out, ref_out, dtype, atol=5e-3)
+
+test_special_shifted_chebyshev_polynomial_u.py:40: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[ 0.6454,  1.0612, -0.6309,  ..., -0.6999, -1.4288,  0.3501],
+        [ 1.0000,  1.0086,  1.0539,  ...,  1.000...2724, -1.1309,  ...,  2.1035, -0.9372,  0.1899],
+        [-1.1038, -0.8915,  0.0757,  ..., -0.9875,  1.0000, -0.8449]])
+ref = tensor([[ 0.6512,  1.0612, -0.6309,  ..., -0.6999, -1.4286,  0.3501],
+        [ 1.0000,  1.0086,  1.0540,  ...,  1.000...2644, -1.1345,  ...,  2.1034, -0.9372,  0.1899],
+        [-1.1039, -0.8915,  0.0716,  ..., -0.9875,  1.0000, -0.8449]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.005
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 59538 / 1048576 (5.7%)
+E       Greatest absolute difference: 0.0368800163269043 at index (70, 367) (up to 0.005 allowed)
+E       Greatest relative difference: 428.50732421875 at index (496, 773) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+__________ test_special_shifted_chebyshev_polynomial_u[dtype0-shape3] __________
+
+shape = (20, 320, 15), dtype = torch.float32
+
+    @pytest.mark.special_shifted_chebyshev_polynomial_u
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # shifted_chebyshev_polynomial_u_cuda does not support Half/BFloat16
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_shifted_chebyshev_polynomial_u(shape, dtype):
+        # x in [0, 1] for shifted Chebyshev polynomial
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+        n = torch.randint(0, 10, shape, dtype=torch.long, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_n = n.to(ref_x.device).to(ref_x.dtype)
+    
+        ref_out = torch.special.shifted_chebyshev_polynomial_u(ref_x, ref_n)
+        with flag_gems.use_gems():
+            res_out = torch.special.shifted_chebyshev_polynomial_u(x, n)
+    
+        # Use larger tolerance for float32 due to trigonometric function precision
+>       utils.gems_assert_close(res_out, ref_out, dtype, atol=5e-3)
+
+test_special_shifted_chebyshev_polynomial_u.py:40: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[ 1.0000,  0.7770,  0.5490,  ..., -0.7397,  1.0587,  0.5875],
+         [ 1.3465, -1.9922, -0.4274,  ...,  0.7...23, -1.6622,  ..., -1.1461,  1.0812,  1.0374],
+         [ 1.0000, -0.2600,  0.9888,  ...,  0.6607, -1.7414,  1.2369]]])
+ref = tensor([[[ 1.0000,  0.7770,  0.5513,  ..., -0.7397,  1.0586,  0.5875],
+         [ 1.3430, -1.9923, -0.4274,  ...,  0.7...23, -1.6622,  ..., -1.1451,  1.0812,  1.0374],
+         [ 1.0000, -0.2600,  0.9888,  ...,  0.6607, -1.7414,  1.2365]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.005
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 5532 / 96000 (5.8%)
+E       Greatest absolute difference: 0.03678387403488159 at index (2, 141, 3) (up to 0.005 allowed)
+E       Greatest relative difference: 101.22610473632812 at index (14, 146, 12) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+__________ test_special_shifted_chebyshev_polynomial_u[dtype0-shape4] __________
+
+shape = (16, 128, 64, 60), dtype = torch.float32
+
+    @pytest.mark.special_shifted_chebyshev_polynomial_u
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # shifted_chebyshev_polynomial_u_cuda does not support Half/BFloat16
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_shifted_chebyshev_polynomial_u(shape, dtype):
+        # x in [0, 1] for shifted Chebyshev polynomial
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+        n = torch.randint(0, 10, shape, dtype=torch.long, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_n = n.to(ref_x.device).to(ref_x.dtype)
+    
+        ref_out = torch.special.shifted_chebyshev_polynomial_u(ref_x, ref_n)
+        with flag_gems.use_gems():
+            res_out = torch.special.shifted_chebyshev_polynomial_u(x, n)
+    
+        # Use larger tolerance for float32 due to trigonometric function precision
+>       utils.gems_assert_close(res_out, ref_out, dtype, atol=5e-3)
+
+test_special_shifted_chebyshev_polynomial_u.py:40: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 1.8590e+00,  1.0000e+00, -9.4770e-01,  ..., -1.2092e+00,
+            1.0089e+00,  8.3154e-01],
+          [...914e-01],
+          [ 8.8371e-01,  4.8046e-01, -1.4350e+00,  ..., -3.9019e-01,
+           -1.2233e+00, -8.3703e-01]]]])
+ref = tensor([[[[ 1.8589e+00,  1.0000e+00, -9.5080e-01,  ..., -1.2093e+00,
+            1.0116e+00,  8.3154e-01],
+          [...914e-01],
+          [ 8.8371e-01,  4.8079e-01, -1.4350e+00,  ..., -3.9019e-01,
+           -1.2133e+00, -8.3704e-01]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.005
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 447660 / 7864320 (5.7%)
+E       Greatest absolute difference: 0.03687894344329834 at index (0, 72, 22, 53) (up to 0.005 allowed)
+E       Greatest relative difference: 13341.392578125 at index (10, 100, 36, 23) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+__________ test_special_shifted_chebyshev_polynomial_u[dtype0-shape5] __________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float32
+
+    @pytest.mark.special_shifted_chebyshev_polynomial_u
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # shifted_chebyshev_polynomial_u_cuda does not support Half/BFloat16
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_shifted_chebyshev_polynomial_u(shape, dtype):
+        # x in [0, 1] for shifted Chebyshev polynomial
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+        n = torch.randint(0, 10, shape, dtype=torch.long, device=flag_gems.device)
+    
+        ref_x = utils.to_reference(x, True)
+        ref_n = n.to(ref_x.device).to(ref_x.dtype)
+    
+        ref_out = torch.special.shifted_chebyshev_polynomial_u(ref_x, ref_n)
+        with flag_gems.use_gems():
+            res_out = torch.special.shifted_chebyshev_polynomial_u(x, n)
+    
+        # Use larger tolerance for float32 due to trigonometric function precision
+>       utils.gems_assert_close(res_out, ref_out, dtype, atol=5e-3)
+
+test_special_shifted_chebyshev_polynomial_u.py:40: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-1.2923e+00, -1.2917e+00, -1.0185e+00,  ...,  3.9987e+00,
+            -1.0309e+00, -8.4673e-01],
+         ...e+00],
+           [-4.2376e-01,  8.1399e+00, -6.3285e-01,  ...,  1.0187e+00,
+            -1.2211e+00,  1.0000e+00]]]]])
+ref = tensor([[[[[-1.2919e+00, -1.2844e+00, -1.0186e+00,  ...,  3.9987e+00,
+            -1.0315e+00, -8.4673e-01],
+         ...e+00],
+           [-4.2367e-01,  8.1399e+00, -6.3149e-01,  ...,  1.0187e+00,
+            -1.2193e+00,  1.0000e+00]]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.005
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 336438 / 5924352 (5.7%)
+E       Greatest absolute difference: 0.03687793016433716 at index (7, 6, 48, 11, 9) (up to 0.005 allowed)
+E       Greatest relative difference: 4316.53955078125 at index (3, 6, 55, 12, 12) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_____ test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape1] ______
+
+shape = (1,), dtype = torch.float32
+
+    @pytest.mark.special_shifted_chebyshev_polynomial_u
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # shifted_chebyshev_polynomial_u_cuda does not support Half/BFloat16
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_shifted_chebyshev_polynomial_u_scalar_n(shape, dtype):
+        # Test with scalar n (same n for all elements)
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+        n = 3  # scalar
+    
+        ref_x = utils.to_reference(x, True)
+    
+        ref_out = torch.special.shifted_chebyshev_polynomial_u(ref_x, n)
+        with flag_gems.use_gems():
+            res_out = torch.special.shifted_chebyshev_polynomial_u(x, n)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_special_shifted_chebyshev_polynomial_u.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([-0.0252]), ref = tensor([-0.0301]), dtype = torch.float32
+equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1 / 1 (100.0%)
+E       Greatest absolute difference: 0.004898997023701668 at index (0,) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.1627526730298996 at index (0,) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_____ test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape2] ______
+
+shape = (1024, 1024), dtype = torch.float32
+
+    @pytest.mark.special_shifted_chebyshev_polynomial_u
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # shifted_chebyshev_polynomial_u_cuda does not support Half/BFloat16
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_shifted_chebyshev_polynomial_u_scalar_n(shape, dtype):
+        # Test with scalar n (same n for all elements)
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+        n = 3  # scalar
+    
+        ref_x = utils.to_reference(x, True)
+    
+        ref_out = torch.special.shifted_chebyshev_polynomial_u(ref_x, n)
+        with flag_gems.use_gems():
+            res_out = torch.special.shifted_chebyshev_polynomial_u(x, n)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_special_shifted_chebyshev_polynomial_u.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[-0.8823,  0.4673, -0.9457,  ..., -0.8926, -0.0659,  3.8874],
+        [-0.6908, -0.8666, -0.8675,  ...,  0.312...4041, -1.0569,  ...,  0.9256,  0.3019, -1.0881],
+        [ 0.4307,  0.5573,  1.0870,  ..., -1.0871, -0.6859, -0.9604]])
+ref = tensor([[-0.8822,  0.4673, -0.9457,  ..., -0.8919, -0.0618,  3.8874],
+        [-0.6908, -0.8665, -0.8675,  ...,  0.320...4041, -1.0569,  ...,  0.9256,  0.3100, -1.0881],
+        [ 0.4307,  0.5573,  1.0870,  ..., -1.0871, -0.6855, -0.9603]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 333312 / 1048576 (31.8%)
+E       Greatest absolute difference: 0.012602746486663818 at index (724, 567) (up to 0.0001 allowed)
+E       Greatest relative difference: 13754.248046875 at index (963, 91) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_____ test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape3] ______
+
+shape = (20, 320, 15), dtype = torch.float32
+
+    @pytest.mark.special_shifted_chebyshev_polynomial_u
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # shifted_chebyshev_polynomial_u_cuda does not support Half/BFloat16
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_shifted_chebyshev_polynomial_u_scalar_n(shape, dtype):
+        # Test with scalar n (same n for all elements)
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+        n = 3  # scalar
+    
+        ref_x = utils.to_reference(x, True)
+    
+        ref_out = torch.special.shifted_chebyshev_polynomial_u(ref_x, n)
+        with flag_gems.use_gems():
+            res_out = torch.special.shifted_chebyshev_polynomial_u(x, n)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_special_shifted_chebyshev_polynomial_u.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[ 1.0753, -0.5753, -1.0857,  ..., -0.0430,  0.3949, -0.3977],
+         [-3.8076,  0.5487, -0.4878,  ..., -1.0...67, -0.0112,  ...,  1.7400, -0.8154, -0.7020],
+         [-1.0685, -3.3520, -0.5754,  ...,  1.0879, -0.0190, -1.0437]]])
+ref = tensor([[[ 1.0753, -0.5738, -1.0857,  ..., -0.0430,  0.4044, -0.3977],
+         [-3.8076,  0.5611, -0.4878,  ..., -1.0...60, -0.0112,  ...,  1.7399, -0.8144, -0.7020],
+         [-1.0680, -3.3520, -0.5748,  ...,  1.0879, -0.0190, -1.0437]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 30512 / 96000 (31.8%)
+E       Greatest absolute difference: 0.012601137161254883 at index (7, 204, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 127.61857604980469 at index (14, 265, 11) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_____ test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape4] ______
+
+shape = (16, 128, 64, 60), dtype = torch.float32
+
+    @pytest.mark.special_shifted_chebyshev_polynomial_u
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # shifted_chebyshev_polynomial_u_cuda does not support Half/BFloat16
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_shifted_chebyshev_polynomial_u_scalar_n(shape, dtype):
+        # Test with scalar n (same n for all elements)
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+        n = 3  # scalar
+    
+        ref_x = utils.to_reference(x, True)
+    
+        ref_out = torch.special.shifted_chebyshev_polynomial_u(ref_x, n)
+        with flag_gems.use_gems():
+            res_out = torch.special.shifted_chebyshev_polynomial_u(x, n)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_special_shifted_chebyshev_polynomial_u.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[-1.0623e+00,  1.7426e+00, -9.8199e-01,  ..., -1.3076e-01,
+            9.9775e-01, -3.3225e-01],
+          [...511e-01],
+          [ 5.1365e-01, -3.2960e+00, -1.0486e+00,  ..., -1.7576e+00,
+            5.2457e-01, -9.5425e-01]]]])
+ref = tensor([[[[-1.0623e+00,  1.7425e+00, -9.8196e-01,  ..., -1.3670e-01,
+            9.9713e-01, -3.2976e-01],
+          [...491e-01],
+          [ 5.1365e-01, -3.2960e+00, -1.0486e+00,  ..., -1.7575e+00,
+            5.2457e-01, -9.5421e-01]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 2497688 / 7864320 (31.8%)
+E       Greatest absolute difference: 0.012603282928466797 at index (2, 18, 23, 28) (up to 0.0001 allowed)
+E       Greatest relative difference: 13752.244140625 at index (5, 26, 11, 45) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_____ test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape5] ______
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float32
+
+    @pytest.mark.special_shifted_chebyshev_polynomial_u
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # shifted_chebyshev_polynomial_u_cuda does not support Half/BFloat16
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_shifted_chebyshev_polynomial_u_scalar_n(shape, dtype):
+        # Test with scalar n (same n for all elements)
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+        n = 3  # scalar
+    
+        ref_x = utils.to_reference(x, True)
+    
+        ref_out = torch.special.shifted_chebyshev_polynomial_u(ref_x, n)
+        with flag_gems.use_gems():
+            res_out = torch.special.shifted_chebyshev_polynomial_u(x, n)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_special_shifted_chebyshev_polynomial_u.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[[-2.7875e+00, -1.0498e+00, -8.5227e-01,  ...,  1.9561e+00,
+            -4.5224e-01,  1.0676e+00],
+         ...e+00],
+           [-8.8456e-01, -3.9488e+00, -8.3951e-01,  ...,  3.7571e-01,
+            -7.3732e-02,  2.1829e+00]]]]])
+ref = tensor([[[[[-2.7875e+00, -1.0498e+00, -8.5227e-01,  ...,  1.9561e+00,
+            -4.5224e-01,  1.0676e+00],
+         ...e+00],
+           [-8.8377e-01, -3.9488e+00, -8.3936e-01,  ...,  3.7342e-01,
+            -7.3732e-02,  2.1829e+00]]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 1880603 / 5924352 (31.7%)
+E       Greatest absolute difference: 0.012603282928466797 at index (10, 3, 21, 23, 21) (up to 0.0001 allowed)
+E       Greatest relative difference: 13752.244140625 at index (6, 1, 29, 11, 16) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+=========================== short test summary info ============================
+FAILED test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u[dtype0-shape2]
+FAILED test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u[dtype0-shape3]
+FAILED test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u[dtype0-shape4]
+FAILED test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u[dtype0-shape5]
+FAILED test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape1]
+FAILED test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape2]
+FAILED test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape3]
+FAILED test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape4]
+FAILED test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u_scalar_n[dtype0-shape5]
+================ 9 failed, 3 passed, 49939 deselected in 12.82s ================

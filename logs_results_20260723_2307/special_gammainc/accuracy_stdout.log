@@ -1,0 +1,413 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 02:16:39 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 02:16:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:16:41 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:16:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:16:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:16:41 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:16:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:16:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:16:41 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:16:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 02:16:42 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49942 deselected / 9 selected
+
+test_special_gammainc.py::test_special_gammainc[dtype0-shape0] FAILED
+test_special_gammainc.py::test_special_gammainc[dtype0-shape1] FAILED
+test_special_gammainc.py::test_special_gammainc[dtype0-shape2] FAILED
+test_special_gammainc.py::test_special_gammainc[dtype0-shape3] FAILED
+test_special_gammainc.py::test_special_gammainc[dtype0-shape4] FAILED
+test_special_gammainc.py::test_special_gammainc[dtype0-shape5] FAILED
+test_special_gammainc.py::test_special_gammainc_boundary_x_zero[dtype0] FAILED
+test_special_gammainc.py::test_special_gammainc_boundary_a_one[dtype0] FAILED
+test_special_gammainc.py::test_special_gammainc_boundary_large_x[dtype0] FAILED
+
+=================================== FAILURES ===================================
+_____________________ test_special_gammainc[dtype0-shape0] _____________________
+
+shape = (), dtype = torch.float32
+
+    @pytest.mark.special_gammainc
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # float32 only: gammainc series expansion is numerically unstable in lower precisions
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_gammainc(shape, dtype):
+        # Use positive values for gammainc as it's defined for non-negative inputs
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+        y = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.special.gammainc(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+>           res_out = torch.special.gammainc(x, y)
+
+test_special_gammainc.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammainc.py:173: in special_gammainc
+    _launch_gammainc(out, a, x)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+out = None, a = tensor(8.7162, device='cuda:0')
+x = tensor(8.7395, device='cuda:0')
+
+    def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
+        assert (
+            a.device.type == flag_gems.device
+            and x.device.type == flag_gems.device
+>           and out.device.type == flag_gems.device
+        ), f"All tensors must be {flag_gems.device} tensors"
+E       AttributeError: 'NoneType' object has no attribute 'device'
+
+../src/flag_gems/ops/special_gammainc.py:120: AttributeError
+_____________________ test_special_gammainc[dtype0-shape1] _____________________
+
+shape = (1,), dtype = torch.float32
+
+    @pytest.mark.special_gammainc
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # float32 only: gammainc series expansion is numerically unstable in lower precisions
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_gammainc(shape, dtype):
+        # Use positive values for gammainc as it's defined for non-negative inputs
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+        y = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.special.gammainc(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+>           res_out = torch.special.gammainc(x, y)
+
+test_special_gammainc.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammainc.py:173: in special_gammainc
+    _launch_gammainc(out, a, x)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+out = None, a = tensor([9.6692], device='cuda:0')
+x = tensor([9.0179], device='cuda:0')
+
+    def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
+        assert (
+            a.device.type == flag_gems.device
+            and x.device.type == flag_gems.device
+>           and out.device.type == flag_gems.device
+        ), f"All tensors must be {flag_gems.device} tensors"
+E       AttributeError: 'NoneType' object has no attribute 'device'
+
+../src/flag_gems/ops/special_gammainc.py:120: AttributeError
+_____________________ test_special_gammainc[dtype0-shape2] _____________________
+
+shape = (1024, 1024), dtype = torch.float32
+
+    @pytest.mark.special_gammainc
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # float32 only: gammainc series expansion is numerically unstable in lower precisions
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_gammainc(shape, dtype):
+        # Use positive values for gammainc as it's defined for non-negative inputs
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+        y = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.special.gammainc(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+>           res_out = torch.special.gammainc(x, y)
+
+test_special_gammainc.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammainc.py:173: in special_gammainc
+    _launch_gammainc(out, a, x)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+out = None
+a = tensor([[8.7612, 2.9589, 3.5228,  ..., 5.5809, 0.8820, 3.7494],
+        [5.9327, 4.2013, 7.7349,  ..., 3.2616, 6.3599,... ..., 9.5041, 5.7266, 6.3411],
+        [2.3403, 4.2766, 8.6795,  ..., 6.2462, 2.6941, 3.2796]],
+       device='cuda:0')
+x = tensor([[4.6000, 7.7380, 3.1370,  ..., 2.5488, 6.1527, 2.2719],
+        [3.1095, 3.3368, 6.1150,  ..., 5.0284, 2.7909,... ..., 2.8159, 8.2784, 9.0349],
+        [4.5971, 7.6113, 2.4651,  ..., 8.2679, 8.2729, 1.9176]],
+       device='cuda:0')
+
+    def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
+        assert (
+            a.device.type == flag_gems.device
+            and x.device.type == flag_gems.device
+>           and out.device.type == flag_gems.device
+        ), f"All tensors must be {flag_gems.device} tensors"
+E       AttributeError: 'NoneType' object has no attribute 'device'
+
+../src/flag_gems/ops/special_gammainc.py:120: AttributeError
+_____________________ test_special_gammainc[dtype0-shape3] _____________________
+
+shape = (20, 320, 15), dtype = torch.float32
+
+    @pytest.mark.special_gammainc
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # float32 only: gammainc series expansion is numerically unstable in lower precisions
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_gammainc(shape, dtype):
+        # Use positive values for gammainc as it's defined for non-negative inputs
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+        y = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.special.gammainc(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+>           res_out = torch.special.gammainc(x, y)
+
+test_special_gammainc.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammainc.py:173: in special_gammainc
+    _launch_gammainc(out, a, x)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+out = None
+a = tensor([[[ 3.8103,  3.6817,  9.0410,  ...,  7.3159,  0.7559,  4.1498],
+         [ 1.6830,  9.5402,  2.9600,  ...,  3.4...64,  3.1985,  3.4319],
+         [ 5.6674,  4.1680,  5.2527,  ...,  6.7518,  0.7465,  0.8560]]],
+       device='cuda:0')
+x = tensor([[[ 5.9178,  2.8013,  0.5032,  ...,  3.8260,  7.6388,  9.1700],
+         [ 8.4404,  5.1481,  8.0096,  ...,  8.8...69,  2.5147,  2.3988],
+         [ 6.1129,  1.2952,  1.5553,  ...,  9.7546,  3.4116,  0.8538]]],
+       device='cuda:0')
+
+    def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
+        assert (
+            a.device.type == flag_gems.device
+            and x.device.type == flag_gems.device
+>           and out.device.type == flag_gems.device
+        ), f"All tensors must be {flag_gems.device} tensors"
+E       AttributeError: 'NoneType' object has no attribute 'device'
+
+../src/flag_gems/ops/special_gammainc.py:120: AttributeError
+_____________________ test_special_gammainc[dtype0-shape4] _____________________
+
+shape = (16, 128, 64, 60), dtype = torch.float32
+
+    @pytest.mark.special_gammainc
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # float32 only: gammainc series expansion is numerically unstable in lower precisions
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_gammainc(shape, dtype):
+        # Use positive values for gammainc as it's defined for non-negative inputs
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+        y = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.special.gammainc(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+>           res_out = torch.special.gammainc(x, y)
+
+test_special_gammainc.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammainc.py:173: in special_gammainc
+    _launch_gammainc(out, a, x)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+out = None
+a = tensor([[[[ 9.4748,  6.2913,  1.5232,  ...,  2.2515,  8.9267,  4.5019],
+          [ 8.6740,  0.4729,  1.7488,  ..., 10...,  3.4113,  3.2858],
+          [ 3.3234,  2.4022,  8.7408,  ...,  3.7390,  1.7305,  6.4744]]]],
+       device='cuda:0')
+x = tensor([[[[ 2.9341,  0.5869,  1.1027,  ...,  0.6290,  8.4493,  3.6438],
+          [ 7.6747,  3.6931,  2.2581,  ...,  6...,  4.6009,  7.0626],
+          [ 4.7750,  6.4199,  4.6685,  ...,  9.9517,  6.4284,  5.5542]]]],
+       device='cuda:0')
+
+    def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
+        assert (
+            a.device.type == flag_gems.device
+            and x.device.type == flag_gems.device
+>           and out.device.type == flag_gems.device
+        ), f"All tensors must be {flag_gems.device} tensors"
+E       AttributeError: 'NoneType' object has no attribute 'device'
+
+../src/flag_gems/ops/special_gammainc.py:120: AttributeError
+_____________________ test_special_gammainc[dtype0-shape5] _____________________
+
+shape = (16, 7, 57, 32, 29), dtype = torch.float32
+
+    @pytest.mark.special_gammainc
+    @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+    # float32 only: gammainc series expansion is numerically unstable in lower precisions
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_gammainc(shape, dtype):
+        # Use positive values for gammainc as it's defined for non-negative inputs
+        x = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+        y = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+    
+        ref_x = utils.to_reference(x, True)
+        ref_y = utils.to_reference(y, True)
+        ref_out = torch.special.gammainc(ref_x, ref_y)
+    
+        with flag_gems.use_gems():
+>           res_out = torch.special.gammainc(x, y)
+
+test_special_gammainc.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammainc.py:173: in special_gammainc
+    _launch_gammainc(out, a, x)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+out = None
+a = tensor([[[[[ 0.9351,  1.6903,  7.1945,  ...,  0.2542,  9.1313,  6.0787],
+           [ 0.1363, 10.0043,  9.4767,  ..., ... 3.0185,  0.4449],
+           [ 0.6887, 10.0816,  1.2213,  ...,  9.7212,  8.9979,  4.8717]]]]],
+       device='cuda:0')
+x = tensor([[[[[ 5.2272,  9.7504,  1.7651,  ...,  5.1873,  1.0868,  0.8982],
+           [ 6.8306,  1.2443,  2.9175,  ..., ... 5.9428,  1.5916],
+           [ 4.6288,  5.6552,  1.7089,  ...,  5.5253,  1.2850,  1.0024]]]]],
+       device='cuda:0')
+
+    def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
+        assert (
+            a.device.type == flag_gems.device
+            and x.device.type == flag_gems.device
+>           and out.device.type == flag_gems.device
+        ), f"All tensors must be {flag_gems.device} tensors"
+E       AttributeError: 'NoneType' object has no attribute 'device'
+
+../src/flag_gems/ops/special_gammainc.py:120: AttributeError
+________________ test_special_gammainc_boundary_x_zero[dtype0] _________________
+
+dtype = torch.float32
+
+    @pytest.mark.special_gammainc
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_gammainc_boundary_x_zero(dtype):
+        """P(a, 0) = 0 for all a > 0."""
+        a_vals = torch.tensor(
+            [0.5, 1.0, 2.0, 5.0, 10.0], dtype=dtype, device=flag_gems.device
+        )
+        x_vals = torch.zeros_like(a_vals)
+    
+        ref_a = utils.to_reference(a_vals, True)
+        ref_x = utils.to_reference(x_vals, True)
+        ref_out = torch.special.gammainc(ref_a, ref_x)
+    
+        with flag_gems.use_gems():
+>           res = torch.special.gammainc(a_vals, x_vals)
+
+test_special_gammainc.py:57: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammainc.py:173: in special_gammainc
+    _launch_gammainc(out, a, x)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+out = None
+a = tensor([ 0.5000,  1.0000,  2.0000,  5.0000, 10.0000], device='cuda:0')
+x = tensor([0., 0., 0., 0., 0.], device='cuda:0')
+
+    def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
+        assert (
+            a.device.type == flag_gems.device
+            and x.device.type == flag_gems.device
+>           and out.device.type == flag_gems.device
+        ), f"All tensors must be {flag_gems.device} tensors"
+E       AttributeError: 'NoneType' object has no attribute 'device'
+
+../src/flag_gems/ops/special_gammainc.py:120: AttributeError
+_________________ test_special_gammainc_boundary_a_one[dtype0] _________________
+
+dtype = torch.float32
+
+    @pytest.mark.special_gammainc
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_gammainc_boundary_a_one(dtype):
+        """P(1, x) = 1 - exp(-x)."""
+        x = torch.linspace(0.1, 20.0, 100, dtype=dtype, device=flag_gems.device)
+        a = torch.ones_like(x)
+    
+        ref_a = utils.to_reference(a, True)
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.special.gammainc(ref_a, ref_x)
+    
+        with flag_gems.use_gems():
+>           res = torch.special.gammainc(a, x)
+
+test_special_gammainc.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammainc.py:173: in special_gammainc
+    _launch_gammainc(out, a, x)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+out = None
+a = tensor([1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.,
+        1., 1., 1., 1., 1., 1., 1., 1...., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.,
+        1., 1., 1., 1., 1., 1., 1., 1., 1., 1.], device='cuda:0')
+x = tensor([ 0.1000,  0.3010,  0.5020,  0.7030,  0.9040,  1.1051,  1.3061,  1.5071,
+         1.7081,  1.9091,  2.1101,  2....99, 18.1909, 18.3919, 18.5929, 18.7939, 18.9949, 19.1960,
+        19.3970, 19.5980, 19.7990, 20.0000], device='cuda:0')
+
+    def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
+        assert (
+            a.device.type == flag_gems.device
+            and x.device.type == flag_gems.device
+>           and out.device.type == flag_gems.device
+        ), f"All tensors must be {flag_gems.device} tensors"
+E       AttributeError: 'NoneType' object has no attribute 'device'
+
+../src/flag_gems/ops/special_gammainc.py:120: AttributeError
+________________ test_special_gammainc_boundary_large_x[dtype0] ________________
+
+dtype = torch.float32
+
+    @pytest.mark.special_gammainc
+    @pytest.mark.parametrize("dtype", [torch.float32])
+    def test_special_gammainc_boundary_large_x(dtype):
+        """P(a, x) -> 1 as x >> a."""
+        a = torch.tensor([0.5, 1.0, 2.0], dtype=dtype, device=flag_gems.device)
+        x = torch.full_like(a, 100.0)
+    
+        ref_a = utils.to_reference(a, True)
+        ref_x = utils.to_reference(x, True)
+        ref_out = torch.special.gammainc(ref_a, ref_x)
+    
+        with flag_gems.use_gems():
+>           res = torch.special.gammainc(a, x)
+
+test_special_gammainc.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/ops/special_gammainc.py:173: in special_gammainc
+    _launch_gammainc(out, a, x)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+out = None, a = tensor([0.5000, 1.0000, 2.0000], device='cuda:0')
+x = tensor([100., 100., 100.], device='cuda:0')
+
+    def _launch_gammainc(out: torch.Tensor, a: torch.Tensor, x: torch.Tensor):
+        assert (
+            a.device.type == flag_gems.device
+            and x.device.type == flag_gems.device
+>           and out.device.type == flag_gems.device
+        ), f"All tensors must be {flag_gems.device} tensors"
+E       AttributeError: 'NoneType' object has no attribute 'device'
+
+../src/flag_gems/ops/special_gammainc.py:120: AttributeError
+=========================== short test summary info ============================
+FAILED test_special_gammainc.py::test_special_gammainc[dtype0-shape0] - Attri...
+FAILED test_special_gammainc.py::test_special_gammainc[dtype0-shape1] - Attri...
+FAILED test_special_gammainc.py::test_special_gammainc[dtype0-shape2] - Attri...
+FAILED test_special_gammainc.py::test_special_gammainc[dtype0-shape3] - Attri...
+FAILED test_special_gammainc.py::test_special_gammainc[dtype0-shape4] - Attri...
+FAILED test_special_gammainc.py::test_special_gammainc[dtype0-shape5] - Attri...
+FAILED test_special_gammainc.py::test_special_gammainc_boundary_x_zero[dtype0]
+FAILED test_special_gammainc.py::test_special_gammainc_boundary_a_one[dtype0]
+FAILED test_special_gammainc.py::test_special_gammainc_boundary_large_x[dtype0]
+===================== 9 failed, 49942 deselected in 11.26s =====================

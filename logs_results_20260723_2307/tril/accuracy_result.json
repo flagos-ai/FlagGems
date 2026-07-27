@@ -1,0 +1,1284 @@
+{
+  "tests/test_tril.py::test_tril[dtype0-shape0--2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype0-shape1--2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype0-shape2--1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "diagonal": -1
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype0-shape3-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "diagonal": 0
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype0-shape4-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "diagonal": 1
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype0-shape5-3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "diagonal": 3
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype1-shape0--2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype1-shape1--2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype1-shape2--1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "diagonal": -1
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype1-shape3-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "diagonal": 0
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype1-shape4-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "diagonal": 1
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype1-shape5-3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "diagonal": 3
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype2-shape0--2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype2-shape1--2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype2-shape2--1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "diagonal": -1
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype2-shape3-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "diagonal": 0
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype2-shape4-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "diagonal": 1
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype2-shape5-3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "diagonal": 3
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype3-shape0--2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype3-shape1--2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1
+      ],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype3-shape2--1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "diagonal": -1
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype3-shape3-0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "diagonal": 0
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype3-shape4-1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "diagonal": 1
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype3-shape5-3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "diagonal": 3
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype4-shape0--2]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype4-shape1--2]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        1
+      ],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype4-shape2--1]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        1024,
+        1024
+      ],
+      "diagonal": -1
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype4-shape3-0]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "diagonal": 0
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype4-shape4-1]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "diagonal": 1
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril[dtype4-shape5-3]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "diagonal": 3
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype0-shape0--2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype0-shape1--2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype0-shape2--1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "diagonal": -1
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype0-shape3-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "diagonal": 0
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype0-shape4-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "diagonal": 1
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype0-shape5-3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "diagonal": 3
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype1-shape0--2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype1-shape1--2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype1-shape2--1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "diagonal": -1
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype1-shape3-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "diagonal": 0
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype1-shape4-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "diagonal": 1
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype1-shape5-3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "diagonal": 3
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype2-shape0--2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype2-shape1--2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype2-shape2--1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "diagonal": -1
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype2-shape3-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "diagonal": 0
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype2-shape4-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "diagonal": 1
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype2-shape5-3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "diagonal": 3
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype3-shape0--2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype3-shape1--2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1
+      ],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype3-shape2--1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "diagonal": -1
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype3-shape3-0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "diagonal": 0
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype3-shape4-1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "diagonal": 1
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype3-shape5-3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "diagonal": 3
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype4-shape0--2]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype4-shape1--2]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        1
+      ],
+      "diagonal": -2
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype4-shape2--1]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        1024,
+        1024
+      ],
+      "diagonal": -1
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype4-shape3-0]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "diagonal": 0
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype4-shape4-1]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "diagonal": 1
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_noncontiguous[dtype4-shape5-3]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "diagonal": 3
+    },
+    "result": "failed",
+    "opname": [
+      "tril"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_tril.py::test_tril_wide_exact_row_dispatch[shape0-0-dtype0]": {
+    "params": {
+      "shape": [
+        256,
+        2048
+      ],
+      "diagonal": 0,
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_wide_exact_row_dispatch[shape1--3-dtype1]": {
+    "params": {
+      "shape": [
+        512,
+        2048
+      ],
+      "diagonal": -3,
+      "dtype": "torch.int32"
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_tiny_batched_tile_dispatch[shape0-True]": {
+    "params": {
+      "shape": [
+        1024,
+        16,
+        16
+      ],
+      "expected": true
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_tiny_batched_tile_dispatch[shape1-True]": {
+    "params": {
+      "shape": [
+        512,
+        32,
+        32
+      ],
+      "expected": true
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_tiny_batched_tile_dispatch[shape2-False]": {
+    "params": {
+      "shape": [
+        128,
+        64,
+        64
+      ],
+      "expected": false
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_tiny_batched_tile_dispatch[shape3-False]": {
+    "params": {
+      "shape": [
+        4,
+        16,
+        16
+      ],
+      "expected": false
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_tiny_batched_tile_correctness[shape0-0-dtype0]": {
+    "params": {
+      "shape": [
+        1024,
+        16,
+        16
+      ],
+      "diagonal": 0,
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_tiny_batched_tile_correctness[shape1--1-dtype1]": {
+    "params": {
+      "shape": [
+        512,
+        32,
+        32
+      ],
+      "diagonal": -1,
+      "dtype": "torch.int32"
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_tiny_batched_tile_correctness[shape2-1-dtype2]": {
+    "params": {
+      "shape": [
+        256,
+        16,
+        16
+      ],
+      "diagonal": 1,
+      "dtype": "torch.bool"
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        0,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        0,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        0,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        5,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        0,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        0,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        5,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        2,
+        0,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        2,
+        5,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        0,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        0,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        5,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        2,
+        0,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_empty[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        2,
+        5,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  },
+  "tests/test_tril.py::test_tril_invalid_rank": {
+    "params": {},
+    "result": "passed",
+    "opname": [
+      "tril"
+    ],
+    "reason": null
+  }
+}

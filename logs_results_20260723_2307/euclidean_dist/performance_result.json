@@ -1,0 +1,63 @@
+{
+  "euclidean_dist": {
+    "details": [
+      {
+        "op_name": "euclidean_dist",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                128
+              ],
+              [
+                64,
+                128
+              ]
+            ],
+            "latency_base": 0.05539099872112274,
+            "latency": 0.4081610143184662,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.13570869528931567,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                128,
+                256
+              ],
+              [
+                128,
+                256
+              ]
+            ],
+            "latency_base": 0.05448500066995621,
+            "latency": 1.5348440408706665,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.035498721185410254,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_euclidean_dist.py::test_euclidean_dist",
+    "reason": null
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "abs": {
+    "customized": true,
+    "accuracy": {
+      "total": 18,
+      "skipped": 0,
+      "failed": 0,
+      "passed": 18,
+      "details": {},
+      "status": "Passed",
+      "exit_code": 0,
+      "duration": 20.228676557540894,
+      "data_file": "abs/accuracy_result.json"
+    },
+    "performance": {
+      "duration": 11.727158546447754,
+      "exit_code": 1,
+      "data_file": "abs/performance_result.json",
+      "data": {},
+      "status": "Failed",
+      "reason": "Failed: float division by zero",
+      "test_case": "benchmark/test_abs.py::test_abs"
+    }
+  }
+}

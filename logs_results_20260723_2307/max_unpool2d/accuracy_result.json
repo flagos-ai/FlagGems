@@ -1,0 +1,1922 @@
+{
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        16,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        4,
+        8,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        5,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg0-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        7,
+        9
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg0-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        2,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg0-shape8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        6,
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg0-shape9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        4,
+        10,
+        6
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg1-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg1-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg1-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg1-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        16,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg1-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        4,
+        8,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg1-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        5,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg1-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        7,
+        9
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg1-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        2,
+        2
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": "Skipped: Output size (0,0) too small for shape (1, 1, 2, 2) + cfg (3, 2, 0)"
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg1-shape8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        6,
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg1-shape9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        4,
+        10,
+        6
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg2-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg2-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg2-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg2-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        16,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg2-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        4,
+        8,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg2-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        5,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg2-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        7,
+        9
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg2-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        2,
+        2
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": "Skipped: Output size (0,0) too small for shape (1, 1, 2, 2) + cfg (3, 3, 0)"
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg2-shape8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        6,
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype0-pool_cfg2-shape9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        2,
+        4,
+        10,
+        6
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg0-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        16,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg0-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        4,
+        8,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg0-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        5,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg0-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        7,
+        9
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg0-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        2,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg0-shape8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        6,
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg0-shape9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        4,
+        10,
+        6
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        16,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        4,
+        8,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        5,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg1-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        7,
+        9
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg1-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        2,
+        2
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": "Skipped: Output size (0,0) too small for shape (1, 1, 2, 2) + cfg (3, 2, 0)"
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg1-shape8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        6,
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg1-shape9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        4,
+        10,
+        6
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg2-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg2-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg2-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg2-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        16,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg2-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        4,
+        8,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg2-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        5,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg2-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        7,
+        9
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg2-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        2,
+        2
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": "Skipped: Output size (0,0) too small for shape (1, 1, 2, 2) + cfg (3, 3, 0)"
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg2-shape8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        6,
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype1-pool_cfg2-shape9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        2,
+        4,
+        10,
+        6
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg0-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg0-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg0-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg0-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        16,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg0-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        4,
+        8,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg0-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        5,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg0-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        7,
+        9
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg0-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        2,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg0-shape8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        6,
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg0-shape9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        2,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        4,
+        10,
+        6
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg1-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg1-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg1-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg1-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        16,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg1-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        4,
+        8,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg1-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        5,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg1-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        7,
+        9
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg1-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        2,
+        2
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": "Skipped: Output size (0,0) too small for shape (1, 1, 2, 2) + cfg (3, 2, 0)"
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg1-shape8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        6,
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg1-shape9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        2,
+        0
+      ],
+      "shape": [
+        2,
+        4,
+        10,
+        6
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        4,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        8,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        16,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        4,
+        8,
+        16,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        5,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg2-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        2,
+        3,
+        7,
+        9
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg2-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        2,
+        2
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": "Skipped: Output size (0,0) too small for shape (1, 1, 2, 2) + cfg (3, 3, 0)"
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg2-shape8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        1,
+        1,
+        6,
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d[dtype2-pool_cfg2-shape9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool_cfg": [
+        3,
+        3,
+        0
+      ],
+      "shape": [
+        2,
+        4,
+        10,
+        6
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d_non_contiguous[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d_non_contiguous[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  },
+  "tests/test_max_unpool2d.py::test_max_unpool2d_non_contiguous[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "max_unpool2d"
+    ],
+    "reason": null
+  }
+}

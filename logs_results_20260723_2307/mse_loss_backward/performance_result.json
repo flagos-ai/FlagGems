@@ -1,0 +1,513 @@
+{
+  "mse_loss_backward": {
+    "details": [
+      {
+        "op_name": "mse_loss_backward",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.00546600017696619,
+            "latency": 0.006562000140547752,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8329777598130201,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  256,
+                  256
+                ],
+                [
+                  256,
+                  256
+                ],
+                [
+                  256,
+                  256
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.007664999924600124,
+            "latency": 0.016078999266028404,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.4767087676155743,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  1024,
+                  1024
+                ],
+                [
+                  1024,
+                  1024
+                ],
+                [
+                  1024,
+                  1024
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.011469000019133091,
+            "latency": 0.16937799751758575,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.06771245490691503,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.05863200128078461,
+            "latency": 2.648854970932007,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.022134847669729073,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  1024,
+                  65536
+                ],
+                [
+                  1024,
+                  65536
+                ],
+                [
+                  1024,
+                  65536
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.2055319994688034,
+            "latency": 10.462363243103027,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.01964489233388964,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "mse_loss_backward",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.0056870002299547195,
+            "latency": 0.006225000135600567,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9135743142286786,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  256,
+                  256
+                ],
+                [
+                  256,
+                  256
+                ],
+                [
+                  256,
+                  256
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.007809000089764595,
+            "latency": 0.015053999610245228,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.5187325821670715,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  1024,
+                  1024
+                ],
+                [
+                  1024,
+                  1024
+                ],
+                [
+                  1024,
+                  1024
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.014832000248134136,
+            "latency": 0.154558002948761,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.09596397446369202,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.10825499892234802,
+            "latency": 2.353369951248169,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.04599999199655467,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  1024,
+                  65536
+                ],
+                [
+                  1024,
+                  65536
+                ],
+                [
+                  1024,
+                  65536
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.4386720061302185,
+            "latency": 9.397497177124023,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.04667966351701189,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "mse_loss_backward",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.005754999816417694,
+            "latency": 0.006533000152558088,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8809122427716832,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  256,
+                  256
+                ],
+                [
+                  256,
+                  256
+                ],
+                [
+                  256,
+                  256
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.007841999642550945,
+            "latency": 0.01679299958050251,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.4669802797861014,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  1024,
+                  1024
+                ],
+                [
+                  1024,
+                  1024
+                ],
+                [
+                  1024,
+                  1024
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.013631000183522701,
+            "latency": 0.17688700556755066,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.07706049486103836,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.08221299946308136,
+            "latency": 2.718419075012207,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.03024294532759346,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  1024,
+                  65536
+                ],
+                [
+                  1024,
+                  65536
+                ],
+                [
+                  1024,
+                  65536
+                ]
+              ],
+              {
+                "reduction": 1
+              }
+            ],
+            "latency_base": 0.3048900067806244,
+            "latency": 10.832395553588867,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.028146129383136462,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_mse_loss_backward.py::test_mse_loss_backward",
+    "reason": null
+  }
+}

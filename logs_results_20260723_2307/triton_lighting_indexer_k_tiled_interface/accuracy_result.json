@@ -1,0 +1,1136 @@
+{
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-2048-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 16,
+      "seq_len_kv": 2048,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-2048-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 16,
+      "seq_len_kv": 2048,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-2048-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 16,
+      "seq_len_kv": 2048,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-4096-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 16,
+      "seq_len_kv": 4096,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-4096-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 16,
+      "seq_len_kv": 4096,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-4096-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 16,
+      "seq_len_kv": 4096,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-8192-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 16,
+      "seq_len_kv": 8192,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-8192-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 16,
+      "seq_len_kv": 8192,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-16-8192-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 16,
+      "seq_len_kv": 8192,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-2048-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 32,
+      "seq_len_kv": 2048,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-2048-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 32,
+      "seq_len_kv": 2048,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-2048-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 32,
+      "seq_len_kv": 2048,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-4096-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 32,
+      "seq_len_kv": 4096,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-4096-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 32,
+      "seq_len_kv": 4096,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-4096-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 32,
+      "seq_len_kv": 4096,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-8192-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 32,
+      "seq_len_kv": 8192,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-8192-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 32,
+      "seq_len_kv": 8192,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-32-8192-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 32,
+      "seq_len_kv": 8192,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-2048-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-2048-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-2048-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-4096-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-4096-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-4096-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-8192-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 64,
+      "seq_len_kv": 8192,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-8192-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 64,
+      "seq_len_kv": 8192,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-32-64-8192-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 32,
+      "num_heads": 64,
+      "seq_len_kv": 8192,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-2048-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 16,
+      "seq_len_kv": 2048,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-2048-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 16,
+      "seq_len_kv": 2048,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-2048-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 16,
+      "seq_len_kv": 2048,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-4096-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 16,
+      "seq_len_kv": 4096,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-4096-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 16,
+      "seq_len_kv": 4096,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-4096-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 16,
+      "seq_len_kv": 4096,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-8192-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 16,
+      "seq_len_kv": 8192,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-8192-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 16,
+      "seq_len_kv": 8192,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-16-8192-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 16,
+      "seq_len_kv": 8192,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-2048-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 32,
+      "seq_len_kv": 2048,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-2048-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 32,
+      "seq_len_kv": 2048,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-2048-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 32,
+      "seq_len_kv": 2048,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-4096-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 32,
+      "seq_len_kv": 4096,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-4096-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 32,
+      "seq_len_kv": 4096,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-4096-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 32,
+      "seq_len_kv": 4096,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-8192-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 32,
+      "seq_len_kv": 8192,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-8192-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 32,
+      "seq_len_kv": 8192,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-32-8192-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 32,
+      "seq_len_kv": 8192,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-2048-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-2048-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-2048-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-4096-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-4096-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-4096-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-8192-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 64,
+      "seq_len_kv": 8192,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-8192-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 64,
+      "seq_len_kv": 8192,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-64-64-8192-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 64,
+      "num_heads": 64,
+      "seq_len_kv": 8192,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-2048-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 16,
+      "seq_len_kv": 2048,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-2048-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 16,
+      "seq_len_kv": 2048,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-2048-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 16,
+      "seq_len_kv": 2048,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-4096-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 16,
+      "seq_len_kv": 4096,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-4096-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 16,
+      "seq_len_kv": 4096,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-4096-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 16,
+      "seq_len_kv": 4096,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-8192-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 16,
+      "seq_len_kv": 8192,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-8192-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 16,
+      "seq_len_kv": 8192,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-16-8192-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 16,
+      "seq_len_kv": 8192,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-2048-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 32,
+      "seq_len_kv": 2048,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-2048-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 32,
+      "seq_len_kv": 2048,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-2048-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 32,
+      "seq_len_kv": 2048,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-4096-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 32,
+      "seq_len_kv": 4096,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-4096-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 32,
+      "seq_len_kv": 4096,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-4096-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 32,
+      "seq_len_kv": 4096,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-8192-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 32,
+      "seq_len_kv": 8192,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-8192-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 32,
+      "seq_len_kv": 8192,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-32-8192-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 32,
+      "seq_len_kv": 8192,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-2048-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-2048-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-2048-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 64,
+      "seq_len_kv": 2048,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-4096-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-4096-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-4096-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 64,
+      "seq_len_kv": 4096,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-8192-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 64,
+      "seq_len_kv": 8192,
+      "seq_len_q": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-8192-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 64,
+      "seq_len_kv": 8192,
+      "seq_len_q": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_indexer_k_tiled.py::test_lighting_indexer_forward[dtype0-128-64-8192-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "qk_dim": 128,
+      "num_heads": 64,
+      "seq_len_kv": 8192,
+      "seq_len_q": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "triton_lighting_indexer_k_tiled_interface"
+    ],
+    "reason": "Skipped: #2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  }
+}

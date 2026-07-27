@@ -1,0 +1,260 @@
+{
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": null
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": null
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": null
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": null
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": null
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype3-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": null
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype3-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype3-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype4-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": null
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype4-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": null
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype4-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": null
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype5-shape0]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": null
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype5-shape1]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": null
+  },
+  "tests/test_count_nonzero.py::test_count_nonzero[dtype5-shape2]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "count_nonzero"
+    ],
+    "reason": null
+  }
+}
