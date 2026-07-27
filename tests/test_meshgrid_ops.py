@@ -182,3 +182,4 @@ def test_meshgrid_error_handling():
     with pytest.raises(TypeError, match="must be a torch.Tensor"):
         meshgrid([1, 2, 3])
 
+
