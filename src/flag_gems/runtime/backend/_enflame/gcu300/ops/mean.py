@@ -200,7 +200,6 @@ def mean_kernel_dim_mid(
     pid_n = tl.program_id(0)
     step = tl.num_programs(1)
     for tile_id_b in tl.range(pid_b, B, step):
-        print("tile_id_b", tile_id_b)
         b_offset = tile_id_b * M * N
         inp = inpIn + b_offset
         out_value = out_value_in + tile_id_b * N
@@ -210,7 +209,6 @@ def mean_kernel_dim_mid(
         mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
         inp_ptrs_0 = inp + offset_0
         _mean = tl.load(inp_ptrs_0, mask_0, other=0.0).to(tl.float32)
-        print("_mean", _mean)
         if M > BLOCK_M:
             for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
                 m_offset = i + tl.arange(0, BLOCK_M)
