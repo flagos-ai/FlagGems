@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
-
 import pytest
 import torch
 
@@ -21,33 +19,12 @@ import flag_gems
 
 from . import base, consts
 
-SGN_REAL_DTYPES = (
-    consts.FLOAT_DTYPES
-    + ([torch.float64] if flag_gems.runtime.device.support_fp64 else [])
-    + [torch.int8, torch.uint8]
-    + consts.INT_DTYPES
-    + ([torch.int64] if flag_gems.runtime.device.support_int64 else [])
-    + consts.BOOL_DTYPES
+SGN_DTYPES = consts.FLOAT_DTYPES + (
+    [torch.float64] if flag_gems.runtime.device.support_fp64 else []
 )
-SGN_COMPLEX_DTYPES = [torch.complex32] + consts.COMPLEX_DTYPES
-SGN_DTYPES = SGN_REAL_DTYPES + SGN_COMPLEX_DTYPES
 
 
 def _make_input(shape, dtype, device):
-    if dtype is torch.bool:
-        return torch.randint(0, 2, shape, dtype=torch.int8, device=device).bool()
-    if dtype is torch.uint8:
-        return torch.randint(0, 100, shape, dtype=dtype, device=device)
-    if dtype in (torch.int8, torch.int16, torch.int32, torch.int64):
-        return torch.randint(-100, 100, shape, dtype=dtype, device=device)
-    if dtype is torch.complex32:
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message="ComplexHalf support is experimental.*",
-                category=UserWarning,
-            )
-            return torch.randn(shape, dtype=dtype, device=device)
     return torch.randn(shape, dtype=dtype, device=device)
 
 
