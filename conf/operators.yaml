@@ -145,6 +145,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: add_relu
+    description: Triton kernel implementation for _add_relu.
+    for:
+      - _add_relu.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: add_rms_norm
     description: |
       Add two inputs element-wise and apply Root Mean Square Layer Normalization.
@@ -1552,6 +1563,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: chunk_cat
+    description: Triton kernel implementation for _chunk_cat.
+    for:
+      - _chunk_cat
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: chunk_gated_delta_rule_fwd
     description: |
       The forward case for `ChunkGatedDeltaRuleFunction` with Flash Linear Attention (FLA).
@@ -2655,6 +2677,18 @@ ops:
       Computes the gradient for the backward pass of embedding_bag in dense mode.
     for:
       - _embedding_bag_dense_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: embedding_bag_per_sample_weights_backward
+    description: |
+      Triton kernel implementation for _embedding_bag_per_sample_weights_backward.
+    for:
+      - _embedding_bag_per_sample_weights_backward
     labels:
       - aten
       - KernelGen
@@ -8321,6 +8355,17 @@ ops:
       - KernelGen
     kind:
       - BLAS
+  - id: special_bessel_j1
+    description: |
+      Computes the Bessel function of the first kind of order 1 for each element of input.
+    for:
+      - special_bessel_j1
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
     stages:
       - alpha: '5.4'
   - id: special_airy_ai
@@ -9642,6 +9687,16 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: upsample_nearest_exact2d
+    description: Triton kernel implementation for _upsample_nearest_exact2d.
+    for:
+      - _upsample_nearest_exact2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
       - stable: '5.3'
   - id: upsample_nearest_exact2d_backward
     description: A backward case for `_upsample_nearest_exact2d()`.
