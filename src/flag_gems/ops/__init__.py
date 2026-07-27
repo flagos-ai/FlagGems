@@ -123,6 +123,9 @@ from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
+from flag_gems.ops.binary_cross_entropy_with_logits import (
+    binary_cross_entropy_with_logits,
+)
 from flag_gems.ops.bincount import bincount
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
@@ -186,6 +189,7 @@ from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.ctc_loss import ctc_loss
+from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
@@ -549,6 +553,7 @@ from flag_gems.ops.special_erfinv import (
     special_erfinv_out,
 )
 from flag_gems.ops.special_gammainc import special_gammainc
+from flag_gems.ops.special_gammaln import special_gammaln, special_gammaln_out
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
@@ -563,6 +568,7 @@ from flag_gems.ops.special_modified_bessel_k1 import (
     special_modified_bessel_k1,
     special_modified_bessel_k1_out,
 )
+from flag_gems.ops.special_round import special_round, special_round_out
 from flag_gems.ops.special_scaled_modified_bessel_k1 import (
     special_scaled_modified_bessel_k1,
     special_scaled_modified_bessel_k1_out,
@@ -776,6 +782,7 @@ __all__ = [
     "batch_norm_backward",
     "bernoulli",
     "bernoulli_",
+    "binary_cross_entropy_with_logits",
     "bincount",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
@@ -846,6 +853,7 @@ __all__ = [
     "cosh_out",
     "count_nonzero",
     "ctc_loss",
+    "cudnn_batch_norm_backward",
     "cudnn_convolution",
     "cummax",
     "cummin",
@@ -1295,6 +1303,8 @@ __all__ = [
     "special_erfinv_",
     "special_erfinv_out",
     "special_gammainc",
+    "special_gammaln",
+    "special_gammaln_out",
     "special_hermite_polynomial_h",
     "special_i0e",
     "special_i0e_out",
@@ -1308,6 +1318,8 @@ __all__ = [
     "special_modified_bessel_k0_out",
     "special_modified_bessel_k1",
     "special_modified_bessel_k1_out",
+    "special_round",
+    "special_round_out",
     "special_scaled_modified_bessel_k1",
     "special_scaled_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_u",
