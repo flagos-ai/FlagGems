@@ -81,6 +81,7 @@ _FULL_CONFIG = (
     ("_assert_async", _assert_async),
     ("_batch_norm_no_update", _batch_norm_no_update),
     ("_cdist_backward", _cdist_backward),
+    ("_chunk_cat", _chunk_cat),
     ("_conj", _conj),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_efficient_attention_backward", efficient_attention_backward),
