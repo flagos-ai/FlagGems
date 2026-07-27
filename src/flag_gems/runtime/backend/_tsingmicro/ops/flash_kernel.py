@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import triton
 import triton.language as tl
 
@@ -258,8 +272,13 @@ def keep(cfg):
     BM = cfg.kwargs["BLOCK_M"]
     BN = cfg.kwargs["BLOCK_N"]
     w = cfg.num_warps
+    s = cfg.num_stages
 
-    return (BM, BN, w) in ((128, 32, 4), (128, 128, 8))
+    return (BM, BN, w, s) in (
+        (128, 32, 4, 1),
+        (128, 128, 4, 1),
+        (256, 128, 4, 1),
+    )
 
 
 def prune_fwd_configs(configs, nargs, **kwargs):

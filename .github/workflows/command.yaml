@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: "ondemand test"
 
 on:
@@ -67,10 +81,20 @@ jobs:
               VENDOR="nvidia"
               BACKEND="nvidia-cuda133"
               ;;
-            a100|h100)
-              # TODO: verify CUDA version on a100/h100, then set correct backend
+            a100)
               VENDOR="nvidia"
               BACKEND="nvidia-cuda133"
+              ;;
+            h100)
+              # Driver 535.183.06 supports up to CUDA 12.9, so use the 12.8
+              # profile (cuda133 requires a newer driver). Note: nvcc is not on
+              # PATH in this node's container (cuda at /usr/local/cuda-12.9);
+              # C++ extension builds may need PATH/CUDA_HOME set.
+              # This node's container glibc is too old for FlagTree
+              # (needs GLIBC 2.38), so use upstream Triton instead.
+              VENDOR="nvidia"
+              BACKEND="nvidia-cuda128"
+              echo "COMPILER=triton" >> $GITHUB_ENV
               ;;
             cann850)
               VENDOR="ascend"
@@ -79,6 +103,10 @@ jobs:
             cann9)
               VENDOR="ascend"
               BACKEND="ascend-cann900"
+              ;;
+            mthreads)
+              VENDOR="mthreads"
+              BACKEND="mthreads-musa520"
               ;;
             *)
               VENDOR="${RUNNER_LABEL}"
@@ -96,8 +124,6 @@ jobs:
         env:
           GH_VERSION: "2.95.0"
         run: |
-          export HOME=$(eval echo ~"$(whoami)")
-          echo "HOME=${HOME}" >> $GITHUB_ENV
           GH_DIR="${HOME}/.local/bin"
           if command -v gh &>/dev/null; then
             echo "gh already available: $(gh --version | head -1)"
@@ -118,21 +144,10 @@ jobs:
           echo "checking out ${{ needs.preprocess.outputs.pull }}"
           gh pr checkout ${{ needs.preprocess.outputs.pull }}
 
-      - id: setup-flaggems
-        shell: bash
-        run: |
-          ./setup.sh ${BACKEND}
-          if [ "${BACKEND}" == "nvidia-cuda133" ]; then
-            source .venv/bin/activate
-            uv pip install vllm==0.21.0 --torch-backend=cu130
-          fi
-
-      - id: check-gpu
-        shell: bash
-        run: |
-          source .venv/bin/activate
-          source tools/env.sh ${BACKEND}
-          bash tools/gpu_check_${VENDOR}.sh
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          backend: ${{ env.BACKEND }}
+          gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
 
       - id: run-tests
         shell: bash
@@ -140,8 +155,8 @@ jobs:
           EXISTING_OP: ${{ needs.preprocess.outputs.existing }}
         run: |
           source .venv/bin/activate
-          source tools/env.sh ${BACKEND}
           tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+            --gpus "${AVAILABLE_GPUS}" \
             --dump-output \
             --output-dir results_new
 
@@ -154,6 +169,7 @@ jobs:
           else
             git checkout master
             tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+              --gpus "${AVAILABLE_GPUS}" \
               --dump-output \
               --output-dir results_old
 

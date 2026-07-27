@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: cpp-ops
 
 permissions:
@@ -5,6 +19,7 @@ permissions:
 
 on:
   workflow_call:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -15,19 +30,20 @@ jobs:
       - uses: ./.github/actions/checkout-retry
       - uses: ./.github/actions/setup-flaggems
         with:
-          vendor: nvidia-cuda133
+          backend: nvidia-cuda133
           gpu_check_script: tools/gpu_check_nvidia.sh
 
       - shell: bash
         run: |
-          export PATH="/home/secure/.pyenv/bin:/usr/local/cuda/bin:$PATH"
-          eval "$(pyenv init -)"
-          export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUILD_TYPE=Release"
-          pip install -v -e . --no-build-isolation
+          source .venv/bin/activate
+          export PATH="/home/secure/.local/bin:/usr/local/cuda/bin:$PATH"
+          tools/set_cpp_vendor.sh cuda
+          export CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA -DCMAKE_BUILD_TYPE=Release"
+          uv pip install -v -e ./cpp --no-build-isolation
       - shell: bash
         run: |
-          export PATH="/home/secure/.pyenv/bin:/usr/local/cuda/bin:$PATH"
-          eval "$(pyenv init -)"
-          cd build/cpython-*/ctests
+          source .venv/bin/activate
+          export PATH="/home/.local/bin:/usr/local/cuda/bin:$PATH"
+          cd cpp/build/cpython-*/ctests
           export FLAGGEMS_SOURCE_DIR=$(python -c "import os;import flag_gems;print(os.path.dirname(flag_gems.__file__))")
           ctest -V

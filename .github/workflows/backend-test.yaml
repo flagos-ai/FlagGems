@@ -1,11 +1,25 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 ---
 name: Backend Test
 
 on:
   workflow_call:
     inputs:
-      vendor:
-        description: 'GEMS_VENDOR value (e.g. iluvatar, ascend, mthreads)'
+      backend:
+        description: 'FlagGems backend label (e.g. nvidia-cuda133, mthreads-musa520, ascend-cann900)'
         required: true
         type: string
       runner_label:
@@ -44,7 +58,7 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
-        op-test-${{ inputs.vendor }}-${{ github.event.pull_request.number || github.ref }}
+        op-test-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -52,7 +66,7 @@ jobs:
       - uses: ./.github/actions/checkout-retry
       - uses: ./.github/actions/setup-flaggems
         with:
-          vendor: ${{ inputs.vendor }}
+          backend: ${{ inputs.backend }}
           gpu_check_script: ${{ inputs.gpu_check_script }}
 
       - name: Test alpha ops
@@ -61,7 +75,7 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed_files }}
         shell: bash
         run: |
-          bash ${{ inputs.test_script }} ${{ inputs.vendor }} ${{ inputs.pr_id }}
+          bash ${{ inputs.test_script }} ${{ inputs.backend }} ${{ inputs.pr_id }}
       - name: Run backend tests
         if: ${{ inputs.test_script == '' }}
         shell: bash
@@ -69,5 +83,4 @@ jobs:
           CHANGED_FILES: ${{ inputs.changed_files }}
         run: |
           source .venv/bin/activate
-          source tools/env.sh ${{ inputs.vendor }}
           tools/test-op.sh ${{ inputs.pr_id }}

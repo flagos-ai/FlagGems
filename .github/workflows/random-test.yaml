@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 ---
 name: Random Test
 
@@ -86,14 +100,13 @@ jobs:
       - uses: ./.github/actions/checkout-retry
       - uses: ./.github/actions/setup-flaggems
         with:
-          vendor: ${{ steps.resolve.outputs.BACKEND }}
+          backend: ${{ steps.resolve.outputs.BACKEND }}
           gpu_check_script: tools/gpu_check_${{ steps.resolve.outputs.VENDOR }}.sh
 
       - name: Run tests
         shell: bash
         run: |
           source .venv/bin/activate
-          source tools/env.sh ${BACKEND}
           tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
 
       - name: Upload results
