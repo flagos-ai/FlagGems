@@ -1,7 +1,8 @@
+from typing import List
+
 import torch
 import triton
 import triton.language as tl
-from typing import List, Tuple
 
 
 # ============ Platform Detection ============
@@ -10,12 +11,14 @@ def get_backend():
     if torch.cuda.is_available():
         return "cuda"
     try:
-        import torch_npu
+        import torch_npu  # noqa: F401
+
         if torch.npu.is_available():
             return "npu"
-    except:
+    except ImportError:
         pass
     return "cpu"
+
 
 BACKEND = get_backend()
 IS_NPU = BACKEND == "npu"
@@ -30,6 +33,7 @@ else:
 
 # ============ Fast Validation ============
 
+
 def _validate_tensors_fast(tensors, indexing):
     """
     Fast validation with minimal overhead.
@@ -40,12 +44,14 @@ def _validate_tensors_fast(tensors, indexing):
     if not isinstance(tensors, (list, tuple)):
         raise TypeError(f"tensors must be list or tuple, got {type(tensors)}")
 
-    if indexing not in ('ij', 'xy'):
+    if indexing not in ("ij", "xy"):
         raise ValueError(f"indexing must be 'ij' or 'xy', got {indexing}")
 
     first = tensors[0]
     if not isinstance(first, torch.Tensor):
-        raise TypeError(f"Each tensor must be a torch.Tensor, got {type(first)} at position 0")
+        raise TypeError(
+            f"Each tensor must be a torch.Tensor, got {type(first)} at position 0"
+        )
 
     dtype = first.dtype
     device = first.device
@@ -54,30 +60,37 @@ def _validate_tensors_fast(tensors, indexing):
 
     # Check first tensor
     if first.dim() != 1:
-        raise ValueError(f"All tensors must be 1D, got tensor with {first.dim()} dimensions at position 0")
+        raise ValueError(
+            f"All tensors must be 1D, got tensor with {first.dim()} dimensions at position 0"
+        )
     sizes[0] = first.numel()
 
     for i in range(1, ndim):
         t = tensors[i]
         if not isinstance(t, torch.Tensor):
-            raise TypeError(f"Each tensor must be a torch.Tensor, got {type(t)} at position {i}")
+            raise TypeError(
+                f"Each tensor must be a torch.Tensor, got {type(t)} at position {i}"
+            )
         if t.dim() != 1:
-            raise ValueError(f"All tensors must be 1D, got tensor with {t.dim()} dimensions at position {i}")
+            raise ValueError(
+                f"All tensors must be 1D, got tensor with {t.dim()} dimensions at position {i}"
+            )
         if t.dtype != dtype:
-            raise ValueError(f"All tensors must have the same dtype")
+            raise ValueError("All tensors must have the same dtype")
         if t.device != device:
-            raise ValueError(f"All tensors must be on the same device")
+            raise ValueError("All tensors must be on the same device")
         sizes[i] = t.numel()
 
     return {
-        'ndim': ndim,
-        'sizes': tuple(sizes),
-        'dtype': dtype,
-        'device': device,
+        "ndim": ndim,
+        "sizes": tuple(sizes),
+        "dtype": dtype,
+        "device": device,
     }
 
 
 # ============ Ultra Fast Path: 2D Very Small Tensors (<=10x10) ============
+
 
 def _meshgrid_2d_ultra_fast(x, y, indexing):
     """
@@ -86,13 +99,14 @@ def _meshgrid_2d_ultra_fast(x, y, indexing):
     nx = x.numel()
     ny = y.numel()
 
-    if indexing == 'ij':
+    if indexing == "ij":
         return [x.view(-1, 1).expand(nx, ny), y.view(1, -1).expand(nx, ny)]
     else:
         return [x.view(1, -1).expand(ny, nx), y.view(-1, 1).expand(ny, nx)]
 
 
 # ============ Fast Path: 2D Medium Tensors (128x128 to 1024x1024) ============
+
 
 def _meshgrid_2d_medium_fast(x, y, indexing):
     """
@@ -102,17 +116,14 @@ def _meshgrid_2d_medium_fast(x, y, indexing):
     nx = x.numel()
     ny = y.numel()
 
-    if indexing == 'ij':
-        x_expanded = x.view(-1, 1).expand(nx, ny)
-        y_expanded = y.view(1, -1).expand(nx, ny)
-        return [x_expanded, y_expanded]
+    if indexing == "ij":
+        return [x.view(-1, 1).expand(nx, ny), y.view(1, -1).expand(nx, ny)]
     else:
-        x_expanded = x.view(1, -1).expand(ny, nx)
-        y_expanded = y.view(-1, 1).expand(ny, nx)
-        return [x_expanded, y_expanded]
+        return [x.view(1, -1).expand(ny, nx), y.view(-1, 1).expand(ny, nx)]
 
 
 # ============ Fast Path: 2D General ============
+
 
 def _meshgrid_2d_fast(tensors, indexing):
     """
@@ -121,13 +132,14 @@ def _meshgrid_2d_fast(tensors, indexing):
     x, y = tensors[0], tensors[1]
     nx, ny = x.numel(), y.numel()
 
-    if indexing == 'ij':
+    if indexing == "ij":
         return [x.view(-1, 1).expand(nx, ny), y.view(1, -1).expand(nx, ny)]
     else:
         return [x.view(1, -1).expand(ny, nx), y.view(-1, 1).expand(ny, nx)]
 
 
 # ============ Fast Path: 3D/4D ============
+
 
 def _meshgrid_3d_medium_fast(tensors, indexing):
     """
@@ -136,17 +148,17 @@ def _meshgrid_3d_medium_fast(tensors, indexing):
     x, y, z = tensors[0], tensors[1], tensors[2]
     nx, ny, nz = x.numel(), y.numel(), z.numel()
 
-    if indexing == 'ij':
+    if indexing == "ij":
         return [
             x.view(-1, 1, 1).expand(nx, ny, nz),
             y.view(1, -1, 1).expand(nx, ny, nz),
-            z.view(1, 1, -1).expand(nx, ny, nz)
+            z.view(1, 1, -1).expand(nx, ny, nz),
         ]
     else:
         return [
             x.view(1, -1, 1).expand(ny, nx, nz),
             y.view(-1, 1, 1).expand(ny, nx, nz),
-            z.view(1, 1, -1).expand(ny, nx, nz)
+            z.view(1, 1, -1).expand(ny, nx, nz),
         ]
 
 
@@ -157,36 +169,35 @@ def _meshgrid_4d_medium_fast(tensors, indexing):
     x, y, z, w = tensors[0], tensors[1], tensors[2], tensors[3]
     nx, ny, nz, nw = x.numel(), y.numel(), z.numel(), w.numel()
 
-    if indexing == 'ij':
+    if indexing == "ij":
         return [
             x.view(-1, 1, 1, 1).expand(nx, ny, nz, nw),
             y.view(1, -1, 1, 1).expand(nx, ny, nz, nw),
             z.view(1, 1, -1, 1).expand(nx, ny, nz, nw),
-            w.view(1, 1, 1, -1).expand(nx, ny, nz, nw)
+            w.view(1, 1, 1, -1).expand(nx, ny, nz, nw),
         ]
     else:
         return [
             x.view(1, -1, 1, 1).expand(ny, nx, nz, nw),
             y.view(-1, 1, 1, 1).expand(ny, nx, nz, nw),
             z.view(1, 1, -1, 1).expand(ny, nx, nz, nw),
-            w.view(1, 1, 1, -1).expand(ny, nx, nz, nw)
+            w.view(1, 1, 1, -1).expand(ny, nx, nz, nw),
         ]
 
 
 # ============ General Implementation ============
+
 
 def _meshgrid_general(tensors, indexing):
     """
     General implementation for all cases not covered by fast paths.
     """
     validated = _validate_tensors_fast(tensors, indexing)
-    ndim = validated['ndim']
-    sizes = validated['sizes']
-    dtype = validated['dtype']
-    device = validated['device']
+    ndim = validated["ndim"]
+    sizes = validated["sizes"]
 
     # Compute shape inline
-    if indexing == 'ij':
+    if indexing == "ij":
         shape = sizes
     else:
         if ndim >= 2:
@@ -204,7 +215,7 @@ def _meshgrid_general(tensors, indexing):
         view_shapes = []
         for i in range(ndim):
             vs = [1] * ndim
-            if indexing == 'ij':
+            if indexing == "ij":
                 vs[i] = sizes[i]
             else:
                 if i == 0:
@@ -219,7 +230,7 @@ def _meshgrid_general(tensors, indexing):
 
     # For CUDA and CPU, use broadcast_tensors as fallback for large tensors
     if BACKEND != "npu":
-        if indexing == 'ij':
+        if indexing == "ij":
             reshaped = []
             for i, t in enumerate(tensors):
                 shape_list = [1] * ndim
@@ -244,7 +255,10 @@ def _meshgrid_general(tensors, indexing):
                 return tensors
 
     # Triton path for very large tensors (NPU only)
-    outputs = [torch.empty(shape, dtype=dtype, device=device) for _ in range(ndim)]
+    outputs = [
+        torch.empty(shape, dtype=validated["dtype"], device=validated["device"])
+        for _ in range(ndim)
+    ]
 
     if all(s == 1 for s in sizes):
         for i, t in enumerate(tensors):
@@ -253,34 +267,56 @@ def _meshgrid_general(tensors, indexing):
 
     block_size = 4096
     num_blocks = (total + block_size - 1) // block_size
-    xy_mode = indexing == 'xy'
+    xy_mode = indexing == "xy"
 
     if ndim == 2:
         _meshgrid_kernel_2d_npu[(num_blocks,)](
-            outputs[0], outputs[1],
-            tensors[0], tensors[1],
-            sizes[0], sizes[1],
-            xy_mode, total
+            outputs[0],
+            outputs[1],
+            tensors[0],
+            tensors[1],
+            sizes[0],
+            sizes[1],
+            xy_mode,
+            total,
         )
     elif ndim == 3:
         _meshgrid_kernel_3d_npu[(num_blocks,)](
-            outputs[0], outputs[1], outputs[2],
-            tensors[0], tensors[1], tensors[2],
-            sizes[0], sizes[1], sizes[2],
-            xy_mode, total
+            outputs[0],
+            outputs[1],
+            outputs[2],
+            tensors[0],
+            tensors[1],
+            tensors[2],
+            sizes[0],
+            sizes[1],
+            sizes[2],
+            xy_mode,
+            total,
         )
     elif ndim == 4:
         _meshgrid_kernel_4d_npu[(num_blocks,)](
-            outputs[0], outputs[1], outputs[2], outputs[3],
-            tensors[0], tensors[1], tensors[2], tensors[3],
-            sizes[0], sizes[1], sizes[2], sizes[3],
-            xy_mode, total
+            outputs[0],
+            outputs[1],
+            outputs[2],
+            outputs[3],
+            tensors[0],
+            tensors[1],
+            tensors[2],
+            tensors[3],
+            sizes[0],
+            sizes[1],
+            sizes[2],
+            sizes[3],
+            xy_mode,
+            total,
         )
 
     return outputs
 
 
 # ============ Direct NPU Implementation ============
+
 
 def _npu_meshgrid_direct(tensors, indexing):
     """Direct NPU implementation with fast paths."""
@@ -303,8 +339,12 @@ def _npu_meshgrid_direct(tensors, indexing):
         if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
             nx = x.numel()
             ny = y.numel()
-            if (128 <= nx <= 1024 and 128 <= ny <= 1024 and 
-                x.dim() == 1 and y.dim() == 1):
+            if (
+                128 <= nx <= 1024
+                and 128 <= ny <= 1024
+                and x.dim() == 1
+                and y.dim() == 1
+            ):
                 if x.dtype == y.dtype and x.device == y.device:
                     return _meshgrid_2d_medium_fast(x, y, indexing)
 
@@ -321,13 +361,21 @@ def _npu_meshgrid_direct(tensors, indexing):
 
     # Fast path for 3D medium tensors
     if ndim == 3:
-        if tensors[0].numel() <= 64 and tensors[1].numel() <= 64 and tensors[2].numel() <= 64:
+        if (
+            tensors[0].numel() <= 64
+            and tensors[1].numel() <= 64
+            and tensors[2].numel() <= 64
+        ):
             return _meshgrid_3d_medium_fast(tensors, indexing)
 
     # Fast path for 4D medium tensors
     if ndim == 4:
-        if (tensors[0].numel() <= 32 and tensors[1].numel() <= 32 and 
-            tensors[2].numel() <= 32 and tensors[3].numel() <= 32):
+        if (
+            tensors[0].numel() <= 32
+            and tensors[1].numel() <= 32
+            and tensors[2].numel() <= 32
+            and tensors[3].numel() <= 32
+        ):
             return _meshgrid_4d_medium_fast(tensors, indexing)
 
     # Use general implementation
@@ -342,6 +390,7 @@ def _is_tensor_list(tensors):
 
 
 # ============ Direct CUDA Implementation ============
+
 
 def _cuda_meshgrid_direct(tensors, indexing):
     """Direct CUDA implementation with fast paths."""
@@ -364,9 +413,14 @@ def _cuda_meshgrid_direct(tensors, indexing):
         if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
             nx = x.numel()
             ny = y.numel()
-            if (128 <= nx <= 1024 and 128 <= ny <= 1024 and 
-                x.dim() == 1 and y.dim() == 1 and
-                x.dtype == y.dtype and x.device == y.device):
+            if (
+                128 <= nx <= 1024
+                and 128 <= ny <= 1024
+                and x.dim() == 1
+                and y.dim() == 1
+                and x.dtype == y.dtype
+                and x.device == y.device
+            ):
                 return _meshgrid_2d_medium_fast(x, y, indexing)
 
     if not _is_tensor_list(tensors):
@@ -379,18 +433,27 @@ def _cuda_meshgrid_direct(tensors, indexing):
             return _meshgrid_2d_fast(tensors, indexing)
 
     if ndim == 3:
-        if tensors[0].numel() <= 64 and tensors[1].numel() <= 64 and tensors[2].numel() <= 64:
+        if (
+            tensors[0].numel() <= 64
+            and tensors[1].numel() <= 64
+            and tensors[2].numel() <= 64
+        ):
             return _meshgrid_3d_medium_fast(tensors, indexing)
 
     if ndim == 4:
-        if (tensors[0].numel() <= 32 and tensors[1].numel() <= 32 and 
-            tensors[2].numel() <= 32 and tensors[3].numel() <= 32):
+        if (
+            tensors[0].numel() <= 32
+            and tensors[1].numel() <= 32
+            and tensors[2].numel() <= 32
+            and tensors[3].numel() <= 32
+        ):
             return _meshgrid_4d_medium_fast(tensors, indexing)
 
     return _meshgrid_general(tensors, indexing)
 
 
 # ============ Direct CPU Implementation ============
+
 
 def _cpu_meshgrid_direct(tensors, indexing):
     """Direct CPU implementation with fast paths."""
@@ -413,9 +476,14 @@ def _cpu_meshgrid_direct(tensors, indexing):
         if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
             nx = x.numel()
             ny = y.numel()
-            if (128 <= nx <= 1024 and 128 <= ny <= 1024 and 
-                x.dim() == 1 and y.dim() == 1 and
-                x.dtype == y.dtype and x.device == y.device):
+            if (
+                128 <= nx <= 1024
+                and 128 <= ny <= 1024
+                and x.dim() == 1
+                and y.dim() == 1
+                and x.dtype == y.dtype
+                and x.device == y.device
+            ):
                 return _meshgrid_2d_medium_fast(x, y, indexing)
 
     if not _is_tensor_list(tensors):
@@ -428,19 +496,27 @@ def _cpu_meshgrid_direct(tensors, indexing):
             return _meshgrid_2d_fast(tensors, indexing)
 
     if ndim == 3:
-        if tensors[0].numel() <= 64 and tensors[1].numel() <= 64 and tensors[2].numel() <= 64:
+        if (
+            tensors[0].numel() <= 64
+            and tensors[1].numel() <= 64
+            and tensors[2].numel() <= 64
+        ):
             return _meshgrid_3d_medium_fast(tensors, indexing)
 
     if ndim == 4:
-        if (tensors[0].numel() <= 32 and tensors[1].numel() <= 32 and 
-            tensors[2].numel() <= 32 and tensors[3].numel() <= 32):
+        if (
+            tensors[0].numel() <= 32
+            and tensors[1].numel() <= 32
+            and tensors[2].numel() <= 32
+            and tensors[3].numel() <= 32
+        ):
             return _meshgrid_4d_medium_fast(tensors, indexing)
 
     # General CPU implementation
     validated = _validate_tensors_fast(tensors, indexing)
-    sizes = validated['sizes']
+    sizes = validated["sizes"]
 
-    if indexing == 'ij':
+    if indexing == "ij":
         shape = sizes
     else:
         if ndim >= 2:
@@ -451,7 +527,7 @@ def _cpu_meshgrid_direct(tensors, indexing):
     outputs = []
     for i, t in enumerate(tensors):
         view_shape = [1] * ndim
-        if indexing == 'ij':
+        if indexing == "ij":
             view_shape[i] = sizes[i]
         else:
             if i == 0:
@@ -468,6 +544,7 @@ def _cpu_meshgrid_direct(tensors, indexing):
 # ============ NPU Triton Kernels ============
 
 if BACKEND == "npu":
+
     @triton.autotune(
         configs=[
             triton.Config({"BLOCK_SIZE": 4096}, num_warps=16),
@@ -477,9 +554,12 @@ if BACKEND == "npu":
     )
     @triton.jit
     def _meshgrid_kernel_2d_npu(
-        out0_ptr, out1_ptr,
-        x_ptr, y_ptr,
-        size_x, size_y,
+        out0_ptr,
+        out1_ptr,
+        x_ptr,
+        y_ptr,
+        size_x,
+        size_y,
         xy_mode,
         total_elements,
         BLOCK_SIZE: tl.constexpr,
@@ -512,9 +592,15 @@ if BACKEND == "npu":
     )
     @triton.jit
     def _meshgrid_kernel_3d_npu(
-        out0_ptr, out1_ptr, out2_ptr,
-        x_ptr, y_ptr, z_ptr,
-        size_x, size_y, size_z,
+        out0_ptr,
+        out1_ptr,
+        out2_ptr,
+        x_ptr,
+        y_ptr,
+        z_ptr,
+        size_x,
+        size_y,
+        size_z,
         xy_mode,
         total_elements,
         BLOCK_SIZE: tl.constexpr,
@@ -556,9 +642,18 @@ if BACKEND == "npu":
     )
     @triton.jit
     def _meshgrid_kernel_4d_npu(
-        out0_ptr, out1_ptr, out2_ptr, out3_ptr,
-        x_ptr, y_ptr, z_ptr, w_ptr,
-        size_x, size_y, size_z, size_w,
+        out0_ptr,
+        out1_ptr,
+        out2_ptr,
+        out3_ptr,
+        x_ptr,
+        y_ptr,
+        z_ptr,
+        w_ptr,
+        size_x,
+        size_y,
+        size_z,
+        size_w,
         xy_mode,
         total_elements,
         BLOCK_SIZE: tl.constexpr,
@@ -576,11 +671,11 @@ if BACKEND == "npu":
             j = rem1 // size_z_size_w
             rem2 = rem1 - j * size_z_size_w
             k = rem2 // size_w
-            l = rem2 - k * size_w
+            idx_l = rem2 - k * size_w
             x_vals = tl.load(x_ptr + j, mask=mask)
             y_vals = tl.load(y_ptr + i, mask=mask)
             z_vals = tl.load(z_ptr + k, mask=mask)
-            w_vals = tl.load(w_ptr + l, mask=mask)
+            w_vals = tl.load(w_ptr + idx_l, mask=mask)
         else:
             size_y_size_z_size_w = size_y * size_z * size_w
             i = offsets // size_y_size_z_size_w
@@ -589,11 +684,11 @@ if BACKEND == "npu":
             j = rem1 // size_z_size_w
             rem2 = rem1 - j * size_z_size_w
             k = rem2 // size_w
-            l = rem2 - k * size_w
+            idx_l = rem2 - k * size_w
             x_vals = tl.load(x_ptr + i, mask=mask)
             y_vals = tl.load(y_ptr + j, mask=mask)
             z_vals = tl.load(z_ptr + k, mask=mask)
-            w_vals = tl.load(w_ptr + l, mask=mask)
+            w_vals = tl.load(w_ptr + idx_l, mask=mask)
 
         tl.store(out0_ptr + offsets, x_vals, mask=mask)
         tl.store(out1_ptr + offsets, y_vals, mask=mask)
@@ -604,6 +699,7 @@ if BACKEND == "npu":
 # ============ CUDA Kernels ============
 
 if BACKEND == "cuda":
+
     @triton.autotune(
         configs=[
             triton.Config({"BLOCK_SIZE": 64}, num_warps=2),
@@ -617,9 +713,12 @@ if BACKEND == "cuda":
     )
     @triton.jit
     def _meshgrid_kernel_2d_cuda(
-        out0_ptr, out1_ptr,
-        x_ptr, y_ptr,
-        size_x, size_y,
+        out0_ptr,
+        out1_ptr,
+        x_ptr,
+        y_ptr,
+        size_x,
+        size_y,
         xy_mode,
         total_elements,
         BLOCK_SIZE: tl.constexpr,
@@ -646,10 +745,8 @@ if BACKEND == "cuda":
 
 # ============ Main Function ============
 
-def meshgrid(
-    tensors: List[torch.Tensor],
-    indexing: str = 'ij'
-) -> List[torch.Tensor]:
+
+def meshgrid(tensors: List[torch.Tensor], indexing: str = "ij") -> List[torch.Tensor]:
     """Create coordinate grids from 1D tensors."""
     if IS_NPU:
         return _npu_meshgrid_direct(tensors, indexing)
@@ -661,17 +758,15 @@ def meshgrid(
 
 # ============ Meshgrid Stack Function ============
 
-def meshgrid_stack(
-    tensors: List[torch.Tensor],
-    indexing: str = 'ij'
-) -> torch.Tensor:
+
+def meshgrid_stack(tensors: List[torch.Tensor], indexing: str = "ij") -> torch.Tensor:
     """
     Create coordinate grids and stack them into a single tensor.
-    
+
     Args:
         tensors: List of 1D tensors defining the grid coordinates
         indexing: 'ij' (matrix) or 'xy' (cartesian) indexing
-    
+
     Returns:
         Stacked tensor of shape (N, D1, D2, ..., DN) where N is the number of input tensors
     """
@@ -681,6 +776,7 @@ def meshgrid_stack(
 
 # ============ Registration Function ============
 
+
 def register_ops(registry):
     """Register meshgrid operators to PDU."""
     registry.register_op("meshgrid", meshgrid, "aten::meshgrid")
@@ -689,12 +785,4 @@ def register_ops(registry):
 
 # ============ Exports ============
 
-__all__ = [
-    "meshgrid",
-    "meshgrid_stack",
-    "register_ops",
-    "BACKEND",
-    "IS_NPU",
-    "IS_CUDA"
-]
-
+__all__ = ["meshgrid", "meshgrid_stack", "register_ops", "BACKEND", "IS_NPU", "IS_CUDA"]
