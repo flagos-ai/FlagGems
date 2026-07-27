@@ -16,10 +16,31 @@ import logging
 
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+# clamp_max is a pure memory-bound elementwise op (reads 1 tensor + scalar,
+# writes 1) whose only compute is a min. Without a tuned config the default
+# codegen emits a tiny 256-element tile with no unrolling, badly underutilizing
+# the XPU (~1000x slower than torch: 49ms vs 0.04ms on 4096^2). Use div.py's
+# tuned recipe (larger buffer + unroll) but keep vectorization OPEN
+# (isCloseVectorization=False): this op is 1-in/1-out so wide vector DMA (esp.
+# packing fp16/bf16) is the bandwidth lever. Measured on 4096^2: vec-open fp16
+# 0.092ms vs vec-closed 0.155ms; [10000,65536] fp16 1.43ms vs 5.29ms. Unlike
+# addcdiv (3-in, vec-closed best), always measure per op.
+clamp_max_config = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    isCloseVectorization=False,
+    unroll_num=8,
+)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, 2, "DEFAULT")])
@@ -82,6 +103,30 @@ def clamp_func_min(x, mini):
 @triton.jit
 def clamp_func_max(x, maxi):
     return tl.minimum(maxi, x)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "DEFAULT")],
+    config=clamp_max_config,
+)
+@triton.jit
+def clamp_max_func(x, maxi):
+    return tl.minimum(maxi, x)
+
+
+def clamp_max(A, max_value):
+    logger.debug("GEMS_KUNLUNXIN CLAMP_MAX")
+    if max_value is None:
+        raise ValueError("max_value must not be None")
+    return clamp_max_func(A, max_value)
+
+
+def clamp_max_(A, max_value):
+    logger.debug("GEMS_KUNLUNXIN CLAMP_MAX_")
+    if max_value is None:
+        raise ValueError("max_value must not be None")
+    return clamp_max_func(A, max_value, out0=A)
 
 
 def clamp_min(A, mini):

@@ -107,3 +107,9 @@ def sub_(A, B, *, alpha=1):
         return sub_func(A, B, alpha, out0=A)
     else:
         return sub_func_tensor_scalar(A, B, alpha, out0=A)
+
+
+def subtract_(A, B, *, alpha=1):
+    """In-place subtraction: A.subtract_(B, alpha) == A -= B * alpha."""
+    logger.debug("GEMS_KUNLUNXIN SUBTRACT_")
+    return sub_(A, B, alpha=alpha)
