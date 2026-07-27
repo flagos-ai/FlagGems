@@ -21,6 +21,7 @@ from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nonzero import nonzero
 from .ones import ones
 from .ones_like import ones_like
@@ -29,6 +30,13 @@ from .polar import polar
 from .prod import prod, prod_dim
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
+from .scaled_grouped_mm import scaled_grouped_mm
+from .segment_reduce import (
+    _segment_reduce_backward,
+    _segment_reduce_backward_out,
+    segment_reduce,
+    segment_reduce_out,
+)
 from .sigmoid import sigmoid
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
@@ -41,6 +49,8 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_nested_view_from_buffer_copy",
+    "_segment_reduce_backward",
+    "_segment_reduce_backward_out",
     "_unique2",
     "addmm",
     "amax",
@@ -72,6 +82,10 @@ __all__ = [
     "min",
     "mm",
     "mm_out",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "nonzero",
     "ones",
     "ones_like",
@@ -81,6 +95,9 @@ __all__ = [
     "prod_dim",
     "repeat_interleave_self_tensor",
     "resolve_conj",
+    "scaled_grouped_mm",
+    "segment_reduce",
+    "segment_reduce_out",
     "sigmoid",
     "special_shifted_chebyshev_polynomial_w",
     "tanh",
