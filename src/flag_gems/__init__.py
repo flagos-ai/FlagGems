@@ -74,6 +74,7 @@ _FULL_CONFIG = (
     ("__xor__.Scalar", xor_scalar),
     ("__xor__.Tensor", xor),
     ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
+    ("_add_relu.Tensor", _add_relu),
     (
         "_amp_foreach_non_finite_check_and_unscale_",
         _amp_foreach_non_finite_check_and_unscale_,

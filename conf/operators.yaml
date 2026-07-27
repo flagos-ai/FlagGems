@@ -145,6 +145,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: add_relu
+    description: Triton kernel implementation for _add_relu.
+    for:
+      - _add_relu.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: add_rms_norm
     description: |
       Add two inputs element-wise and apply Root Mean Square Layer Normalization.
