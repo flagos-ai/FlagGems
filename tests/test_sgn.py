@@ -28,6 +28,15 @@ REAL_DTYPES = (
     + utils.BOOL_TYPES
 )
 COMPLEX_SHAPES = [(17,), (7, 11), (3, 5, 7)]
+SGN_CASES = [
+    (dtype, shape)
+    for dtype in REAL_DTYPES
+    for shape in utils.POINTWISE_SHAPES
+] + [
+    (dtype, shape)
+    for dtype in utils.COMPLEX_DTYPES
+    for shape in COMPLEX_SHAPES
+]
 
 
 def _make_input(shape, dtype):
@@ -50,8 +59,8 @@ def _make_input(shape, dtype):
     return torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
 
-def _to_reference(inp, dtype):
-    return utils.to_reference(inp, dtype in utils.COMPLEX_DTYPES)
+def _to_reference(inp):
+    return utils.to_reference(inp, inp.dtype in utils.COMPLEX_DTYPES)
 
 
 def _assert_sgn_equal(result, reference, dtype):
@@ -61,66 +70,35 @@ def _assert_sgn_equal(result, reference, dtype):
         utils.gems_assert_equal(result, reference, equal_nan=True)
 
 
+def _assert_matches_torch(inp, out=None):
+    ref_inp = _to_reference(inp)
+    if out is None:
+        ref_out = torch.sgn(ref_inp)
+        with flag_gems.use_gems():
+            result = torch.sgn(inp)
+    else:
+        ref_out = torch.empty_like(ref_inp)
+        torch.sgn(ref_inp, out=ref_out)
+        with flag_gems.use_gems():
+            result = torch.sgn(inp, out=out)
+        assert result is out
+
+    _assert_sgn_equal(result, ref_out, inp.dtype)
+
+
 @pytest.mark.sgn
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", REAL_DTYPES)
-def test_sgn(shape, dtype):
+@pytest.mark.parametrize("dtype,shape", SGN_CASES)
+def test_sgn(dtype, shape):
     inp = _make_input(shape, dtype)
-    ref_inp = _to_reference(inp, dtype)
-
-    ref_out = torch.sgn(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.sgn(inp)
-
-    _assert_sgn_equal(res_out, ref_out, dtype)
-
-
-@pytest.mark.sgn
-@pytest.mark.parametrize("shape", COMPLEX_SHAPES)
-@pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
-def test_sgn_complex(shape, dtype):
-    inp = _make_input(shape, dtype)
-    ref_inp = _to_reference(inp, dtype)
-
-    ref_out = torch.sgn(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.sgn(inp)
-
-    _assert_sgn_equal(res_out, ref_out, dtype)
+    _assert_matches_torch(inp)
 
 
 @pytest.mark.sgn_out
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", REAL_DTYPES)
-def test_sgn_out(shape, dtype):
+@pytest.mark.parametrize("dtype,shape", SGN_CASES)
+def test_sgn_out(dtype, shape):
     inp = _make_input(shape, dtype)
-    ref_inp = _to_reference(inp, dtype)
     out = torch.empty_like(inp)
-    ref_out = torch.empty_like(ref_inp)
-
-    torch.sgn(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        returned = torch.sgn(inp, out=out)
-
-    assert returned is out
-    _assert_sgn_equal(out, ref_out, dtype)
-
-
-@pytest.mark.sgn_out
-@pytest.mark.parametrize("shape", COMPLEX_SHAPES)
-@pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
-def test_sgn_out_complex(shape, dtype):
-    inp = _make_input(shape, dtype)
-    ref_inp = _to_reference(inp, dtype)
-    out = torch.empty_like(inp)
-    ref_out = torch.empty_like(ref_inp)
-
-    torch.sgn(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        returned = torch.sgn(inp, out=out)
-
-    assert returned is out
-    _assert_sgn_equal(out, ref_out, dtype)
+    _assert_matches_torch(inp, out)
 
 
 @pytest.mark.sgn_
@@ -143,13 +121,7 @@ def test_sgn_special_values():
         dtype=torch.float32,
         device=flag_gems.device,
     )
-    ref_inp = utils.to_reference(inp)
-
-    ref_out = torch.sgn(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.sgn(inp)
-
-    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
+    _assert_matches_torch(inp)
 
 
 @pytest.mark.sgn
@@ -159,13 +131,7 @@ def test_sgn_complex_extreme_values():
         dtype=torch.complex64,
         device=flag_gems.device,
     )
-    ref_inp = utils.to_reference(inp, True)
-
-    ref_out = torch.sgn(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.sgn(inp)
-
-    utils.gems_assert_close(res_out, ref_out, torch.complex64)
+    _assert_matches_torch(inp)
 
 
 @pytest.mark.sgn
@@ -196,45 +162,24 @@ def test_sgn_complex_nonfinite_values():
 @pytest.mark.parametrize("dtype", [torch.float32, torch.complex64])
 def test_sgn_noncontiguous(dtype):
     inp = _make_input((7, 11), dtype).transpose(0, 1)
-    ref_inp = _to_reference(inp, dtype)
-
-    ref_out = torch.sgn(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.sgn(inp)
-
-    _assert_sgn_equal(res_out, ref_out, dtype)
+    _assert_matches_torch(inp)
 
 
 @pytest.mark.sgn_out
 @pytest.mark.parametrize("dtype", [torch.float32, torch.complex64])
 def test_sgn_out_noncontiguous(dtype):
     inp = _make_input((11, 7), dtype)
-    ref_inp = _to_reference(inp, dtype)
     out = torch.empty((7, 11), dtype=dtype, device=flag_gems.device).transpose(0, 1)
-    ref_out = torch.empty_like(ref_inp)
-
-    torch.sgn(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        returned = torch.sgn(inp, out=out)
-
-    assert returned is out
-    _assert_sgn_equal(out, ref_out, dtype)
+    _assert_matches_torch(inp, out)
 
 
 @pytest.mark.sgn_out
 def test_sgn_out_resizes_empty_tensor():
     inp = _make_input((3, 5), torch.float32)
-    ref_inp = utils.to_reference(inp)
     out = torch.empty(0, dtype=inp.dtype, device=flag_gems.device)
-    ref_out = torch.empty(0, dtype=ref_inp.dtype, device=ref_inp.device)
 
-    torch.sgn(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        returned = torch.sgn(inp, out=out)
-
-    assert returned is out
+    _assert_matches_torch(inp, out)
     assert out.shape == inp.shape
-    utils.gems_assert_equal(out, ref_out)
 
 
 @pytest.mark.sgn_out
@@ -252,10 +197,4 @@ def test_sgn_out_rejects_mismatched_dtype():
 @pytest.mark.parametrize("dtype", [torch.float32, torch.complex64])
 def test_sgn_empty(dtype):
     inp = torch.empty((0, 3), dtype=dtype, device=flag_gems.device)
-    ref_inp = _to_reference(inp, dtype)
-
-    ref_out = torch.sgn(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.sgn(inp)
-
-    _assert_sgn_equal(res_out, ref_out, dtype)
+    _assert_matches_torch(inp)

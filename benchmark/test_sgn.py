@@ -15,38 +15,15 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
-
-SGN_DTYPES = consts.FLOAT_DTYPES + (
-    [torch.float64] if flag_gems.runtime.device.support_fp64 else []
-)
-
-
-def _make_input(shape, dtype, device):
-    return torch.randn(shape, dtype=dtype, device=device)
-
-
-class SgnBenchmark(base.UnaryPointwiseBenchmark):
-    def get_input_iter(self, dtype):
-        for shape in self.shapes:
-            yield (_make_input(shape, dtype, self.device),)
-
-
-class SgnOutBenchmark(base.UnaryPointwiseOutBenchmark):
-    def get_input_iter(self, dtype):
-        for shape in self.shapes:
-            inp = _make_input(shape, dtype, self.device)
-            yield inp, {"out": torch.empty_like(inp)}
 
 
 @pytest.mark.sgn
 def test_sgn():
-    bench = SgnBenchmark(
+    bench = base.UnaryPointwiseBenchmark(
         op_name="sgn",
         torch_op=torch.sgn,
-        dtypes=SGN_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
@@ -64,9 +41,9 @@ def test_sgn_inplace():
 
 @pytest.mark.sgn_out
 def test_sgn_out():
-    bench = SgnOutBenchmark(
+    bench = base.UnaryPointwiseOutBenchmark(
         op_name="sgn_out",
         torch_op=torch.sgn,
-        dtypes=SGN_DTYPES,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
