@@ -68,7 +68,7 @@ dependencies = [
     "packaging==26.0",
     "PyYAML==6.0.1",
     "sqlalchemy==2.0.48",
-    "numpy==2.3.5",
+    "numpy>2",
 ]
 
 [project.optional-dependencies]
