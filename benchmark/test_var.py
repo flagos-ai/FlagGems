@@ -20,6 +20,15 @@ import flag_gems
 from . import base, consts
 
 
+class VarDimBenchmark(base.UnaryReductionBenchmark):
+    def get_input_iter(self, cur_dtype):
+        for args in super().get_input_iter(cur_dtype):
+            if len(args) == 1:
+                yield args[0], 0
+            else:
+                yield args
+
+
 @pytest.mark.var
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -27,6 +36,17 @@ from . import base, consts
 def test_var():
     bench = base.UnaryReductionBenchmark(
         op_name="var", torch_op=torch.var, dtypes=consts.FLOAT_DTYPES
+    )
+    bench.run()
+
+
+@pytest.mark.var_dim
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_var_dim():
+    bench = VarDimBenchmark(
+        op_name="var_dim", torch_op=torch.var, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
 

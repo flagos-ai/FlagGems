@@ -344,9 +344,16 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             x = dim_compress(x, dim)
             M = x.numel()
             cluster_num = 12
+            # XPU: tl.sum over a 1D tile is only correct up to a bounded lane
+            # count. Empirically BLOCK_SIZE=32768 (bsl=2048) is the safe max;
+            # a larger tile silently drops lanes. Cap here (dtype-independent)
+            # keeps stage-1 tiles correct AND bounds MID_SIZE <= 32768 for all
+            # M <= 2**30 so stage-2's tl.sum(mid) is also within the safe range.
+            # The old cap int(1024*64/element_size) gave 16384 for fp32 -> for
+            # M=2**30 MID_SIZE=65536 which broke stage-2 (wrong fp32 results).
             BLOCK_SIZE = min(
                 triton.next_power_of_2(triton.cdiv(M, cluster_num)),
-                int(1024 * 64 / x.element_size()),
+                32768,
             )
             MID_SIZE = triton.cdiv(M, BLOCK_SIZE)
             BLOCK_MID = triton.next_power_of_2(MID_SIZE)

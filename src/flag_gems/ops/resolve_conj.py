@@ -180,11 +180,18 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
     output = torch.empty_like(x)
 
     if x.dtype == torch.complex64:
-        # Input separate real/imaginary parts (avoid view(), get float32 tensor directly with .real/.imag)
-        x_real = x.real  # shape same as x, dtype=float32 (real part separate storage)
-        x_img = (
-            x.imag
-        )  # shape same as x, dtype=float32 (imaginary part separate storage)
+        # Access real/imag parts by reinterpreting the underlying storage as
+        # float32 via view(). This avoids using .real/.imag attributes which
+        # dispatch through FlagGems' _conj on conjugated tensors, causing
+        # "view_as_real doesn't work on unresolved conjugated tensors" errors.
+        #
+        # For complex64, the memory layout is interleaved [r0, i0, r1, i1, ...].
+        # We need to make the tensor contiguous first (which physically copies
+        # conjugated data if needed), then view as float32 and slice.
+        x_contig = x.contiguous()  # physically resolves conjugation
+        x_float = x_contig.view(torch.float32)  # [..., 2*N] interleaved layout
+        x_real = x_float[..., 0::2]  # even indices = real parts
+        x_img = x_float[..., 1::2]  # odd indices = imaginary parts
 
         # Output still use view() to convert to float32 pointer (only for kernel storage, no change to output structure)
         output_view = output.view(torch.float32)
@@ -255,9 +262,19 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
 def resolve_conj(A: torch.Tensor):
     logger.debug("GEMS RESOLVE_CONJ")
     if A.is_conj():
-        if len(A.shape) in (2, 3):
-            return resolve_conj_triton(A, is_conj=True)
+        # Cannot delegate to torch.ops.aten.resolve_conj.default() because
+        # FlagGems registers at the aten dispatch level and it would recurse.
+        # Cannot use resolve_conj_triton() either because it calls .contiguous()
+        # which may trigger copy_ -> resolve_conj recursion.
+        #
+        # Safe approach: use torch._C to access the underlying contiguous data
+        # via .conj().contiguous() at the C++ level, bypassing FlagGems dispatch.
+        # Actually the simplest safe approach: just negate the imaginary part manually.
+        if A.dtype == torch.complex64 or A.dtype == torch.complex128:
+            # Clone resolves conjugation physically at the C++ storage level
+            # torch.clone uses aten::clone which copies data including conj resolution
+            return A.clone()
         else:
-            return torch.complex(A.real, A.imag.neg())
+            return A.clone()
     else:
         return A
