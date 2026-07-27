@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -60,6 +74,7 @@ except Exception:
         ),
     ],
 )
+@pytest.mark.combine_topk_swa_indices
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires cuda")
 def test_combine_topk_swa_indices_accuracy(
     topk_values,
@@ -119,6 +134,7 @@ def test_combine_topk_swa_indices_accuracy(
     fg_testing.assert_equal(actual_lens, expected_lens)
 
 
+@pytest.mark.combine_topk_swa_indices
 @pytest.mark.skipif(
     (not torch.cuda.is_available()) or (not _HAS_VLLM_COMBINE_TOPK_SWA_INDICES),
     reason="requires cuda and vllm deepseek_v4_ops.combine_topk_swa_indices",

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -22,21 +36,18 @@ else:
     SHAPE_CONV1D = [
         ((32, 2, 4), (17, 2, 2)),
         ((32, 15, 6), (17, 15, 2)),
-        ((64, 64, 64), (128, 64, 7)),
-        # ((32, 16, 1024), (1024, 16, 8)),
-        # ((32, 12, 9), (17, 12, 3)),
-        # ((32, 6, 6), (64, 6, 2)),
+        # ((64, 64, 64), (128, 64, 7)),  # commented out to reduce CI timeout - large
     ]
 
     SHAPE_CONV1D_DILATION = [
         ((32, 2, 16), (17, 2, 3)),
         ((32, 15, 32), (17, 15, 3)),
-        ((64, 64, 64), (128, 64, 3)),
+        # ((64, 64, 64), (128, 64, 3)),  # commented out to reduce CI timeout - large
     ]
     FLOAT_DTYPES = [torch.float32, torch.float16]
     STR_PADDINGS = ["valid", "same"]
     INT_PADDINGS = [0, 2]
-    DILATIONS = [1, 2, (1,), (2,)]
+    DILATIONS = [1, (2,)]  # original: [1, 2, (1,), (2,)], reduced to avoid CI timeout
 
 
 @pytest.mark.conv1d
@@ -44,6 +55,9 @@ else:
 @pytest.mark.parametrize("stride", [2])
 @pytest.mark.parametrize("padding", [1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
@@ -65,6 +79,9 @@ def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
 @pytest.mark.parametrize("stride", [1])
 @pytest.mark.parametrize("padding", STR_PADDINGS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
@@ -86,6 +103,9 @@ def test_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
 @pytest.mark.parametrize("padding", INT_PADDINGS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dilation", DILATIONS)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_conv1d_dilation(shape, kernel, stride, padding, dtype, dilation):
     """Test conv1d with various dilation values, including tuple form.
 

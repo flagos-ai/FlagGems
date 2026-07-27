@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -31,6 +45,9 @@ BOUNDARY_CASES = [
 @pytest.mark.upsample_linear1d
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("case", BOUNDARY_CASES, ids=lambda x: x[0])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_upsample_linear1d_boundaries(dtype, case):
     _, shape, output_size, align_corners, special_cfg = case
 
@@ -83,6 +100,9 @@ def test_upsample_linear1d_boundaries(dtype, case):
 @pytest.mark.parametrize("scale", [2, 2.5, 0.3, 0.7])
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES_1D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_upsample_linear1d(dtype, shape, scale, align_corners):
     input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_i = to_reference(input).to(torch.float32)
@@ -157,6 +177,9 @@ def upsample_linear1d_backward_call(grad, input_size, align_corners):
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("layout", ["contiguous", "non_contiguous"])
 @pytest.mark.parametrize("edge_case", [False, True])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_upsample_linear1d_backward(
     shape, dtype, scale_factor, align_corners, layout, edge_case
 ):

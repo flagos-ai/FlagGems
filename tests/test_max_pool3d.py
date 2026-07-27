@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -32,7 +46,6 @@ MAXPOOL3D_CONFIGS = [
 
 
 @pytest.mark.max_pool3d_with_indices
-@pytest.mark.skip(reason="Issue #2865: this test always fail.")
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
 )
@@ -66,7 +79,6 @@ def test_max_pool3d_with_indices(
 
 
 @pytest.mark.max_pool3d_backward
-@pytest.mark.skip(reason="Issue #2865: this test always fail.")
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
 )
@@ -103,4 +115,15 @@ def test_max_pool3d_backward(
     with flag_gems.use_gems():
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
 
-    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+    # 3D backward accumulates over kernel_d * kernel_h * kernel_w elements per
+    # input position. With stride < kernel, each input can receive gradient
+    # contributions from overlapping output windows, amplifying fp error.
+    # Use kernel_volume^2 as reduce_dim to account for the compounded error.
+    if isinstance(kernel_size, int):
+        kd = kh = kw = kernel_size
+    else:
+        kd, kh, kw = kernel_size
+    kernel_volume = kd * kh * kw
+    gems_assert_close(
+        res_in_grad, ref_in_grad, dtype, reduce_dim=kernel_volume * kernel_volume
+    )

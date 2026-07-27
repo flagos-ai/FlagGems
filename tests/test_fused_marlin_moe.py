@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Precision tests for fused_marlin_moe (FlagGems Phase 2).
 
@@ -10,6 +24,7 @@ The wrapper sees packed uint8 weights; the reference sees the matching
 fp16/bf16 w_ref returned by quantize_weights so quantization round-off is
 shared by both sides.
 """
+
 import pytest
 import torch
 
@@ -455,7 +470,14 @@ def compute_max_diff(output, output_ref):
     )
 
 
-def _reference_swiglu_moe(hidden_states, w1_ref, w2_ref, topk_weights, topk_ids):
+def _reference_swiglu_moe(
+    hidden_states,
+    w1_ref,
+    w2_ref,
+    topk_weights,
+    topk_ids,
+    apply_router_weight_on_input=False,
+):
     """fp32 dequant-SwiGLU MoE ground truth (weights cast per-expert to avoid a
     full fp32 copy of the (E, *, *) tensors)."""
     M, K = hidden_states.shape
@@ -469,11 +491,13 @@ def _reference_swiglu_moe(hidden_states, w1_ref, w2_ref, topk_weights, topk_ids)
         x = hs[m]
         for k in range(topk):
             e = topk_ids[m, k].item()
-            gate_up = w1_ref[e].float() @ x
+            route_weight = tw[m, k]
+            route_input = route_weight * x if apply_router_weight_on_input else x
+            gate_up = w1_ref[e].float() @ route_input
             gate, up = gate_up[:N], gate_up[N:]
             act = torch.nn.functional.silu(gate) * up
             y = w2_ref[e].float() @ act
-            out[m] += tw[m, k] * y
+            out[m] += y if apply_router_weight_on_input else route_weight * y
     return out
 
 
@@ -483,12 +507,13 @@ def _reference_swiglu_moe(hidden_states, w1_ref, w2_ref, topk_weights, topk_ids)
 )
 @pytest.mark.parametrize("config", FULL_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
-def test_fused_marlin_moe_vs_ref(config, dtype):
+@pytest.mark.parametrize("apply_router_weight_on_input", [False, True])
+def test_fused_marlin_moe_vs_ref(config, dtype, apply_router_weight_on_input):
     """Compare fused_marlin_moe (packed INT4) against PyTorch reference (dequant)."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
     device = flag_gems.device
 
-    (hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s) = _make_inputs(
+    hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s = _make_inputs(
         num_tokens,
         num_experts,
         hidden_size,
@@ -509,8 +534,16 @@ def test_fused_marlin_moe_vs_ref(config, dtype):
         topk_weights=tw,
         topk_ids=ti,
         quant_type_id=QUANT_TYPE_UINT4B8,
+        apply_router_weight_on_input=apply_router_weight_on_input,
     )
-    ref = _reference_swiglu_moe(hs, w1_ref, w2_ref, tw, ti)
+    ref = _reference_swiglu_moe(
+        hs,
+        w1_ref,
+        w2_ref,
+        tw,
+        ti,
+        apply_router_weight_on_input=apply_router_weight_on_input,
+    )
     torch.cuda.synchronize()
 
     max_diff = compute_max_diff(result.float(), ref)
@@ -524,7 +557,7 @@ def test_fused_marlin_moe_vs_ref_int8(config, dtype):
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
     device = flag_gems.device
 
-    (hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s) = _make_inputs_int8(
+    hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s = _make_inputs_int8(
         num_tokens,
         num_experts,
         hidden_size,
@@ -563,7 +596,7 @@ def test_fused_marlin_moe_mxfp4_vs_ref(config, dtype):
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
     device = flag_gems.device
 
-    (hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s) = _make_inputs_mxfp4(
+    hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s = _make_inputs_mxfp4(
         num_tokens,
         num_experts,
         hidden_size,

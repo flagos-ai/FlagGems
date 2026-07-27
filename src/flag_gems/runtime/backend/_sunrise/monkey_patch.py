@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import functools
 import inspect
 import json
@@ -449,9 +463,11 @@ def _patch_torch_creation_function(name, aten_op):
             return _finalize_cpu_result(
                 result,
                 kwargs.get("out"),
-                torch.device(device)
-                if not isinstance(device, torch.device)
-                else device,
+                (
+                    torch.device(device)
+                    if not isinstance(device, torch.device)
+                    else device
+                ),
             )
 
     setattr(torch, name, creation_with_ptpu_cpu_fallback)
@@ -1420,12 +1436,14 @@ def _patch_torch_einsum_low_precision_reference():
                 t.dtype in low_precision_dtypes for t in tensors
             ):
                 cpu_operands = tuple(
-                    _to_cpu_if_ptpu(operand)
-                    if isinstance(operand, torch.Tensor)
-                    else (
-                        [_to_cpu_if_ptpu(item) for item in operand]
-                        if isinstance(operand, (list, tuple))
-                        else operand
+                    (
+                        _to_cpu_if_ptpu(operand)
+                        if isinstance(operand, torch.Tensor)
+                        else (
+                            [_to_cpu_if_ptpu(item) for item in operand]
+                            if isinstance(operand, (list, tuple))
+                            else operand
+                        )
                     )
                     for operand in operands
                 )
@@ -1679,15 +1697,16 @@ def _patch_json_loads_for_accuracy_result():
                 backup_path = _backup_corrupt_accuracy_report(frame_info, payload)
             except OSError as backup_exc:
                 _LOGGER.warning(
-                    "Sunrise skipped corrupt accuracy_result backup: %s", backup_exc
+                    "GEMS_SUNRISE skipped corrupt accuracy_result backup: %s",
+                    backup_exc,
                 )
             if backup_path is not None:
                 _LOGGER.warning(
-                    "Sunrise ignored corrupt accuracy_result JSON and backed it up to %s",
+                    "GEMS_SUNRISE ignored corrupt accuracy_result JSON and backed it up to %s",
                     backup_path,
                 )
             else:
-                _LOGGER.warning("Sunrise ignored corrupt accuracy_result JSON")
+                _LOGGER.warning("GEMS_SUNRISE ignored corrupt accuracy_result JSON")
             return {}
 
     json.loads = loads_with_accuracy_result_fallback
@@ -1711,7 +1730,7 @@ def _patch_json_dump_for_accuracy_result():
         safe_payload, replaced = _sanitize_accuracy_report_json(payload)
         if replaced:
             _LOGGER.warning(
-                "Sunrise sanitized %d tensor value(s) before writing accuracy_result JSON",
+                "GEMS_SUNRISE sanitized %d tensor value(s) before writing accuracy_result JSON",
                 replaced,
             )
             args = (safe_payload, *args[1:])

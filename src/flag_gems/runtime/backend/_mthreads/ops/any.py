@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from typing import Sequence
@@ -10,9 +24,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 
 def _flatten_dim(shape: Sequence[int], dim: int):
@@ -200,7 +212,7 @@ def triton_any_dim_strided(
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_MTHREADS ANY DIM")
+    logger.debug("GEMS_MTHREADS ANY_DIM")
     # shape = list(inp.shape)
     if dim is None:
         out = any(inp)
@@ -212,7 +224,7 @@ def any_dim(inp, dim=None, keepdim=False):
 
 
 def any_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_MTHREADS ANY DIMS")
+    logger.debug("GEMS_MTHREADS ANY_DIMS")
 
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import numpy as np
 import pytest
 import torch
@@ -124,6 +138,10 @@ def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
 )
 @pytest.mark.parametrize("is_causal", CAUSAL_CHOICES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_scaled_dot_product_attention_legacy(
     monkeypatch,
     batch,
@@ -203,6 +221,10 @@ def test_scaled_dot_product_attention_legacy(
 )
 @pytest.mark.parametrize("is_causal", CAUSAL_CHOICES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_scaled_dot_product_attention_legacy_backward(
     batch,
     num_q_head,
@@ -307,6 +329,10 @@ def test_scaled_dot_product_attention_legacy_backward(
 @pytest.mark.parametrize("head_size", HEAD_SIZES)
 @pytest.mark.parametrize("is_causal", CAUSAL_CHOICES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_scaled_dot_product_attention_square_qk_even_mn(
     monkeypatch, batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
@@ -335,6 +361,10 @@ def test_scaled_dot_product_attention_square_qk_even_mn(
 @pytest.mark.parametrize("head_size", HEAD_SIZES)
 @pytest.mark.parametrize("is_causal", [False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_scaled_dot_product_attention_nonsquare_qk(
     monkeypatch, batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):

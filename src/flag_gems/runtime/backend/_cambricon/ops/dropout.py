@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -15,7 +29,7 @@ from flag_gems.utils.random_utils import (
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 UNROLL = 4
 
@@ -108,7 +122,7 @@ def dropout_backward_kernel(
 
 
 def dropout(input, p, train=True):
-    logger.debug("GEMS_CAMBRICON NATIVE DROPOUT FORWARD")
+    logger.debug("GEMS_CAMBRICON NATIVE_DROPOUT_FORWARD")
     if not train or p == 0:
         out = input.clone()
         mask = torch.ones_like(input, dtype=torch.bool)
@@ -142,7 +156,7 @@ def dropout(input, p, train=True):
 
 
 def dropout_backward(grad_output, mask, scale):
-    logger.debug("GEMS_CAMBRICON NATIVE DROPOUT BACKWARD")
+    logger.debug("GEMS_CAMBRICON DROPOUT_BACKWARD")
     grad_output = grad_output.contiguous()
     grad_input = torch.empty_like(grad_output)
     N = grad_output.numel()

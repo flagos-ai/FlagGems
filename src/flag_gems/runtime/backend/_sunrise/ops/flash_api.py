@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -330,7 +344,7 @@ def mha_varlan_fwd(
     )
     q_groups = num_heads // num_heads_k
     if seqlenq_ngroups_swapped:
-        logger.debug("Swapping query groups and sequence dimensions")
+        logger.debug("GEMS_SUNRISE Swapping query groups and sequence dimensions")
         q = (
             q.reshape((batch_size, num_heads_k, q_groups, head_size))
             .transpose(1, 2)
@@ -518,7 +532,7 @@ def mha_varlan_fwd(
         if flag_gems.vendor_name == "iluvatar":
             params.k_ptr = k.view(k.shape[0], k.shape[1], -1)
             params.v_ptr = v.view(v.shape[0], v.shape[1], -1)
-        logger.debug("kernel: flash_varlen_fwd")
+        logger.debug("GEMS_SUNRISE kernel: flash_varlen_fwd")
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
             batch_size,
@@ -557,7 +571,9 @@ def mha_varlan_fwd(
             "num_stages": 1 if not is_paged else cfg["num_stages"](args),
         }
 
-        logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
+        logger.debug(
+            "GEMS_SUNRISE Running flash_varlen_fwd_kernel with config: %s", cfg_params
+        )
         kernel(*args, **cfg_params)
 
         if seqlenq_ngroups_swapped:
@@ -677,7 +693,7 @@ def mha_varlan_fwd_opt(
     )
     q_groups = num_heads // num_heads_k
     if seqlenq_ngroups_swapped:
-        logger.debug("Swapping query groups and sequence dimensions")
+        logger.debug("GEMS_SUNRISE Swapping query groups and sequence dimensions")
         q = (
             q.reshape((batch_size, num_heads_k, q_groups, head_size))
             .transpose(1, 2)
@@ -867,7 +883,7 @@ def mha_varlan_fwd_opt(
         if flag_gems.vendor_name == "iluvatar":
             params.k_ptr = k.view(k.shape[0], k.shape[1], -1)
             params.v_ptr = v.view(v.shape[0], v.shape[1], -1)
-        logger.debug("kernel: flash_varlen_fwd")
+        logger.debug("GEMS_SUNRISE kernel: flash_varlen_fwd")
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
             batch_size,
@@ -906,7 +922,9 @@ def mha_varlan_fwd_opt(
             "num_stages": 1 if not is_paged else cfg["num_stages"](args),
         }
 
-        logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
+        logger.debug(
+            "GEMS_SUNRISE Running flash_varlen_fwd_kernel with config: %s", cfg_params
+        )
         kernel(*args, **cfg_params)
 
         if seqlenq_ngroups_swapped:
@@ -992,7 +1010,7 @@ def mha_fwd(
     q_groups = num_heads // num_heads_k
 
     if seqlenq_ngroups_swapped:
-        logger.debug("q_kg swapped.")
+        logger.debug("GEMS_SUNRISE q_kg swapped.")
         q = q.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(1, 2)
         seqlen_q = q_groups
         num_heads = num_heads_k
@@ -1115,7 +1133,7 @@ def mha_fwd(
                 n_splits = splits_heuristic(n_tasks, num_sms, n_blocks)
 
                 if n_splits > 1:
-                    logger.debug("kernel: flash_fwd_splitkv")
+                    logger.debug("GEMS_SUNRISE kernel: flash_fwd_splitkv")
                     lse_splits = torch.empty(
                         (n_splits, B, H, Q), dtype=torch.float, device=q_device
                     )
@@ -1163,7 +1181,7 @@ def mha_fwd(
                     return kernel
 
             # Last option: flash_fwd
-            logger.debug("kernel: flash_fwd")
+            logger.debug("GEMS_SUNRISE kernel: flash_fwd")
             grid = lambda args: (
                 triton.cdiv(Q, args["BLOCK_M"]),
                 H * B,

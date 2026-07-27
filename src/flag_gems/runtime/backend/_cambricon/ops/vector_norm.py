@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -10,7 +24,7 @@ from flag_gems.utils import dim_compress, libentry, tl_extra_shim
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op, prune_reduce_config
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 pow = tl_extra_shim.pow
 
 
@@ -391,7 +405,7 @@ def l1_norm_kernel_2(
 
 
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
-    logger.debug("GEMS_CAMBRICON VECTOR NORM")
+    logger.debug("GEMS_CAMBRICON VECTOR_NORM")
     if dtype is not None:
         if isinstance(dtype, str):
             dtype = getattr(torch, dtype)
