@@ -146,6 +146,7 @@ from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .max import max, max_dim
 from .max_pool2d_with_indices import max_pool2d_backward, max_pool2d_with_indices
+from .max_pool3d_with_indices import max_pool3d_with_indices
 from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
@@ -438,6 +439,7 @@ __all__ = [
     "maximum",
     "max_pool2d_with_indices",
     "max_pool2d_backward",
+    "max_pool3d_with_indices",
     "mean",
     "mean_dim",
     "min",
