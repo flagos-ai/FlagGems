@@ -26,6 +26,7 @@ from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
+from .sort import sort_stable
 from .all import reduce_all
 from .any import reduce_any
 from .unique import _unique2
@@ -72,6 +73,16 @@ def isin_scalar_eq_func(x, y):
 @triton.jit
 def isin_scalar_ne_func(x, y):
     return x != y
+
+
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "ALWAYS_BOOL")],
+    config=_scalar_config,
+)
+@triton.jit
+def isin_empty_func(x, invert):
+    return invert
 
 
 def launch_arg(BLOCK_M, BLOCK_N, N, num_warps):
@@ -255,24 +266,16 @@ def isin_by_search(
     in0: torch.tensor,
     in1: torch.tensor,
     invert: bool,
-    unique_in0: bool,
     unique_in1: bool,
 ):
-    # unique or sort or ravel
-    if unique_in0:
-        # print("hit _unique2!!!")
-        in0_ravel, unique_order, _ = _unique2(
-            in0, sorted=True, return_inverse=True, return_counts=False
-        )
-    else:
-        in0_ravel = in0.contiguous().ravel()
+    in0_ravel = in0.contiguous().ravel()
     if unique_in1:
         # print("hit _unique2!!!")
         in1_ravel, _, _ = _unique2(
             in1, sorted=True, return_inverse=False, return_counts=False
         )
     else:
-        in1_ravel, _ = torch.sort(in1.ravel())
+        in1_ravel, _ = sort_stable(in1.ravel(), stable=True)
     # launch kernel func
     M = in0_ravel.numel()
     N = in1_ravel.numel()
@@ -319,8 +322,6 @@ def isin_by_search(
         if "TRITONXPU_INTERLEAVE" in os.environ:
             del os.environ["TRITONXPU_INTERLEAVE"]
 
-    if unique_in0:
-        out = torch.gather(out, 0, unique_order.ravel().to(torch.int64))
     return out.view_as(in0)
 
 
@@ -334,12 +335,14 @@ def isin(
     logger.debug("GEMS_KUNLUNXIN ISIN")
     if not torch.is_tensor(in0):
         assert torch.is_tensor(in1)
-        in0 = torch.tensor(in0, device=in1.device)
+        in0 = torch.full((), in0, device=in1.device)
     elif not torch.is_tensor(in1):
         assert torch.is_tensor(in0)
-        in1 = torch.tensor(in1, device=in0.device)
-    if in0.numel() == 0 or in1.numel() == 0:
-        return torch.zeros_like(in0, dtype=torch.bool)
+        in1 = torch.full((), in1, device=in0.device)
+    if in0.numel() == 0:
+        return torch.empty_like(in0, dtype=torch.bool)
+    if in1.numel() == 0:
+        return isin_empty_func(in0, invert)
     elif in1.numel() == 1:
         # (tensor, scalar) fast path: isin == elementwise compare with the
         # single test element. Output shape follows in0.
@@ -347,10 +350,8 @@ def isin(
         if invert:
             return isin_scalar_ne_func(in0, scalar_val)
         return isin_scalar_eq_func(in0, scalar_val)
-    elif in0.numel() <= 2048 and in1.numel() <= 2048:
-        # Use comparison only for very small sizes where kernel launch overhead dominates
+    if in0.numel() <= 2048 and in1.numel() <= 2048:
         return isin_by_comparation(in0, in1, invert)
-    elif assume_unique or in1.numel() <= 4194304:  # 1024 * 4096
-        return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=False)
-    else:
-        return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=True)
+    if assume_unique or in1.numel() <= 4194304:
+        return isin_by_search(in0, in1, invert, unique_in1=False)
+    return isin_by_search(in0, in1, invert, unique_in1=True)

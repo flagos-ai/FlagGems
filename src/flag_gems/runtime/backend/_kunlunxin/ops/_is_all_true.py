@@ -60,6 +60,12 @@ def is_all_true_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, result)
 
 
+@libentry()
+@triton.jit
+def is_all_true_empty_kernel(out):
+    tl.store(out, True)
+
+
 def _is_all_true(inp):
     logger.debug("GEMS_KUNLUNXIN _IS_ALL_TRUE")
     assert inp.dtype == torch.bool, "Input tensor must be of type bool"
@@ -68,7 +74,10 @@ def _is_all_true(inp):
 
     # all() of the empty set is True (vacuous truth).
     if n_elements == 0:
-        return torch.tensor(True, dtype=torch.bool, device=inp.device)
+        out = torch.empty([], dtype=torch.bool, device=inp.device)
+        with torch_device_fn.device(inp.device):
+            is_all_true_empty_kernel[(1, 1, 1)](out, buffer_size_limit=2048)
+        return out
 
     block_size = get_block_size_1d(n_elements, inp.element_size())
     mid_size = triton.cdiv(n_elements, block_size)

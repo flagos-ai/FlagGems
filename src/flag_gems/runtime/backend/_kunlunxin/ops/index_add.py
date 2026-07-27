@@ -90,10 +90,123 @@ def index_add_kernel(
     tl.store(inp_cont + inp_off, cur_inp, mask=block_mask)
 
 
+@libentry()
+@triton.jit
+def classify_index_duplicates_kernel(
+    index,
+    counts,
+    duplicate_flag,
+    N: tl.constexpr,
+    NUM_BLOCKS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    for block in tl.static_range(0, NUM_BLOCKS):
+        offsets = block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < N
+        indices = tl.load(index + offsets, mask=mask, other=0)
+        tl.atomic_add(counts + indices, 1, mask=mask, sem="relaxed")
+
+
+@libentry()
+@triton.jit
+def check_index_duplicate_counts_kernel(
+    counts,
+    duplicate_flag,
+    domain_size,
+    BLOCK_SIZE: tl.constexpr,
+):
+    max_count = tl.full((), 0, dtype=tl.int32)
+    for start in tl.range(0, domain_size, BLOCK_SIZE):
+        offsets = start + tl.arange(0, BLOCK_SIZE)
+        values = tl.load(counts + offsets, mask=offsets < domain_size, other=0)
+        max_count = tl.maximum(max_count, tl.max(values, axis=0))
+    tl.store(duplicate_flag, (max_count > 1).to(tl.int32))
+
+
+@libentry()
+@triton.jit
+def index_add_bfloat16_kernel(
+    inp_cont,
+    index,
+    src,
+    M,
+    N: tl.constexpr,
+    alpha,
+    inp_len,
+    SOURCE_START: tl.constexpr,
+    CHUNK_SIZE: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    row = tl.program_id(axis=0)
+    destination = tl.program_id(axis=1)
+    offsets = SOURCE_START + tl.arange(0, BLOCK_N)
+    source_mask = offsets < SOURCE_START + CHUNK_SIZE
+    output_mask = (row < M) & (destination < inp_len)
+
+    indices = tl.load(index + offsets, mask=source_mask, other=0)
+    values = tl.load(
+        src + row * N + offsets, mask=output_mask & source_mask, other=0.0
+    ).to(tl.float32)
+    updates = tl.where(source_mask & (indices == destination), values, 0.0)
+    original = tl.load(
+        inp_cont + row * inp_len + destination, mask=output_mask, other=0.0
+    )
+    tl.store(
+        inp_cont + row * inp_len + destination,
+        original + alpha * tl.sum(updates, axis=0),
+        mask=output_mask,
+    )
+
+
+def launch_index_add(inp, inp_cont, index, src, M, N, alpha, inp_len):
+    if N <= 1:
+        has_duplicates = False
+    else:
+        counts = torch.zeros(inp_len, dtype=torch.int32, device=index.device)
+        duplicate_flag = torch.zeros(1, dtype=torch.int32, device=index.device)
+        block_size = min(triton.next_power_of_2(N), 1024)
+        classify_index_duplicates_kernel[(1,)](
+            index,
+            counts,
+            duplicate_flag,
+            N,
+            NUM_BLOCKS=triton.cdiv(N, block_size),
+            BLOCK_SIZE=block_size,
+        )
+        check_index_duplicate_counts_kernel[(1,)](
+            counts, duplicate_flag, inp_len, BLOCK_SIZE=1024
+        )
+        has_duplicates = bool(duplicate_flag.item())
+
+    if has_duplicates:
+        block_n = min(triton.next_power_of_2(N), 1024)
+        for source_start in range(0, N, block_n):
+            chunk_size = min(block_n, N - source_start)
+            index_add_bfloat16_kernel[(M, inp_len)](
+                inp_cont,
+                index,
+                src,
+                M,
+                N,
+                alpha,
+                inp_len,
+                SOURCE_START=source_start,
+                CHUNK_SIZE=chunk_size,
+                BLOCK_N=block_n,
+            )
+        return
+
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        triton.cdiv(N, meta["BLOCK_N"]),
+    )
+    index_add_kernel[grid](inp, inp_cont, index, src, M, N, alpha, inp_len)
+
+
 def index_add(inp, dim, index, src, alpha=1):
     logger.debug("GEMS_KUNLUNXIN INDEX_ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
+        torch.ones(tuple(index.shape), dtype=torch.bool, device=index.device)
     ), "0 <= index < self.size(dim)"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.numel() == src.size(
@@ -120,11 +233,7 @@ def index_add(inp, dim, index, src, alpha=1):
         src = dim_compress(src, dim)
     inp_cont = inp.clone()
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        triton.cdiv(N, meta["BLOCK_N"]),
-    )
-    index_add_kernel[grid](inp, inp_cont, index, src, M, N, alpha, inp_len)
+    launch_index_add(inp, inp_cont, index, src, M, N, alpha, inp_len)
     if dim != fine_dim:
         order = [i for i in range(inp_cont.ndim - 1)]
         order.insert(dim, fine_dim)
@@ -136,7 +245,7 @@ def index_add(inp, dim, index, src, alpha=1):
 def index_add_(inp, dim, index, src, alpha=1):
     logger.debug("GEMS_KUNLUNXIN INDEX_ADD_")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
+        torch.ones(tuple(index.shape), dtype=torch.bool, device=index.device)
     ), "0 <= index < self.size(dim)"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.numel() == src.size(
@@ -163,11 +272,7 @@ def index_add_(inp, dim, index, src, alpha=1):
         inp_cont = dim_compress(inp_cont, dim)
         src = dim_compress(src, dim)
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        triton.cdiv(N, meta["BLOCK_N"]),
-    )
-    index_add_kernel[grid](inp_cont, inp_cont, index, src, M, N, alpha, inp_len)
+    launch_index_add(inp_cont, inp_cont, index, src, M, N, alpha, inp_len)
     if dim != fine_dim:
         order = [i for i in range(inp_cont.ndim - 1)]
         order.insert(dim, fine_dim)
@@ -177,3 +282,4 @@ def index_add_(inp, dim, index, src, alpha=1):
     else:
         inp.copy_(inp_cont)
         return inp
+

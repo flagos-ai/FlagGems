@@ -18,7 +18,10 @@ from typing import Optional
 
 import torch
 import triton
+import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
+
+from flag_gems.runtime import torch_device_fn
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -38,6 +41,26 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 @triton.jit
 def _to_copy_func(x):
     return x
+
+
+@triton.jit
+def _to_copy_int32_to_fp16_kernel(inp, out, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    values = tl.load(inp + offsets, mask=mask)
+    tl.store(out + offsets, values.to(tl.float16), mask=mask)
+
+
+def _to_copy_int32_to_fp16(inp, out):
+    n_elements = inp.numel()
+    if n_elements == 0:
+        return out
+    block_size = 256
+    with torch_device_fn.device(inp.device):
+        _to_copy_int32_to_fp16_kernel[(triton.cdiv(n_elements, block_size),)](
+            inp, out, n_elements, block_size
+        )
+    return out
 
 
 close_interleave_config = CodeGenConfig(
@@ -164,6 +187,9 @@ def to_copy(
         out = torch.empty_like(x, memory_format=target_memory_format, **empty_kwargs)
 
     out = torch.empty_like(x, dtype=dtype, memory_format=memory_format)
+    if x.dtype == torch.int32 and target_dtype == torch.float16 and x.is_contiguous() and out.is_contiguous():
+        return _to_copy_int32_to_fp16(x, out)
+
     if out.element_size() == 8:
         os.environ["TRITONXPU_ELEMBYTES"] = "8"
         os.environ["TRITONXPU_BF16_FAST"] = "1"

@@ -23,12 +23,14 @@ vendor_info = VendorDescriptor(
 )
 
 CUSTOMIZED_UNUSED_OPS = (
-    "cummin",
     "cumsum",
     "randperm",
-    "sort",
     "topk",
     "unique",
+    "efficient_attention_backward",
+    # Let PyTorch handle device transfers instead of registering vendor wrappers.
+    "copy_",
+    "to_copy",
 )
 
 

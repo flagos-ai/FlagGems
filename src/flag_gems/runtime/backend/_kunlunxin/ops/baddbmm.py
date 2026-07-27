@@ -32,7 +32,6 @@ from .mul import mul
 
 logger = logging.getLogger(__name__)
 
-
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("baddbmm"),
@@ -148,6 +147,234 @@ def baddbmm_kernel(
     tl.store(o_ptrs, o, mask=mask_c)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["alpha", "beta"])
+def _baddbmm_epilogue_kernel(
+    matmul,
+    output,
+    bias,
+    alpha,
+    beta,
+    total_elements,
+    M,
+    N,
+    bias_batch_stride: tl.constexpr,
+    bias_M_stride: tl.constexpr,
+    bias_N_stride: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < total_elements
+    safe_offsets = tl.minimum(offsets, total_elements - 1)
+    row = safe_offsets // N
+    column = safe_offsets % N
+    batch = row // M
+    matrix_row = row % M
+    bias_offsets = (
+        batch * bias_batch_stride
+        + matrix_row * bias_M_stride
+        + column * bias_N_stride
+    )
+    matmul_value = tl.load(matmul + safe_offsets).to(tl.float32)
+    bias_value = tl.load(bias + bias_offsets).to(tl.float32)
+    result = matmul_value * alpha + bias_value * beta
+    tl.store(output + safe_offsets, result, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _baddbmm_pad_chunk_kernel(
+    source,
+    destination,
+    M,
+    N,
+    K,
+    start,
+    width,
+    column_start,
+    chunk_N,
+    PADDED_DIM: tl.constexpr,
+    IS_LHS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    outer = ext.program_id(0)
+    chunk = ext.program_id(1)
+    lanes = chunk * BLOCK + tl.arange(0, BLOCK)
+    if IS_LHS:
+        batch = outer // PADDED_DIM
+        row = outer % PADDED_DIM
+        mask = lanes < 256
+        valid = (row < M) & (lanes < width)
+        safe_row = tl.minimum(row, M - 1)
+        safe_reduction = tl.minimum(lanes, width - 1)
+        source_offsets = batch * M * K + safe_row * K + start + safe_reduction
+        destination_offsets = outer * 256 + lanes
+    else:
+        batch = outer // 256
+        reduction = outer % 256
+        mask = lanes < PADDED_DIM
+        valid = (reduction < width) & (lanes < chunk_N)
+        safe_reduction = tl.minimum(reduction, width - 1)
+        safe_column = column_start + tl.minimum(lanes, chunk_N - 1)
+        source_offsets = batch * K * N + (start + safe_reduction) * N + safe_column
+        destination_offsets = outer * PADDED_DIM + lanes
+    value = tl.load(source + source_offsets)
+    tl.store(destination + destination_offsets, tl.where(valid, value, 0.0), mask=mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["scale"])
+def _baddbmm_accumulate_kernel(
+    partial,
+    output,
+    scale,
+    total_elements,
+    M,
+    output_N,
+    chunk_N,
+    column_start,
+    PARTIAL_BATCH_STRIDE: tl.constexpr,
+    PARTIAL_M_STRIDE: tl.constexpr,
+    FIRST: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < total_elements
+    safe_offsets = tl.minimum(offsets, total_elements - 1)
+    row = safe_offsets // chunk_N
+    batch = row // M
+    matrix_row = row % M
+    column = safe_offsets % chunk_N
+    partial_offsets = (
+        batch * PARTIAL_BATCH_STRIDE
+        + matrix_row * PARTIAL_M_STRIDE
+        + column
+    )
+    output_offsets = (
+        batch * M * output_N
+        + matrix_row * output_N
+        + column_start
+        + column
+    )
+    value = tl.load(partial + partial_offsets).to(tl.float32) * scale
+    if not FIRST:
+        value += tl.load(output + output_offsets)
+    tl.store(output + output_offsets, value, mask=mask)
+
+
+def _direct_baddbmm(A, B, bias, alpha, beta, out=None):
+    batch, M, K = A.shape
+    _, _, N = B.shape
+    A = A.contiguous()
+    B = B.contiguous()
+    if out is None:
+        out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
+    bbias = torch.broadcast_to(bias, (batch, M, N)).contiguous()
+
+    grid = lambda meta: (
+        triton.cdiv(M, meta["TILE_M"]),
+        triton.cdiv(N, meta["TILE_N"]),
+        batch,
+    )
+    with torch_device_fn.device(A.device):
+        baddbmm_kernel[grid](
+            A,
+            B,
+            out,
+            bbias,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+            bias_batch_stride=bbias.stride(0),
+            bias_M_stride=bbias.stride(1),
+            bias_N_stride=bbias.stride(2),
+        )
+    return out
+
+
+def _chunked_bmm(lhs, rhs, scale):
+    lhs = lhs.contiguous()
+    rhs = rhs.contiguous()
+    batch, M, K = lhs.shape
+    _, _, N = rhs.shape
+    if K <= 1024:
+        bias = torch.zeros((batch, M, N), dtype=lhs.dtype, device=lhs.device)
+        return _direct_baddbmm(lhs, rhs, bias, scale, 0.0)
+
+    output = torch.empty((batch, M, N), dtype=torch.float32, device=lhs.device)
+    padded_M = triton.cdiv(M, 128) * 128
+    padded_N = 1024
+    for start in range(0, K, 256):
+        end = min(start + 256, K)
+        lhs_chunk = torch.empty(
+            (batch, padded_M, 256), dtype=lhs.dtype, device=lhs.device
+        )
+        with torch_device_fn.device(lhs.device):
+            _baddbmm_pad_chunk_kernel[(batch * padded_M, 1)](
+                lhs,
+                lhs_chunk,
+                M,
+                N,
+                K,
+                start,
+                end - start,
+                0,
+                1,
+                PADDED_DIM=padded_M,
+                IS_LHS=True,
+                BLOCK=256,
+                isCloseVectorization=True,
+                buffer_size_limit=2048,
+            )
+        for column_start in range(0, N, padded_N):
+            chunk_N = min(padded_N, N - column_start)
+            rhs_chunk = torch.empty(
+                (batch, 256, padded_N), dtype=rhs.dtype, device=rhs.device
+            )
+            with torch_device_fn.device(lhs.device):
+                _baddbmm_pad_chunk_kernel[(batch * 256, 1)](
+                    rhs,
+                    rhs_chunk,
+                    M,
+                    N,
+                    K,
+                    start,
+                    end - start,
+                    column_start,
+                    chunk_N,
+                    PADDED_DIM=padded_N,
+                    IS_LHS=False,
+                    BLOCK=1024,
+                    isCloseVectorization=True,
+                    buffer_size_limit=2048,
+                )
+            partial = bmm(lhs_chunk, rhs_chunk)
+            total_elements = batch * M * chunk_N
+            grid = (triton.cdiv(total_elements, 1024),)
+            with torch_device_fn.device(lhs.device):
+                _baddbmm_accumulate_kernel[grid](
+                    partial,
+                    output,
+                    scale,
+                    total_elements,
+                    M,
+                    N,
+                    chunk_N,
+                    column_start,
+                    PARTIAL_BATCH_STRIDE=partial.stride(0),
+                    PARTIAL_M_STRIDE=partial.stride(1),
+                    FIRST=start == 0,
+                    BLOCK=1024,
+                    isCloseVectorization=True,
+                    buffer_size_limit=2048,
+                )
+    return output
+
+
 class BaddbmmFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, A, B, beta, alpha):
@@ -157,38 +384,7 @@ class BaddbmmFunction(torch.autograd.Function):
         ctx.alpha = alpha
         ctx.beta = beta
 
-        batch, M, K = A.shape
-        _, _, N = B.shape
-        A = A.contiguous()
-        B = B.contiguous()
-        out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
-
-        bbias = torch.broadcast_to(bias, (batch, M, N)).contiguous()
-        bias_batch_stride = bbias.stride(0)
-        bias_M_stride = bbias.stride(1)
-        bias_N_stride = bbias.stride(-1)
-
-        grid = lambda meta: (
-            triton.cdiv(meta["M"], meta["TILE_M"]),
-            triton.cdiv(meta["N"], meta["TILE_N"]),
-            batch,
-        )
-        with torch_device_fn.device(A.device):
-            baddbmm_kernel[grid](
-                A,
-                B,
-                out,
-                bbias,
-                alpha,
-                beta,
-                M,
-                N,
-                K,
-                bias_batch_stride=bias_batch_stride,
-                bias_M_stride=bias_M_stride,
-                bias_N_stride=bias_N_stride,
-            )
-        return out
+        return _direct_baddbmm(A, B, bias, alpha, beta)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -221,31 +417,23 @@ def compute_bias_grad(d_output, beta, bias):
 
 
 def compute_A_grad(d_output, B, alpha):
+    output_dtype = B.dtype
     B_T = B.transpose(1, 2)
-    if B.dtype == torch.float16:
-        Bcopy = B_T.to(torch.float32)
-        dcopye = d_output.to(torch.float32)
-        mul1 = bmm(dcopye, Bcopy)
-        grad_A = mul(mul1, alpha)
-        grad_A = grad_A.to(torch.float16)
-    else:
-        mul1 = bmm(d_output, B_T)
-        grad_A = mul(mul1, alpha)
-    return grad_A
+    if output_dtype in (torch.float16, torch.bfloat16):
+        B_T = B_T.to(torch.float32)
+        d_output = d_output.to(torch.float32)
+    grad_A = _chunked_bmm(d_output, B_T, alpha)
+    return grad_A.to(output_dtype)
 
 
 def compute_B_grad(A, d_output, alpha):
+    output_dtype = A.dtype
     A_T = A.transpose(1, 2)
-    if A.dtype == torch.float16:
-        Acopy = A_T.to(torch.float32)
-        dcopye = d_output.to(torch.float32)
-        mul2 = bmm(Acopy, dcopye)
-        grad_B = mul(mul2, alpha)
-        grad_B = grad_B.to(torch.float16)
-    else:
-        mul2 = bmm(A_T, d_output)
-        grad_B = mul(mul2, alpha)
-    return grad_B
+    if output_dtype in (torch.float16, torch.bfloat16):
+        A_T = A_T.to(torch.float32)
+        d_output = d_output.to(torch.float32)
+    grad_B = _chunked_bmm(A_T, d_output, alpha)
+    return grad_B.to(output_dtype)
 
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
@@ -256,3 +444,11 @@ def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
         beta,
         alpha,
     )
+
+
+def baddbmm_out(bias, A, B, beta=1.0, alpha=1.0, *, out):
+    result = baddbmm(bias, A, B, beta=beta, alpha=alpha)
+    if tuple(out.shape) != tuple(result.shape):
+        out.resize_(result.shape)
+    out.copy_(result)
+    return out

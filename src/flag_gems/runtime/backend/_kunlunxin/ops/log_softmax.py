@@ -59,26 +59,32 @@ def log_softmax_kernel_inner(
     input_ptr,
     M,
     N,
+    OUTPUT_K: tl.constexpr,
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
     pid_m = ext.program_id(0)
+    outer = pid_m // OUTPUT_K
+    inner = pid_m % OUTPUT_K
+    input_base = pid_m * N
+    output_base = outer * N * OUTPUT_K + inner
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
-        offset = pid_m * N + n_offsets
+        input_offset = input_base + n_offsets
+        output_offset = output_base + n_offsets * OUTPUT_K
         mask = n_offsets < N
-        inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(tl.float32)
+        inp = tl.load(input_ptr + input_offset, mask=mask, other=-float("inf")).to(tl.float32)
         m = tl.max(inp, 0)
         e = tl.exp(inp - m)
         z = tl.sum(e, 0)
         log_z = tl.log(z)
         out = inp - m - log_z
-        tl.store(output_ptr + offset, out, mask=mask)
+        tl.store(output_ptr + output_offset, out, mask=mask)
     else:
         m = tl.full([TILE_N], value=float("-inf"), dtype=tl.float32)
         z = tl.full([TILE_N], value=0.0, dtype=tl.float32)
-        input_ptr += pid_m * N
-        output_ptr += pid_m * N
+        input_ptr += input_base
+        output_ptr += output_base
 
         previous_multiple = prev_multiple_of(N, TILE_N)
         for start_n in range(0, previous_multiple, TILE_N):
@@ -117,14 +123,14 @@ def log_softmax_kernel_inner(
                 eviction_policy="evict_first",
             ).to(tl.float32)
             o = inp - m - log_z
-            tl.store(output_ptr + n_offsets, o, mask=mask)
+            tl.store(output_ptr + n_offsets * OUTPUT_K, o, mask=mask)
         for start_n in range(TILE_N, N, TILE_N):
             n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
             inp = tl.load(input_ptr + n_offsets, eviction_policy="evict_first").to(
                 tl.float32
             )
             o = inp - m - log_z
-            tl.store(output_ptr + n_offsets, o)
+            tl.store(output_ptr + n_offsets * OUTPUT_K, o)
 
 
 # For small/medium N (<=MULTIROW_MAX_N) a per-row grid=(M,) launch is bandwidth
@@ -264,8 +270,8 @@ def log_softmax_backward_kernel_multirow(
     tl.store(in_grad_ptr + offsets, ig, mask=mask)
 
 
-def _forward_launch(out, inp, M, N):
-    if N <= MULTIROW_MAX_N:
+def _forward_launch(out, inp, M, N, K=1):
+    if K == 1 and N <= MULTIROW_MAX_N:
         tile_m = _multirow_tile_m(N)
         grid = (triton.cdiv(M, tile_m), 1, 1)
         log_softmax_kernel_multirow[grid](
@@ -278,12 +284,13 @@ def _forward_launch(out, inp, M, N):
             num_warps=8,
         )
     else:
-        grid = (M, 1, 1)
+        grid = (M * K, 1, 1)
         log_softmax_kernel_inner[grid](
             out,
             inp,
             M,
             N,
+            K,
             buffer_size_limit=2048,
             isCloseVectorization=True,
             is_use_mask_zero=True,
@@ -415,3 +422,37 @@ def log_softmax_backward(grad_output, output, dim, input_dtype):
         else:
             _backward_launch(output, grad_output, in_grad, M, N)
     return in_grad
+
+
+def log_softmax_out(self, dim, half_to_float=False, *, out):
+    logger.debug("GEMS_KUNLUNXIN LOG_SOFTMAX_OUT")
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+    dim = dim % self.ndim
+    dtype = torch.float32 if half_to_float else self.dtype
+    if out.dtype != dtype:
+        raise RuntimeError(
+            f"_log_softmax.out: expected out dtype {dtype}, got {out.dtype}"
+        )
+    if tuple(out.shape) != tuple(self.shape):
+        out.resize_(self.shape)
+
+    M = 1
+    for i in range(dim):
+        M *= self.shape[i]
+    N = self.shape[dim]
+    inp = self.contiguous()
+    K = inp.numel() // M // N
+    if K > 1:
+        inp = inp.view(M, N, K).transpose(1, 2).contiguous().view(M * K, N)
+    with torch_device_fn.device(inp.device):
+        _forward_launch(out, inp, M, N, K)
+    return out
+
+
+def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
+    logger.debug("GEMS_KUNLUNXIN LOG_SOFTMAX_BACKWARD_OUT")
+    res = log_softmax_backward(grad_output, output, dim, input_dtype)
+    if tuple(out.shape) != tuple(res.shape):
+        out.resize_(res.shape)
+    out.copy_(res)
+    return out

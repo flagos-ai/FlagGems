@@ -136,26 +136,11 @@ def _tril_exact_diag0_tile_kernel(
 
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
-    in_ptr += pid_b * (M * N) + offs_m * N
-    out_ptr += pid_b * (M * N) + offs_m * N
-
-    row_start = pid_m * BLOCK_M
-    row_end = row_start + BLOCK_M - 1
-    col_start = pid_n * BLOCK_N
-    col_end = col_start + BLOCK_N - 1
-
-    if col_start > row_end:
-        tl.store(out_ptr + offs_n, 0.0)
-        return
-
-    if col_end <= row_start:
-        x = tl.load(in_ptr + offs_n)
-        tl.store(out_ptr + offs_n, x)
-        return
-
+    mask = (offs_m < M) & (offs_n < N)
     keep = offs_n <= offs_m
-    x = tl.load(in_ptr + offs_n, mask=keep, other=0.0)
-    tl.store(out_ptr + offs_n, x)
+    offsets = pid_b * (M * N) + offs_m * N + offs_n
+    x = tl.load(in_ptr + offsets, mask=mask & keep, other=0.0)
+    tl.store(out_ptr + offsets, x, mask=mask)
 
 
 @libentry()
@@ -237,24 +222,12 @@ def _tril_inplace_zero_strided_tile_kernel(
     i0 = b // B1
     batch_offset = i0 * S0 + i1 * S1 + i2 * S2 + i3 * S3 + i4 * S4 + i5 * S5
 
-    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
-    mask = (offs_m < M) & (offs_n < N)
-    ptr += batch_offset + offs_m * STRIDE_M
-
-    row_start = pid_m * BLOCK_M
-    col_end = pid_n * BLOCK_N + BLOCK_N - 1
-    if col_end <= row_start + diag:
-        return
-
-    row_end = row_start + BLOCK_M - 1
-    col_start = pid_n * BLOCK_N
-    if col_start > row_end + diag:
-        tl.store(ptr + offs_n * STRIDE_N, 0.0, mask=mask)
-        return
-
-    zero = offs_n > offs_m + diag
-    tl.store(ptr + offs_n * STRIDE_N, 0.0, mask=mask & zero)
+    row = pid_m
+    first_zero_col = tl.maximum(row + diag + 1, 0)
+    offs_n = first_zero_col + pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask = offs_n < N
+    ptr += batch_offset + row * STRIDE_M
+    tl.store(ptr + offs_n * STRIDE_N, 0.0, mask=mask)
 
 
 @libentry()
@@ -589,7 +562,7 @@ def _launch_tril_inplace_contiguous(
 def _launch_tril_inplace_strided(
     input: torch.Tensor,
     diagonal: int,
-    block_m: int = 16,
+    block_m: int = 1,
     block_n: int = 64,
     num_warps: int = 4,
     num_stages: int = 2,

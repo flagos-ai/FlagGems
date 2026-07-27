@@ -68,14 +68,13 @@ def cat(
         return A[0]
 
     # remove torch.Size([0]) tensors
-    device = A[0].device
-    dtype = A[0].dtype
+    empty_template = A[0]
     A = list(A)
     for i in range(len(A) - 1, -1, -1):
         if A[i].shape == torch.Size([0]):
             A.pop(i)
     if len(A) == 0:
-        return torch.tensor([], device=device, dtype=dtype)
+        return torch.empty_like(empty_template)
     elif len(A) == 1:
         return A[0]
 

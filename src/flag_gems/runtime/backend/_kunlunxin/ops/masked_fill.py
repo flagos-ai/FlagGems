@@ -63,6 +63,16 @@ def masked_fill_kernel(inp, expand_mask, value):
     return tl.where(expand_mask, value, inp)
 
 
+@pointwise_dynamic(
+    is_tensor=[True, True, True],
+    promotion_methods=[(0, "NO_OPMATH")],
+    config=_config,
+)
+@triton.jit
+def masked_fill_tensor_value_kernel(inp, expand_mask, value):
+    return tl.where(expand_mask, value, inp)
+
+
 def masked_fill(inp, mask, value):
     logger.debug("GEMS_KUNLUNXIN MASKED_FILL")
     assert (
@@ -71,19 +81,19 @@ def masked_fill(inp, mask, value):
         or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
-        # Value can be a tensor or a scalar
-        value = value.item()
+        if value.device != inp.device:
+            raise RuntimeError("masked_fill value must be on the input device")
+        kernel = masked_fill_tensor_value_kernel
+    else:
+        kernel = masked_fill_kernel
     assert broadcastable_to(
         mask.shape, inp.shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
 
     if inp.ndim == 0:
-        # inp is a single-value
-        return (
-            torch.tensor(value, dtype=inp.dtype, device=inp.device)
-            if mask.item()
-            else inp.clone()
-        )
+        out = torch.empty_like(inp)
+        kernel(inp, mask, value, out0=out)
+        return out
 
     out = torch.empty_like(inp, dtype=inp.dtype, device=inp.device)
     if inp.numel() == 0:
@@ -93,11 +103,11 @@ def masked_fill(inp, mask, value):
         # Common case (mask already matches inp): one flat stride-1 pass, which
         # is what the tuned 1D config accelerates.
         mask = mask.contiguous()
-        masked_fill_kernel(inp.view(-1), mask.view(-1), value, out0=out.view(-1))
+        kernel(inp.view(-1), mask.view(-1), value, out0=out.view(-1))
     else:
         expand_mask = mask.expand(inp.shape)
-        masked_fill_kernel.instantiate(inp.ndim)
-        masked_fill_kernel(inp, expand_mask, value, out0=out)
+        kernel.instantiate(inp.ndim)
+        kernel(inp, expand_mask, value, out0=out)
     return out
 
 
@@ -109,16 +119,17 @@ def masked_fill_(inp, mask, value):
         or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
-        # Value can be a tensor or a scalar
-        value = value.item()
+        if value.device != inp.device:
+            raise RuntimeError("masked_fill value must be on the input device")
+        kernel = masked_fill_tensor_value_kernel
+    else:
+        kernel = masked_fill_kernel
     assert broadcastable_to(
         mask.shape, inp.shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
 
     if inp.ndim == 0:
-        # inp is a single-value
-        if mask.item():
-            inp[()] = value
+        kernel(inp, mask, value, out0=inp)
         return inp
 
     if inp.numel() == 0:
@@ -126,9 +137,9 @@ def masked_fill_(inp, mask, value):
 
     if inp.is_contiguous() and tuple(mask.shape) == tuple(inp.shape):
         mask = mask.contiguous()
-        masked_fill_kernel(inp.view(-1), mask.view(-1), value, out0=inp.view(-1))
+        kernel(inp.view(-1), mask.view(-1), value, out0=inp.view(-1))
     else:
         expand_mask = mask.expand(inp.shape)
-        masked_fill_kernel.instantiate(inp.ndim)
-        masked_fill_kernel(inp, expand_mask, value, out0=inp)
+        kernel.instantiate(inp.ndim)
+        kernel(inp, expand_mask, value, out0=inp)
     return inp

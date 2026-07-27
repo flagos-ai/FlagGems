@@ -511,6 +511,45 @@ def weight_bias_backward_kernel(
     tl.store(dB, db, mask=c_mask)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["eps", "momentum"])
+def instance_norm_running_stats_kernel(
+    mean_ptr,
+    rstd_ptr,
+    running_mean_ptr,
+    running_var_ptr,
+    B,
+    C,
+    N,
+    eps,
+    momentum,
+    TILE_B: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    batch_offsets = tl.arange(0, TILE_B)
+    mask = batch_offsets < B
+    workspace_offsets = batch_offsets * C + pid
+
+    mean = tl.load(mean_ptr + workspace_offsets, mask=mask, other=0.0).to(tl.float32)
+    rstd = tl.load(rstd_ptr + workspace_offsets, mask=mask, other=0.0).to(tl.float32)
+    var_biased = 1.0 / (rstd * rstd) - eps
+    var_unbiased = var_biased * N / (N - 1)
+
+    batch_mean = tl.sum(mean) / B
+    batch_var = tl.sum(tl.where(mask, var_unbiased, 0.0)) / B
+    old_mean = tl.load(running_mean_ptr + pid).to(tl.float32)
+    old_var = tl.load(running_var_ptr + pid).to(tl.float32)
+
+    tl.store(
+        running_mean_ptr + pid,
+        (1 - momentum) * old_mean + momentum * batch_mean,
+    )
+    tl.store(
+        running_var_ptr + pid,
+        (1 - momentum) * old_var + momentum * batch_var,
+    )
+
+
 class InstanceNorm(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -590,20 +629,18 @@ class InstanceNorm(torch.autograd.Function):
                     buffer_size_limit=512,
                 )
                 if has_running_stats and use_input_stats:  # update running stats
-                    # mean / rstd are [B, C] fp32; running_mean / running_var are [C].
-                    # The old Triton update kernel ran at ~200ms on XPU (single 2048-wide
-                    # program, all opts closed). This reduction over the batch dim is tiny
-                    # (C<=few thousand) so torch does it far faster with no compile cost.
-                    # rstd = rsqrt(var_biased + eps) so var_biased = 1/rstd^2 - eps.
-                    # torch's instance_norm updates running_var with the *biased* batch
-                    # variance (verified against the fp64 reference), so we use var_biased
-                    # directly. (The old kernel used (1/rstd^2 + eps) * N/(N-1) -- both the
-                    # +2*eps and the N/(N-1) correction were wrong -> pre-existing failures.)
-                    batch_mean = mean.mean(dim=0)  # [C]
-                    var_bc = 1.0 / (rstd * rstd) - eps  # [B, C] biased variance
-                    batch_var = var_bc.mean(dim=0)  # [C]
-                    running_mean.lerp_(batch_mean.to(running_mean.dtype), momentum)
-                    running_var.lerp_(batch_var.to(running_var.dtype), momentum)
+                    instance_norm_running_stats_kernel[(C, 1, 1)](
+                        mean,
+                        rstd,
+                        running_mean,
+                        running_var,
+                        B,
+                        C,
+                        N,
+                        eps,
+                        momentum,
+                        TILE_B=triton.next_power_of_2(B),
+                    )
             else:  # use running stats instead of input stats
                 TILE_N = triton.next_power_of_2(N)
                 grid = (M, 1, 1)

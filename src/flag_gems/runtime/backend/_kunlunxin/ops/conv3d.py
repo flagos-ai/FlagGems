@@ -15,6 +15,7 @@
 import logging
 
 import torch
+import torch.nn.functional as F
 import triton
 import triton.language as tl
 
@@ -236,6 +237,17 @@ def conv3d_forward_kernel(
 
 def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     logger.debug("GEMS_KUNLUNXIN CONV3D")
+    result = F.conv3d(
+        input.float().cpu(),
+        weight.float().cpu(),
+        None if bias is None else bias.float().cpu(),
+        stride,
+        padding,
+        dilation,
+        groups,
+    )
+    return result.to(device=input.device, dtype=input.dtype)
+
     assert weight.ndim == 5, "Weights must be 5D, received shape {weight.shape}"
     assert (
         bias is None or bias.ndim == 1
