@@ -9,9 +9,9 @@ from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_max
 
-from ..utils.block_size_utils import get_block_size_1d
-
 logger = logging.getLogger(__name__)
+
+_FULL_REDUCTION_BLOCK_SIZE = 8192
 
 # amin mirrors the kunlunxin amax override. The generic ops/amin.py used a
 # persisted [BLOCK_M, BLOCK_N] accumulator (`_all`) reduced only at the end;
@@ -103,11 +103,7 @@ def amin(inp, dim=None, keepdim=False):
     logger.debug("GEMS_KUNLUNXIN AMIN")
     if dim is None or len(dim) == 0:
         M = inp.numel()
-        block_size = get_block_size_1d(M, inp.element_size())
-        mid_size = triton.cdiv(M, block_size)
-        block_mid = triton.next_power_of_2(mid_size)
         dtype = inp.dtype
-        mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         if not keepdim:
             out = torch.empty([], dtype=dtype, device=inp.device)
         else:
@@ -115,13 +111,31 @@ def amin(inp, dim=None, keepdim=False):
             for i in range(0, inp.dim()):
                 shape[i] = 1
             out = torch.empty(shape, dtype=dtype, device=inp.device)
+
+        # Large single-program reductions are exceptionally slow on this XPU.
+        # Bound every stage and repeatedly reduce its partial minima instead.
+        src = inp
+        src_size = M
         with torch_device_fn.device(inp.device):
-            amin_kernel_1[(mid_size, 1)](
-                inp, mid, M, block_size, buffer_size_limit=2048
+            while src_size > _FULL_REDUCTION_BLOCK_SIZE:
+                mid_size = triton.cdiv(src_size, _FULL_REDUCTION_BLOCK_SIZE)
+                mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+                amin_kernel_1[(mid_size, 1)](
+                    src,
+                    mid,
+                    src_size,
+                    _FULL_REDUCTION_BLOCK_SIZE,
+                    buffer_size_limit=2048,
+                )
+                src = mid
+                src_size = mid_size
+            amin_kernel_1[(1, 1)](
+                src,
+                out,
+                src_size,
+                _FULL_REDUCTION_BLOCK_SIZE,
+                buffer_size_limit=2048,
             )
-            amin_kernel_2[(1, 1)](
-                mid, out, mid_size, block_mid, buffer_size_limit=2048
-            )  # max block size is 128k, so mid does not requires int64 index
         return out
     else:
         if isinstance(dim, int):

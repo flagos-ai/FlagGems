@@ -11,7 +11,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-_asin = tl_extra_shim.asin
+_atan2 = tl_extra_shim.atan2
 
 # Without an explicit CodeGenConfig, pointwise_dynamic specializes the kernel
 # per input shape on XPU -> per-shape recompile -> IR explosion, and the default
@@ -20,11 +20,8 @@ _asin = tl_extra_shim.asin
 # kunlunAutoGrid=True + prefer_1d_tile + bounded tile makes the kernel
 # shape-independent so it compiles ONCE and covers large tensors. Mirrors acos.
 #
-# isCloseVectorization MUST stay False (vec OPEN) for the _asin transcendental:
-# flipping it to True is catastrophic here (measured [1024,65536] fp32 211ms /
-# [4096,4096] 55ms, avg collapses back to ~0.069 == baseline). This is the
-# OPPOSITE of silu (where vec OPEN spiked); tune vectorization per-op, not by
-# copying a sibling's flag.
+# Close XPU vectorization for the atan2-based formula to avoid large-shape
+# intrinsic precision regressions.
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -32,7 +29,7 @@ config_ = CodeGenConfig(
     True,
     prefer_1d_tile=True,
     buffer_size_limit=4096,
-    isCloseVectorization=False,
+    isCloseVectorization=True,
     kunlunAutoGrid=True,
     unroll_num=8,
 )
@@ -41,7 +38,11 @@ config_ = CodeGenConfig(
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
 @triton.jit()
 def asin_kernel(x):
-    return _asin(x.to(tl.float32))
+    x_f32 = x.to(tl.float32)
+    inside = (x_f32 >= -1.0) & (x_f32 <= 1.0)
+    cosine = tl.sqrt(tl.maximum(1.0 - x_f32 * x_f32, 0.0))
+    result = _atan2(x_f32, cosine)
+    return tl.where(inside, result, float("nan"))
 
 
 def asin(x):

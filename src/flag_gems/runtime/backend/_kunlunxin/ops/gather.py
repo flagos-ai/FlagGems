@@ -18,12 +18,14 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
+import triton
+import triton.language as tl
 
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import restride_dim
 
-from .scatter import scatter_
+from .nonzero import _device_int_tensor
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +159,9 @@ def generate_gather_kernel(
         #   2. snippets
         for i in range(rank):
             code.writeline(f"mod = cur_idx % index_shape_{i}")
-            code.writeline(f"inp_offsets += mod * inp_stride_{i}")
+            code.writeline(
+                f"inp_offsets += tl.where(dim == {i}, 0, mod) * inp_stride_{i}"
+            )
             code.writeline(f"idx_offsets += mod * index_stride_{i}")
             if i != (rank - 1):
                 code.writeline(f"cur_idx //= index_shape_{i}")
@@ -311,6 +315,7 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
             f"Index tensor must have the same number of dimensions as input tensor. "
             f"Got {index.ndim} and {inp.ndim}."
         )
+
     inp = inp.contiguous()
     index = index.contiguous()
     if out is None:
@@ -319,7 +324,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
     stride_dim = inp.stride(dim)
 
     inp_strided = restride_dim(inp, dim, index.shape)
-    # plain_idx = torch.arange(0, index.numel(), device=inp.device).reshape(index.shape)
     N = list(index.shape)[index.ndim - 1]
     M = index.numel() // N
     inp_dim_size = inp.size(dim)
@@ -328,7 +332,92 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
     return out
 
 
+@triton.jit
+def _gather_backward_kernel(
+    grad,
+    index,
+    output,
+    self_shape,
+    index_shape,
+    index_strides,
+    total,
+    index_dim_size,
+    dim: tl.constexpr,
+    ndim: tl.constexpr,
+    BLOCK_OUTPUT: tl.constexpr,
+    BLOCK_INDEX: tl.constexpr,
+):
+    output_offsets_flat = (
+        tl.program_id(0) * BLOCK_OUTPUT + tl.arange(0, BLOCK_OUTPUT)
+    )
+    output_valid_flat = output_offsets_flat < total
+
+    remaining = output_offsets_flat
+    index_base = tl.zeros((BLOCK_OUTPUT,), dtype=tl.int64)
+    output_dim_index = tl.zeros((BLOCK_OUTPUT,), dtype=tl.int64)
+    coordinate_valid = output_valid_flat
+    for axis in tl.static_range(ndim - 1, -1, -1):
+        axis_size = tl.load(self_shape + axis)
+        coordinate = remaining % axis_size
+        remaining //= axis_size
+        if axis == dim:
+            output_dim_index = coordinate
+        else:
+            index_axis_size = tl.load(index_shape + axis)
+            index_axis_stride = tl.load(index_strides + axis)
+            coordinate_valid &= coordinate < index_axis_size
+            index_base += coordinate * index_axis_stride
+
+    index_dim_offsets = tl.arange(0, BLOCK_INDEX)[None, :]
+    index_dim_stride = tl.load(index_strides + dim)
+    valid = coordinate_valid[:, None] & (index_dim_offsets < index_dim_size)
+    gather_offsets = index_base[:, None] + index_dim_offsets * index_dim_stride
+    gathered_indices = tl.load(index + gather_offsets, mask=valid, other=-1)
+    grad_values = tl.load(grad + gather_offsets, mask=valid, other=0.0)
+    grad_values = tl.where(
+        valid & (gathered_indices == output_dim_index[:, None]),
+        grad_values.to(tl.float32),
+        0.0,
+    )
+    result = tl.sum(grad_values, axis=1)
+    result = tl.where(coordinate_valid, result, 0.0)
+    tl.store(output + output_offsets_flat, result, mask=output_valid_flat)
+
+
 def gather_backward(grad, self, dim, index, sparse_grad):
     logger.debug("GEMS_KUNLUNXIN GATHER_BACKWARD")
+    if sparse_grad:
+        raise RuntimeError("gather_backward with sparse_grad=True is not supported")
+
     result = grad.new_zeros(self.shape)
-    return scatter_(result, dim, index, grad, reduce="add")
+    if result.numel() == 0:
+        return result
+
+    dim = dim % self.ndim
+    index_contiguous = index.contiguous()
+    self_shape = _device_int_tensor(self.shape, torch.int64, self.device)
+    index_shape = _device_int_tensor(index_contiguous.shape, torch.int64, self.device)
+    index_strides = _device_int_tensor(
+        index_contiguous.stride(), torch.int64, self.device
+    )
+    index_dim_size = index_contiguous.shape[dim]
+    block_index = triton.next_power_of_2(index_dim_size)
+    block_output = min(64, max(1, 2048 // block_index))
+    _gather_backward_kernel[(triton.cdiv(result.numel(), block_output),)](
+        grad.contiguous(),
+        index_contiguous,
+        result,
+        self_shape,
+        index_shape,
+        index_strides,
+        result.numel(),
+        index_dim_size,
+        dim=dim,
+        ndim=self.ndim,
+        BLOCK_OUTPUT=block_output,
+        BLOCK_INDEX=block_index,
+        num_warps=1,
+        buffer_size_limit=2048,
+        isCloseVectorization=True,
+    )
+    return result

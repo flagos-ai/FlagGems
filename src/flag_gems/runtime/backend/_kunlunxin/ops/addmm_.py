@@ -15,10 +15,5 @@ def addmm_(self, mat1, mat2, *, beta=1, alpha=1):
     ), "Incompatible input shape"
 
     logger.debug("GEMS_KUNLUNXIN ADDMM_")
-    # Route to the kunlunxin heuristic addmm (single-config, @libentry cached)
-    # instead of the generic libtuner addmm. The generic path re-tunes across
-    # many configs per shape -> massive IR / compile blowup (see IR dump), and
-    # the imported `addmm` name in the generic ops/addmm_.py binds to the generic
-    # (un-specialized) kernel, bypassing this backend's fast kernel entirely.
-    result = addmm(self, mat1, mat2, beta=beta, alpha=alpha)
-    return self.copy_(result)
+    # Write directly into self to avoid allocating and copying a temporary.
+    return addmm(self, mat1, mat2, beta=beta, alpha=alpha, out=self)

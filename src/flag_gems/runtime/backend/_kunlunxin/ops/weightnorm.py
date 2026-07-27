@@ -249,10 +249,14 @@ def weight_norm_bwd_kernel_last(
 
 
 def heur_block_m_weight_norm_bwd_kernel_first(args):
+    if 1024 <= args["N"] <= 8192:
+        return 1
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))
 
 
 def heur_block_n_weight_norm_bwd_kernel_first(args):
+    if 1024 <= args["N"] <= 8192:
+        return triton.next_power_of_2(args["N"])
     return 1
 
 

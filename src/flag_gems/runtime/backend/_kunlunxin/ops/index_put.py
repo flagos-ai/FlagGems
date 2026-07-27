@@ -18,11 +18,28 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
+import triton
+import triton.language as tl
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def _contiguous_copy_kernel(input_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    tl.store(output_ptr + offsets, tl.load(input_ptr + offsets, mask=mask), mask=mask)
+
+
+def _copy_input(input: torch.Tensor) -> torch.Tensor:
+    output = torch.empty_like(input, memory_format=torch.contiguous_format)
+    _contiguous_copy_kernel[(triton.cdiv(input.numel(), 8192),)](
+        input, output, input.numel(), BLOCK_SIZE=8192, num_warps=16
+    )
+    return output
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -51,27 +68,10 @@ def broadcast_indices(indices, target_shape):
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
-    code.writeline("import builtins")
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.shape_utils import volume")
-
-    code.newline()
-    code.newline()
-
-    code.writeline("def heur_block_m(args):")
-    with code.indent():
-        code.writeline('if args["M"] == 0:')
-        with code.indent():
-            code.writeline("return 2")
-        code.writeline('return triton.next_power_of_2(triton.cdiv(args["M"], 12))')
-
-    code.newline()
-
-    code.writeline("def heur_block_n(args):")
-    with code.indent():
-        code.writeline('return builtins.min(triton.next_power_of_2(args["N"]), 8192)')
 
     code.newline()
     code.newline()
@@ -82,17 +82,6 @@ def generate_index_put_kernel(
     inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
 ):
     code.writeline("@libentry()")
-    # code.writeline(
-    #     '@triton.autotune(configs=runtime.get_tuned_config("index_put"), key=["M", "N"], restore_value=["input_ptr"])'
-    # )
-    code.writeline("@triton.heuristics(")
-    with code.indent():
-        code.writeline("values={")
-        with code.indent():
-            code.writeline('"BLOCK_SIZE0": heur_block_m,')
-            code.writeline('"BLOCK_SIZE1": heur_block_n,')
-        code.writeline("},")
-    code.writeline(")")
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
     with code.indent():
@@ -113,8 +102,8 @@ def generate_index_put_kernel(
             "M: tl.constexpr,",
             "N: tl.constexpr,",
             "IS_ACCUMULATE: tl.constexpr,",
-            "BLOCK_SIZE0: tl.constexpr,",
-            "BLOCK_SIZE1: tl.constexpr,",
+            "BLOCK_SIZE0: tl.constexpr = 2,",
+            "BLOCK_SIZE1: tl.constexpr = 2048,",
         ]
         code.writelines(args)
     code.writeline("):")
@@ -365,7 +354,7 @@ def index_put(inp, indices, values, accumulate=False):
         perm_order = None
         final_indices = indices
 
-    out = inp.clone()
+    out = _copy_input(inp)
 
     if need_transpose:
         # Create a contiguous permuted copy for the kernel

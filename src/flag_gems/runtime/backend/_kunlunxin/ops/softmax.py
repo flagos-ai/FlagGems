@@ -211,12 +211,28 @@ def softmax_backward_kernel_inner(
 def softmax(self, dim, half_to_float=False):
     logger.debug("GEMS_KUNLUNXIN SOFTMAX")
 
+    if self.ndim == 0:
+        assert dim in (-1, 0), "Invalid dim"
+        dtype = torch.float32 if half_to_float else self.dtype
+        out = torch.empty_like(self, dtype=dtype)
+        with torch_device_fn.device(self.device):
+            softmax_kernel_inner[(1, 1, 1)](
+                out,
+                self,
+                1,
+                1,
+                buffer_size_limit=2048,
+                is_use_mask_zero=True,
+            )
+        return out
+
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
 
     # special handling for dim = 0 and empty tensor
     if self.numel() == 0:
         out_shape = list(self.shape)
-        out = torch.empty(out_shape, dtype=self.dtype, device=self.device)
+        dtype = torch.float32 if half_to_float else self.dtype
+        out = torch.empty(out_shape, dtype=dtype, device=self.device)
         zero_(out)
         return out
 
@@ -234,12 +250,6 @@ def softmax(self, dim, half_to_float=False):
 
     with torch_device_fn.device(self.device):
         if K > 1:
-            origin_dim = self.ndim
-            if origin_dim == 3:
-                m, n, k = self.shape
-            else:  # 2D, dim == 0 -> M == 1
-                n, k = self.shape
-                m = 1
             # Rearrange [M, N, K] -> [M, K, N] so the reduced dim N is innermost
             # (the only fast axis on this XPU). Allocate the output tile directly
             # instead of `empty_like(self).view(...).transpose(...).contiguous()`,
@@ -261,13 +271,8 @@ def softmax(self, dim, half_to_float=False):
                 is_use_mask_zero=True,
             )
 
-            # Restore original layout (returns a transposed view, no copy).
-            if M == 1 and origin_dim == 2:
-                out = out_reshaped.view(K, N).transpose(0, 1)
-            elif M == 1 and origin_dim == 3:
-                out = out_reshaped.transpose(0, 1).view(m, n, k)
-            else:
-                out = out_reshaped.view(m, k, n).transpose(1, 2)
+            # Restore the original rank and dimension order.
+            out = out_reshaped.view(M, K, N).transpose(1, 2).reshape(self.shape)
         else:
             out = torch.empty_like(self, dtype=dtype)
             grid = (M, 1, 1)
@@ -282,7 +287,35 @@ def softmax(self, dim, half_to_float=False):
     return out
 
 
-def softmax_backward(grad_output, output, dim, input_dtype):
+def softmax_out(self, dim, half_to_float=False, *, out):
+    logger.debug("GEMS_KUNLUNXIN SOFTMAX_OUT")
+
+    if self.ndim == 0:
+        assert dim in (-1, 0), "Invalid dim"
+        dtype = torch.float32 if half_to_float else self.dtype
+        if out.dtype != dtype:
+            raise RuntimeError(f"_softmax.out: expected out dtype {dtype}, got {out.dtype}")
+        out.copy_(softmax(self, dim, half_to_float))
+        return out
+
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+    if self.numel() == 0:
+        if tuple(out.shape) != tuple(self.shape):
+            out.resize_(self.shape)
+        zero_(out)
+        return out
+
+    dtype = torch.float32 if half_to_float else self.dtype
+    if tuple(out.shape) != tuple(self.shape):
+        out.resize_(self.shape)
+    if out.dtype != dtype:
+        raise RuntimeError(f"_softmax.out: expected out dtype {dtype}, got {out.dtype}")
+
+    out.copy_(softmax(self, dim, half_to_float))
+    return out
+
+
+def softmax_backward(grad_output, output, dim, input_dtype, grad_input=None):
     logger.debug("GEMS_KUNLUNXIN SOFTMAX_VJP")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
@@ -294,8 +327,15 @@ def softmax_backward(grad_output, output, dim, input_dtype):
 
     grad_output = grad_output.contiguous()
     output = output.contiguous()
-    in_grad = torch.empty_like(output, dtype=torch.float32)
     K = output.numel() // M // N
+    # The kernel computes in fp32 before storing, so an output buffer with the
+    # requested dtype has the same values as the previous final `.to(...)`.
+    # A contiguous out buffer can be written directly when no layout transform
+    # is needed.
+    if grad_input is not None and K == 1:
+        in_grad = grad_input
+    else:
+        in_grad = torch.empty_like(output, dtype=input_dtype)
 
     with torch_device_fn.device(in_grad.device):
         if K > 1:
@@ -345,4 +385,25 @@ def softmax_backward(grad_output, output, dim, input_dtype):
                 N,
                 buffer_size_limit=2048,
             )
-    return in_grad.to(input_dtype)
+    return in_grad
+
+
+def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
+    logger.debug("GEMS_KUNLUNXIN SOFTMAX_VJP_OUT")
+    if tuple(grad_input.shape) != tuple(output.shape):
+        grad_input.resize_(output.shape)
+    if grad_input.dtype != input_dtype:
+        raise RuntimeError(
+            f"_softmax_backward_data.out: expected out dtype {input_dtype}, "
+            f"got {grad_input.dtype}"
+        )
+    result = softmax_backward(
+        grad_output,
+        output,
+        dim,
+        input_dtype,
+        grad_input=grad_input if grad_input.is_contiguous() else None,
+    )
+    if result is not grad_input:
+        grad_input.copy_(result)
+    return grad_input

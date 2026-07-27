@@ -29,3 +29,7 @@ def bitwise_right_shift_kernel(a, b):
 
 def bitwise_right_shift(self, other, *, out=None):
     return bitwise_right_shift_kernel(self, other, out=out)
+
+
+def bitwise_right_shift_(self, other, *, out=None):
+    return bitwise_right_shift_kernel(self, other, out0=self)

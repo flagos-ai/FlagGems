@@ -200,15 +200,17 @@ def conv3d_forward_kernel(
             output_c_offset < out_per_group_c
         )[None, :]
 
-        input_block = tl.load(curr_input_pointer, mask=input_mask)
-        weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
+        input_block = tl.load(curr_input_pointer, mask=input_mask, other=0.0)
+        weight_block = tl.load(curr_weight_pointer, mask=weight_mask, other=0.0)
 
-        accum += tl.dot(input_block, weight_block, allow_tf32=False)
+        accum += tl.sum(
+            input_block[:, :, None] * weight_block[None, :, :], axis=1
+        )
     bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
         None, :
     ]
     mask_bias = (output_c_offset < out_per_group_c)[None, :]
-    bias = tl.load(bias_pointer, mask_bias).to(tl.float32)
+    bias = tl.load(bias_pointer, mask=mask_bias, other=0.0).to(tl.float32)
     accum += bias
     output_pointer += (
         (output_n_stride * in_n_point_value)[:, None]
@@ -236,6 +238,7 @@ def conv3d_forward_kernel(
 
 def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     logger.debug("GEMS_KUNLUNXIN CONV3D")
+
     assert weight.ndim == 5, "Weights must be 5D, received shape {weight.shape}"
     assert (
         bias is None or bias.ndim == 1

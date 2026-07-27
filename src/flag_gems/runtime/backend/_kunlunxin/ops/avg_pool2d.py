@@ -44,119 +44,16 @@ def pool2d_output_size(
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 64}, num_stages=2, num_warps=8),
-    ],
-    key=["out_h", "out_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
-)
-@triton.jit
-def avg_pool2d_forward_kernel(
-    input_ptr,
-    output_ptr,
-    # Input tensor strides
-    in_stride_n,
-    in_stride_c,
-    in_stride_h,
-    in_stride_w,
-    # Input/Output shapes
-    in_c,
-    in_h,
-    in_w,
-    out_h,
-    out_w,
-    # Pooling parameters
-    kernel_h: tl.constexpr,
-    kernel_w: tl.constexpr,
-    stride_h: tl.constexpr,
-    stride_w: tl.constexpr,
-    padding_h: tl.constexpr,
-    padding_w: tl.constexpr,
-    dilation_h: tl.constexpr,
-    dilation_w: tl.constexpr,
-    # AvgPool specific parameters
-    COUNT_INCLUDE_PAD: tl.constexpr,
-    divisor_override,
-    # Tiling meta-parameters
-    BLOCK_H: tl.constexpr,
-    BLOCK_W: tl.constexpr,
-):
-    pid_nc = tl.program_id(0)
-    pid_hw = tl.program_id(1)
-    num_w_blocks = tl.cdiv(out_w, BLOCK_W)
-    h_block_idx = pid_hw // num_w_blocks
-    w_block_idx = pid_hw % num_w_blocks
-    n_idx = pid_nc // in_c
-    c_idx = pid_nc % in_c
-
-    h_out_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-
-    sum_acc = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.float32)
-    count_acc = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.int32)
-
-    input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
-
-    for kh in tl.static_range(0, kernel_h):
-        for kw in tl.static_range(0, kernel_w):
-            h_in = h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
-            w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
-            in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
-
-            input_offset = h_in * in_stride_h + w_in * in_stride_w
-            current_val = tl.load(
-                input_base_ptr + input_offset, mask=in_mask, other=0.0
-            )
-
-            sum_acc += tl.where(in_mask, current_val, 0.0)
-            count_acc += in_mask.to(tl.int32)
-
-    count_divisor = count_acc.to(tl.float32)
-
-    if COUNT_INCLUDE_PAD:
-        default_divisor = tl.where(
-            count_divisor >= 0, float(kernel_h * kernel_w), count_divisor
-        )
-    else:
-        default_divisor = count_divisor
-
-    divisor = tl.where(
-        divisor_override != 0, divisor_override + default_divisor * 0, default_divisor
-    )
-
-    output_vals = tl.where(divisor != 0, sum_acc / divisor, 0.0)
-
-    out_base_ptr = output_ptr + pid_nc * out_h * out_w
-    out_h_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    out_w_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-    output_block_ptr = (
-        out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
-    )
-
-    out_mask = (out_h_offsets[:, None] < out_h) & (out_w_offsets[None, :] < out_w)
-    tl.store(
-        output_block_ptr, output_vals.to(output_ptr.type.element_ty), mask=out_mask
-    )
-
-
-@libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 16}, num_warps=8),
-    ],
-    key=["in_h", "in_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
-)
 @triton.jit
 def avg_pool2d_backward_kernel(
     grad_output_ptr,
     grad_input_ptr,
-    # Input/Output shapes
+    numel,
     in_c,
     in_h,
     in_w,
     out_h,
     out_w,
-    # Strides
     in_stride_n,
     in_stride_c,
     in_stride_h,
@@ -165,7 +62,6 @@ def avg_pool2d_backward_kernel(
     out_stride_c,
     out_stride_h,
     out_stride_w,
-    # Pooling parameters
     kernel_h: tl.constexpr,
     kernel_w: tl.constexpr,
     stride_h: tl.constexpr,
@@ -174,71 +70,62 @@ def avg_pool2d_backward_kernel(
     padding_w: tl.constexpr,
     dilation_h: tl.constexpr,
     dilation_w: tl.constexpr,
-    # AvgPool specific parameters
     COUNT_INCLUDE_PAD: tl.constexpr,
     divisor_override,
-    # Tiling meta-parameters
-    BLOCK_H: tl.constexpr,
-    BLOCK_W: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
-    pid_nc = tl.program_id(0)
-    pid_hw = tl.program_id(1)
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    input_mask = offsets < numel
 
-    num_w_blocks = tl.cdiv(in_w, BLOCK_W)
+    w_in = offsets % in_w
+    remaining = offsets // in_w
+    h_in = remaining % in_h
+    remaining = remaining // in_h
+    c_idx = remaining % in_c
+    n_idx = remaining // in_c
 
-    h_block_idx = pid_hw // num_w_blocks
-    w_block_idx = pid_hw % num_w_blocks
-    n_idx = pid_nc // in_c
-    c_idx = pid_nc % in_c
+    grad_output_base_ptr = (
+        grad_output_ptr + n_idx * out_stride_n + c_idx * out_stride_c
+    )
+    grad_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
 
-    grad_input_block_ptr = grad_input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
-    grad_output_base_ptr = grad_output_ptr + n_idx * out_stride_n + c_idx * out_stride_c
-
-    h_in_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    w_in_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-
-    grad_acc = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.float32)
-
-    for kh_loop in tl.static_range(0, kernel_h):
-        for kw_loop in tl.static_range(0, kernel_w):
-            h_out_num = h_in_offsets[:, None] + padding_h - kh_loop * dilation_h
-            w_out_num = w_in_offsets[None, :] + padding_w - kw_loop * dilation_w
-
+    for kh in tl.static_range(0, kernel_h):
+        for kw in tl.static_range(0, kernel_w):
+            h_out_num = h_in + padding_h - kh * dilation_h
+            w_out_num = w_in + padding_w - kw * dilation_w
             h_valid_map = (h_out_num >= 0) & ((h_out_num % stride_h) == 0)
             w_valid_map = (w_out_num >= 0) & ((w_out_num % stride_w) == 0)
 
             h_out = h_out_num // stride_h
             w_out = w_out_num // stride_w
+            out_mask = (
+                input_mask
+                & h_valid_map
+                & w_valid_map
+                & (h_out < out_h)
+                & (w_out < out_w)
+            )
 
-            h_out_mask = h_valid_map & (h_out < out_h)
-            w_out_mask = w_valid_map & (w_out < out_w)
-            out_mask = h_out_mask & w_out_mask
-
-            # Compute count for this output position (for count_include_pad=False)
             h_start = h_out * stride_h - padding_h
             w_start = w_out * stride_w - padding_w
-            count = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.int32)
-            for kh_count in tl.static_range(0, kernel_h):
-                for kw_count in tl.static_range(0, kernel_w):
-                    h_in_for_count = h_start + kh_count * dilation_h
-                    w_in_for_count = w_start + kw_count * dilation_w
-                    is_valid = (
-                        (h_in_for_count >= 0)
-                        & (h_in_for_count < in_h)
-                        & (w_in_for_count >= 0)
-                        & (w_in_for_count < in_w)
-                    )
-                    count += is_valid.to(tl.int32)
-
-            count_divisor = count.to(tl.float32)
-
             if COUNT_INCLUDE_PAD:
-                default_divisor = tl.where(
-                    count_divisor >= 0, float(kernel_h * kernel_w), count_divisor
-                )
+                h_lower, h_upper = -padding_h, in_h + padding_h
+                w_lower, w_upper = -padding_w, in_w + padding_w
             else:
-                default_divisor = count_divisor
+                h_lower, h_upper = 0, in_h
+                w_lower, w_upper = 0, in_w
 
+            h_first = (h_lower - h_start + dilation_h - 1) // dilation_h
+            h_last = (h_upper - h_start + dilation_h - 1) // dilation_h
+            w_first = (w_lower - w_start + dilation_w - 1) // dilation_w
+            w_last = (w_upper - w_start + dilation_w - 1) // dilation_w
+            h_first = tl.maximum(h_first, 0)
+            h_last = tl.minimum(h_last, kernel_h)
+            w_first = tl.maximum(w_first, 0)
+            w_last = tl.minimum(w_last, kernel_w)
+            h_count = tl.maximum(h_last - h_first, 0)
+            w_count = tl.maximum(w_last - w_first, 0)
+            default_divisor = (h_count * w_count).to(tl.float32)
             divisor = tl.where(
                 divisor_override != 0,
                 divisor_override + default_divisor * 0,
@@ -246,22 +133,228 @@ def avg_pool2d_backward_kernel(
             )
             divisor = tl.where(divisor == 0, 1.0, divisor)
 
+            safe_h_out = tl.where(out_mask, h_out, 0)
+            safe_w_out = tl.where(out_mask, w_out, 0)
             grad_out_ptr = (
-                grad_output_base_ptr + h_out * out_stride_h + w_out * out_stride_w
+                grad_output_base_ptr
+                + safe_h_out * out_stride_h
+                + safe_w_out * out_stride_w
             )
-            grad_out_val = tl.load(grad_out_ptr, mask=out_mask, other=0.0)
-            grad_acc += tl.where(out_mask, grad_out_val / divisor, 0.0)
+            grad_out = tl.load(grad_out_ptr, mask=out_mask, other=0.0)
+            grad_acc += tl.where(out_mask, grad_out / divisor, 0.0)
 
-    grad_input_store_ptr = (
-        grad_input_block_ptr
-        + h_in_offsets[:, None] * in_stride_h
-        + w_in_offsets[None, :] * in_stride_w
+    grad_input_ptrs = (
+        grad_input_ptr
+        + n_idx * in_stride_n
+        + c_idx * in_stride_c
+        + h_in * in_stride_h
+        + w_in * in_stride_w
     )
-    in_write_mask = (h_in_offsets[:, None] < in_h) & (w_in_offsets[None, :] < in_w)
     tl.store(
-        grad_input_store_ptr,
+        grad_input_ptrs,
         grad_acc.to(grad_input_ptr.type.element_ty),
-        mask=in_write_mask,
+        mask=input_mask,
+    )
+
+
+@libentry()
+@triton.jit
+def avg_pool2d_backward_plane_kernel(
+    grad_output_ptr,
+    grad_input_ptr,
+    in_c,
+    in_h,
+    in_w,
+    out_h,
+    out_w,
+    in_stride_n,
+    in_stride_c,
+    in_stride_h,
+    in_stride_w,
+    out_stride_n,
+    out_stride_c,
+    out_stride_h,
+    out_stride_w,
+    kernel_h: tl.constexpr,
+    kernel_w: tl.constexpr,
+    stride_h: tl.constexpr,
+    stride_w: tl.constexpr,
+    padding_h: tl.constexpr,
+    padding_w: tl.constexpr,
+    dilation_h: tl.constexpr,
+    dilation_w: tl.constexpr,
+    COUNT_INCLUDE_PAD: tl.constexpr,
+    divisor_override,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    n_c = tl.program_id(1)
+    input_mask = offsets < in_h * in_w
+    h_in = offsets // in_w
+    w_in = offsets % in_w
+
+    n_idx = n_c // in_c
+    c_idx = n_c % in_c
+    grad_output_base_ptr = (
+        grad_output_ptr + n_idx * out_stride_n + c_idx * out_stride_c
+    )
+    grad_input_base_ptr = (
+        grad_input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
+    )
+    grad_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+
+    for kh in tl.static_range(0, kernel_h):
+        for kw in tl.static_range(0, kernel_w):
+            h_out_num = h_in + padding_h - kh * dilation_h
+            w_out_num = w_in + padding_w - kw * dilation_w
+            h_valid_map = (h_out_num >= 0) & ((h_out_num % stride_h) == 0)
+            w_valid_map = (w_out_num >= 0) & ((w_out_num % stride_w) == 0)
+            h_out = h_out_num // stride_h
+            w_out = w_out_num // stride_w
+            out_mask = (
+                input_mask
+                & h_valid_map
+                & w_valid_map
+                & (h_out < out_h)
+                & (w_out < out_w)
+            )
+
+            h_start = h_out * stride_h - padding_h
+            w_start = w_out * stride_w - padding_w
+            if COUNT_INCLUDE_PAD:
+                h_lower, h_upper = -padding_h, in_h + padding_h
+                w_lower, w_upper = -padding_w, in_w + padding_w
+            else:
+                h_lower, h_upper = 0, in_h
+                w_lower, w_upper = 0, in_w
+
+            h_first = (h_lower - h_start + dilation_h - 1) // dilation_h
+            h_last = (h_upper - h_start + dilation_h - 1) // dilation_h
+            w_first = (w_lower - w_start + dilation_w - 1) // dilation_w
+            w_last = (w_upper - w_start + dilation_w - 1) // dilation_w
+            h_first = tl.maximum(h_first, 0)
+            h_last = tl.minimum(h_last, kernel_h)
+            w_first = tl.maximum(w_first, 0)
+            w_last = tl.minimum(w_last, kernel_w)
+            default_divisor = ((h_last - h_first) * (w_last - w_first)).to(
+                tl.float32
+            )
+            divisor = tl.where(
+                divisor_override != 0,
+                divisor_override + default_divisor * 0,
+                default_divisor,
+            )
+            divisor = tl.where(divisor == 0, 1.0, divisor)
+
+            safe_h_out = tl.where(out_mask, h_out, 0)
+            safe_w_out = tl.where(out_mask, w_out, 0)
+            grad_out_ptr = (
+                grad_output_base_ptr
+                + safe_h_out * out_stride_h
+                + safe_w_out * out_stride_w
+            )
+            grad_out = tl.load(grad_out_ptr, mask=out_mask, other=0.0)
+            grad_acc += tl.where(out_mask, grad_out / divisor, 0.0)
+
+    grad_input_ptrs = grad_input_base_ptr + h_in * in_stride_h + w_in * in_stride_w
+    tl.store(
+        grad_input_ptrs,
+        grad_acc.to(grad_input_ptr.type.element_ty),
+        mask=input_mask,
+    )
+
+
+@libentry()
+@triton.jit
+def avg_pool2d_forward_flat_kernel(
+    input_ptr,
+    output_ptr,
+    numel,
+    in_c,
+    in_h,
+    in_w,
+    out_h,
+    out_w,
+    in_stride_n,
+    in_stride_c,
+    in_stride_h,
+    in_stride_w,
+    out_stride_n,
+    out_stride_c,
+    out_stride_h,
+    out_stride_w,
+    kernel_h: tl.constexpr,
+    kernel_w: tl.constexpr,
+    stride_h: tl.constexpr,
+    stride_w: tl.constexpr,
+    padding_h: tl.constexpr,
+    padding_w: tl.constexpr,
+    dilation_h: tl.constexpr,
+    dilation_w: tl.constexpr,
+    COUNT_INCLUDE_PAD: tl.constexpr,
+    divisor_override,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    output_mask = offsets < numel
+
+    w_out = offsets % out_w
+    remaining = offsets // out_w
+    h_out = remaining % out_h
+    remaining = remaining // out_h
+    c_idx = remaining % in_c
+    n_idx = remaining // in_c
+
+    input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
+    output_ptrs = (
+        output_ptr
+        + n_idx * out_stride_n
+        + c_idx * out_stride_c
+        + h_out * out_stride_h
+        + w_out * out_stride_w
+    )
+    sum_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    count_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
+
+    for kh in tl.static_range(0, kernel_h):
+        for kw in tl.static_range(0, kernel_w):
+            h_in = h_out * stride_h - padding_h + kh * dilation_h
+            w_in = w_out * stride_w - padding_w + kw * dilation_w
+            in_mask = (
+                output_mask
+                & (h_in >= 0)
+                & (h_in < in_h)
+                & (w_in >= 0)
+                & (w_in < in_w)
+            )
+            padded_mask = (
+                output_mask
+                & (h_in >= -padding_h)
+                & (h_in < in_h + padding_h)
+                & (w_in >= -padding_w)
+                & (w_in < in_w + padding_w)
+            )
+            safe_h_in = tl.where(in_mask, h_in, 0)
+            safe_w_in = tl.where(in_mask, w_in, 0)
+            input_ptrs = input_base_ptr + safe_h_in * in_stride_h + safe_w_in * in_stride_w
+            value = tl.load(input_ptrs, mask=in_mask, other=0.0)
+            sum_acc += tl.where(in_mask, value, 0.0)
+            count_acc += tl.where(
+                COUNT_INCLUDE_PAD, padded_mask, in_mask
+            ).to(tl.int32)
+
+    divisor = count_acc.to(tl.float32)
+    divisor = tl.where(
+        divisor_override != 0,
+        divisor_override + divisor * 0,
+        divisor,
+    )
+    divisor = tl.where(divisor == 0, 1.0, divisor)
+    result = sum_acc / divisor
+    tl.store(
+        output_ptrs,
+        result.to(output_ptr.type.element_ty),
+        mask=output_mask,
     )
 
 
@@ -293,6 +386,74 @@ def _parse_pool_params(kernel_size, stride, padding):
         raise ValueError("pad should be smaller than or equal to half of kernel size")
 
     return kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w
+
+
+@libentry()
+@triton.jit
+def avg_pool2d_forward_plane_kernel(
+    input_ptr,
+    output_ptr,
+    in_c,
+    in_h,
+    in_w,
+    out_h,
+    out_w,
+    kernel_h: tl.constexpr,
+    kernel_w: tl.constexpr,
+    stride_h: tl.constexpr,
+    stride_w: tl.constexpr,
+    padding_h: tl.constexpr,
+    padding_w: tl.constexpr,
+    COUNT_INCLUDE_PAD: tl.constexpr,
+    divisor_override,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    n_c = tl.program_id(1)
+    h_out = offsets // out_w
+    w_out = offsets % out_w
+    output_mask = offsets < out_h * out_w
+
+    h_in_base = h_out * stride_h - padding_h
+    w_in_base = w_out * stride_w - padding_w
+    input_base = n_c * in_h * in_w
+    output_base = n_c * out_h * out_w
+
+    sum_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    count_acc = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
+    for kh in tl.static_range(kernel_h):
+        h_in = h_in_base + kh
+        h_valid = (h_in >= 0) & (h_in < in_h)
+        for kw in tl.static_range(kernel_w):
+            w_in = w_in_base + kw
+            w_valid = (w_in >= 0) & (w_in < in_w)
+            input_mask = output_mask & h_valid & w_valid
+            safe_h_in = tl.where(input_mask, h_in, 0)
+            safe_w_in = tl.where(input_mask, w_in, 0)
+            value = tl.load(
+                input_ptr + input_base + safe_h_in * in_w + safe_w_in,
+                mask=input_mask,
+                other=0.0,
+            )
+            sum_acc += tl.where(input_mask, value, 0.0)
+            count_acc += tl.where(
+                COUNT_INCLUDE_PAD,
+                output_mask,
+                input_mask,
+            ).to(tl.int32)
+
+    divisor = count_acc.to(tl.float32)
+    divisor = tl.where(
+        divisor_override != 0,
+        divisor_override + divisor * 0,
+        divisor,
+    )
+    divisor = tl.where(divisor == 0, 1.0, divisor)
+    tl.store(
+        output_ptr + output_base + offsets,
+        (sum_acc / divisor).to(output_ptr.type.element_ty),
+        mask=output_mask,
+    )
 
 
 def avg_pool2d(
@@ -333,17 +494,13 @@ def avg_pool2d(
         return output
 
     grid = lambda meta: (
+        triton.cdiv(out_h * out_w, meta["BLOCK_SIZE"]),
         in_n * in_c,
-        triton.cdiv(out_h, meta["BLOCK_H"]) * triton.cdiv(out_w, meta["BLOCK_W"]),
     )
 
-    avg_pool2d_forward_kernel[grid](
+    avg_pool2d_forward_plane_kernel[grid](
         input,
         output,
-        input.stride(0),
-        input.stride(1),
-        input.stride(2),
-        input.stride(3),
         in_c,
         in_h,
         in_w,
@@ -355,10 +512,10 @@ def avg_pool2d(
         stride_w,
         padding_h,
         padding_w,
-        dilation_h,
-        dilation_w,
         COUNT_INCLUDE_PAD=count_include_pad,
         divisor_override=divisor_override if divisor_override is not None else 0.0,
+        BLOCK_SIZE=256,
+        num_warps=4,
     )
 
     return output
@@ -395,11 +552,11 @@ def avg_pool2d_backward(
         return grad_input.to(grad_output.dtype)
 
     grid = lambda meta: (
+        triton.cdiv(in_h * in_w, meta["BLOCK_SIZE"]),
         in_n * in_c,
-        triton.cdiv(in_h, meta["BLOCK_H"]) * triton.cdiv(in_w, meta["BLOCK_W"]),
     )
 
-    avg_pool2d_backward_kernel[grid](
+    avg_pool2d_backward_plane_kernel[grid](
         grad_output,
         grad_input,
         in_c,
@@ -425,6 +582,8 @@ def avg_pool2d_backward(
         dilation_w,
         COUNT_INCLUDE_PAD=count_include_pad,
         divisor_override=divisor_override if divisor_override is not None else 0.0,
+        BLOCK_SIZE=256,
+        num_warps=4,
     )
 
     return grad_input.to(grad_output.dtype)

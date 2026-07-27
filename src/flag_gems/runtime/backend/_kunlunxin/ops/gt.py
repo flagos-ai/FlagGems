@@ -69,3 +69,13 @@ def gt_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN GT_SCALAR")
     res = gt_func_scalar(A, B)
     return res
+
+
+def gt_tensor_(A, B):
+    logger.debug("GEMS_KUNLUNXIN GT_ TENSOR")
+    return gt_func(A, B, out0=A)
+
+
+def gt_scalar_(A, B):
+    logger.debug("GEMS_KUNLUNXIN GT_ SCALAR")
+    return gt_func_scalar(A, B, out0=A)

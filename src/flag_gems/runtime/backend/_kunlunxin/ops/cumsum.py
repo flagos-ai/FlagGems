@@ -192,7 +192,7 @@ def scan_then_fan_col(inp, out, n_ele, dtype):
 def scan_then_fan(inp, out, A, B, C, dtype):
     # TODO(all): tune on target board
     BLOCK_SIZE = 1024
-    if B <= 1024 * 4:
+    if B < 1024:
         BLOCK_SIZE = triton.next_power_of_2(B)
     part_num = math.ceil(B / BLOCK_SIZE)
     partial_sum = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
@@ -260,6 +260,23 @@ def cumsum(inp, dim=1, *, dtype=None):
 def cumsum_out(inp, dim=1, *, dtype=None, out):
     logger.debug("GEMS_KUNLUNXIN CUMSUM_OUT")
     return cumsum_wrapper(inp, dim, dtype, out)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["K", "INNER"])
+def normed_cumsum_strided_kernel(inp, out, K, INNER, BLOCK: tl.constexpr):
+    row = ext.program_id(0)
+    outer = row // INNER
+    inner = row % INNER
+    base = outer * K * INNER + inner
+    offsets = tl.arange(0, BLOCK)
+    mask = offsets < K
+    x = tl.load(inp + base + offsets * INNER, mask=mask, other=0.0)
+    if x.dtype.is_fp16() | x.dtype.is_bf16():
+        x = x.to(tl.float32)
+    total = tl.sum(x, axis=0)
+    result = tl.cumsum(x, axis=0) / total
+    tl.store(out + base + offsets * INNER, result, mask=mask)
 
 
 @libentry()
@@ -409,9 +426,24 @@ def normed_cumsum(inp, dim=-1):
     logger.debug("GEMS_KUNLUNXIN NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
+    inp = inp.contiguous()
     N = inp.numel()
     K = inp.size(dim)
-    # inp = inp.contiguous()
+    if inp.stride(dim) != 1:
+        out = torch.empty_like(inp)
+        inner = inp.stride(dim)
+        block = triton.next_power_of_2(K)
+        with torch_device_fn.device(inp.device):
+            normed_cumsum_strided_kernel[(N // K,)](
+                inp,
+                out,
+                K,
+                inner,
+                BLOCK=block,
+                isCloseVectorization=True,
+                buffer_size_limit=2048,
+            )
+        return out
     # First and last dims are easier to handle, but transpose the middle dim to the last
     ranked_dims = sorted(range(inp.ndim), key=lambda i: inp.stride(i), reverse=True)
     is_mid_dim = dim not in (ranked_dims[0], ranked_dims[-1])

@@ -343,424 +343,288 @@ def _attn_fwd(
     tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
 
 
-@triton.jit
-def _attn_bwd_preprocess(
-    O, DO, Delta, Z, H, Q_CTX, BLOCK_M: tl.constexpr, D_HEAD: tl.constexpr
-):
-    off_m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
-    mask = off_m < Q_CTX
-
-    off_hz = tl.program_id(1)
-    off_n = tl.arange(0, D_HEAD)
-    # load
-    o = tl.load(
-        O + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
-        mask=mask[:, None],
-        other=0.0,
-    )
-    do = tl.load(
-        DO + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
-        mask=mask[:, None],
-        other=0.0,
-    ).to(tl.float32)
-    delta = tl.sum(o * do, axis=1)
-    # write-back
-    tl.store(Delta + off_hz * Q_CTX + off_m, delta, mask=mask)
-
-
-# The main inner-loop logic for computing dK and dV.
-@triton.jit
-def _attn_bwd_dkdv(
-    dk,
-    dv,  #
-    Q,
-    key,
-    value,
-    sm_scale,  #
-    DO,  #
-    M,
-    D,  #
-    # shared by Q/K/V/DO.
-    stride_tok,
-    stride_d,  #
-    H,
-    Q_CTX,
-    KV_CTX,
-    BLOCK_M1: tl.constexpr,  #
-    BLOCK_N1: tl.constexpr,  #
-    BLOCK_DMODEL: tl.constexpr,  #
-    # Filled in by the wrapper.
-    start_n,
-    start_m,
-    num_steps,  #
-    MASK: tl.constexpr,
-):
-    # BLOCK_M1: 32
-    # BLOCK_N1: 128
-    offs_n = start_n + tl.arange(0, BLOCK_N1)
-    offs_n_mask = offs_n < KV_CTX  # (BLOCK_N1, )
-
-    offs_k = tl.arange(0, BLOCK_DMODEL)  # (BLOCK_DMODEL, )
-
-    # BLOCK_N1 must be a multiple of BLOCK_M1, otherwise the code wouldn't work.
-    tl.static_assert(BLOCK_N1 % BLOCK_M1 == 0)
-    curr_m = start_m
-    step_m = BLOCK_M1
-    for blk_idx in range(num_steps):
-        offs_m = curr_m + tl.arange(0, BLOCK_M1)  # (BLOCK_M1, )
-        offs_m_mask = offs_m < Q_CTX  # (BLOCK_M1, )
-
-        qT_ptrs = (
-            Q + offs_m[None, :] * stride_tok + offs_k[:, None] * stride_d
-        )  # (BLOCK_DMODEL, BLOCK_M1)
-        do_ptrs = (
-            DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
-        )  # (BLOCK_M1, BLOCK_DMODEL)
-
-        qT = tl.load(
-            qT_ptrs, mask=offs_m_mask[None, :], other=0.0
-        )  # (BLOCK_DMODEL, BLOCK_M1)
-
-        # Load m before computing qk to reduce pipeline stall.
-        m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))  # (BLOCK_M1, )
-
-        # key: (BLOCK_N1, BLOCK_DMODEL)
-        qkT = tl.dot(key, qT)  # (BLOCK_N1, BLOCK_M1)
-        m = tl.broadcast_to(m[None, :], (BLOCK_N1, BLOCK_M1))  # (BLOCK_N1, BLOCK_M1)
-        m = tl.where(offs_n_mask[:, None], m, float("inf"))  # (BLOCK_N1, BLOCK_M1)
-        pT = tl.math.exp2(qkT - m)
-        # pT = tl.math.exp2(qkT - m[None, :])
-
-        mask = (offs_m < Q_CTX)[None, :] & (offs_n < KV_CTX)[
-            :, None
-        ]  # (BLOCK_N1, BLOCK_M1)
-        # Autoregressive masking.
-        if MASK:
-            mask &= offs_m[None, :] >= offs_n[:, None]
-        pT = tl.where(mask, pT, 0.0)  # (BLOCK_N1, BLOCK_M1)
-
-        do = tl.load(do_ptrs)
-        # do = tl.load(do_ptrs, mask=offs_m_mask[:, None], other=0.0) # (BLOCK_M1, BLOCK_DMODEL)
-
-        # Compute dV.
-        dv += tl.dot(pT, do.to(tl.float32))  # (BLOCK_N1, BLOCK_DMODEL)
-        # D (= delta) is pre-divided by ds_scale.
-        Di = tl.load(D + offs_m, mask=offs_m_mask, other=0.0)  # (BLOCK_M1, )
-
-        # Compute dP and dS.
-        dpT = tl.dot(value, tl.trans(do)).to(
-            tl.float32
-        )  # (BLOCK_N1, BLOCK_DMODEL) @ (BLOCK_M1, BLOCK_DMODEL).T -> (BLOCK_N1, BLOCK_M1)
-        dsT = pT * (dpT - Di[None, :])  # (BLOCK_N1, BLOCK_M1)
-        dsT = dsT.to(qT.dtype)
-        qT = tl.where(offs_m_mask[None, :], qT, 0.0)  # (BLOCK_DMODEL, BLOCK_M1)
-        dsT = tl.where(
-            offs_m_mask[None, :] & offs_n_mask[:, None], dsT, 0.0
-        )  # (BLOCK_N1, BLOCK_M1)
-        dk += tl.dot(
-            dsT, tl.trans(qT)
-        )  # (BLOCK_N1, BLOCK_M1) @ (BLOCK_DMODEL, BLOCK_M1).T -> (BLOCK_N1, BLOCK_DMODEL)
-        # Increment pointers.
-        curr_m += step_m
-    return dk, dv
-
-
-# the main inner-loop logic for computing dQ
-@triton.jit
-def _attn_bwd_dq(
-    dq,
-    query,
-    K,
-    V,  #
-    do,
-    m,
-    D,
-    # shared by Q/K/V/DO.
-    stride_tok,
-    stride_d,  #
-    H,
-    Q_CTX,  #
-    KV_CTX,  #
-    BLOCK_M2: tl.constexpr,  #
-    BLOCK_N2: tl.constexpr,  #
-    BLOCK_DMODEL: tl.constexpr,
-    # Filled in by the wrapper.
-    start_m,
-    start_n,
-    num_steps,  #
-    MASK: tl.constexpr,
-):
-    offs_m = start_m + tl.arange(0, BLOCK_M2)
-    offs_m_mask = offs_m < Q_CTX
-
-    offs_k = tl.arange(0, BLOCK_DMODEL)
-    # D (= delta) is pre-divided by ds_scale.
-    Di = tl.load(D + offs_m, mask=offs_m_mask, other=0.0)
-    # BLOCK_M2 must be a multiple of BLOCK_N2, otherwise the code wouldn't work.
-    tl.static_assert(BLOCK_M2 % BLOCK_N2 == 0)
-    curr_n = start_n
-    step_n = BLOCK_N2
-    for blk_idx in range(num_steps):
-        offs_n = curr_n + tl.arange(0, BLOCK_N2)
-        offs_n_mask = offs_n < KV_CTX
-
-        kT_ptrs = K + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
-        vT_ptrs = V + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
-
-        kT = tl.load(kT_ptrs, mask=offs_n_mask[None, :], other=0.0)
-        vT = tl.load(vT_ptrs, mask=offs_n_mask[None, :], other=0.0)
-        qk = tl.dot(query, kT)
-        p = tl.math.exp2(qk - m)
-        mask = (offs_m < Q_CTX)[:, None] & (offs_n < KV_CTX)[None, :]
-        # Autoregressive masking.
-        if MASK:
-            # mask = (offs_m[:, None] >= offs_n[None, :])
-            # mask = (offs_m[:, None] >= offs_n[None, :]) & (offs_m < N_CTX)[:, None] & (offs_n < N_CTX)[None, :]
-            mask &= offs_m[:, None] >= offs_n[None, :]
-        p = tl.where(mask, p, 0.0)
-        # Compute dP and dS.
-        dp = tl.dot(do, vT).to(tl.float32)
-        ds = p * (dp - Di[:, None])
-        ds = tl.where(mask, ds, 0.0).to(kT.dtype)
-        # Compute dQ.
-        # NOTE: We need to de-scale dq in the end, because kT was pre-scaled.
-        dq += tl.dot(ds, tl.trans(kT))
-        # Increment pointers.
-        curr_n += step_n
-    return dq
+# XPU backward is staged to keep multiple dot accumulators out of a single loop.
+_STAGED_RED = 64
+_STAGED_BLOCK_N = 8
+_STAGED_BLOCK_D = 4
+_STAGED_GRAD_R = 8
 
 
 @triton.jit
-def _attn_bwd(
+def prob_dp_partial_kernel(
     Q,
     K,
     V,
-    sm_scale,  #
-    DO,  #
-    DQ,
-    DK,
-    DV,  #
-    M,
-    D,
-    # shared by Q/K/V/DO.
-    stride_z,
-    stride_h,
-    stride_tok,
-    stride_d,  #
-    kv_stride_z,
-    kv_stride_h,  #
-    H,  # query head num
-    Q_CTX,  #
-    KV_CTX,  #
-    kv_head_num,  #
-    GROUP_HEAD: tl.constexpr,  #
-    BLOCK_M1: tl.constexpr,  #
-    BLOCK_N1: tl.constexpr,  #
-    BLOCK_M2: tl.constexpr,  #
-    BLOCK_N2: tl.constexpr,  #
-    BLK_SLICE_FACTOR: tl.constexpr,  #
-    BLOCK_DMODEL: tl.constexpr,
+    DO,
+    SCORE_PARTIAL,
+    DP_PARTIAL,
+    Q_LEN: tl.constexpr,
+    KV_LEN: tl.constexpr,
+    D: tl.constexpr,
+    D_CHUNKS: tl.constexpr,
+    QUERY_HEADS: tl.constexpr,
+    KV_HEADS: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+    BLOCK_N_: tl.constexpr,
+    RED_: tl.constexpr,
 ):
-    tl.device_assert(Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1.")
+    n_offs = tl.program_id(0) * BLOCK_N_ + tl.arange(0, BLOCK_N_)
+    q_idx = tl.program_id(1)
+    packed = tl.program_id(2)
+    d_chunk = packed % D_CHUNKS
+    query_bh = packed // D_CHUNKS
+    batch_idx = query_bh // QUERY_HEADS
+    query_head = query_bh % QUERY_HEADS
+    kv_bh = batch_idx * KV_HEADS + query_head // GROUP_SIZE
+    n_mask = n_offs < KV_LEN
+    score = tl.zeros((BLOCK_N_,), dtype=tl.float32)
+    dp = tl.zeros((BLOCK_N_,), dtype=tl.float32)
+    for d_offset in tl.static_range(RED_):
+        d_idx = d_chunk * RED_ + d_offset
+        d_mask = d_idx < D
+        q_value = tl.load(Q + (query_bh * Q_LEN + q_idx) * D + d_idx, mask=d_mask, other=0.0)
+        do_value = tl.load(DO + (query_bh * Q_LEN + q_idx) * D + d_idx, mask=d_mask, other=0.0).to(tl.float32)
+        k_value = tl.load(K + (kv_bh * KV_LEN + n_offs) * D + d_idx, mask=n_mask & d_mask, other=0.0)
+        v_value = tl.load(V + (kv_bh * KV_LEN + n_offs) * D + d_idx, mask=n_mask & d_mask, other=0.0).to(tl.float32)
+        score += q_value * k_value
+        dp += do_value * v_value
+    partial_offs = ((query_bh * Q_LEN + q_idx) * KV_LEN + n_offs) * D_CHUNKS + d_chunk
+    tl.store(SCORE_PARTIAL + partial_offs, score, mask=n_mask)
+    tl.store(DP_PARTIAL + partial_offs, dp, mask=n_mask)
 
-    LN2: tl.constexpr = 0.6931471824645996  # = ln(2)
 
-    bhid = tl.program_id(2)
-    off_chz = (bhid * Q_CTX).to(tl.int64)
-    batch_id = bhid // H
-    q_head_id = bhid % H
-    kv_head_id = q_head_id // GROUP_HEAD
-    adj = (stride_h * q_head_id + stride_z * batch_id).to(tl.int64)
-    kv_adj = (kv_stride_h * kv_head_id + kv_stride_z * batch_id).to(tl.int64)
+@triton.jit
+def delta_partial_kernel(
+    O,
+    DO,
+    DELTA_PARTIAL,
+    Q_LEN: tl.constexpr,
+    D: tl.constexpr,
+    D_CHUNKS: tl.constexpr,
+    RED_: tl.constexpr,
+):
+    q_idx = tl.program_id(0)
+    packed = tl.program_id(1)
+    d_chunk = packed % D_CHUNKS
+    bh = packed // D_CHUNKS
+    d_offs = d_chunk * RED_ + tl.arange(0, RED_)
+    mask = d_offs < D
+    o = tl.load(O + (bh * Q_LEN + q_idx) * D + d_offs, mask=mask, other=0.0).to(tl.float32)
+    do = tl.load(DO + (bh * Q_LEN + q_idx) * D + d_offs, mask=mask, other=0.0).to(tl.float32)
+    tl.store(DELTA_PARTIAL + (bh * Q_LEN + q_idx) * D_CHUNKS + d_chunk, tl.sum(o * do, axis=0))
 
-    pid = tl.program_id(0)
 
-    # offset pointers for batch/head
-    Q += adj
-    K += kv_adj
-    V += kv_adj
-    DO += adj
-    DQ += adj
-    DK += adj
-    DV += adj
-    M += off_chz
-    D += off_chz
+@triton.jit
+def prob_ds_finalize_kernel(
+    SCORE_PARTIAL,
+    DP_PARTIAL,
+    DELTA_PARTIAL,
+    LSE,
+    P,
+    P_DV,
+    DS,
+    SCALE,
+    Q_LEN: tl.constexpr,
+    KV_LEN: tl.constexpr,
+    D_CHUNKS: tl.constexpr,
+    LSE_STRIDE_BH: tl.constexpr,
+    IS_CAUSAL: tl.constexpr,
+    BLOCK_N_: tl.constexpr,
+):
+    n_offs = tl.program_id(0) * BLOCK_N_ + tl.arange(0, BLOCK_N_)
+    q_idx = tl.program_id(1)
+    bh = tl.program_id(2)
+    n_mask = n_offs < KV_LEN
+    partial_base = ((bh * Q_LEN + q_idx) * KV_LEN + n_offs) * D_CHUNKS
+    score = tl.zeros((BLOCK_N_,), dtype=tl.float32)
+    dp = tl.zeros((BLOCK_N_,), dtype=tl.float32)
+    delta = 0.0
+    delta_base = (bh * Q_LEN + q_idx) * D_CHUNKS
+    for chunk in tl.static_range(D_CHUNKS):
+        score += tl.load(SCORE_PARTIAL + partial_base + chunk, mask=n_mask, other=0.0)
+        dp += tl.load(DP_PARTIAL + partial_base + chunk, mask=n_mask, other=0.0)
+        delta += tl.load(DELTA_PARTIAL + delta_base + chunk)
+    lse = tl.load(LSE + bh * LSE_STRIDE_BH + q_idx).to(tl.float32)
+    valid = n_mask
+    if IS_CAUSAL:
+        valid = valid & (n_offs <= q_idx)
+    p = tl.exp(score * SCALE)
+    p = tl.where(valid, p, 0.0)
+    p_dv = tl.exp2(score * SCALE - lse)
+    p_dv = tl.where(valid, p_dv, 0.0)
+    ds = p * (dp - delta) * SCALE
+    out_offs = (bh * Q_LEN + q_idx) * KV_LEN + n_offs
+    tl.store(P + out_offs, p, mask=n_mask)
+    tl.store(P_DV + out_offs, p_dv, mask=n_mask)
+    tl.store(DS + out_offs, ds, mask=n_mask)
 
-    # load scales
-    offs_k = tl.arange(0, BLOCK_DMODEL)
 
-    start_n = pid * BLOCK_N1
-    start_m = start_n
+@triton.jit
+def normalize_prob_ds_kernel(
+    P,
+    DS,
+    Q_LEN: tl.constexpr,
+    KV_LEN: tl.constexpr,
+    BLOCK_KV: tl.constexpr,
+):
+    q_idx = tl.program_id(0)
+    bh = tl.program_id(1)
+    n_offs = tl.arange(0, BLOCK_KV)
+    mask = n_offs < KV_LEN
+    offs = (bh * Q_LEN + q_idx) * KV_LEN + n_offs
+    p = tl.load(P + offs, mask=mask, other=0.0)
+    norm = tl.sum(p, axis=0)
+    p /= norm
+    ds = tl.load(DS + offs, mask=mask, other=0.0) / norm
+    tl.store(P + offs, p, mask=mask)
+    tl.store(DS + offs, ds, mask=mask)
 
-    MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
-    offs_n = start_n + tl.arange(0, BLOCK_N1)
-    offs_n_mask = offs_n < KV_CTX
 
-    dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
-    dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
+@triton.jit
+def dq_partial_kernel(
+    DS,
+    K,
+    PARTIAL,
+    Q_LEN: tl.constexpr,
+    KV_LEN: tl.constexpr,
+    D: tl.constexpr,
+    R_CHUNKS: tl.constexpr,
+    QUERY_HEADS: tl.constexpr,
+    KV_HEADS: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+    BLOCK_R_: tl.constexpr,
+    BLOCK_D_: tl.constexpr,
+):
+    q_idx = tl.program_id(0)
+    d_base = tl.program_id(1) * BLOCK_D_
+    packed = tl.program_id(2)
+    r_chunk = packed % R_CHUNKS
+    query_bh = packed // R_CHUNKS
+    batch_idx = query_bh // QUERY_HEADS
+    query_head = query_bh % QUERY_HEADS
+    kv_bh = batch_idx * KV_HEADS + query_head // GROUP_SIZE
+    r_offs = (r_chunk * BLOCK_R_ + tl.arange(0, BLOCK_R_)).to(tl.int32)
+    r_mask = r_offs < KV_LEN
+    ds = tl.load(DS + (query_bh * Q_LEN + q_idx) * KV_LEN + r_offs, mask=r_mask, other=0.0).to(tl.float32)
+    partial_base = ((query_bh * Q_LEN + q_idx) * R_CHUNKS + r_chunk) * D + d_base
+    for d_offset in tl.static_range(BLOCK_D_):
+        d_idx = d_base + d_offset
+        x = tl.load(K + (kv_bh * KV_LEN + r_offs) * D + d_idx, mask=r_mask & (d_idx < D), other=0.0).to(tl.float32)
+        tl.store(PARTIAL + partial_base + d_offset, tl.sum(ds * x, axis=0), mask=d_idx < D)
 
-    # load K and V: they stay in SRAM throughout the inner loop.
-    key = tl.load(
-        K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_n_mask[:, None],
-        other=0.0,
+
+@triton.jit
+def dk_partial_kernel(
+    DS,
+    Q,
+    PARTIAL,
+    Q_LEN: tl.constexpr,
+    KV_LEN: tl.constexpr,
+    D: tl.constexpr,
+    R_CHUNKS: tl.constexpr,
+    QUERY_HEADS: tl.constexpr,
+    KV_HEADS: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+    BLOCK_R_: tl.constexpr,
+    BLOCK_D_: tl.constexpr,
+):
+    n_idx = tl.program_id(0)
+    d_base = tl.program_id(1) * BLOCK_D_
+    packed = tl.program_id(2)
+    r_chunk = packed % R_CHUNKS
+    kv_bh = packed // R_CHUNKS
+    r_offs = (r_chunk * BLOCK_R_ + tl.arange(0, BLOCK_R_)).to(tl.int32)
+    r_mask = r_offs < GROUP_SIZE * Q_LEN
+    group_head = r_offs // Q_LEN
+    q_idx = r_offs % Q_LEN
+    batch_idx = kv_bh // KV_HEADS
+    kv_head = kv_bh % KV_HEADS
+    query_head = kv_head * GROUP_SIZE + group_head
+    query_bh = batch_idx * QUERY_HEADS + query_head
+    ds = tl.load(DS + (query_bh * Q_LEN + q_idx) * KV_LEN + n_idx, mask=r_mask, other=0.0).to(tl.float32)
+    partial_base = ((kv_bh * KV_LEN + n_idx) * R_CHUNKS + r_chunk) * D + d_base
+    for d_offset in tl.static_range(BLOCK_D_):
+        d_idx = d_base + d_offset
+        x = tl.load(Q + (query_bh * Q_LEN + q_idx) * D + d_idx, mask=r_mask & (d_idx < D), other=0.0).to(tl.float32)
+        tl.store(PARTIAL + partial_base + d_offset, tl.sum(ds * x, axis=0), mask=d_idx < D)
+
+
+@triton.jit
+def dv_dot_kernel(
+    P,
+    DO,
+    PARTIAL,
+    Q_LEN: tl.constexpr,
+    KV_LEN: tl.constexpr,
+    D: tl.constexpr,
+    QUERY_HEADS: tl.constexpr,
+    KV_HEADS: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
+    BLOCK_N_: tl.constexpr,
+    BLOCK_Q_: tl.constexpr,
+    BLOCK_D_: tl.constexpr,
+):
+    n_offs = tl.program_id(0) * BLOCK_N_ + tl.arange(0, BLOCK_N_)
+    d_offs = tl.program_id(1) * BLOCK_D_ + tl.arange(0, BLOCK_D_)
+    kv_bh = tl.program_id(2)
+    batch_idx = kv_bh // KV_HEADS
+    kv_head = kv_bh % KV_HEADS
+    n_mask = n_offs < KV_LEN
+    d_mask = d_offs < D
+    acc = tl.zeros((BLOCK_N_, BLOCK_D_), dtype=tl.float32)
+    for group_head in tl.static_range(GROUP_SIZE):
+        query_head = kv_head * GROUP_SIZE + group_head
+        query_bh = batch_idx * QUERY_HEADS + query_head
+        for q_base in tl.static_range(0, Q_LEN, BLOCK_Q_):
+            q_offs = q_base + tl.arange(0, BLOCK_Q_)
+            q_mask = q_offs < Q_LEN
+            p = tl.load(
+                P + (query_bh * Q_LEN + q_offs[:, None]) * KV_LEN + n_offs[None, :],
+                mask=q_mask[:, None] & n_mask[None, :],
+                other=0.0,
+            )
+            grad_out = tl.load(
+                DO + (query_bh * Q_LEN + q_offs[:, None]) * D + d_offs[None, :],
+                mask=q_mask[:, None] & d_mask[None, :],
+                other=0.0,
+            )
+            acc += tl.dot(tl.trans(p), grad_out.to(tl.float32))
+    tl.store(
+        PARTIAL + (kv_bh * KV_LEN + n_offs[:, None]) * D + d_offs[None, :],
+        acc,
+        mask=n_mask[:, None] & d_mask[None, :],
     )
-    value = tl.load(
-        V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_n_mask[:, None],
-        other=0.0,
-    )
 
-    num_steps = BLOCK_N1 // MASK_BLOCK_M1
 
-    dk, dv = _attn_bwd_dkdv(
-        dk,
-        dv,  #
-        Q,
-        key,
-        value,
-        sm_scale,  #
-        DO,  #
-        M,
-        D,  #
-        stride_tok,
-        stride_d,  #
-        H,
-        Q_CTX,  #
-        KV_CTX,  #
-        MASK_BLOCK_M1,
-        BLOCK_N1,
-        BLOCK_DMODEL,  #
-        start_n,
-        start_m,
-        num_steps,  #
-        MASK=True,  #
-    )
+@triton.jit
+def grad_finalize_kernel(
+    PARTIAL,
+    OUT,
+    ROWS: tl.constexpr,
+    D: tl.constexpr,
+    R_CHUNKS: tl.constexpr,
+    BLOCK_D_: tl.constexpr,
+):
+    row = tl.program_id(0)
+    d_base = tl.program_id(1) * BLOCK_D_
+    bh = tl.program_id(2)
+    out_base = (bh * ROWS + row) * D + d_base
+    for d_offset in tl.static_range(BLOCK_D_):
+        d_idx = d_base + d_offset
+        acc = 0.0
+        compensation = 0.0
+        for chunk in tl.static_range(R_CHUNKS):
+            value = tl.load(
+                PARTIAL + ((bh * ROWS + row) * R_CHUNKS + chunk) * D + d_idx,
+                mask=d_idx < D,
+                other=0.0,
+            )
+            corrected = value - compensation
+            updated = acc + corrected
+            compensation = (updated - acc) - corrected
+            acc = updated
+        tl.store(OUT + out_base + d_offset, acc, mask=d_idx < D)
 
-    # Compute dK and dV for non-masked blocks.
-    start_m += num_steps * MASK_BLOCK_M1
-    remaining_m = Q_CTX - start_m
-    num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
-
-    if num_steps > 0 and start_m < Q_CTX:
-        dk, dv = _attn_bwd_dkdv(  #
-            dk,
-            dv,  #
-            Q,
-            key,
-            value,
-            sm_scale,  #
-            DO,  #
-            M,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M1,
-            BLOCK_N1,
-            BLOCK_DMODEL,  #
-            start_n,
-            start_m,
-            num_steps,  #
-            MASK=False,  #
-        )
-    # tl.device_print("dv: ", dv)
-
-    dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
-    tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
-
-    # Write back dK.
-    dk *= sm_scale
-    dk_ptrs = DK + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
-    tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
-
-    # THIS BLOCK DOES DQ:
-    MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
-    start_m = pid * BLOCK_M2
-    end_n = min(start_m + BLOCK_M2, KV_CTX)  # Ensure end_n does not exceed N_CTX
-    num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
-
-    offs_m = start_m + tl.arange(0, BLOCK_M2)
-    offs_m_mask = offs_m < Q_CTX
-
-    query = tl.load(
-        Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_m_mask[:, None],
-        other=0.0,
-    )
-    dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
-    do = tl.load(
-        DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_m_mask[:, None],
-        other=0.0,
-    )
-
-    m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
-    m = m[:, None]
-
-    # Stage 1 - Compute dQ for masked (diagonal) blocks.
-    # NOTE: This code scans each row of QK^T backward (from right to left,
-    # but inside each call to _attn_bwd_dq, from left to right), but that's
-    # not due to anything important.  I just wanted to reuse the loop
-    # structure for dK & dV above as much as possible.
-
-    if num_steps > 0:
-        dq = _attn_bwd_dq(
-            dq,
-            query,
-            K,
-            V,  #
-            do,
-            m,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M2,
-            MASK_BLOCK_N2,
-            BLOCK_DMODEL,  #
-            start_m,
-            start_n,
-            num_steps,  #
-            MASK=True,  #
-        )
-
-    # Stage 2 - non-masked blocks
-    stage2_end_n = start_n
-    stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
-
-    if stage2_num_steps > 0:
-        dq = _attn_bwd_dq(
-            dq,
-            query,
-            K,
-            V,  #
-            do,
-            m,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M2,
-            BLOCK_N2,
-            BLOCK_DMODEL,  #
-            start_m,
-            stage2_end_n - stage2_num_steps * BLOCK_N2,
-            stage2_num_steps,  #
-            MASK=False,  #
-        )
-    # Write back dQ.
-    dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
-    dq *= LN2
-    # tl.store(dq_ptrs, dq)
-
-    tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
 
 
 def scaled_dot_product_attention_forward(
@@ -773,16 +637,219 @@ def scaled_dot_product_attention_forward(
     scale=None,
     enable_gqa=False,
 ):
-    return ScaleDotProductAttention.apply(
+    return torch.ops.aten._scaled_dot_product_attention_math.default(
         query,
         key,
         value,
         attn_mask,
         dropout_p,
         is_causal,
-        scale,
-        enable_gqa,
+        None,
+        scale=scale,
+        enable_gqa=enable_gqa,
+    )[0]
+
+
+def _staged_attention_backward(do, query, key, value, o, lse, sm_scale, is_causal):
+    batch, query_heads, query_length, head_dim = query.shape
+    key_batch, kv_heads, kv_length, key_head_dim = key.shape
+    assert key.shape == value.shape
+    assert batch == key_batch and head_dim == key_head_dim
+    assert head_dim <= 256 and query_length <= 1024 and kv_length <= 1024
+    assert query_heads % kv_heads == 0
+    assert do.is_contiguous()
+    assert query.is_contiguous() and key.is_contiguous()
+    assert value.is_contiguous() and o.is_contiguous()
+
+    query_batch_heads = batch * query_heads
+    kv_batch_heads = batch * kv_heads
+    group_size = query_heads // kv_heads
+    dim_chunks = triton.cdiv(head_dim, _STAGED_RED)
+    score_partial = torch.empty(
+        (query_batch_heads, query_length, kv_length, dim_chunks),
+        device=query.device,
+        dtype=torch.float32,
     )
+    dp_partial = torch.empty_like(score_partial)
+    delta_partial = torch.empty(
+        (query_batch_heads, query_length, dim_chunks),
+        device=query.device,
+        dtype=torch.float32,
+    )
+    probability = torch.empty(
+        (query_batch_heads, query_length, kv_length),
+        device=query.device,
+        dtype=torch.float32,
+    )
+    probability_dv = torch.empty_like(probability)
+    ds = torch.empty_like(probability)
+    launch_options = {
+        "num_warps": 1,
+        "num_stages": 1,
+        "isCloseVectorization": True,
+        "buffer_size_limit": 2048,
+    }
+
+    prob_dp_partial_kernel[
+        (triton.cdiv(kv_length, _STAGED_BLOCK_N), query_length, query_batch_heads * dim_chunks)
+    ](
+        query,
+        key,
+        value,
+        do,
+        score_partial,
+        dp_partial,
+        Q_LEN=query_length,
+        KV_LEN=kv_length,
+        D=head_dim,
+        D_CHUNKS=dim_chunks,
+        QUERY_HEADS=query_heads,
+        KV_HEADS=kv_heads,
+        GROUP_SIZE=group_size,
+        BLOCK_N_=_STAGED_BLOCK_N,
+        RED_=_STAGED_RED,
+        **launch_options,
+    )
+    delta_partial_kernel[(query_length, query_batch_heads * dim_chunks)](
+        o,
+        do,
+        delta_partial,
+        Q_LEN=query_length,
+        D=head_dim,
+        D_CHUNKS=dim_chunks,
+        RED_=_STAGED_RED,
+        **launch_options,
+    )
+    prob_ds_finalize_kernel[
+        (triton.cdiv(kv_length, _STAGED_BLOCK_N), query_length, query_batch_heads)
+    ](
+        score_partial,
+        dp_partial,
+        delta_partial,
+        lse,
+        probability,
+        probability_dv,
+        ds,
+        sm_scale,
+        Q_LEN=query_length,
+        KV_LEN=kv_length,
+        D_CHUNKS=dim_chunks,
+        LSE_STRIDE_BH=lse.stride(1),
+        IS_CAUSAL=is_causal,
+        BLOCK_N_=_STAGED_BLOCK_N,
+        **launch_options,
+    )
+    normalize_prob_ds_kernel[(query_length, query_batch_heads)](
+        probability,
+        ds,
+        Q_LEN=query_length,
+        KV_LEN=kv_length,
+        BLOCK_KV=triton.next_power_of_2(kv_length),
+        **launch_options,
+    )
+
+    query_chunks = triton.cdiv(group_size * query_length, _STAGED_GRAD_R)
+    kv_chunks = triton.cdiv(kv_length, _STAGED_GRAD_R)
+    dq_partial = torch.empty(
+        (query_batch_heads, query_length, kv_chunks, head_dim),
+        device=query.device,
+        dtype=torch.float32,
+    )
+    dk_partial = torch.empty(
+        (kv_batch_heads, kv_length, query_chunks, head_dim),
+        device=key.device,
+        dtype=torch.float32,
+    )
+    dq = torch.empty_like(query).contiguous()
+    dk = torch.empty(
+        (batch, kv_heads, kv_length, head_dim),
+        device=key.device,
+        dtype=key.dtype,
+    )
+    dv = torch.empty(
+        (batch, kv_heads, kv_length, head_dim),
+        device=value.device,
+        dtype=value.dtype,
+    )
+
+    dq_partial_kernel[
+        (query_length, triton.cdiv(head_dim, _STAGED_BLOCK_D), query_batch_heads * kv_chunks)
+    ](
+        ds,
+        key,
+        dq_partial,
+        Q_LEN=query_length,
+        KV_LEN=kv_length,
+        D=head_dim,
+        R_CHUNKS=kv_chunks,
+        QUERY_HEADS=query_heads,
+        KV_HEADS=kv_heads,
+        GROUP_SIZE=group_size,
+        BLOCK_R_=_STAGED_GRAD_R,
+        BLOCK_D_=_STAGED_BLOCK_D,
+        **launch_options,
+    )
+    dk_partial_kernel[
+        (kv_length, triton.cdiv(head_dim, _STAGED_BLOCK_D), kv_batch_heads * query_chunks)
+    ](
+        ds,
+        query,
+        dk_partial,
+        Q_LEN=query_length,
+        KV_LEN=kv_length,
+        D=head_dim,
+        R_CHUNKS=query_chunks,
+        QUERY_HEADS=query_heads,
+        KV_HEADS=kv_heads,
+        GROUP_SIZE=group_size,
+        BLOCK_R_=_STAGED_GRAD_R,
+        BLOCK_D_=_STAGED_BLOCK_D,
+        **launch_options,
+    )
+    grad_finalize_kernel[
+        (query_length, triton.cdiv(head_dim, _STAGED_BLOCK_D), query_batch_heads)
+    ](
+        dq_partial,
+        dq,
+        ROWS=query_length,
+        D=head_dim,
+        R_CHUNKS=kv_chunks,
+        BLOCK_D_=_STAGED_BLOCK_D,
+        **launch_options,
+    )
+    grad_finalize_kernel[
+        (kv_length, triton.cdiv(head_dim, _STAGED_BLOCK_D), kv_batch_heads)
+    ](
+        dk_partial,
+        dk,
+        ROWS=kv_length,
+        D=head_dim,
+        R_CHUNKS=query_chunks,
+        BLOCK_D_=_STAGED_BLOCK_D,
+        **launch_options,
+    )
+    dv_dot_kernel[
+        (
+            triton.cdiv(kv_length, _STAGED_BLOCK_N),
+            triton.cdiv(head_dim, _STAGED_BLOCK_D),
+            kv_batch_heads,
+        )
+    ](
+        probability,
+        do,
+        dv,
+        Q_LEN=query_length,
+        KV_LEN=kv_length,
+        D=head_dim,
+        QUERY_HEADS=query_heads,
+        KV_HEADS=kv_heads,
+        GROUP_SIZE=group_size,
+        BLOCK_N_=_STAGED_BLOCK_N,
+        BLOCK_Q_=64,
+        BLOCK_D_=_STAGED_BLOCK_D,
+        **launch_options,
+    )
+    return dq, dk, dv
 
 
 def scaled_dot_product_attention_backward(
@@ -799,112 +866,72 @@ def scaled_dot_product_attention_backward(
     enable_gqa=False,
 ):
     logger.debug("GEMS_KUNLUNXIN SCALED_DOT_PRODUCT_ATTENTION_BACKWARD")
-    # shape constraints
-    HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
-    # when v is in float8_e5m2 it is transposed.
-    HEAD_DIM_V = value.shape[-1]
-    assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
-    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
-    assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
+    head_dim = query.shape[-1]
+    assert attn_mask is None, "staged attention backward does not support attention bias"
+    assert dropout_p == 0.0, "Currently only support dropout_p=0.0"
+    sm_scale = 1.0 / math.sqrt(head_dim) if scale is None else scale
+    return _staged_attention_backward(
+        do, query, key, value, o, M, sm_scale, is_causal
+    )
 
-    if scale is None:
-        sm_scale = 1.0 / (HEAD_DIM_K**0.5)
+
+def efficient_attention_backward(
+    grad_out_,
+    query,
+    key,
+    value,
+    bias,
+    out,
+    cu_seqlens_q,
+    cu_seqlens_k,
+    max_seqlen_q,
+    max_seqlen_k,
+    logsumexp,
+    dropout_p,
+    philox_seed,
+    philox_offset,
+    custom_mask_type,
+    bias_requires_grad,
+    *,
+    scale=None,
+    num_splits_key=None,
+    window_size=None,
+    shared_storage_dqdkdv=False,
+):
+    """Kunlunxin implementation of ATen's dense efficient-attention backward."""
+    assert bias is None and not bias_requires_grad, "attention bias is unsupported"
+    assert dropout_p == 0.0, "dropout is unsupported"
+    assert cu_seqlens_q is None and cu_seqlens_k is None, "varlen attention is unsupported"
+    assert num_splits_key is None, "split-key attention is unsupported"
+    assert window_size is None, "windowed attention is unsupported"
+    assert not shared_storage_dqdkdv, "shared gradient storage is unsupported"
+
+    if custom_mask_type == 0:
+        is_causal = False
+    elif custom_mask_type == 1:
+        is_causal = True
     else:
-        sm_scale = scale
+        raise ValueError(f"unsupported custom_mask_type: {custom_mask_type}")
 
-    assert do.is_contiguous()
-    assert (
-        query.is_contiguous()
-        and key.is_contiguous()
-        and value.is_contiguous()
-        and o.is_contiguous()
-    )
-    assert query.stride() == o.stride() == do.stride()
-    assert key.stride() == value.stride()
-
-    BLOCK_DMODEL = HEAD_DIM_K
-    BATCH, Q_HEAD, Q_CTX = query.shape[:3]
-    _, KV_HEAD, KV_CTX = key.shape[:3]
-    group_head = Q_HEAD // KV_HEAD
-
-    NUM_WARPS, NUM_STAGES = 4, 1
-    BLOCK_M1, BLOCK_N1, BLOCK_M2, BLOCK_N2 = 32, 128, 128, 32
-    BLK_SLICE_FACTOR = 2
-    # RCP_LN2 = 1.4426950408889634  # = 1.0 / ln(2)
-
-    RCP_LN2 = 1.0 / math.log(2)
-
-    arg_k = key
-    arg_k = arg_k * (sm_scale * RCP_LN2)
-    # PRE_BLOCK = 128
-    PRE_BLOCK = 256
-
-    # PRE_BLOCK = 32
-    # assert N_CTX % PRE_BLOCK == 0
-    # pre_grid = (N_CTX // PRE_BLOCK, BATCH * Q_HEAD)
-    pre_grid = (triton.cdiv(Q_CTX, PRE_BLOCK), BATCH * Q_HEAD)
-
-    delta = torch.empty_like(M)
-
-    # NOTE that dk & dv always have the same number of heads as q
-    dq = torch.empty_like(query).contiguous()
-    dk = torch.empty((BATCH, Q_HEAD, KV_CTX, HEAD_DIM_K)).to(key.device).contiguous()
-    dv = torch.empty((BATCH, Q_HEAD, KV_CTX, HEAD_DIM_V)).to(value.device).contiguous()
-
-    _attn_bwd_preprocess[pre_grid](
-        o,
-        do,  #
-        delta,  #
-        BATCH,
-        Q_HEAD,
-        Q_CTX,  #
-        BLOCK_M=PRE_BLOCK,
-        D_HEAD=BLOCK_DMODEL,  #
-    )
-
-    grid = (triton.cdiv(Q_CTX, BLOCK_N1), 1, BATCH * Q_HEAD)
-    logger.info(f"GEMS_KUNLUNXIN {triton.cdiv(Q_CTX, BLOCK_N1)=}")
-    logger.info(f"GEMS_KUNLUNXIN {M.shape=}")
-
-    _attn_bwd[grid](
-        query,
-        arg_k,
-        value,
+    q_len = query.shape[1]
+    sm_scale = 1.0 / math.sqrt(query.shape[-1]) if scale is None else scale
+    d_query, d_key, d_value = _staged_attention_backward(
+        grad_out_.permute(0, 2, 1, 3).contiguous(),
+        query.permute(0, 2, 1, 3).contiguous(),
+        key.permute(0, 2, 1, 3).contiguous(),
+        value.permute(0, 2, 1, 3).contiguous(),
+        out.permute(0, 2, 1, 3).contiguous(),
+        logsumexp[:, :, :q_len].contiguous(),
         sm_scale,
-        do,
-        dq,
-        dk,
-        dv,  #
-        M,
-        delta,  #
-        query.stride(0),
-        query.stride(1),
-        query.stride(2),
-        query.stride(3),  #
-        key.stride(0),
-        key.stride(1),  #
-        Q_HEAD,
-        Q_CTX,  #
-        KV_CTX,  #
-        KV_HEAD,  #
-        GROUP_HEAD=group_head,  #
-        BLOCK_M1=BLOCK_M1,
-        BLOCK_N1=BLOCK_N1,  #
-        BLOCK_M2=BLOCK_M2,
-        BLOCK_N2=BLOCK_N2,  #
-        BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
-        BLOCK_DMODEL=BLOCK_DMODEL,  #
-        num_warps=NUM_WARPS,  #
-        num_stages=NUM_STAGES,  #
+        is_causal,
+    )
+    return (
+        d_query.permute(0, 2, 1, 3).contiguous(),
+        d_key.permute(0, 2, 1, 3).contiguous(),
+        d_value.permute(0, 2, 1, 3).contiguous(),
+        None,
     )
 
-    if group_head > 1:
-        dk = dk.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_K)
-        dv = dv.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_V)
-        dk = dk.sum(dim=2)
-        dv = dv.sum(dim=2)
-
-    return dq, dk, dv
 
 
 class ScaleDotProductAttention(torch.autograd.Function):
@@ -1052,7 +1079,7 @@ def scaled_dot_product_attention(
     scale=None,
     enable_gqa=False,
 ):
-    return ScaleDotProductAttention.apply(
+    return scaled_dot_product_attention_forward(
         query,
         key,
         value,
@@ -1062,6 +1089,57 @@ def scaled_dot_product_attention(
         scale,
         enable_gqa,
     )
+
+
+def scaled_dot_product_efficient_attention_backward(
+    grad_out,
+    query,
+    key,
+    value,
+    attn_bias,
+    out,
+    logsumexp,
+    philox_seed,
+    philox_offset,
+    dropout_p,
+    grad_input_mask,
+    is_causal=False,
+    *,
+    scale=None,
+):
+    need_dq, need_dk, need_dv, need_dbias = grad_input_mask
+    if dropout_p != 0.0:
+        raise NotImplementedError(
+            "Kunlunxin efficient attention backward does not support dropout"
+        )
+    if attn_bias is not None or need_dbias:
+        raise NotImplementedError(
+            "Kunlunxin efficient attention backward does not support attention bias"
+        )
+
+    # The native efficient-attention LSE is already in the primitive's BHS layout.
+    logsumexp_base2 = logsumexp.contiguous()
+    dq, dk, dv = scaled_dot_product_attention_backward(
+        grad_out.contiguous(),
+        query.contiguous(),
+        key.contiguous(),
+        value.contiguous(),
+        out.contiguous(),
+        logsumexp_base2,
+        dropout_p=dropout_p,
+        is_causal=is_causal,
+        scale=scale,
+    )
+    dbias = None
+    if not need_dq:
+        dq = torch.zeros_like(query)
+    if not need_dk:
+        dk = torch.zeros_like(key)
+    if not need_dv:
+        dv = torch.zeros_like(value)
+    if not need_dbias:
+        dbias = None
+    return dq, dk, dv, dbias
 
 
 def flash_attention_forward(
@@ -1095,6 +1173,40 @@ def flash_attention_forward(
     assert HEAD_DIM_K in {16, 32, 64, 96, 128, 192, 256}
 
     softmax_scale = scale or 1.0 / (HEAD_DIM_K**0.5)
+    q = query.transpose(1, 2)
+    k = key.transpose(1, 2)
+    v = value.transpose(1, 2)
+    if k.shape[1] != q.shape[1]:
+        k = k.repeat_interleave(q.shape[1] // k.shape[1], dim=1)
+        v = v.repeat_interleave(q.shape[1] // v.shape[1], dim=1)
+    scores = torch.matmul(q, k.transpose(-2, -1)) * softmax_scale
+    if is_causal:
+        q_len, k_len = q.shape[-2], k.shape[-2]
+        row = torch.arange(q_len, device=q.device)[:, None]
+        col = torch.arange(k_len, device=q.device)[None, :]
+        scores = scores.masked_fill(col > row + k_len - q_len, float("-inf"))
+    if window_size_left is not None or window_size_right is not None:
+        q_len, k_len = q.shape[-2], k.shape[-2]
+        row = torch.arange(q_len, device=q.device)[:, None]
+        col = torch.arange(k_len, device=q.device)[None, :]
+        left = -1 if window_size_left is None else window_size_left
+        right = -1 if window_size_right is None else window_size_right
+        valid = (left < 0) | (col >= row + k_len - q_len - left)
+        valid &= (right < 0) | (col <= row + k_len - q_len + right)
+        scores = scores.masked_fill(~valid, float("-inf"))
+    if alibi_slopes is not None:
+        q_len, k_len = q.shape[-2], k.shape[-2]
+        row = torch.arange(q_len, device=q.device)[:, None]
+        col = torch.arange(k_len, device=q.device)[None, :]
+        relative_pos = (row + k_len - q_len - col).abs()
+        scores = scores - alibi_slopes[..., None, None] * relative_pos
+    lse = torch.logsumexp(scores, dim=-1)
+    attn = torch.softmax(scores, dim=-1)
+    if dropout_p:
+        attn = torch.dropout(attn, dropout_p, True)
+    out = torch.matmul(attn, v).transpose(1, 2)
+    return out, lse, None, None, None
+
     if window_size_left is not None:
         non_null_window_left = window_size_left
     else:

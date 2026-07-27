@@ -143,6 +143,59 @@ def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=
     return output
 
 
+@triton.jit
+def embedding_backward_reduce_kernel(
+    grad_outputs,
+    indices,
+    grad_inputs,
+    total,
+    M,
+    N,
+    padding_idx,
+    SCALE_GRAD_BY_FREQ: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_OUTPUT: tl.constexpr,
+):
+    output_offsets_flat = (
+        tl.program_id(0) * BLOCK_OUTPUT + tl.arange(0, BLOCK_OUTPUT)
+    )
+    output_valid_flat = output_offsets_flat < total
+    output_offsets = output_offsets_flat[:, None]
+    output_valid = output_valid_flat[:, None]
+    weight_rows = output_offsets // N
+    columns = output_offsets % N
+
+    index_offsets = tl.arange(0, BLOCK_M)[None, :]
+    valid = output_valid & (index_offsets < M)
+    index_offsets_safe = tl.where(valid, index_offsets, 0)
+    index_values = tl.load(
+        indices + index_offsets_safe, mask=valid, other=-1
+    )
+    index_values = tl.where(valid, index_values, -1)
+    matches = valid & (index_values == weight_rows)
+    grad_offsets = index_offsets_safe * N + columns
+    grad_values = tl.load(
+        grad_outputs + grad_offsets,
+        mask=matches,
+        other=0.0,
+    ).to(tl.float32)
+    grad_values = tl.where(matches, grad_values, 0.0)
+    result = tl.sum(grad_values, axis=1)
+
+    if SCALE_GRAD_BY_FREQ:
+        frequency = tl.sum(matches.to(tl.float32), axis=1)
+        result = result / tl.maximum(frequency, 1.0)
+
+    weight_rows_flat = output_offsets_flat // N
+    is_padding = output_valid_flat & (weight_rows_flat == padding_idx)
+    result = tl.where(is_padding, 0.0, result)
+    tl.store(
+        grad_inputs + output_offsets_flat,
+        result,
+        mask=output_valid_flat,
+    )
+
+
 def embedding_backward(
     grad_outputs,
     indices,
@@ -157,8 +210,8 @@ def embedding_backward(
     M = indices.numel()
     N = grad_outputs.shape[-1]
 
-    grad_inputs = torch.zeros(
-        (num_weights, grad_outputs.shape[-1]),
+    grad_inputs = torch.empty(
+        (num_weights, N),
         device=grad_outputs.device,
         dtype=(
             torch.float32
@@ -167,49 +220,46 @@ def embedding_backward(
         ),
     )
 
-    if scale_grad_by_freq:
-        indice_freq = torch.zeros(
-            (num_weights,),
-            requires_grad=False,
-            device=grad_outputs.device,
-            dtype=torch.int32,
-        )
-        INDICE_BLOCK_SIZE = 256
-        indice_grid = (triton.cdiv(M, INDICE_BLOCK_SIZE),)
-
-        with torch_device_fn.device(grad_outputs.device):
-            indice_freq_kernel[indice_grid](
-                indice_freq,
-                indices,
-                M,
-                INDICE_BLOCK_SIZE,
-                isCLOSE_TTXPU_O_ATOMIC_SIM=True,
-            )
-    else:
-        indice_freq = None
-
-    BLOCK_SIZE = triton.next_power_of_2(N)
-
-    HAS_PADDING_IDX = padding_idx is not None
-
+    block_m = triton.next_power_of_2(M)
+    block_output = min(64, max(1, 2048 // block_m))
+    total = grad_inputs.numel()
+    grid = (triton.cdiv(total, block_output),)
     with torch_device_fn.device(grad_outputs.device):
-        embedding_backward_kernel[M,](
+        embedding_backward_reduce_kernel[grid](
+            grad_outputs.contiguous(),
+            indices.contiguous(),
             grad_inputs,
-            grad_outputs,
-            indices,
-            padding_idx,
-            HAS_PADDING_IDX,
+            total,
+            M,
             N,
-            BLOCK_SIZE,
+            padding_idx,
+            SCALE_GRAD_BY_FREQ=scale_grad_by_freq,
+            BLOCK_M=block_m,
+            BLOCK_OUTPUT=block_output,
+            num_warps=1,
+            buffer_size_limit=2048,
+            isCloseVectorization=True,
         )
-
-    if scale_grad_by_freq:
-        with torch_device_fn.device(grad_outputs.device):
-            embedding_grad_scale_kernel[M,](
-                grad_inputs, indice_freq, num_weights, N, BLOCK_SIZE
-            )
     return (
         grad_inputs.to(torch.bfloat16)
         if grad_outputs.dtype is torch.bfloat16
         else grad_inputs
+    )
+
+
+def embedding_dense_backward(
+    grad_output,
+    indices,
+    num_weights,
+    padding_idx,
+    scale_grad_by_freq,
+):
+    logger.debug("GEMS_KUNLUNXIN EMBEDDING_DENSE_BACKWARD")
+    return embedding_backward(
+        grad_output,
+        indices,
+        num_weights,
+        padding_idx,
+        scale_grad_by_freq,
+        sparse=False,
     )

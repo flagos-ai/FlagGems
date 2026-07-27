@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import math
 
 import torch
 import triton
@@ -25,6 +24,8 @@ from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_max, get_dtype_min
 
 logger = logging.getLogger(__name__)
+
+_FULL_REDUCTION_BLOCK_SIZE = 8192
 
 
 @libentry()
@@ -47,11 +48,9 @@ def aminmax_kernel_1(
 
     min_fill = get_dtype_max(inp.type.element_ty)
     max_fill = get_dtype_min(inp.type.element_ty)
-    min_val = tl.load(inp_ptrs, mask=mask, other=min_fill).to(acc_type)
-    max_val = tl.load(inp_ptrs, mask=mask, other=max_fill).to(acc_type)
-
-    min_val = tl.min(min_val)
-    max_val = tl.max(max_val)
+    value = tl.load(inp_ptrs, mask=mask, other=0.0).to(acc_type)
+    min_val = tl.min(tl.where(mask, value, min_fill))
+    max_val = tl.max(tl.where(mask, value, max_fill))
 
     min_ptr = min_out + pid
     max_ptr = max_out + pid
@@ -62,26 +61,31 @@ def aminmax_kernel_1(
 @libentry()
 @triton.jit
 def aminmax_kernel_2(
-    min_inp, max_inp, min_out, max_out, mid_size, BLOCK_MID: tl.constexpr
+    min_inp,
+    max_inp,
+    min_out,
+    max_out,
+    M,
+    BLOCK_SIZE: tl.constexpr,
 ):
-    offset = tl.arange(0, BLOCK_MID)
+    pid = ext.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     min_ptrs = min_inp + offset
     max_ptrs = max_inp + offset
-    mask = offset < mid_size
+    mask = offset < M
 
     dtype = min_inp.type.element_ty
     acc_type = tl.float32 if dtype == tl.bfloat16 else dtype
 
     min_fill = get_dtype_max(min_inp.type.element_ty)
     max_fill = get_dtype_min(max_inp.type.element_ty)
-    min_val = tl.load(min_ptrs, mask=mask, other=min_fill).to(acc_type)
-    max_val = tl.load(max_ptrs, mask=mask, other=max_fill).to(acc_type)
+    min_value = tl.load(min_ptrs, mask=mask, other=0.0).to(acc_type)
+    max_value = tl.load(max_ptrs, mask=mask, other=0.0).to(acc_type)
+    min_val = tl.min(tl.where(mask, min_value, min_fill))
+    max_val = tl.max(tl.where(mask, max_value, max_fill))
 
-    min_val = tl.min(min_val)
-    max_val = tl.max(max_val)
-
-    tl.store(min_out, min_val.to(dtype))
-    tl.store(max_out, max_val.to(dtype))
+    tl.store(min_out + pid, min_val.to(dtype))
+    tl.store(max_out + pid, max_val.to(dtype))
 
 
 def _aminmax_block_n(n):
@@ -126,12 +130,11 @@ def aminmax_kernel(
     max_out = max_out + rows
     row_mask = rows < M
 
-    acc_type = tl.float32 if dtype == tl.bfloat16 else dtype
-    _min = tl.full([BLOCK_M, BLOCK_N], value=max_value, dtype=acc_type)
-    _max = tl.full([BLOCK_M, BLOCK_N], value=min_value, dtype=acc_type)
-    # Build acc_type-typed sentinel values so tl.where does not promote the
-    # tensor operands to float32 (which would change _min/_max dtype inside
-    # the loop on the Triton XPU backend).
+    acc_type = tl.float32
+    _min = tl.full([BLOCK_M, 1], value=max_value, dtype=acc_type)
+    _max = tl.full([BLOCK_M, 1], value=min_value, dtype=acc_type)
+    # Reduce each tile before updating the row accumulator. The XPU backend
+    # miscompiles the equivalent reduce-after-loop form for bf16 tails.
     max_value_t = tl.full([], value=max_value, dtype=acc_type)
     min_value_t = tl.full([], value=min_value, dtype=acc_type)
     for off in range(0, N, BLOCK_N):
@@ -141,10 +144,12 @@ def aminmax_kernel(
         a = tl.load(inp + cols, mask=mask, other=0.0).to(acc_type)
         a_min = tl.where(mask, a, max_value_t)
         a_max = tl.where(mask, a, min_value_t)
-        _min = tl.minimum(_min, a_min)
-        _max = tl.maximum(_max, a_max)
-    min_result = tl.min(_min, axis=1)[:, None]
-    max_result = tl.max(_max, axis=1)[:, None]
+        tile_min = tl.min(a_min, axis=1)[:, None].to(acc_type)
+        tile_max = tl.max(a_max, axis=1)[:, None].to(acc_type)
+        _min = tl.minimum(_min, tile_min)
+        _max = tl.maximum(_max, tile_max)
+    min_result = _min
+    max_result = _max
     tl.store(min_out, min_result, row_mask)
     tl.store(max_out, max_result, row_mask)
 
@@ -154,12 +159,7 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
 
     if dim is None:
         M = inp.numel()
-        block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-        mid_size = triton.cdiv(M, block_size)
-        block_mid = triton.next_power_of_2(mid_size)
         dtype = inp.dtype
-        min_mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-        max_mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
 
         if out is not None:
             min_out = out[0] if isinstance(out, tuple) else out
@@ -176,17 +176,52 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
                 min_out = torch.empty(shape, dtype=dtype, device=inp.device)
                 max_out = torch.empty(shape, dtype=dtype, device=inp.device)
 
+        src_min = inp
+        src_max = inp
+        src_size = M
         with torch_device_fn.device(inp.device):
-            aminmax_kernel_1[(mid_size, 1)](
-                inp,
-                min_mid,
-                max_mid,
-                M,
-                block_size,
-            )
-            aminmax_kernel_2[(1, 1)](
-                min_mid, max_mid, min_out, max_out, mid_size, block_mid
-            )
+            while src_size > _FULL_REDUCTION_BLOCK_SIZE:
+                mid_size = triton.cdiv(src_size, _FULL_REDUCTION_BLOCK_SIZE)
+                min_mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+                max_mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+                aminmax_kernel_1[(mid_size, 1)](
+                    src_min,
+                    min_mid,
+                    max_mid,
+                    src_size,
+                    _FULL_REDUCTION_BLOCK_SIZE,
+                    buffer_size_limit=2048,
+                ) if src_min is src_max else aminmax_kernel_2[
+                    (mid_size, 1)
+                ](
+                    src_min,
+                    src_max,
+                    min_mid,
+                    max_mid,
+                    src_size,
+                    _FULL_REDUCTION_BLOCK_SIZE,
+                    buffer_size_limit=2048,
+                )
+                src_min, src_max = min_mid, max_mid
+                src_size = mid_size
+            if src_min is src_max:
+                aminmax_kernel_1[(1, 1)](
+                    src_min,
+                    min_out,
+                    max_out,
+                    src_size,
+                    triton.next_power_of_2(src_size),
+                    buffer_size_limit=2048,
+                )
+            else:
+                aminmax_kernel_2[(1, 1)](
+                    src_min,
+                    src_max,
+                    min_out,
+                    max_out,
+                    src_size,
+                    triton.next_power_of_2(src_size),
+                )
         return min_out, max_out
     else:
         if isinstance(dim, int):

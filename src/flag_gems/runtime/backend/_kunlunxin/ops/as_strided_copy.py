@@ -8,8 +8,6 @@ import triton.language as tl
 from flag_gems.ops.as_strided_copy import (
     _can_use_byte_triton,
     _can_use_triton,
-    _fallback_as_strided_copy,
-    _fallback_as_strided_copy_out,
     _launch_as_strided_copy,
     _launch_byte_as_strided_copy,
     _make_as_strided_view,
@@ -253,7 +251,9 @@ def as_strided_copy(input, size, stride, storage_offset=None):
         return _launch_as_strided_copy(view, out)
     if _can_use_byte_triton(view, out):
         return _launch_byte_as_strided_copy(view, out)
-    return _fallback_as_strided_copy(input, size, stride, storage_offset)
+    raise NotImplementedError(
+        "Kunlunxin as_strided_copy does not support this stride layout."
+    )
 
 
 def as_strided_copy_out(input, size, stride, storage_offset=None, *, out):
@@ -285,8 +285,9 @@ def as_strided_copy_out(input, size, stride, storage_offset=None, *, out):
         torch._C._is_alias_of(input, out)
         or has_internal_overlapping(out) != MemOverlap.No
     ):
-        return _fallback_as_strided_copy_out(
-            input, size, stride, storage_offset, out=out
+        raise NotImplementedError(
+            "Kunlunxin as_strided_copy.out does not support aliased or internally "
+            "overlapping outputs."
         )
 
     view = _make_as_strided_view(input, size, stride, storage_offset)
@@ -296,4 +297,6 @@ def as_strided_copy_out(input, size, stride, storage_offset=None, *, out):
         return _launch_as_strided_copy(view, out)
     if _can_use_byte_triton(view, out):
         return _launch_byte_as_strided_copy(view, out)
-    return _fallback_as_strided_copy_out(input, size, stride, storage_offset, out=out)
+    raise NotImplementedError(
+        "Kunlunxin as_strided_copy.out does not support this stride layout."
+    )

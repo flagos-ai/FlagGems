@@ -18,10 +18,11 @@ device = device.name
 # stuck ~300ms, isolation 12-88ms). Collapsing to a single flat 1D grid over
 # ALL output elements (decode nc from the flat index, no inner loop) exposes
 # full program-level parallelism and drops isolation latency ~1.6-1.9x
-# (NC=3 12->6.5ms, NC=128 30->17ms, NC=6-big 88->51ms). BLOCK_SIZE is not a
-# strong lever here (512/2048/8192 all within noise); 2048 matches the DMA tile
-# without over-launching. The residual gap to torch is the XPU discrete-gather
-# wall (8 data-dependent neighbour loads ~2GB/s), same structural ceiling as
+# (NC=3 12->6.5ms, NC=128 30->17ms, NC=6-big 88->51ms). A 4096-element tile
+# reduces launch count enough to improve the equal-weight benchmark aggregate
+# over the prior 2048-element configuration. The residual gap to torch is the
+# XPU discrete-gather wall (8 data-dependent neighbour loads ~2GB/s), same
+# structural ceiling as
 # grid_sample / reflection_pad2d; torch runs a fused vendor kernel.
 @triton.jit
 def upsample_trilinear3d_kernel(
@@ -175,7 +176,7 @@ def upsample_trilinear3d(
         return out
 
     total_out = NC * OD * OH * OW
-    BLOCK_SIZE = 2048
+    BLOCK_SIZE = 4096
     grid = lambda meta: (triton.cdiv(total_out, meta["BLOCK_SIZE"]),)
 
     with torch_device_fn.device(self.device):

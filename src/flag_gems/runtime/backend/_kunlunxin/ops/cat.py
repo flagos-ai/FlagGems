@@ -68,14 +68,13 @@ def cat(
         return A[0]
 
     # remove torch.Size([0]) tensors
-    device = A[0].device
-    dtype = A[0].dtype
+    empty_template = A[0]
     A = list(A)
     for i in range(len(A) - 1, -1, -1):
         if A[i].shape == torch.Size([0]):
             A.pop(i)
     if len(A) == 0:
-        return torch.tensor([], device=device, dtype=dtype)
+        return torch.empty_like(empty_template)
     elif len(A) == 1:
         return A[0]
 
@@ -210,10 +209,23 @@ def cat_out(
     if list(out.shape) != out_shape:
         out.resize_(out_shape)
 
-    # Build the concatenation via the safe `cat` (which never writes into a strided
-    # output slab), then copy into the caller-provided `out`. `out` is contiguous
-    # after resize, so this final copy is a plain contiguous copy (safe for all
-    # dtypes, including int32).
+    if dim == 0 and out.is_contiguous():
+        # The output consists of contiguous dim-0 slabs, so write each source
+        # directly into `out` and avoid materializing an intermediate cat result.
+        out_strides = out.stride()
+        start = 0
+        for a in A:
+            w = a.shape[0]
+            in_view = StridedBuffer(a, a.shape, a.stride())
+            out_view = StridedBuffer(
+                out, a.shape, out_strides, offset=start * out_strides[0]
+            )
+            copy_func.instantiate(a.ndim)(in_view, out0=out_view)
+            start += w
+        return out
+
+    # Preserve the established safe path for inner-dimension concatenation and
+    # noncontiguous output tensors, where direct strided writes are unsupported.
     result = cat(A, dim)
     out.copy_(result)
     return out

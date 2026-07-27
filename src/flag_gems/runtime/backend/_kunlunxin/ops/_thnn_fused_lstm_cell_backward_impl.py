@@ -108,7 +108,9 @@ def _thnn_fused_lstm_cell_backward_impl(
 
     N = batch_size * hidden_size
     if N > 0:
-        BLOCK = min(triton.next_power_of_2(N), 256)
+        # BLOCK is tl.constexpr. Keep it fixed so all shapes reuse one compiled
+        # specialization instead of compiling once per shape-dependent block.
+        BLOCK = 256
         grid = (triton.cdiv(N, BLOCK),)
         with torch_device_fn.device(cx.device):
             _lstm_cell_bwd_kernel[grid](

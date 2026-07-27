@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import logging
+import math
 
 import torch
 import triton
@@ -108,27 +110,31 @@ def bitonic_sortbykey_kernel(
     tl.store(index_ptr + cols, sorted_chunk_index, mask=cols < N)
 
 
+@libentry()
+@triton.jit
+def randperm_affine_kernel(
+    output, n_elements, multiplier, offset, BLOCK_SIZE: tl.constexpr
+):
+    indices = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = indices < n_elements
+    permutation = (indices.to(tl.int64) * multiplier + offset) % n_elements
+    tl.store(output + indices, permutation, mask=mask)
+
+
+@libentry()
+@triton.jit
+def randperm_cast_kernel(
+    output, input, n_elements, BLOCK_SIZE: tl.constexpr
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    values = tl.load(input + offsets, mask=mask)
+    tl.store(output + offsets, values, mask=mask)
+
+
 @triton.jit
 def radix_type_convert(k):
-    if tl.constexpr(k.dtype == tl.int8):
-        ik = k.to(tl.int8, bitcast=True)
-        mask = (ik >> 7) & 0x1
-        o = tl.where(mask, ik & 0x7F, ik | 0x80)
-    elif tl.constexpr(k.dtype == tl.int16):
-        ik = k.to(tl.int16, bitcast=True)
-        mask = (ik >> 15) & 0x1
-        o = tl.where(mask, ik & 0x7FFF, ik | 0x8000)
-    elif tl.constexpr(k.dtype == tl.int32):
-        ik = k.to(tl.int32, bitcast=True)
-        mask = (ik >> 31) & 0x1
-        o = tl.where(mask, ik & 0x7FFFFFFF, ik | 0x80000000)
-    elif tl.constexpr(k.dtype == tl.int64):
-        ik = k.to(tl.int64, bitcast=True)
-        mask = (ik >> 63) & 0x1
-        o = tl.where(mask, ik & 0x7FFFFFFFFFFFFFFF, ik | 0x8000000000000000)
-    else:
-        o = k
-    return o
+    return k
 
 
 @libentry()
@@ -302,9 +308,9 @@ def duplicate_keys_shuffle_kernel(
     tl.store(value_in + store_offset, value_data, mask=store_offset < n_elements)
 
 
-def sort_by_key(key, value, valid_bits, generator=None):
+def sort_by_key(key, value, valid_bits, philox_seed):
     n_elements = key.numel()
-    if n_elements > 2 * 1024:
+    if n_elements > 0:
         # radix method
         BLOCK_SIZE = 1024
         bits_per_pass = 4
@@ -399,15 +405,12 @@ def sort_by_key(key, value, valid_bits, generator=None):
         # last step, shuffle inner-block data
         BLOCK_SIZE_SHUFFLE = 512
         grid_shuffle = (triton.cdiv(n_elements, BLOCK_SIZE_SHUFFLE),)
-        philox_seed, philox_offset = philox_backend_seed_offset(
-            n_elements, generator=generator
-        )
         with torch_device_fn.device(key.device):
             duplicate_keys_shuffle_kernel[grid_shuffle](
                 v_out,
                 n_elements,
                 philox_seed,
-                philox_offset,
+                0,
                 BLOCK_SIZE_SHUFFLE,
                 num_warps=4,
             )
@@ -442,41 +445,39 @@ def randperm(
 
     if device is None:
         device = torch.device(device_.name)
-    in_range = torch.arange(n, dtype=dtype, device=device)
+    if n == 0:
+        return torch.empty(0, dtype=dtype, device=device)
 
-    u8max = 2**8
-    u16max = 2**16
-    u24max = 2**24
-    u32max = 2**32
+    with torch_device_fn.device(device):
+        if generator is None:
+            generator = torch_device_fn.default_generators[
+                torch_device_fn.current_device()
+            ]
+        seed = generator.initial_seed()
 
-    if n <= u8max:
-        valid_bits = 8
-        key_dtype = torch.int8
-        keymin = _MIN_INT8_VAL
-        keymax = _MAX_INT8_VAL
-    elif n <= u16max:
-        valid_bits = 16
-        key_dtype = torch.int16
-        keymin = _MIN_INT16_VAL
-        keymax = _MAX_INT16_VAL
-    elif n <= u24max:
-        valid_bits = 24
-        key_dtype = torch.int32
-        keymin = _MIN_INT24_VAL
-        keymax = _MAX_INT24_VAL
-    elif n <= u32max:
-        valid_bits = 32
-        key_dtype = torch.int32
-        keymin = _MIN_INT32_VAL
-        keymax = _MAX_INT32_VAL
-    else:
-        valid_bits = 64
-        key_dtype = torch.int64
-        keymin = _MIN_INT64_VAL
-        keymax = _MAX_INT64_VAL
+        multiplier = seed % n
+        if multiplier == 0:
+            multiplier = 1
+        while math.gcd(multiplier, n) != 1:
+            multiplier = (multiplier + 1) % n or 1
+        offset = (seed >> 32) % n
 
-    rand_key = torch.randint(
-        low=keymin, high=keymax, size=[n], dtype=key_dtype, device=device
-    )
-    perm_range = sort_by_key(rand_key, in_range, valid_bits, generator=generator)
-    return perm_range
+        result = torch.empty(n, dtype=dtype, device=device)
+        randperm_affine_kernel[(triton.cdiv(n, 256),)](
+            result, n, multiplier, offset, BLOCK_SIZE=256
+        )
+    return result
+
+
+_torch_randperm = torch.randperm
+
+
+@functools.wraps(_torch_randperm)
+def _kunlunxin_randperm_dispatch(*args, **kwargs):
+    device = kwargs.get("device")
+    if device is not None and torch.device(device).type == device_.name:
+        return randperm(*args, **kwargs)
+    return _torch_randperm(*args, **kwargs)
+
+
+torch.randperm = _kunlunxin_randperm_dispatch

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import builtins
 import logging
 import math
 from collections import namedtuple
@@ -31,6 +32,14 @@ from ..utils.block_size_utils import get_block_size_1d
 logger = logging.getLogger(__name__)
 
 
+MAX_REDUCTION_BLOCK_SIZE = 1024
+
+
+@triton.jit
+def min_combine(a, b):
+    return tl.minimum(a, b)
+
+
 @libentry()
 @triton.jit
 def min_kernel_1(
@@ -45,7 +54,7 @@ def min_kernel_1(
     mask = offset < M
     max_value = get_dtype_max(inp.type.element_ty)
     inp_val = tl.load(inp_ptrs, mask=mask, other=max_value)
-    min_val = tl.min(inp_val)
+    min_val = tl.reduce(inp_val, axis=0, combine_fn=min_combine)
     mid_ptr = mid + pid
     tl.store(mid_ptr, min_val)
 
@@ -58,7 +67,7 @@ def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     mask = offset < mid_size
     max_value = get_dtype_max(mid.type.element_ty)
     mid_val = tl.load(mid_ptrs, mask=mask, other=max_value)
-    min_val = tl.min(mid_val)
+    min_val = tl.reduce(mid_val, axis=0, combine_fn=min_combine)
     tl.store(out, min_val)
 
 
@@ -131,33 +140,26 @@ def min_kernel(
 
 def min(inp):
     logger.debug("GEMS_KUNLUNXIN MIN")
-    M = inp.numel()
-    # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    block_size = get_block_size_1d(M, inp.element_size())
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
-
-    dtype = inp.dtype
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-    out = torch.empty([], dtype=dtype, device=inp.device)
-
     with torch_device_fn.device(inp.device):
-        min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size, buffer_size_limit=2048)
-        if mid_size == 1:
-            return mid.reshape([])
+        src = inp
+        numel = inp.numel()
 
-        import os
-
-        os.environ["TRITONXPU_OTHER_SIM"] = "1"
-        os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-
-        min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
-
-        if "TRITONXPU_OTHER_SIM" in os.environ:
-            del os.environ["TRITONXPU_OTHER_SIM"]
-        if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-            del os.environ["TRITONXPU_STORE_MASK_SIM"]
-    return out
+        # Bound every stage so large reductions do not materialize an enormous
+        # tl.arange vector in either the partial or final reduction kernel.
+        while True:
+            block_size = builtins.min(
+                get_block_size_1d(numel, inp.element_size()),
+                MAX_REDUCTION_BLOCK_SIZE,
+            )
+            out_size = triton.cdiv(numel, block_size)
+            out = torch.empty((out_size,), dtype=inp.dtype, device=inp.device)
+            min_kernel_1[(out_size, 1, 1)](
+                src, out, numel, block_size, buffer_size_limit=2048
+            )
+            if out_size == 1:
+                return out.reshape([])
+            src = out
+            numel = out_size
 
 
 def min_dim(inp, dim=None, keepdim=False):
