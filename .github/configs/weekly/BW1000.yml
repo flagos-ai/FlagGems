@@ -25,7 +25,7 @@ runner_labels: bw1000-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/hygon-flaggems-test-bw1000-flagtree3.6:202607071012
+container_image: harbor.baai.ac.cn/flaggems/hygon-flaggems-test-bw1000:20260724
 
 # Container volumes to mount for this backends
 container_volumes:
@@ -58,4 +58,4 @@ test_env:
 gpu_check_script: tools/gpu_check_hygon.sh
 
 # Output base directory for this backends
-output_base_dir: /home/flaggems/weekly
+output_base_dir: /data/flaggems/weekly
