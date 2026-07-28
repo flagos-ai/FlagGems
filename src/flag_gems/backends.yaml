@@ -148,7 +148,7 @@ backends:
       - torchvision==0.22.1+corex.4.4.0
 
   kunlunxin:
-    python: "3.11"
+    python: "3.10"
     triton: triton==3.0.0+a48aedef
     flagtree: flagtree==0.5.1+xpu3.0
     env:
