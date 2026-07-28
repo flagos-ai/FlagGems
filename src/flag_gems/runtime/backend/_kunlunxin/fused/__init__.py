@@ -29,6 +29,10 @@ from .rotary_embedding import apply_rotary_pos_emb
 from .rwkv_ka_fusion import rwkv_ka_fusion
 from .rwkv_mm_sparsity import rwkv_mm_sparsity
 from .silu_and_mul import silu_and_mul, silu_and_mul_out
+from .silu_and_mul_with_clamp import (
+    silu_and_mul_with_clamp,
+    silu_and_mul_with_clamp_out,
+)
 from .skip_layernorm import skip_layer_norm
 from .sparse_attention import sparse_attn_triton
 from .topk_softmax import topk_softmax
@@ -40,6 +44,8 @@ __all__ = [
     "fused_add_rms_norm",
     "silu_and_mul",
     "silu_and_mul_out",
+    "silu_and_mul_with_clamp",
+    "silu_and_mul_with_clamp_out",
     "geglu",
     "dgeglu",
     "gelu_and_mul",

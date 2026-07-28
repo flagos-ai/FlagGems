@@ -45,7 +45,13 @@ def silu_forward(x):
     return y
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+# silu_backward_kernel was config-less: on XPU a bare pointwise_dynamic
+# recompiles per shape (tile<512>) and never unrolls -> large shapes stall at
+# ~0.32 gems speedup. Reuse silu_forward's tuned config_ (vec CLOSE + unroll8):
+# a swept comparison showed all unroll8 variants land at ~0.55ms for
+# [4096,4096] fp16 (vs 0.80ms config-less, ~1.45x) with bit-identical output;
+# vec OPEN spiked to 28.9ms on fp32 [1024,65536] so keep isCloseVectorization.
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=config_)
 @triton.jit
 def silu_backward_kernel(x, dy):
     dy_fp32 = dy.to(tl.float32)
