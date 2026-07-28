@@ -646,6 +646,7 @@ from flag_gems.ops.weightnorm import (
     weight_norm_interface,
     weight_norm_interface_backward,
 )
+from flag_gems.ops.wgrad_gemm_accum import wgrad_gemm_accum_fp16, wgrad_gemm_accum_fp32
 from flag_gems.ops.where import (
     where_scalar_other,
     where_scalar_self,
@@ -1409,6 +1410,8 @@ __all__ = [
     "view_copy",
     "vstack",
     "w8a8_block_fp8_matmul",
+    "wgrad_gemm_accum_fp16",
+    "wgrad_gemm_accum_fp32",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",

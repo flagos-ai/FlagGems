@@ -43,7 +43,8 @@ add_library(operators
             copy.cpp
             accuracy_utils.cpp
             fp8_matmul.cpp
-            fp8_matmul_direct.cpp)
+            fp8_matmul_direct.cpp
+            wgrad_gemm_accum.cpp)
 
 if (TRITON_GE_3P5)
   target_compile_definitions(operators PRIVATE TRITON_GE_3P5)
@@ -59,7 +60,8 @@ if(FLAGGEMS_BACKEND STREQUAL "CUDA" OR FLAGGEMS_BACKEND STREQUAL "IX")
     target_link_libraries(operators
       PUBLIC Torch::Torch
       PRIVATE TritonJIT::triton_jit
-      PRIVATE CUDA::cudart CUDA::cuda_driver)
+      PRIVATE CUDA::cudart CUDA::cuda_driver
+      PRIVATE ${CMAKE_DL_LIBS})
 elseif(FLAGGEMS_BACKEND STREQUAL "NPU")
     target_link_npu_libraries(operators)
     target_link_libraries(operators

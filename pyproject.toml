@@ -223,7 +223,7 @@ flaggems-setup = "flag_gems._setup:main"
 
 [tool.setuptools.package-data]
 
-"flag_gems" = ["backends.yaml"]
+"flag_gems" = ["backends.yaml", "csrc/*.cpp", "csrc/*.h", "csrc/*.cu"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
 
 [tool.setuptools_scm]
