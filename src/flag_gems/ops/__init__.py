@@ -1182,6 +1182,7 @@ __all__ = [
     "var_dim",
     "var_mean",
     "vdot",
+    "linalg_vecdot",
     "vector_norm",
     "view_copy",
     "vstack",
@@ -1198,3 +1199,4 @@ __all__ = [
     "zeros",
     "zeros_like",
 ]
+from flag_gems.ops.linalg_vecdot import linalg_vecdot

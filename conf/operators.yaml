@@ -8787,3 +8787,18 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+
+  - description: 'Computes the dot product of two vectors along a specified dimension.
+
+    '
+    for:
+    - linalg_vecdot
+    id: linalg_vecdot
+    kind:
+    - Math
+    labels:
+    - aten
+    - linalg
+    - KernelGen
+    stages:
+    - alpha: '5.4'
