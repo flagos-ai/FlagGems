@@ -26,6 +26,9 @@ LSTM_SHAPES = [
     (8, 32),
     (16, 64),
     (32, 128),
+    # hidden_size larger than the kernel's BLOCK_SIZE, both power-of-2 and not
+    (4, 256),
+    (4, 300),
 ]
 
 
@@ -48,9 +51,9 @@ def test_thnn_fused_lstm_cell(shape, dtype):
     cx = torch.randn(batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
 
     # Reference implementation using PyTorch
-    ref_input_gates = utils.to_reference(input_gates)
-    ref_hidden_gates = utils.to_reference(hidden_gates)
-    ref_cx = utils.to_reference(cx)
+    ref_input_gates = utils.to_reference(input_gates, upcast=True)
+    ref_hidden_gates = utils.to_reference(hidden_gates, upcast=True)
+    ref_cx = utils.to_reference(cx, upcast=True)
 
     # Compute reference
     ref_gates = ref_input_gates + ref_hidden_gates
@@ -61,6 +64,8 @@ def test_thnn_fused_lstm_cell(shape, dtype):
     o_ref = torch.sigmoid(o)
     ref_cy = f_ref * ref_cx + i_ref * g_ref
     ref_hy = o_ref * torch.tanh(ref_cy)
+    # The workspace holds the post-activation gates, as aten does
+    ref_workspace = torch.cat([i_ref, f_ref, g_ref, o_ref], dim=-1)
 
     # Compute with FlagGems
     with flag_gems.use_gems():
@@ -76,6 +81,7 @@ def test_thnn_fused_lstm_cell(shape, dtype):
     )
     utils.gems_assert_close(res_hy, ref_hy, dtype, atol=atol)
     utils.gems_assert_close(res_cy, ref_cy, dtype, atol=atol)
+    utils.gems_assert_close(res_workspace, ref_workspace, dtype, atol=atol)
 
 
 @pytest.mark.thnn_fused_lstm_cell
@@ -99,11 +105,11 @@ def test_thnn_fused_lstm_cell_with_bias(shape, dtype):
     hidden_bias = torch.randn(4 * hidden_size, dtype=dtype, device=flag_gems.device)
 
     # Reference implementation
-    ref_input_gates = utils.to_reference(input_gates)
-    ref_hidden_gates = utils.to_reference(hidden_gates)
-    ref_cx = utils.to_reference(cx)
-    ref_input_bias = utils.to_reference(input_bias)
-    ref_hidden_bias = utils.to_reference(hidden_bias)
+    ref_input_gates = utils.to_reference(input_gates, upcast=True)
+    ref_hidden_gates = utils.to_reference(hidden_gates, upcast=True)
+    ref_cx = utils.to_reference(cx, upcast=True)
+    ref_input_bias = utils.to_reference(input_bias, upcast=True)
+    ref_hidden_bias = utils.to_reference(hidden_bias, upcast=True)
 
     ref_gates = ref_input_gates + ref_hidden_gates + ref_input_bias + ref_hidden_bias
     i, f, g, o = ref_gates.chunk(4, dim=-1)
@@ -113,6 +119,8 @@ def test_thnn_fused_lstm_cell_with_bias(shape, dtype):
     o_ref = torch.sigmoid(o)
     ref_cy = f_ref * ref_cx + i_ref * g_ref
     ref_hy = o_ref * torch.tanh(ref_cy)
+    # The workspace holds the post-activation gates, as aten does
+    ref_workspace = torch.cat([i_ref, f_ref, g_ref, o_ref], dim=-1)
 
     # Compute with FlagGems
     with flag_gems.use_gems():
@@ -128,3 +136,4 @@ def test_thnn_fused_lstm_cell_with_bias(shape, dtype):
     )
     utils.gems_assert_close(res_hy, ref_hy, dtype, atol=atol)
     utils.gems_assert_close(res_cy, ref_cy, dtype, atol=atol)
+    utils.gems_assert_close(res_workspace, ref_workspace, dtype, atol=atol)
