@@ -22,12 +22,17 @@ from flag_gems.ops.__xor__ import (  # noqa: F401
     xor_scalar_,
     xor_scalar_tensor,
 )
+from flag_gems.ops._add_relu import _add_relu
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
+from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
 from flag_gems.ops._conj import _conj
 from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
+from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
+    _embedding_bag_per_sample_weights_backward,
+)
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._functional_sym_constrain_range import (
     _functional_sym_constrain_range,
@@ -63,6 +68,7 @@ from flag_gems.ops._unsafe_masked_index_put_accumulate import (
 from flag_gems.ops._unsafe_view import _unsafe_view
 from flag_gems.ops._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
+from flag_gems.ops._upsample_nearest_exact2d import _upsample_nearest_exact2d
 from flag_gems.ops._upsample_nearest_exact2d_backward import (
     _upsample_nearest_exact2d_backward,
 )
@@ -328,6 +334,7 @@ from flag_gems.ops.lift import lift, lift_out
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
+from flag_gems.ops.linalg_ldl_solve import linalg_ldl_solve
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linalg_svdvals import linalg_svdvals
 from flag_gems.ops.linear import linear
@@ -539,6 +546,7 @@ from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
+from flag_gems.ops.special_bessel_j1 import special_bessel_j1
 from flag_gems.ops.special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_chebyshev_polynomial_w import (
@@ -567,6 +575,7 @@ from flag_gems.ops.special_modified_bessel_k1 import (
     special_modified_bessel_k1,
     special_modified_bessel_k1_out,
 )
+from flag_gems.ops.special_round import special_round, special_round_out
 from flag_gems.ops.special_scaled_modified_bessel_k1 import (
     special_scaled_modified_bessel_k1,
     special_scaled_modified_bessel_k1_out,
@@ -661,13 +670,16 @@ __all__ = [
     "__ilshift__",
     "__irshift__",
     "__lshift__",
+    "_add_relu",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_no_update",
     "_cdist_backward",
+    "_chunk_cat",
     "_conj",
     "_conv_depthwise2d",
     "_embedding_bag_dense_backward",
+    "_embedding_bag_per_sample_weights_backward",
     "_euclidean_dist",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
@@ -698,6 +710,7 @@ __all__ = [
     "_upsample_bicubic2d_aa_backward",
     "_upsample_bilinear2d_aa",
     "_upsample_nearest_exact1d",
+    "_upsample_nearest_exact2d",
     "_upsample_nearest_exact2d_backward",
     "_upsample_nearest_exact3d",
     "abs",
@@ -1032,6 +1045,7 @@ __all__ = [
     "lift_fresh_copy_out",
     "lift_out",
     "linalg_cholesky",
+    "linalg_ldl_solve",
     "linalg_slogdet",
     "linalg_svdvals",
     "linear",
@@ -1228,7 +1242,6 @@ __all__ = [
     "rsqrt_",
     "rsub_scalar",
     "rsub_tensor",
-    "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
@@ -1287,10 +1300,12 @@ __all__ = [
     "softplus_backward",
     "softshrink",
     "softshrink_out",
+    "scalar_tensor",
     "sort",
     "sort_stable",
     "special_airy_ai",
     "special_airy_ai_out",
+    "special_bessel_j1",
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
@@ -1315,6 +1330,8 @@ __all__ = [
     "special_modified_bessel_k0_out",
     "special_modified_bessel_k1",
     "special_modified_bessel_k1_out",
+    "special_round",
+    "special_round_out",
     "special_scaled_modified_bessel_k1",
     "special_scaled_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_u",
