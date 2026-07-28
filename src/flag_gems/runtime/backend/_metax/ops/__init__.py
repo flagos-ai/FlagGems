@@ -31,7 +31,6 @@ from .polar import polar
 from .prod import prod, prod_dim
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
-from .scaled_grouped_mm import scaled_grouped_mm
 from .segment_reduce import (
     _segment_reduce_backward,
     _segment_reduce_backward_out,
@@ -97,7 +96,6 @@ __all__ = [
     "prod_dim",
     "repeat_interleave_self_tensor",
     "resolve_conj",
-    "scaled_grouped_mm",
     "segment_reduce",
     "segment_reduce_out",
     "sigmoid",
