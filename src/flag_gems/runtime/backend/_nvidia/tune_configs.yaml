@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 attention:
   - gen: true
     param_map:
@@ -2425,6 +2439,46 @@ rot90:
     num_warps: 16
     num_stages: 1
 
+fractional_max_pool2d_forward:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_H: block_h
+        BLOCK_W: block_w
+      num_stages: stages
+      num_warps: warps
+    block_h: [8, 16, 32]
+    block_w: [8, 16, 32]
+    stages: [2, 3, 4]
+    warps: [2, 4, 8]
+
+fractional_max_pool2d_backward:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_H: block_h
+        BLOCK_W: block_w
+      num_stages: stages
+      num_warps: warps
+    block_h: [8, 16, 32]
+    block_w: [8, 16, 32]
+    stages: [2, 3, 4]
+    warps: [2, 4, 8]
+
+index_select_backward:
+  - META:
+      BLOCK: 128
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK: 256
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK: 512
+    num_warps: 8
+    num_stages: 1
+
 fused_marlin_moe_mxfp4:
   - gen: true
     param_map:
@@ -2730,3 +2784,56 @@ w8a8_block_fp8_bmm_splitk:
       - 4
     stages:
       - 3
+
+index_adjacent:
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 64
+  - META:
+      BLOCK_SIZE0: 8
+      BLOCK_SIZE1: 1
+  - META:
+      BLOCK_SIZE0: 16
+      BLOCK_SIZE1: 1
+  - META:
+      BLOCK_SIZE0: 32
+      BLOCK_SIZE1: 1
+  - META:
+      BLOCK_SIZE0: 64
+      BLOCK_SIZE1: 1
+  - META:
+      BLOCK_SIZE0: 128
+      BLOCK_SIZE1: 1
+  - META:
+      BLOCK_SIZE0: 8
+      BLOCK_SIZE1: 128
+  - META:
+      BLOCK_SIZE0: 16
+      BLOCK_SIZE1: 128
+  - META:
+      BLOCK_SIZE0: 8
+      BLOCK_SIZE1: 256
+  - META:
+      BLOCK_SIZE0: 16
+      BLOCK_SIZE1: 256
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 128
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 192
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 256
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 320
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 384
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 448
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 512
