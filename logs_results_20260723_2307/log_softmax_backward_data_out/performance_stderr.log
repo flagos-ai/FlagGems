@@ -1,3 +1,0 @@
-[CMD] pytest -m "log_softmax_backward_data_out" --level core --record json --output benchmark_log_softmax_backward_data_out.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

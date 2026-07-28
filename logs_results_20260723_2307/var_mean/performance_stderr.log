@@ -1,3 +1,0 @@
-[CMD] pytest -m "var_mean" --level core --record json --output benchmark_var_mean.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

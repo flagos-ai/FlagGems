@@ -1,3 +1,0 @@
-[CMD] pytest -m "special_logsumexp" --level core --record json --output benchmark_special_logsumexp.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

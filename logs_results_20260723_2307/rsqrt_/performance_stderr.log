@@ -1,3 +1,0 @@
-[CMD] pytest -m "rsqrt_" --level core --record json --output benchmark_rsqrt_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

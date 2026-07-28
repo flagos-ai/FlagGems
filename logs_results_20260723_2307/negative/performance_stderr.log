@@ -1,3 +1,0 @@
-[CMD] pytest -m "negative" --level core --record json --output benchmark_negative.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

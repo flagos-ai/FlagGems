@@ -1,3 +1,0 @@
-[CMD] pytest -m "less_equal" --level core --record json --output benchmark_less_equal.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

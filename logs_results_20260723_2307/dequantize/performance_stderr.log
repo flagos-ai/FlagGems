@@ -1,3 +1,0 @@
-[CMD] pytest -m "dequantize" --level core --record json --output benchmark_dequantize.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

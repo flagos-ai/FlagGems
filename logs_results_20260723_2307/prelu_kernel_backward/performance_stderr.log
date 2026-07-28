@@ -1,3 +1,0 @@
-[CMD] pytest -m "prelu_kernel_backward" --level core --record json --output benchmark_prelu_kernel_backward.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

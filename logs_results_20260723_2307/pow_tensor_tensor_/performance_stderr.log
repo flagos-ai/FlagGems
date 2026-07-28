@@ -1,3 +1,0 @@
-[CMD] pytest -m "pow_tensor_tensor_" --level core --record json --output benchmark_pow_tensor_tensor_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

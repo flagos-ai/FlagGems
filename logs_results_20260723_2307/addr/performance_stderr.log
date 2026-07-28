@@ -1,3 +1,0 @@
-[CMD] pytest -m "addr" --level core --record json --output benchmark_addr.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

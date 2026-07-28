@@ -1,3 +1,0 @@
-[CMD] pytest -m "nanmedian_dim" --level core --record json --output benchmark_nanmedian_dim.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

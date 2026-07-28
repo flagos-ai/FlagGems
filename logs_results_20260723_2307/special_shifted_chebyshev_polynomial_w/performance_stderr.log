@@ -1,3 +1,0 @@
-[CMD] pytest -m "special_shifted_chebyshev_polynomial_w" --level core --record json --output benchmark_special_shifted_chebyshev_polynomial_w.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

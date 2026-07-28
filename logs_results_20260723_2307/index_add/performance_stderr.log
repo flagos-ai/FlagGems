@@ -1,3 +1,0 @@
-[CMD] pytest -m "index_add" --level core --record json --output benchmark_index_add.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

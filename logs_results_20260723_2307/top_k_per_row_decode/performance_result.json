@@ -1,7 +1,0 @@
-{
-  "top_k_per_row_decode": {
-    "result": "skipped",
-    "reason": "Skipped: tl.histogram with mask parameter not available",
-    "test_case": "benchmark/test_top_k_per_row_decode.py::test_top_k_per_row_decode"
-  }
-}

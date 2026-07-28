@@ -1,3 +1,0 @@
-[CMD] pytest -m "log_normal_" --level core --record json --output benchmark_log_normal_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,3 +1,0 @@
-[CMD] pytest -m "fused_experts_impl" --level core --record json --output benchmark_fused_experts_impl.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

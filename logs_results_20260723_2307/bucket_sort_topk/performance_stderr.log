@@ -1,3 +1,0 @@
-[CMD] pytest -m "bucket_sort_topk" --level core --record json --output benchmark_bucket_sort_topk.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

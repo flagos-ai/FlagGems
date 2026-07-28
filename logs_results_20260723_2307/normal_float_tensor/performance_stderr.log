@@ -1,3 +1,0 @@
-[CMD] pytest -m "normal_float_tensor" --level core --record json --output benchmark_normal_float_tensor.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

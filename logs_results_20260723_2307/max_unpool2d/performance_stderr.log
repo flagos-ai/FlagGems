@@ -1,3 +1,0 @@
-[CMD] pytest -m "max_unpool2d" --level core --record json --output benchmark_max_unpool2d.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

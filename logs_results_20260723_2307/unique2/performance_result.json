@@ -1,7 +1,0 @@
-{
-  "unique2": {
-    "result": "failed",
-    "test_case": "benchmark/test_unique.py::test_unique2",
-    "reason": "Failed: /tmp/tmpt75tkciq/main.c:71: xpuLaunchKernel(\"sub_func_tensor_scalar_kernel_rank_1\", function, gridX, gridY, gridZ, nclusters, ncores, stream, (void **)&kernel_params[0][0], (void **)&kernel_consts[0][0], &extra_data[0]) -> Exception in kernel execution(err_code: -714)"
-  }
-}

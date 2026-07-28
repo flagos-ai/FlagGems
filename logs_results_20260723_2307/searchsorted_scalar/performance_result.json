@@ -1,7 +1,0 @@
-{
-  "searchsorted_scalar": {
-    "result": "failed",
-    "test_case": "benchmark/test_searchsorted.py::test_searchsorted_scalar[dtype6]",
-    "reason": "Failed: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
-  }
-}

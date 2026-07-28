@@ -1,3 +1,0 @@
-[CMD] pytest -m "isfinite" --level core --record json --output benchmark_isfinite.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

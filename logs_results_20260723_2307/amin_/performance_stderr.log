@@ -1,3 +1,0 @@
-[CMD] pytest -m "amin_" --level core --record json --output benchmark_amin_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

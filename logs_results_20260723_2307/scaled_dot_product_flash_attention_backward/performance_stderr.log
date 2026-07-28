@@ -1,3 +1,0 @@
-[CMD] pytest -m "scaled_dot_product_flash_attention_backward" --level core --record json --output benchmark_scaled_dot_product_flash_attention_backward.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

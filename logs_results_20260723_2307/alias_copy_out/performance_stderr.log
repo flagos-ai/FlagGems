@@ -1,3 +1,0 @@
-[CMD] pytest -m "alias_copy_out" --level core --record json --output benchmark_alias_copy_out.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

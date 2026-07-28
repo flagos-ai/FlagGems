@@ -1,3 +1,0 @@
-[CMD] pytest -m "trunc_divide_" --level core --record json --output benchmark_trunc_divide_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

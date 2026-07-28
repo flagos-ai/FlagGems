@@ -1,7 +1,0 @@
-{
-  "unpack_seq_triton": {
-    "result": "skipped",
-    "test_case": "benchmark/test_unpack_seq.py::test_unpack_seq_fp8",
-    "reason": "Skipped: requires vLLM and NVIDIA Hopper architecture for FP8"
-  }
-}

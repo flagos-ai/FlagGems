@@ -1,3 +1,0 @@
-[CMD] pytest -m "masked_fill" --level core --record json --output benchmark_masked_fill.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

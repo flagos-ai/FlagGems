@@ -1,3 +1,0 @@
-[CMD] pytest -m "jagged_to_padded_dense_forward" --level core --record json --output benchmark_jagged_to_padded_dense_forward.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

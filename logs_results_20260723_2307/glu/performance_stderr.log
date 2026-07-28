@@ -1,3 +1,0 @@
-[CMD] pytest -m "glu" --level core --record json --output benchmark_glu.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

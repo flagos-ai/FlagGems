@@ -1,3 +1,0 @@
-[CMD] pytest -m "pixel_unshuffle_out" --level core --record json --output benchmark_pixel_unshuffle_out.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

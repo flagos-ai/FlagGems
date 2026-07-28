@@ -1,3 +1,0 @@
-[CMD] pytest -m "special_gammainc" --level core --record json --output benchmark_special_gammainc.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

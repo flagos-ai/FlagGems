@@ -1,3 +1,0 @@
-[CMD] pytest -m "fractional_max_pool2d" --level core --record json --output benchmark_fractional_max_pool2d.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

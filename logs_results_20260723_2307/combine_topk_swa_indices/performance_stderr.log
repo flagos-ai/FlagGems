@@ -1,3 +1,0 @@
-[CMD] pytest -m "combine_topk_swa_indices" --level core --record json --output benchmark_combine_topk_swa_indices.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

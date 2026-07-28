@@ -1,3 +1,0 @@
-[CMD] pytest -m "rot90" --level core --record json --output benchmark_rot90.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

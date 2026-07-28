@@ -1,3 +1,0 @@
-[CMD] pytest -m "linalg_cholesky" --level core --record json --output benchmark_linalg_cholesky.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

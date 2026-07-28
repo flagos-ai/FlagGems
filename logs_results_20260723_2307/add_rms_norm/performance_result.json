@@ -1,7 +1,0 @@
-{
-  "add_rms_norm": {
-    "result": "failed",
-    "test_case": "benchmark/test_add_rms_norm.py::test_add_rms_norm",
-    "reason": "Failed: /tmp/tmp06kyrhmw/main.c:71: xpuLaunchKernel(\"add_rms_norm_kernel\", function, gridX, gridY, gridZ, nclusters, ncores, stream, (void **)&kernel_params[0][0], (void **)&kernel_consts[0][0], &extra_data[0]) -> Operation not permitted(err_code: 1)"
-  }
-}

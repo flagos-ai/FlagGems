@@ -1,7 +1,0 @@
-{
-  "median": {
-    "result": "failed",
-    "test_case": "benchmark/test_median.py::test_median_dim",
-    "reason": "Failed: at 32:11:\n    neg_inf_mask = finite & (data == -float(\"inf\"))\n    pos_inf_mask = finite & (data == float(\"inf\"))\n    real_finite = finite & ~(neg_inf_mask | pos_inf_mask)\n    neg_inf_count = tl.sum(neg_inf_mask.to(tl.int32), axis=0)\n    real_finite_count = tl.sum(real_finite.to(tl.int32), axis=0)\n\n    rank = (WIDTH - 1) // 2\n    search_rank = rank - neg_inf_count\n    take_neg_inf = rank < neg_inf_count\n    take_pos_inf = search_rank >= real_finite_count\n\n    keys = _f16_order_key(data).to(tl.uint32)\n           ^"
-  }
-}

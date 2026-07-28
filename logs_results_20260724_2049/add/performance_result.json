@@ -1,7 +1,0 @@
-{
-  "add": {
-    "result": "failed",
-    "test_case": "benchmark/test_add.py::test_add",
-    "reason": "Failed: float division by zero"
-  }
-}

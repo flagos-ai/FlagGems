@@ -1,3 +1,0 @@
-[CMD] pytest -m "fmod_scalar" --level core --record json --output benchmark_fmod_scalar.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

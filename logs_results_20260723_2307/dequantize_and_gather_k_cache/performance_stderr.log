@@ -1,3 +1,0 @@
-[CMD] pytest -m "dequantize_and_gather_k_cache" --level core --record json --output benchmark_dequantize_and_gather_k_cache.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

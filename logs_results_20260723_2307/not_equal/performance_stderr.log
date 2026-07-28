@@ -1,3 +1,0 @@
-[CMD] pytest -m "not_equal" --level core --record json --output benchmark_not_equal.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

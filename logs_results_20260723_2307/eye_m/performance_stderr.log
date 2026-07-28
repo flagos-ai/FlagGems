@@ -1,3 +1,0 @@
-[CMD] pytest -m "eye_m" --level core --record json --output benchmark_eye_m.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

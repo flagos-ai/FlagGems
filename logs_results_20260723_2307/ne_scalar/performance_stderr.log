@@ -1,3 +1,0 @@
-[CMD] pytest -m "ne_scalar" --level core --record json --output benchmark_ne_scalar.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

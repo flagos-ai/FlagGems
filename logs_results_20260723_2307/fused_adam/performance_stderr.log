@@ -1,3 +1,0 @@
-[CMD] pytest -m "fused_adam" --level core --record json --output benchmark_fused_adam.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

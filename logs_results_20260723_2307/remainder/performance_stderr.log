@@ -1,3 +1,0 @@
-[CMD] pytest -m "remainder" --level core --record json --output benchmark_remainder.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

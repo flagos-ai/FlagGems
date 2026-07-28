@@ -1,3 +1,0 @@
-[CMD] pytest -m "apply_rotary_pos_emb" --level core --record json --output benchmark_apply_rotary_pos_emb.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

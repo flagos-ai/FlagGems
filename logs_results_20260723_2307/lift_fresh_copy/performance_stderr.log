@@ -1,3 +1,0 @@
-[CMD] pytest -m "lift_fresh_copy" --level core --record json --output benchmark_lift_fresh_copy.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

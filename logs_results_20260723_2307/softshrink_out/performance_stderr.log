@@ -1,3 +1,0 @@
-[CMD] pytest -m "softshrink_out" --level core --record json --output benchmark_softshrink_out.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

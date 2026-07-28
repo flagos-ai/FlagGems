@@ -1,3 +1,0 @@
-[CMD] pytest -m "scatter_reduce" --level core --record json --output benchmark_scatter_reduce.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,3 +1,0 @@
-[CMD] pytest -m "silu_and_mul_with_clamp_out" --level core --record json --output benchmark_silu_and_mul_with_clamp_out.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

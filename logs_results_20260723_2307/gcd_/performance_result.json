@@ -1,7 +1,0 @@
-{
-  "gcd_": {
-    "result": "failed",
-    "test_case": "benchmark/test_gcd_.py::test_gcd_",
-    "reason": "Failed: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
-  }
-}

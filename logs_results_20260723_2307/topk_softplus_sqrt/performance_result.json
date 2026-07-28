@@ -1,7 +1,0 @@
-{
-  "topk_softplus_sqrt": {
-    "result": "failed",
-    "test_case": "benchmark/test_topk_softplus_sqrt.py::test_topk_softplus_sqrt",
-    "reason": "Failed: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
-  }
-}

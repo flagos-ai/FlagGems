@@ -1,3 +1,0 @@
-[CMD] pytest -m "unbind_copy" --level core --record json --output benchmark_unbind_copy.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

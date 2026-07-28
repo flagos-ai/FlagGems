@@ -1,3 +1,0 @@
-[CMD] pytest -m "nested_view_from_buffer_copy" --level core --record json --output benchmark_nested_view_from_buffer_copy.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

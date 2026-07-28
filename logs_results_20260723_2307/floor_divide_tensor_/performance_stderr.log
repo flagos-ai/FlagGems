@@ -1,3 +1,0 @@
-[CMD] pytest -m "floor_divide_tensor_" --level core --record json --output benchmark_floor_divide_tensor_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

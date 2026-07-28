@@ -1,3 +1,0 @@
-[CMD] pytest -m "nextafter_" --level core --record json --output benchmark_nextafter_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

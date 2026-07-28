@@ -1,7 +1,0 @@
-{
-  "fused_experts_impl": {
-    "result": "skipped",
-    "test_case": "benchmark/test_fused_moe_int8_w8a16.py::test_fused_experts_impl_int8_w8a16",
-    "reason": "Skipped: requires NVIDIA Hopper architecture"
-  }
-}

@@ -1,3 +1,0 @@
-[CMD] pytest -m "sort_stable" --level core --record json --output benchmark_sort_stable.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

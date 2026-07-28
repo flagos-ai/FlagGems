@@ -1,7 +1,0 @@
-[CMD] pytest -m "compute_global_topk_indices_and_lens" --record json --output accuracy_compute_global_topk_indices_and_lens.json --ref cpu --continue-on-collection-errors -vs
-[CWD] /workspace/FlagGems/tests
-
-XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
-[35mSYMBOL_REWRITE [0m[32mtorch success[0m
-loc("/workspace/FlagGems/src/flag_gems/fused/deepseek_v4_attention_compute_global_topk_indices_and_lens.py":118:18): error: 'arith.addi' op requires the same encoding for all operands and results
-loc("/workspace/FlagGems/src/flag_gems/fused/deepseek_v4_attention_compute_global_topk_indices_and_lens.py":118:18): error: 'arith.addi' op requires the same encoding for all operands and results

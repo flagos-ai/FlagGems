@@ -1,7 +1,0 @@
-{
-  "cutlass_scaled_mm": {
-    "result": "skipped",
-    "reason": "Skipped: requires vLLM and NVIDIA Hopper architecture",
-    "test_case": "benchmark/test_cutlass_scaled_mm.py::test_cutlass_scaled_mm_benchmark"
-  }
-}

@@ -1,3 +1,0 @@
-[CMD] pytest -m "rand" --level core --record json --output benchmark_rand.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,3 +1,0 @@
-[CMD] pytest -m "mhc_pre" --level core --record json --output benchmark_mhc_pre.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

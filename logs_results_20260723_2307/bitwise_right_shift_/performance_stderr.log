@@ -1,3 +1,0 @@
-[CMD] pytest -m "bitwise_right_shift_" --level core --record json --output benchmark_bitwise_right_shift_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

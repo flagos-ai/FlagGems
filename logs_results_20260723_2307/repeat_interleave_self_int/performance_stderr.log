@@ -1,3 +1,0 @@
-[CMD] pytest -m "repeat_interleave_self_int" --level core --record json --output benchmark_repeat_interleave_self_int.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

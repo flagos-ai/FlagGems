@@ -1,3 +1,0 @@
-[CMD] pytest -m "conj" --level core --record json --output benchmark_conj.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

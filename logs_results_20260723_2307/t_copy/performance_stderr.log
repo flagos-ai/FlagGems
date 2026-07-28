@@ -1,3 +1,0 @@
-[CMD] pytest -m "t_copy" --level core --record json --output benchmark_t_copy.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

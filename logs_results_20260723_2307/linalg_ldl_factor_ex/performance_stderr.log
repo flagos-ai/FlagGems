@@ -1,3 +1,0 @@
-[CMD] pytest -m "linalg_ldl_factor_ex" --level core --record json --output benchmark_linalg_ldl_factor_ex.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

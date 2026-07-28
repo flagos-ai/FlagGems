@@ -1,3 +1,0 @@
-[CMD] pytest -m "lcm" --level core --record json --output benchmark_lcm.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

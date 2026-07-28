@@ -1,3 +1,0 @@
-[CMD] pytest -m "arctanh_" --level core --record json --output benchmark_arctanh_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

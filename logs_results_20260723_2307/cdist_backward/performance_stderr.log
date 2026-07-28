@@ -1,3 +1,0 @@
-[CMD] pytest -m "cdist_backward" --level core --record json --output benchmark_cdist_backward.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

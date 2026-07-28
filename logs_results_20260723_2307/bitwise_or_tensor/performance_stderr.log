@@ -1,3 +1,0 @@
-[CMD] pytest -m "bitwise_or_tensor" --level core --record json --output benchmark_bitwise_or_tensor.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

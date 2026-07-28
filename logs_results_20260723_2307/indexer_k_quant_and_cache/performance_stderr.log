@@ -1,3 +1,0 @@
-[CMD] pytest -m "indexer_k_quant_and_cache" --level core --record json --output benchmark_indexer_k_quant_and_cache.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

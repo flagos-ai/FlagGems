@@ -1,7 +1,0 @@
-{
-  "apply_repetition_penalties": {
-    "result": "skipped",
-    "reason": "Skipped: Vendor not supported",
-    "test_case": "benchmark/test_apply_repetition_penalties.py::test_apply_repetition_penalties"
-  }
-}

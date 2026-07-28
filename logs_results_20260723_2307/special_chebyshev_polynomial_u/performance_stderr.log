@@ -1,3 +1,0 @@
-[CMD] pytest -m "special_chebyshev_polynomial_u" --level core --record json --output benchmark_special_chebyshev_polynomial_u.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

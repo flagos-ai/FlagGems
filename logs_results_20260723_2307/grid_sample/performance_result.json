@@ -1,7 +1,0 @@
-{
-  "grid_sample": {
-    "result": "failed",
-    "test_case": "benchmark/test_grid_sample.py::test_grid_sample[dtype2]",
-    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:7637)"
-  }
-}

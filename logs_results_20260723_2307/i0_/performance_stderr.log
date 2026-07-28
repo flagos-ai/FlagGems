@@ -1,3 +1,0 @@
-[CMD] pytest -m "i0_" --level core --record json --output benchmark_i0_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

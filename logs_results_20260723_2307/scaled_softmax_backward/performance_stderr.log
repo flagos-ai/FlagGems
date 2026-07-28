@@ -1,3 +1,0 @@
-[CMD] pytest -m "scaled_softmax_backward" --level core --record json --output benchmark_scaled_softmax_backward.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

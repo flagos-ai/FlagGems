@@ -1,3 +1,0 @@
-[CMD] pytest -m "sum_dim_out" --level core --record json --output benchmark_sum_dim_out.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

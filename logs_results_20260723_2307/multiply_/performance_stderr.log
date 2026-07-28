@@ -1,3 +1,0 @@
-[CMD] pytest -m "multiply_" --level core --record json --output benchmark_multiply_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

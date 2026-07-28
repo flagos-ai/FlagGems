@@ -1,7 +1,0 @@
-[CMD] pytest -m "baddbmm" --record json --output accuracy_baddbmm.json --ref cpu --continue-on-collection-errors -vs
-[CWD] /workspace/FlagGems/tests
-
-XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
-[35mSYMBOL_REWRITE [0m[32mtorch success[0m
-loc("/workspace/FlagGems/src/flag_gems/runtime/backend/_kunlunxin/ops/bmm.py":164:23): error: 'memref.cast' op operand type 'memref<15x160xf32, affine_map<(d0, d1) -> (d0 * 160 + d1)>>' and result type 'memref<15x160xf32, strided<[192, 1]>>' are cast incompatible
-loc("/workspace/FlagGems/src/flag_gems/runtime/backend/_kunlunxin/ops/bmm.py":164:23): error: 'memref.cast' op operand type 'memref<15x160xf32, affine_map<(d0, d1) -> (d0 * 160 + d1)>>' and result type 'memref<15x160xf32, strided<[192, 1]>>' are cast incompatible

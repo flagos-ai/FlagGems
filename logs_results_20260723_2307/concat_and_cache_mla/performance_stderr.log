@@ -1,3 +1,0 @@
-[CMD] pytest -m "concat_and_cache_mla" --level core --record json --output benchmark_concat_and_cache_mla.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

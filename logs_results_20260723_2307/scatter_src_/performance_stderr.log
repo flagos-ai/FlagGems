@@ -1,3 +1,0 @@
-[CMD] pytest -m "scatter_src_" --level core --record json --output benchmark_scatter_src_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

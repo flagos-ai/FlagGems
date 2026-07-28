@@ -1,3 +1,0 @@
-[CMD] pytest -m "reciprocal_" --level core --record json --output benchmark_reciprocal_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

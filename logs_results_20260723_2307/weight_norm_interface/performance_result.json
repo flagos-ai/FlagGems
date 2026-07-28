@@ -1,7 +1,0 @@
-{
-  "weight_norm_interface": {
-    "result": "failed",
-    "test_case": "benchmark/test_weight_norm_interface.py::test_weight_norm_interface",
-    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:2396)"
-  }
-}

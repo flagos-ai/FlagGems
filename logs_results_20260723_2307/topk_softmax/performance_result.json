@@ -1,7 +1,0 @@
-{
-  "topk_softmax": {
-    "result": "skipped",
-    "reason": "Skipped: #2880: Not working",
-    "test_case": "benchmark/test_topk_softmax.py::test_topk_softmax"
-  }
-}

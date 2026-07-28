@@ -1,3 +1,0 @@
-[CMD] pytest -m "sum" --level core --record json --output benchmark_sum.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

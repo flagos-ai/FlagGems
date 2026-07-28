@@ -1,3 +1,0 @@
-[CMD] pytest -m "kron" --level core --record json --output benchmark_kron.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

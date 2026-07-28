@@ -1,3 +1,0 @@
-[CMD] pytest -m "per_token_group_quant_fp8" --level core --record json --output benchmark_per_token_group_quant_fp8.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

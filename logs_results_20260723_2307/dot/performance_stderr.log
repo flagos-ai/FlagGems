@@ -1,3 +1,0 @@
-[CMD] pytest -m "dot" --level core --record json --output benchmark_dot.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

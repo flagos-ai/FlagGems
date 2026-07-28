@@ -1,3 +1,0 @@
-[CMD] pytest -m "grid_sample" --level core --record json --output benchmark_grid_sample.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

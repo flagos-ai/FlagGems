@@ -1,7 +1,0 @@
-{
-  "get_scheduler_metadata": {
-    "result": "skipped",
-    "test_case": "benchmark/test_get_scheduler_metadata.py::test_get_scheduler_metadata",
-    "reason": "Skipped: vLLM is not available, skipping performance test"
-  }
-}

@@ -1,3 +1,0 @@
-[CMD] pytest -m "bitwise_and_scalar" --level core --record json --output benchmark_bitwise_and_scalar.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,3 +1,0 @@
-[CMD] pytest -m "special_scaled_modified_bessel_k1" --level core --record json --output benchmark_special_scaled_modified_bessel_k1.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

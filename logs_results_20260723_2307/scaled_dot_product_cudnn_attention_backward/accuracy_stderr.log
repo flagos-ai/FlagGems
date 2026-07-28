@@ -1,5 +1,0 @@
-[CMD] pytest -m "scaled_dot_product_cudnn_attention_backward" --record json --output accuracy_scaled_dot_product_cudnn_attention_backward.json --continue-on-collection-errors -vs
-[CWD] /workspace/FlagGems/tests
-
-XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
-[35mSYMBOL_REWRITE [0m[32mtorch success[0m

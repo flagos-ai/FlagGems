@@ -1,3 +1,0 @@
-[CMD] pytest -m "embedding_dense_backward" --level core --record json --output benchmark_embedding_dense_backward.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,3 +1,0 @@
-[CMD] pytest -m "logspace" --level core --record json --output benchmark_logspace.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,3 +1,0 @@
-[CMD] pytest -m "replication_pad3d" --level core --record json --output benchmark_replication_pad3d.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

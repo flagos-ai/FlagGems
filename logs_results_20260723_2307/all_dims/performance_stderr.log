@@ -1,3 +1,0 @@
-[CMD] pytest -m "all_dims" --level core --record json --output benchmark_all_dims.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

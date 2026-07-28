@@ -1,3 +1,0 @@
-[CMD] pytest -m "lerp_tensor_" --level core --record json --output benchmark_lerp_tensor_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

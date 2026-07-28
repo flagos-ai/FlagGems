@@ -1,3 +1,0 @@
-[CMD] pytest -m "is_all_true" --level core --record json --output benchmark_is_all_true.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

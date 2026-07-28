@@ -1,7 +1,0 @@
-{
-  "scaled_mm": {
-    "result": "skipped",
-    "reason": "Skipped: got empty parameter set for (case)",
-    "test_case": "benchmark/test_scaled_mm.py::test_scaled_mm_benchmark[NOTSET]"
-  }
-}

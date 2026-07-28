@@ -1,3 +1,0 @@
-[CMD] pytest -m "one_hot" --level core --record json --output benchmark_one_hot.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

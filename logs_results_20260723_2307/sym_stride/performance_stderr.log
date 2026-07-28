@@ -1,3 +1,0 @@
-[CMD] pytest -m "sym_stride" --level core --record json --output benchmark_sym_stride.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

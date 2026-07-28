@@ -1,3 +1,0 @@
-[CMD] pytest -m "grouped_topk" --level core --record json --output benchmark_grouped_topk.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

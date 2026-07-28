@@ -1,7 +1,0 @@
-{
-  "inplace_fused_experts": {
-    "result": "failed",
-    "test_case": "benchmark/test_inplace_fused_experts.py::test_inplace_fused_experts_gems_vs_vllm",
-    "reason": "Failed"
-  }
-}

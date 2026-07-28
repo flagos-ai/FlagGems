@@ -1,3 +1,0 @@
-[CMD] pytest -m "compute_global_topk_indices_and_lens" --level core --record json --output benchmark_compute_global_topk_indices_and_lens.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

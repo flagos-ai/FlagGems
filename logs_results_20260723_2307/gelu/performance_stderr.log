@@ -1,3 +1,0 @@
-[CMD] pytest -m "gelu" --level core --record json --output benchmark_gelu.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

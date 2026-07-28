@@ -1,3 +1,0 @@
-[CMD] pytest -m "lt_scalar" --level core --record json --output benchmark_lt_scalar.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

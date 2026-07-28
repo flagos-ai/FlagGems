@@ -1,3 +1,0 @@
-[CMD] pytest -m "beam_search_score" --level core --record json --output benchmark_beam_search_score.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

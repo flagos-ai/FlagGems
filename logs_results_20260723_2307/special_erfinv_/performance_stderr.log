@@ -1,3 +1,0 @@
-[CMD] pytest -m "special_erfinv_" --level core --record json --output benchmark_special_erfinv_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

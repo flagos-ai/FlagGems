@@ -1,6 +1,0 @@
-[CMD] pytest -m "nested_view_from_buffer_copy" --record json --output accuracy_nested_view_from_buffer_copy.json --ref cpu --continue-on-collection-errors -vs
-[CWD] /workspace/FlagGems/tests
-
-XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
-[35mSYMBOL_REWRITE [0m[32mtorch success[0m
-[W724 01:16:46.240975416 NestedTensorImpl.cpp:178] Warning: The PyTorch API of nested tensors is in prototype stage and will change in the near future. We recommend specifying layout=torch.jagged when constructing a nested tensor, as this layout receives active development, has better operator coverage, and works with torch.compile. (function operator())
