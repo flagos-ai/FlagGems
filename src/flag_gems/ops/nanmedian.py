@@ -223,311 +223,6 @@ def nanmedian_float_sorted_gather_kernel(
 
 @libentry()
 @triton.jit
-def nanmedian_ascend_histogram_select_kernel(
-    inp,
-    out_values,
-    out_indices,
-    M,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    HISTOGRAM_BINS: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    offsets = tl.arange(0, BLOCK_N)
-    bins = tl.arange(0, HISTOGRAM_BINS)
-    counts = tl.zeros((HISTOGRAM_BINS,), dtype=tl.int32)
-
-    for start in tl.range(0, N, BLOCK_N):
-        cols = start + offsets
-        mask = cols < N
-        vals = tl.load(inp + pid * N + cols, mask=mask, other=0)
-        keys = _to_order_key(vals, mask).to(tl.int32)
-        keys = tl.where(mask, keys, 0)
-        chunk_counts = tl.histogram(keys, HISTOGRAM_BINS).to(tl.int32)
-        invalid_count = tl.sum((~mask).to(tl.int32), axis=0)
-        counts += chunk_counts - tl.where(bins == 0, invalid_count, 0)
-
-    k_to_find: tl.constexpr = (N + 1) // 2
-    cumsum = tl.cumsum(counts, axis=0)
-    prev = cumsum - counts
-    take = (k_to_find <= cumsum) & (k_to_find > prev)
-    selected_key = tl.min(tl.where(take, bins, HISTOGRAM_BINS - 1), axis=0)
-
-    result_idx = tl.full((), N, dtype=tl.int32)
-    for start in tl.range(0, N, BLOCK_N):
-        cols = start + offsets
-        mask = cols < N
-        vals = tl.load(inp + pid * N + cols, mask=mask, other=0)
-        keys = _to_order_key(vals, mask).to(tl.int32)
-        local_idx = tl.min(tl.where(mask & (keys == selected_key), cols, N), axis=0)
-        result_idx = tl.where(local_idx < result_idx, local_idx, result_idx)
-
-    result_val = tl.load(inp + pid * N + result_idx)
-    tl.store(out_values + pid, result_val)
-    tl.store(out_indices + pid, result_idx)
-
-
-@libentry()
-@triton.jit
-def nanmedian_ascend_histogram_count_kernel(
-    inp,
-    partial_counts,
-    M,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    NUM_CHUNKS: tl.constexpr,
-    HISTOGRAM_BINS: tl.constexpr,
-):
-    pid_m = tle.program_id(0)
-    pid_chunk = tle.program_id(1)
-    offsets = pid_chunk * BLOCK_N + tl.arange(0, BLOCK_N)
-    bins = tl.arange(0, HISTOGRAM_BINS)
-    mask = offsets < N
-    vals = tl.load(inp + pid_m * N + offsets, mask=mask, other=0)
-    keys = _to_order_key(vals, mask).to(tl.int32)
-    keys = tl.where(mask, keys, 0)
-    counts = tl.histogram(keys, HISTOGRAM_BINS).to(tl.int32)
-    invalid_count = tl.sum((~mask).to(tl.int32), axis=0)
-    counts = counts - tl.where(bins == 0, invalid_count, 0)
-    count_offsets = (pid_m * NUM_CHUNKS + pid_chunk) * HISTOGRAM_BINS + bins
-    tl.store(partial_counts + count_offsets, counts)
-
-
-@libentry()
-@triton.jit
-def nanmedian_ascend_histogram_reduce_kernel(
-    inp,
-    partial_counts,
-    out_values,
-    out_indices,
-    M,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    NUM_CHUNKS: tl.constexpr,
-    HISTOGRAM_BINS: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    offsets = tl.arange(0, BLOCK_N)
-    bins = tl.arange(0, HISTOGRAM_BINS)
-    counts = tl.zeros((HISTOGRAM_BINS,), dtype=tl.int32)
-
-    for chunk in tl.range(0, NUM_CHUNKS):
-        count_offsets = (pid * NUM_CHUNKS + chunk) * HISTOGRAM_BINS + bins
-        counts += tl.load(partial_counts + count_offsets)
-
-    k_to_find: tl.constexpr = (N + 1) // 2
-    cumsum = tl.cumsum(counts, axis=0)
-    prev = cumsum - counts
-    take = (k_to_find <= cumsum) & (k_to_find > prev)
-    selected_key = tl.min(tl.where(take, bins, HISTOGRAM_BINS - 1), axis=0)
-
-    result_idx = tl.full((), N, dtype=tl.int32)
-    for start in tl.range(0, N, BLOCK_N):
-        cols = start + offsets
-        mask = cols < N
-        vals = tl.load(inp + pid * N + cols, mask=mask, other=0)
-        keys = _to_order_key(vals, mask).to(tl.int32)
-        local_idx = tl.min(tl.where(mask & (keys == selected_key), cols, N), axis=0)
-        result_idx = tl.where(local_idx < result_idx, local_idx, result_idx)
-
-    result_val = tl.load(inp + pid * N + result_idx)
-    tl.store(out_values + pid, result_val)
-    tl.store(out_indices + pid, result_idx)
-
-
-@libentry()
-@triton.jit
-def nanmedian_ascend_byte_histogram_select_kernel(
-    inp,
-    out_values,
-    out_indices,
-    M,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    HISTOGRAM_BINS: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    offsets = tl.arange(0, BLOCK_N)
-    bins = tl.arange(0, HISTOGRAM_BINS)
-    dtype = inp.dtype.element_ty
-    nbits: tl.constexpr = dtype.primitive_bitwidth
-    utype = tl.dtype(f"uint{nbits}")
-    byte_mask_val = tl.full((), HISTOGRAM_BINS - 1, dtype=utype)
-
-    k_to_find = tl.full((), (N + 1) // 2, dtype=tl.int32)
-    desired = tl.full((), 0, dtype=utype)
-    desired_mask = tl.full((), 0, dtype=utype)
-
-    for digit_pos in tl.static_range(nbits - 8, -1, -8):
-        counts = tl.zeros((HISTOGRAM_BINS,), dtype=tl.int32)
-
-        for start in tl.range(0, N, BLOCK_N):
-            cols = start + offsets
-            mask = cols < N
-            vals = tl.load(inp + pid * N + cols, mask=mask, other=0)
-            keys = _to_order_key(vals, mask)
-            active = mask & ((keys & desired_mask) == desired)
-            digit = ((keys >> digit_pos) & byte_mask_val).to(tl.int32)
-            digit = tl.where(active, digit, 0)
-            chunk_counts = tl.histogram(digit, HISTOGRAM_BINS).to(tl.int32)
-            inactive_count = tl.sum((~active).to(tl.int32), axis=0)
-            counts += chunk_counts - tl.where(bins == 0, inactive_count, 0)
-
-        cumsum = tl.cumsum(counts, axis=0)
-        prev = cumsum - counts
-        take = (k_to_find <= cumsum) & (k_to_find > prev)
-        selected_bin = tl.min(tl.where(take, bins, HISTOGRAM_BINS - 1), axis=0)
-        counts_before = tl.max(tl.where(take, prev, 0), axis=0)
-
-        selected_bin = selected_bin.to(utype)
-        desired = desired | (selected_bin << digit_pos)
-        desired_mask = desired_mask | (byte_mask_val << digit_pos)
-        k_to_find = k_to_find - counts_before
-
-    result_idx = tl.full((), N, dtype=tl.int32)
-    for start in tl.range(0, N, BLOCK_N):
-        cols = start + offsets
-        mask = cols < N
-        vals = tl.load(inp + pid * N + cols, mask=mask, other=0)
-        keys = _to_order_key(vals, mask)
-        local_idx = tl.min(tl.where(mask & (keys == desired), cols, N), axis=0)
-        result_idx = tl.where(local_idx < result_idx, local_idx, result_idx)
-
-    result_val = tl.load(inp + pid * N + result_idx)
-    tl.store(out_values + pid, result_val)
-    tl.store(out_indices + pid, result_idx)
-
-
-@libentry()
-@triton.jit
-def nanmedian_ascend_byte_histogram_init_kernel(
-    state,
-    M,
-    N: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    base = pid * 3
-    tl.store(state + base + 0, 0)
-    tl.store(state + base + 1, 0)
-    tl.store(state + base + 2, (N + 1) // 2)
-
-
-@libentry()
-@triton.jit
-def nanmedian_ascend_byte_histogram_count_kernel(
-    inp,
-    state,
-    partial_counts,
-    M,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    NUM_CHUNKS: tl.constexpr,
-    HISTOGRAM_BINS: tl.constexpr,
-    DIGIT_POS: tl.constexpr,
-):
-    pid_m = tle.program_id(0)
-    pid_chunk = tle.program_id(1)
-    offsets = pid_chunk * BLOCK_N + tl.arange(0, BLOCK_N)
-    bins = tl.arange(0, HISTOGRAM_BINS)
-    mask = offsets < N
-
-    dtype = inp.dtype.element_ty
-    nbits: tl.constexpr = dtype.primitive_bitwidth
-    utype = tl.dtype(f"uint{nbits}")
-    byte_mask_val = tl.full((), HISTOGRAM_BINS - 1, dtype=utype)
-    state_base = pid_m * 3
-    desired = tl.load(state + state_base + 0).to(utype)
-    desired_mask = tl.load(state + state_base + 1).to(utype)
-
-    vals = tl.load(inp + pid_m * N + offsets, mask=mask, other=0)
-    keys = _to_order_key(vals, mask)
-    active = mask & ((keys & desired_mask) == desired)
-    digit = ((keys >> DIGIT_POS) & byte_mask_val).to(tl.int32)
-    digit = tl.where(active, digit, 0)
-    counts = tl.histogram(digit, HISTOGRAM_BINS).to(tl.int32)
-    inactive_count = tl.sum((~active).to(tl.int32), axis=0)
-    counts = counts - tl.where(bins == 0, inactive_count, 0)
-
-    count_offsets = (pid_m * NUM_CHUNKS + pid_chunk) * HISTOGRAM_BINS + bins
-    tl.store(partial_counts + count_offsets, counts)
-
-
-@libentry()
-@triton.jit
-def nanmedian_ascend_byte_histogram_update_kernel(
-    inp,
-    partial_counts,
-    state,
-    M,
-    NUM_CHUNKS: tl.constexpr,
-    HISTOGRAM_BINS: tl.constexpr,
-    DIGIT_POS: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    bins = tl.arange(0, HISTOGRAM_BINS)
-    counts = tl.zeros((HISTOGRAM_BINS,), dtype=tl.int32)
-
-    for chunk in tl.range(0, NUM_CHUNKS):
-        count_offsets = (pid * NUM_CHUNKS + chunk) * HISTOGRAM_BINS + bins
-        counts += tl.load(partial_counts + count_offsets)
-
-    state_base = pid * 3
-    k_to_find = tl.load(state + state_base + 2).to(tl.int32)
-    cumsum = tl.cumsum(counts, axis=0)
-    prev = cumsum - counts
-    take = (k_to_find <= cumsum) & (k_to_find > prev)
-    selected_bin = tl.min(tl.where(take, bins, HISTOGRAM_BINS - 1), axis=0)
-    counts_before = tl.max(tl.where(take, prev, 0), axis=0)
-
-    dtype = inp.dtype.element_ty
-    nbits: tl.constexpr = dtype.primitive_bitwidth
-    utype = tl.dtype(f"uint{nbits}")
-    byte_mask_val = tl.full((), HISTOGRAM_BINS - 1, dtype=utype)
-    desired = tl.load(state + state_base + 0).to(utype)
-    desired_mask = tl.load(state + state_base + 1).to(utype)
-    selected_bin = selected_bin.to(utype)
-
-    desired = desired | (selected_bin << DIGIT_POS)
-    desired_mask = desired_mask | (byte_mask_val << DIGIT_POS)
-    tl.store(state + state_base + 0, desired)
-    tl.store(state + state_base + 1, desired_mask)
-    tl.store(state + state_base + 2, k_to_find - counts_before)
-
-
-@libentry()
-@triton.jit
-def nanmedian_ascend_byte_histogram_find_index_kernel(
-    inp,
-    state,
-    out_values,
-    out_indices,
-    M,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    offsets = tl.arange(0, BLOCK_N)
-    dtype = inp.dtype.element_ty
-    nbits: tl.constexpr = dtype.primitive_bitwidth
-    utype = tl.dtype(f"uint{nbits}")
-    desired = tl.load(state + pid * 3 + 0).to(utype)
-
-    result_idx = tl.full((), N, dtype=tl.int32)
-    for start in tl.range(0, N, BLOCK_N):
-        cols = start + offsets
-        mask = cols < N
-        vals = tl.load(inp + pid * N + cols, mask=mask, other=0)
-        keys = _to_order_key(vals, mask)
-        local_idx = tl.min(tl.where(mask & (keys == desired), cols, N), axis=0)
-        result_idx = tl.where(local_idx < result_idx, local_idx, result_idx)
-
-    result_val = tl.load(inp + pid * N + result_idx)
-    tl.store(out_values + pid, result_val)
-    tl.store(out_indices + pid, result_idx)
-
-
-@libentry()
-@triton.jit
 def nanmedian_radix_select_kernel(
     inp,
     out_values,
@@ -991,39 +686,52 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
         and N > MAX_BLOCK_N
         and N == triton.next_power_of_2(N)
     )
-    if is_nvidia and is_cuda and inp.dtype in RADIX_SELECT_DTYPES and in_radix_range:
-        flat_values = values.reshape(M)
-        flat_indices = indices.reshape(M)
-        block_n = _radix_block_n(inp, N)
-        num_warps = 4 if block_n <= 512 else 8
-        with torch_device_fn.device(inp.device):
-            nanmedian_radix_select_kernel[(M,)](
-                inp,
-                flat_values,
-                flat_indices,
-                M,
-                N,
-                block_n,
-                _radix_bits(inp, N) if use_cuda_histogram else RADIX_BITS,
-                is_cuda,
-                use_cuda_histogram,
-                num_warps=num_warps,
-                num_stages=1,
-            )
-    elif N <= MAX_BLOCK_N and inp.dtype is not torch.float64:
-        flat_values = values.reshape(M)
-        flat_indices = indices.reshape(M)
-        block_n = triton.next_power_of_2(N)
-        with torch_device_fn.device(inp.device):
-            nanmedian_select_kernel[(M,)](
-                inp,
-                flat_values,
-                flat_indices,
-                M,
-                N,
-                block_n,
-                is_cuda,
-            )
+    use_radix_select = (
+        is_nvidia and is_cuda and inp.dtype in RADIX_SELECT_DTYPES and in_radix_range
+    )
+    use_small_select = N <= MAX_BLOCK_N and inp.dtype is not torch.float64
+    if use_radix_select or use_small_select:
+        values_contiguous = values.is_contiguous()
+        indices_contiguous = indices.is_contiguous()
+        flat_values = values.reshape(M) if values_contiguous else values.new_empty((M,))
+        flat_indices = (
+            indices.reshape(M) if indices_contiguous else indices.new_empty((M,))
+        )
+
+        if use_radix_select:
+            block_n = _radix_block_n(inp, N)
+            num_warps = 4 if block_n <= 512 else 8
+            with torch_device_fn.device(inp.device):
+                nanmedian_radix_select_kernel[(M,)](
+                    inp,
+                    flat_values,
+                    flat_indices,
+                    M,
+                    N,
+                    block_n,
+                    _radix_bits(inp, N) if use_cuda_histogram else RADIX_BITS,
+                    is_cuda,
+                    use_cuda_histogram,
+                    num_warps=num_warps,
+                    num_stages=1,
+                )
+        else:
+            block_n = triton.next_power_of_2(N)
+            with torch_device_fn.device(inp.device):
+                nanmedian_select_kernel[(M,)](
+                    inp,
+                    flat_values,
+                    flat_indices,
+                    M,
+                    N,
+                    block_n,
+                    is_cuda,
+                )
+
+        if not values_contiguous:
+            values.copy_(flat_values.reshape(values.shape))
+        if not indices_contiguous:
+            indices.copy_(flat_indices.reshape(indices.shape))
     else:
         result = _nanmedian_kthvalue_fallback(inp, M, N)
         computed_values = result.values.reshape(compute_shape)

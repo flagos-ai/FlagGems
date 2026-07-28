@@ -127,10 +127,6 @@ def test_nanmedian_large_flat(dtype):
 
 @pytest.mark.nanmedian
 @pytest.mark.nanmedian_out
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "hygon",
-    reason="Hygon Triton limits a single block tensor to 1048576 elements",
-)
 def test_nanmedian_hygon_flat_above_block_limit():
     inp = _make_input((16, 131072), torch.float16)
     ref_inp = utils.to_reference(inp)
@@ -270,10 +266,6 @@ def test_nanmedian_dim_values_large_int(dtype):
 
 
 @pytest.mark.nanmedian_dim_values
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "mthreads",
-    reason="MThreads non-contiguous nanmedian out regression",
-)
 def test_nanmedian_dim_values_non_contiguous_out():
     inp = _make_input((4, 1031), torch.float32)
     ref = torch.nanmedian(utils.to_reference(inp), dim=1)
