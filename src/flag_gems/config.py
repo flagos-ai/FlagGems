@@ -59,6 +59,7 @@ if use_env_c_extension and _has_cpp_so:
         use_c_extension = True
     except (ImportError, AttributeError):
         aten_patch_list = []
+        has_c_extension = False
         use_c_extension = False
 
 
