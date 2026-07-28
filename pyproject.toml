@@ -65,7 +65,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "packaging==26.0",
+    "packaging>=26.0",
     "PyYAML==6.0.1",
     "sqlalchemy==2.0.48",
     # Keep this unpinned so Python 3.10 backends resolve a compatible release.
