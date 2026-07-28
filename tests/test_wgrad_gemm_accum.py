@@ -770,6 +770,7 @@ def test_wgrad_gemm_accum_fp16_vs_apex_zero_features(zero_dim, dtype):
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
+@pytest.mark.wgrad_main_grad_non_contig
 @pytest.mark.parametrize("dtype", FP32_ACCUM_CPU_REF_DTYPES)
 def test_wgrad_gemm_accum_fp32_main_grad_non_contiguous(dtype):
     """Non-contiguous main_grad must match contiguous accumulation."""
@@ -801,6 +802,7 @@ def test_wgrad_gemm_accum_fp32_main_grad_non_contiguous(dtype):
 
 
 @pytest.mark.wgrad_gemm_accum_fp16
+@pytest.mark.wgrad_main_grad_non_contig
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
 def test_wgrad_gemm_accum_fp16_main_grad_non_contiguous(dtype):
     """Non-contiguous main_grad on fp16/bf16 accum path."""
@@ -828,6 +830,74 @@ def test_wgrad_gemm_accum_fp16_main_grad_non_contiguous(dtype):
 
     _assert_vs_cpu_ref(res_nc, ref_main, dtype, reduce_dim=batch)
     _assert_vs_cpu_ref(res_nc, res_contig, dtype, reduce_dim=batch)
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+@pytest.mark.wgrad_main_grad_non_contig
+@pytest.mark.parametrize("dim0, dim1, in_features, out_features", WGRAD_SHAPES_3D)
+@pytest.mark.parametrize("dtype", FP32_ACCUM_CPU_REF_DTYPES)
+def test_wgrad_gemm_accum_fp32_main_grad_non_contiguous_3d(
+    dim0, dim1, in_features, out_features, dtype
+):
+    """3D collapse path with non-contiguous main_grad must match contig + CPU ref."""
+    _with_seed(20260801)
+    input_tensor = torch.randn(
+        (dim0, dim1, in_features), dtype=dtype, device=flag_gems.device
+    )
+    grad_output = torch.randn(
+        (dim0, dim1, out_features), dtype=dtype, device=flag_gems.device
+    )
+    main_c = torch.randn(
+        (out_features, in_features), dtype=torch.float32, device=flag_gems.device
+    )
+
+    ref_main = main_c.clone()
+    _ref_wgrad_gemm_accum_fp32_cpu(input_tensor, grad_output, ref_main)
+
+    res_contig = main_c.clone()
+    wgrad_gemm_accum_fp32(input_tensor, grad_output, res_contig)
+
+    res_nc = _as_non_contiguous_main_grad(main_c)
+    assert not res_nc.is_contiguous()
+    wgrad_gemm_accum_fp32(input_tensor, grad_output, res_nc)
+
+    reduce_dim = dim0 * dim1
+    _assert_vs_cpu_ref(res_nc, ref_main, torch.float32, reduce_dim=reduce_dim)
+    _assert_vs_cpu_ref(res_nc, res_contig, torch.float32, reduce_dim=reduce_dim)
+
+
+@pytest.mark.wgrad_gemm_accum_fp16
+@pytest.mark.wgrad_main_grad_non_contig
+@pytest.mark.parametrize("dim0, dim1, in_features, out_features", WGRAD_SHAPES_3D)
+@pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
+def test_wgrad_gemm_accum_fp16_main_grad_non_contiguous_3d(
+    dim0, dim1, in_features, out_features, dtype
+):
+    """3D collapse path with non-contiguous fp16/bf16 main_grad."""
+    _with_seed(20260802)
+    input_tensor = torch.randn(
+        (dim0, dim1, in_features), dtype=dtype, device=flag_gems.device
+    )
+    grad_output = torch.randn(
+        (dim0, dim1, out_features), dtype=dtype, device=flag_gems.device
+    )
+    main_c = torch.randn(
+        (out_features, in_features), dtype=dtype, device=flag_gems.device
+    )
+
+    ref_main = main_c.clone()
+    _ref_wgrad_gemm_accum_fp16_cpu(input_tensor, grad_output, ref_main, dtype)
+
+    res_contig = main_c.clone()
+    wgrad_gemm_accum_fp16(input_tensor, grad_output, res_contig)
+
+    res_nc = _as_non_contiguous_main_grad(main_c)
+    assert not res_nc.is_contiguous()
+    wgrad_gemm_accum_fp16(input_tensor, grad_output, res_nc)
+
+    reduce_dim = dim0 * dim1
+    _assert_vs_cpu_ref(res_nc, ref_main, dtype, reduce_dim=reduce_dim)
+    _assert_vs_cpu_ref(res_nc, res_contig, dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
