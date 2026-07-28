@@ -124,7 +124,8 @@ def _load_wgrad_gemm_ext():
         )
     except Exception as exc:  # noqa: BLE001 - any JIT failure -> Torch fallback
         logger.warning(
-            "wgrad_gemm_accum_fp32: JIT extension unavailable (%s); using Torch fallback",
+            "wgrad_gemm_accum_fp32: JIT extension unavailable (%s); "
+            "using Torch fallback",
             exc,
         )
         return None
@@ -177,6 +178,8 @@ def _cublas_wgrad_gemm_accum_fp32(
     strict_cpu_ref: bool = False,
 ) -> None:
     """Apex ``wgrad_gemm_accum_fp32_cuda`` layout via compiled ``cublasGemmEx``."""
+    global _WGRAD_EXT_RUNTIME_OK
+
     if main_grad.dtype != torch.float32:
         raise RuntimeError("main_grad must be float32 for GemmEx fp32-accum path")
     if input_2d.dtype != grad_output_2d.dtype:
@@ -191,11 +194,45 @@ def _cublas_wgrad_gemm_accum_fp32(
         _wgrad_fp32_strict_accum(grad_output_2d, input_2d, main_grad)
         return
 
-    ext = _load_wgrad_gemm_ext()
-    if ext is not None:
-        ext.wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
-        return
+    # Prefer GemmEx; if JIT/c_operators loads but runtime GemmEx is broken (common
+    # on some CI images), fall back once and stay on the Torch path.
+    if _WGRAD_EXT_RUNTIME_OK:
+        ext = _load_wgrad_gemm_ext()
+        if ext is not None:
+            try:
+                ext.wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
+                return
+            except Exception as exc:  # noqa: BLE001
+                _WGRAD_EXT_RUNTIME_OK = False
+                logger.warning(
+                    "wgrad_gemm_accum_fp32: GemmEx runtime failed (%s); "
+                    "using Torch fallback for subsequent calls",
+                    exc,
+                )
+
     _torch_wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
+
+
+# Set False after a runtime GemmEx failure so we do not keep raising.
+_WGRAD_EXT_RUNTIME_OK = True
+
+
+def wgrad_gemmex_available() -> bool:
+    """True if the compiled GemmEx path loads and runs a tiny smoke call."""
+    if not torch.cuda.is_available():
+        return False
+    ext = _load_wgrad_gemm_ext()
+    if ext is None:
+        return False
+    try:
+        device = flag_gems.device
+        inp = torch.randn(4, 8, device=device, dtype=torch.float16)
+        gout = torch.randn(4, 16, device=device, dtype=torch.float16)
+        main = torch.zeros(16, 8, device=device, dtype=torch.float32)
+        ext.wgrad_gemm_accum_fp32(inp, gout, main)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _matmul_operands(

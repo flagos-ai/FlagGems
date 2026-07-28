@@ -16,7 +16,11 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.wgrad_gemm_accum import wgrad_gemm_accum_fp16, wgrad_gemm_accum_fp32
+from flag_gems.ops.wgrad_gemm_accum import (
+    wgrad_gemm_accum_fp16,
+    wgrad_gemm_accum_fp32,
+    wgrad_gemmex_available,
+)
 
 from . import accuracy_utils as utils
 
@@ -26,6 +30,11 @@ try:
     HAS_APEX_WGRAD = True
 except ImportError:
     HAS_APEX_WGRAD = False
+
+# vs-Apex needs a working GemmEx path; Torch fallback is not bit-aligned with Apex.
+HAS_WGRAD_GEMMEX = wgrad_gemmex_available()
+RUN_VS_APEX_WGRAD = HAS_APEX_WGRAD and HAS_WGRAD_GEMMEX
+_SKIP_VS_APEX = "Apex wgrad or FlagGems GemmEx extension unavailable"
 
 WGRAD_SHAPES_2D = [
     (4, 16, 32),
@@ -698,8 +707,8 @@ def test_wgrad_gemm_accum_fp16_zero_out_features(dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("zero_dim", ["in", "out"])
 @pytest.mark.parametrize("dtype", FP32_ACCUM_INPUT_DTYPES)
@@ -730,8 +739,8 @@ def test_wgrad_gemm_accum_fp32_vs_apex_zero_features(zero_dim, dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("zero_dim", ["in", "out"])
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
@@ -823,8 +832,8 @@ def test_wgrad_gemm_accum_fp16_main_grad_non_contiguous(dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("batch, in_features, out_features", WGRAD_SHAPES_2D)
 @pytest.mark.parametrize("dtype", FP32_ACCUM_INPUT_DTYPES)
@@ -851,8 +860,8 @@ def test_wgrad_gemm_accum_fp32_vs_apex(batch, in_features, out_features, dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("dim0, dim1, in_features, out_features", WGRAD_SHAPES_3D)
 @pytest.mark.parametrize("dtype", FP32_ACCUM_3D_APEX_DTYPES)
@@ -881,8 +890,8 @@ def test_wgrad_gemm_accum_fp32_vs_apex_3d(dim0, dim1, in_features, out_features,
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("dim0, dim1, dim2, in_features, out_features", WGRAD_SHAPES_4D)
 @pytest.mark.parametrize("dtype", FP32_ACCUM_3D_APEX_DTYPES)
@@ -917,8 +926,8 @@ def test_wgrad_gemm_accum_fp32_vs_apex_4d(
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("batch, in_features, out_features", WGRAD_SHAPES_2D)
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
@@ -945,8 +954,8 @@ def test_wgrad_gemm_accum_fp16_vs_apex(batch, in_features, out_features, dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("batch, in_features, out_features", WGRAD_SHAPES_LARGE_2D)
 @pytest.mark.parametrize("dtype", FP32_ACCUM_INPUT_DTYPES)
@@ -978,8 +987,8 @@ def test_wgrad_gemm_accum_fp32_vs_apex_large_shape(
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("batch, in_features, out_features", WGRAD_SHAPES_LARGE_2D)
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
@@ -1009,8 +1018,8 @@ def test_wgrad_gemm_accum_fp16_vs_apex_large_shape(
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("dim0, dim1, in_features, out_features", WGRAD_SHAPES_LARGE_3D)
 @pytest.mark.parametrize("dtype", FP32_ACCUM_3D_APEX_DTYPES)
@@ -1042,8 +1051,8 @@ def test_wgrad_gemm_accum_fp32_vs_apex_large_shape_3d(
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("dim0, dim1, in_features, out_features", WGRAD_SHAPES_3D)
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
@@ -1071,8 +1080,8 @@ def test_wgrad_gemm_accum_fp16_vs_apex_3d(dim0, dim1, in_features, out_features,
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("dim0, dim1, dim2, in_features, out_features", WGRAD_SHAPES_4D)
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
@@ -1104,8 +1113,8 @@ def test_wgrad_gemm_accum_fp16_vs_apex_4d(
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("dim0, dim1, in_features, out_features", WGRAD_SHAPES_LARGE_3D)
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
@@ -1141,8 +1150,8 @@ REPEAT_ITERS_STRESS = 1000
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("dtype", FP32_ACCUM_INPUT_DTYPES)
 def test_wgrad_gemm_accum_fp32_vs_apex_repeat_fresh(dtype):
@@ -1169,8 +1178,8 @@ def test_wgrad_gemm_accum_fp32_vs_apex_repeat_fresh(dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
 def test_wgrad_gemm_accum_fp16_vs_apex_repeat_fresh(dtype):
@@ -1197,8 +1206,8 @@ def test_wgrad_gemm_accum_fp16_vs_apex_repeat_fresh(dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("dtype", FP32_ACCUM_INPUT_DTYPES)
 def test_wgrad_gemm_accum_fp32_vs_apex_repeat_accum(dtype):
@@ -1226,8 +1235,8 @@ def test_wgrad_gemm_accum_fp32_vs_apex_repeat_accum(dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
 def test_wgrad_gemm_accum_fp16_vs_apex_repeat_accum(dtype):
@@ -1255,8 +1264,8 @@ def test_wgrad_gemm_accum_fp16_vs_apex_repeat_accum(dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 def test_wgrad_gemm_accum_fp32_vs_apex_repeat_stress():
     """1000 single-shot calls on the common fp16→fp32 training path."""
@@ -1397,8 +1406,8 @@ def test_wgrad_gemm_accum_fp32_3d_non_contiguous(
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("batch, in_features, out_features", WGRAD_SHAPES_2D[:1])
 @pytest.mark.parametrize("dtype", FP32_ACCUM_INPUT_DTYPES)
@@ -1570,8 +1579,8 @@ def test_wgrad_gemm_accum_fp16_multi_non_contiguous(dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("dtype", FP32_ACCUM_INPUT_DTYPES)
 def test_wgrad_gemm_accum_fp32_vs_apex_multi_non_contiguous(dtype):
@@ -1599,8 +1608,8 @@ def test_wgrad_gemm_accum_fp32_vs_apex_multi_non_contiguous(dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
 def test_wgrad_gemm_accum_fp16_vs_apex_multi_non_contiguous(dtype):
@@ -1761,8 +1770,8 @@ def test_wgrad_gemm_accum_fp32_numeric_boundaries_fp32_input_tf32_off(case):
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize(
     "case",
@@ -1890,8 +1899,8 @@ def test_wgrad_gemm_accum_fp16_numeric_boundaries(case, dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize(
     "case",
@@ -1989,8 +1998,8 @@ def _assert_vs_apex_equal_nan(res, ref, dtype, *, reduce_dim):
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("case", _NAN_INF_CASES)
 @pytest.mark.parametrize("dtype", FP32_ACCUM_INPUT_DTYPES)
@@ -2018,8 +2027,8 @@ def test_wgrad_gemm_accum_fp32_vs_apex_nan_inf(case, dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.skipif(
-    not HAS_APEX_WGRAD,
-    reason="Apex fused_weight_gradient_mlp_cuda not installed",
+    not RUN_VS_APEX_WGRAD,
+    reason=_SKIP_VS_APEX,
 )
 @pytest.mark.parametrize("case", _NAN_INF_CASES)
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
