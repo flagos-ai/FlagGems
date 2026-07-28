@@ -119,8 +119,20 @@ def _ref_wgrad_gemm_accum_fp16_cpu(input_tensor, grad_output, main_grad, dtype):
     main_grad.copy_(main_grad_cpu)
 
 
-def _assert_vs_cpu_ref(res, ref, dtype, *, reduce_dim):
-    # Independent CPU fp64 reference; always compare on CPU.
+def _assert_vs_cpu_ref(res, ref, dtype, *, reduce_dim, atol=DEFAULT_ATOL):
+    # Always compare on CPU so ``pytest --ref=cpu`` (TO_CPU) is happy:
+    # gems_assert_close asserts ``ref`` is already on CPU when TO_CPU is set.
+    utils.gems_assert_close(
+        res.cpu(),
+        ref.cpu(),
+        dtype,
+        reduce_dim=reduce_dim,
+        atol=atol,
+    )
+
+
+def _assert_vs_apex(res, ref, dtype, *, reduce_dim):
+    """Apex is the deployment target; compare on CPU for --ref=cpu compatibility."""
     utils.gems_assert_close(
         res.cpu(),
         ref.cpu(),
@@ -128,11 +140,6 @@ def _assert_vs_cpu_ref(res, ref, dtype, *, reduce_dim):
         reduce_dim=reduce_dim,
         atol=DEFAULT_ATOL,
     )
-
-
-def _assert_vs_apex(res, ref, dtype, *, reduce_dim):
-    """Apex is the deployment target; compare on device, strict tolerance."""
-    utils.gems_assert_close(res, ref, dtype, reduce_dim=reduce_dim, atol=DEFAULT_ATOL)
 
 
 def _assert_vs_apex_large_k_strict(res, ref, dtype, *, k):
@@ -781,9 +788,7 @@ def test_wgrad_gemm_accum_fp32_main_grad_non_contiguous(dtype):
     wgrad_gemm_accum_fp32(input_tensor, grad_output, res_nc)
 
     _assert_vs_cpu_ref(res_nc, ref_main, torch.float32, reduce_dim=batch)
-    utils.gems_assert_close(
-        res_nc, res_contig, torch.float32, reduce_dim=batch, atol=DEFAULT_ATOL
-    )
+    _assert_vs_cpu_ref(res_nc, res_contig, torch.float32, reduce_dim=batch)
 
 
 @pytest.mark.wgrad_gemm_accum_fp16
@@ -813,9 +818,7 @@ def test_wgrad_gemm_accum_fp16_main_grad_non_contiguous(dtype):
     wgrad_gemm_accum_fp16(input_tensor, grad_output, res_nc)
 
     _assert_vs_cpu_ref(res_nc, ref_main, dtype, reduce_dim=batch)
-    utils.gems_assert_close(
-        res_nc, res_contig, dtype, reduce_dim=batch, atol=DEFAULT_ATOL
-    )
+    _assert_vs_cpu_ref(res_nc, res_contig, dtype, reduce_dim=batch)
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
@@ -1355,13 +1358,7 @@ def test_wgrad_gemm_accum_fp32_2d_non_contiguous(
     wgrad_gemm_accum_fp32(input_tensor, grad_output, res_nc)
 
     _assert_vs_cpu_ref(res_nc, ref_main, torch.float32, reduce_dim=batch)
-    utils.gems_assert_close(
-        res_nc,
-        res_contig,
-        torch.float32,
-        reduce_dim=batch,
-        atol=DEFAULT_ATOL,
-    )
+    _assert_vs_cpu_ref(res_nc, res_contig, torch.float32, reduce_dim=batch)
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
@@ -1395,13 +1392,7 @@ def test_wgrad_gemm_accum_fp32_3d_non_contiguous(
     wgrad_gemm_accum_fp32(input_tensor, grad_output, res_nc)
 
     _assert_vs_cpu_ref(res_nc, ref_main, torch.float32, reduce_dim=dim0 * dim1)
-    utils.gems_assert_close(
-        res_nc,
-        res_contig,
-        torch.float32,
-        reduce_dim=dim0 * dim1,
-        atol=DEFAULT_ATOL,
-    )
+    _assert_vs_cpu_ref(res_nc, res_contig, torch.float32, reduce_dim=dim0 * dim1)
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
@@ -1476,9 +1467,7 @@ def test_wgrad_gemm_accum_fp16_2d_non_contiguous(
     wgrad_gemm_accum_fp16(input_tensor, grad_output, res_nc)
 
     _assert_vs_cpu_ref(res_nc, ref_main, dtype, reduce_dim=batch)
-    utils.gems_assert_close(
-        res_nc, res_contig, dtype, reduce_dim=batch, atol=DEFAULT_ATOL
-    )
+    _assert_vs_cpu_ref(res_nc, res_contig, dtype, reduce_dim=batch)
 
 
 @pytest.mark.wgrad_gemm_accum_fp16
@@ -1512,9 +1501,7 @@ def test_wgrad_gemm_accum_fp16_3d_non_contiguous(
     wgrad_gemm_accum_fp16(input_tensor, grad_output, res_nc)
 
     _assert_vs_cpu_ref(res_nc, ref_main, dtype, reduce_dim=dim0 * dim1)
-    utils.gems_assert_close(
-        res_nc, res_contig, dtype, reduce_dim=dim0 * dim1, atol=DEFAULT_ATOL
-    )
+    _assert_vs_cpu_ref(res_nc, res_contig, dtype, reduce_dim=dim0 * dim1)
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
@@ -1547,9 +1534,7 @@ def test_wgrad_gemm_accum_fp32_multi_non_contiguous(dtype):
     wgrad_gemm_accum_fp32(input_nc, grad_output_nc, main_nc)
 
     _assert_vs_cpu_ref(main_nc, ref_main, torch.float32, reduce_dim=batch)
-    utils.gems_assert_close(
-        main_nc, res_contig, torch.float32, reduce_dim=batch, atol=DEFAULT_ATOL
-    )
+    _assert_vs_cpu_ref(main_nc, res_contig, torch.float32, reduce_dim=batch)
 
 
 @pytest.mark.wgrad_gemm_accum_fp16
@@ -1580,9 +1565,7 @@ def test_wgrad_gemm_accum_fp16_multi_non_contiguous(dtype):
     wgrad_gemm_accum_fp16(input_nc, grad_output_nc, main_nc)
 
     _assert_vs_cpu_ref(main_nc, ref_main, dtype, reduce_dim=batch)
-    utils.gems_assert_close(
-        main_nc, res_contig, dtype, reduce_dim=batch, atol=DEFAULT_ATOL
-    )
+    _assert_vs_cpu_ref(main_nc, res_contig, dtype, reduce_dim=batch)
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
@@ -1995,8 +1978,8 @@ _NAN_INF_CASES = [
 def _assert_vs_apex_equal_nan(res, ref, dtype, *, reduce_dim):
     """Match Apex including NaN/Inf positions (GEMM propagation semantics)."""
     utils.gems_assert_close(
-        res,
-        ref,
+        res.cpu(),
+        ref.cpu(),
         dtype,
         equal_nan=True,
         reduce_dim=reduce_dim,
