@@ -77,30 +77,24 @@ def sgn_complex_kernel(
     abs_imag = tl.abs(imag_compute)
     scale = tl.maximum(abs_real, abs_imag)
     is_zero = scale == 0.0
-    # Match complex division semantics: non-finite inputs produce NaN components.
-    is_nonfinite = (
-        (real_compute != real_compute)
-        | (imag_compute != imag_compute)
-        | (abs_real == float("inf"))
-        | (abs_imag == float("inf"))
-    )
     safe_scale = tl.where(is_zero, 1.0, scale)
 
+    # Overflow-safe magnitude for finite inputs (mirrors std::hypot scaling).
     scaled_real = real_compute / safe_scale
     scaled_imag = imag_compute / safe_scale
-    norm = scale * tl.sqrt(scaled_real * scaled_real + scaled_imag * scaled_imag)
+    finite_norm = scale * tl.sqrt(scaled_real * scaled_real + scaled_imag * scaled_imag)
+
+    # Match torch.sgn's complex abs (std::hypot): an infinite component makes the
+    # magnitude inf (dominating any NaN); otherwise a NaN propagates. Dividing the
+    # original components by this magnitude then reproduces IEEE semantics per
+    # component, e.g. (inf + 1j) -> (nan, 0) and (1 + infj) -> (0, nan).
+    has_inf = (abs_real == float("inf")) | (abs_imag == float("inf"))
+    has_nan = (real_compute != real_compute) | (imag_compute != imag_compute)
+    norm = tl.where(has_inf, float("inf"), tl.where(has_nan, float("nan"), finite_norm))
     safe_norm = tl.where(is_zero, 1.0, norm)
 
-    out_real = tl.where(
-        is_nonfinite,
-        float("nan"),
-        tl.where(is_zero, 0.0, real_compute / safe_norm),
-    )
-    out_imag = tl.where(
-        is_nonfinite,
-        float("nan"),
-        tl.where(is_zero, 0.0, imag_compute / safe_norm),
-    )
+    out_real = tl.where(is_zero, 0.0, real_compute / safe_norm)
+    out_imag = tl.where(is_zero, 0.0, imag_compute / safe_norm)
 
     tl.store(out_ri_ptr + base, out_real, mask=mask)
     tl.store(out_ri_ptr + base + 1, out_imag, mask=mask)

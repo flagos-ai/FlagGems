@@ -29,14 +29,8 @@ REAL_DTYPES = (
 )
 COMPLEX_SHAPES = [(17,), (7, 11), (3, 5, 7)]
 SGN_CASES = [
-    (dtype, shape)
-    for dtype in REAL_DTYPES
-    for shape in utils.POINTWISE_SHAPES
-] + [
-    (dtype, shape)
-    for dtype in utils.COMPLEX_DTYPES
-    for shape in COMPLEX_SHAPES
-]
+    (dtype, shape) for dtype in REAL_DTYPES for shape in utils.POINTWISE_SHAPES
+] + [(dtype, shape) for dtype in utils.COMPLEX_DTYPES for shape in COMPLEX_SHAPES]
 
 
 def _make_input(shape, dtype):
