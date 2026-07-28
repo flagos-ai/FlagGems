@@ -68,7 +68,9 @@ dependencies = [
     "packaging==26.0",
     "PyYAML==6.0.1",
     "sqlalchemy==2.0.48",
-    "numpy==1.26.4",
+    # Keep this unpinned so Python 3.10 backends resolve a compatible release.
+    # NumPy 2.3+ requires Python 3.11 or newer.
+    "numpy",
 ]
 
 [project.optional-dependencies]
