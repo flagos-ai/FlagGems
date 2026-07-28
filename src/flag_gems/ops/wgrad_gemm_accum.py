@@ -73,11 +73,12 @@ def _validate_device(*tensors: torch.Tensor) -> None:
 
 @lru_cache(None)
 def _load_wgrad_gemm_ext():
-    """Return a module exposing ``wgrad_gemm_accum_fp32(input, grad, main)``.
+    """Return a module exposing ``wgrad_gemm_accum_fp32``, or ``None``.
 
-    Prefer the official FlagGems C extension when installed; otherwise JIT-compile
-    ``flag_gems/csrc/wgrad_gemm_accum.cpp`` (cublas headers + Torch BLAS handle,
-    no ctypes / ``libcublas.so`` path hunting).
+    Prefer the official FlagGems C extension when installed; otherwise try to
+    JIT-compile ``flag_gems/csrc/wgrad_gemm_accum.cpp``.  Returns ``None`` if
+    neither path works (e.g. CI runners without nvcc) so callers can fall back
+    to a Torch addmm path for correctness tests.
     """
     try:
         from flag_gems import c_operators
@@ -101,11 +102,11 @@ def _load_wgrad_gemm_ext():
 
     src = Path(__file__).resolve().parent.parent / "csrc" / "wgrad_gemm_accum.cpp"
     if not src.is_file():
-        raise RuntimeError(
-            f"Missing wgrad GemmEx source: {src}. "
-            "Rebuild FlagGems cpp package or restore "
-            "flag_gems/csrc/wgrad_gemm_accum.cpp"
+        logger.warning(
+            "wgrad_gemm_accum_fp32: missing GemmEx source at %s; using Torch fallback",
+            src,
         )
+        return None
 
     # Do NOT link -lcublas here. The extension must call the same libcublas that
     # owns PyTorch's BLAS handle (via dlsym); a second copy -> INVALID_VALUE.
@@ -113,13 +114,37 @@ def _load_wgrad_gemm_ext():
         "wgrad_gemm_accum_fp32: JIT-compiling CUDA extension from %s (first call only)",
         src,
     )
-    return load(
-        name="flag_gems_wgrad_gemm_accum",
-        sources=[str(src)],
-        extra_ldflags=["-ldl"],
-        with_cuda=True,
-        verbose=False,
-    )
+    try:
+        return load(
+            name="flag_gems_wgrad_gemm_accum",
+            sources=[str(src)],
+            extra_ldflags=["-ldl"],
+            with_cuda=True,
+            verbose=False,
+        )
+    except Exception as exc:  # noqa: BLE001 - any JIT failure -> Torch fallback
+        logger.warning(
+            "wgrad_gemm_accum_fp32: JIT extension unavailable (%s); using Torch fallback",
+            exc,
+        )
+        return None
+
+
+def _torch_wgrad_gemm_accum_fp32(
+    input_2d: torch.Tensor,
+    grad_output_2d: torch.Tensor,
+    main_grad: torch.Tensor,
+) -> None:
+    """Torch fallback: ``main_grad += grad_output.T @ input`` in fp32 math."""
+    input_c = input_2d.contiguous().float()
+    grad_c = grad_output_2d.contiguous().float()
+    wgrad = grad_c.t() @ input_c
+    if main_grad.is_contiguous():
+        main_grad.add_(wgrad)
+        return
+    weight = main_grad.contiguous()
+    weight.add_(wgrad)
+    main_grad.copy_(weight)
 
 
 def _wgrad_fp32_strict_accum(
@@ -167,7 +192,10 @@ def _cublas_wgrad_gemm_accum_fp32(
         return
 
     ext = _load_wgrad_gemm_ext()
-    ext.wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
+    if ext is not None:
+        ext.wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
+        return
+    _torch_wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
 
 
 def _matmul_operands(
