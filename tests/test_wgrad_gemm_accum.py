@@ -1291,6 +1291,7 @@ def test_wgrad_gemm_accum_fp32_vs_apex_repeat_stress():
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
+@pytest.mark.wgrad_fp32_tf32_off_strict
 @pytest.mark.parametrize(
     "batch, in_features, out_features",
     [
@@ -1687,6 +1688,7 @@ def _make_numeric_boundary_tensors(
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
+@pytest.mark.wgrad_fp32_tf32_off_strict
 @pytest.mark.parametrize(
     "case",
     ["zeros", "large_1e3", "small_1e-5", "mixed_signs"],
