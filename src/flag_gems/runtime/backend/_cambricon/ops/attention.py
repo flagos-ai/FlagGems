@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from functools import partial
@@ -14,7 +28,7 @@ from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
@@ -764,7 +778,7 @@ def scaled_dot_product_attention_forward(
     scale=None,
     enable_gqa=False,
 ):
-    logger.debug("GEMS_CAMBRICON SCALED DOT PRODUCT ATTENTION FORWARD")
+    logger.debug("GEMS_CAMBRICON SCALED_DOT_PRODUCT_ATTENTION_FORWARD")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -871,7 +885,7 @@ def scaled_dot_product_attention_backward(
     scale=None,
     enable_gqa=False,
 ):
-    logger.debug("GEMS_CAMBRICON SCALED DOT PRODUCT ATTENTION BACKWARD")
+    logger.debug("GEMS_CAMBRICON SCALED_DOT_PRODUCT_ATTENTION_BACKWARD")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -1266,7 +1280,7 @@ def flash_attn_varlen_func(
     if num_splits > 0:
         raise RuntimeError("num_splits > 0 is not implemented in GEMS_CAMBRICON.")
     if use_c_extension:
-        logger.debug("GEMS_CAMBRICON FLASH_ATTN_VARLEN_FUNC(C EXTENSION)")
+        logger.debug("GEMS_CAMBRICON FLASH_ATTN_VARLEN_FUNC")
         with torch_device_fn.device(q.device):
             out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
                 q,

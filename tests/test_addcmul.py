@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import numpy as np
@@ -7,11 +21,28 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    ADDCMUL_BROADCAST_SHAPES = [
+        ((128, 256), (128, 256), (128, 256), (1,)),
+    ]
+else:
+    ADDCMUL_BROADCAST_SHAPES = [
+        ((1, 256, 1, 1), (1, 256, 56, 56), (1, 256, 56, 56), (1, 256, 1, 1)),
+        ((1, 3), (2, 1), (2, 3), (1, 1)),
+        ((4, 1, 16), (1, 8, 1), (4, 8, 16), (4, 1, 1)),
+        ((128, 256), (128, 256), (128, 256), (1,)),
+    ]
 
 
 @pytest.mark.addcmul
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_addcmul(shape, dtype):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     t1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -33,14 +64,13 @@ def test_addcmul(shape, dtype):
 @pytest.mark.addcmul_out
 @pytest.mark.parametrize(
     "inp_shape, t1_shape, t2_shape, out_shape",
-    [
-        ((1, 256, 1, 1), (1, 256, 56, 56), (1, 256, 56, 56), (1, 256, 1, 1)),
-        ((1, 3), (2, 1), (2, 3), (1, 1)),
-        ((4, 1, 16), (1, 8, 1), (4, 8, 16), (4, 1, 1)),
-        ((128, 256), (128, 256), (128, 256), (1,)),
-    ],
+    ADDCMUL_BROADCAST_SHAPES,
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
 def test_addcmul_out_broadcast(inp_shape, t1_shape, t2_shape, out_shape, dtype):
     res_inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     t1 = torch.randn(t1_shape, dtype=dtype, device=flag_gems.device)

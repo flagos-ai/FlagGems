@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -31,36 +45,36 @@ def _aminmax_cpu_reference(op_name, inp, *args, out=None, **kwargs):
 
 
 def amin(inp, dim=None, keepdim=False, *, out=None):
-    logger.debug("SUNRISE AMIN CPU REFERENCE")
+    logger.debug("GEMS_SUNRISE AMIN_CPU_REFERENCE")
     return _aminmax_cpu_reference("amin", inp, dim=dim, keepdim=keepdim, out=out)
 
 
 def amin_out(inp, dim=None, keepdim=False, *, out=None):
-    logger.debug("SUNRISE AMIN_OUT CPU REFERENCE")
+    logger.debug("GEMS_SUNRISE AMIN_OUT")
     if out is None:
         raise ValueError("amin_out expects an out tensor")
     return amin(inp, dim=dim, keepdim=keepdim, out=out)
 
 
 def amax(inp, dim=None, keepdim=False, *, out=None):
-    logger.debug("SUNRISE AMAX CPU REFERENCE")
+    logger.debug("GEMS_SUNRISE AMAX")
     return _aminmax_cpu_reference("amax", inp, dim=dim, keepdim=keepdim, out=out)
 
 
 def amax_out(inp, dim=None, keepdim=False, *, out=None):
-    logger.debug("SUNRISE AMAX_OUT CPU REFERENCE")
+    logger.debug("GEMS_SUNRISE AMAX_OUT")
     if out is None:
         raise ValueError("amax_out expects an out tensor")
     return amax(inp, dim=dim, keepdim=keepdim, out=out)
 
 
 def aminmax(inp, dim=None, keepdim=False, *, out=None):
-    logger.debug("SUNRISE AMINMAX CPU REFERENCE")
+    logger.debug("GEMS_SUNRISE AMINMAX")
     return _aminmax_cpu_reference("aminmax", inp, dim=dim, keepdim=keepdim, out=out)
 
 
 def aminmax_out(inp, dim=None, keepdim=False, *, out=None):
-    logger.debug("SUNRISE AMINMAX_OUT CPU REFERENCE")
+    logger.debug("GEMS_SUNRISE AMINMAX_OUT")
     if out is None:
         raise ValueError("aminmax_out expects an out tuple")
     return aminmax(inp, dim=dim, keepdim=keepdim, out=out)

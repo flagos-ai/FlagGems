@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -509,7 +523,7 @@ def unique_consecutive(
     Returns:
         (Tensor, Tensor (optional), Tensor (optional)): output, inverse_indices, counts
     """
-    logger.debug("GEMS UNIQUE_CONSECUTIVE")
+    logger.debug("GEMS_SUNRISE UNIQUE_CONSECUTIVE")
 
     if dim is not None:
         # For dim-wise unique_consecutive, fall back to PyTorch for now

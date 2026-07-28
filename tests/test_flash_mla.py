@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 
 import pytest
@@ -7,9 +21,16 @@ import triton
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    SEQLEN_LIST = [1024]
+else:
+    SEQLEN_LIST = [1024, 2048, 4096, 8192]
 
 
 def cal_diff(x: torch.Tensor, y: torch.Tensor, name: str) -> None:
@@ -83,8 +104,11 @@ def ref_mla(
 
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2817: RuntimeError")
 @pytest.mark.flash_mla
-@pytest.mark.parametrize("seqlen", [1024, 2048, 4096, 8192])
+@pytest.mark.parametrize("seqlen", SEQLEN_LIST)
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_flash_mla(monkeypatch, seqlen, dtype):
     b = 128
     s_q = 1

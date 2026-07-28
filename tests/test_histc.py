@@ -1,12 +1,31 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
 
+from . import conftest as cfg
 from .accuracy_utils import gems_assert_close, to_reference
 
-HISTC_SHAPES = [(64,), (1024,), (4096,), (100, 100), (32, 64, 16)]
-HISTC_BINS = [10, 50, 100]
+if cfg.QUICK_MODE:
+    HISTC_SHAPES = [(64,), (100, 100)]
+    HISTC_BINS = [10]
+else:
+    HISTC_SHAPES = [(64,), (1024,), (4096,), (100, 100), (32, 64, 16)]
+    HISTC_BINS = [10, 50, 100]
 HISTC_DTYPES = [torch.float32]
 
 

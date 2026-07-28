@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -22,6 +36,7 @@ def upsample_linear1d_backward_kernel(
     gi_stride_c,
     gi_stride_w,
     align_corners: tl.constexpr,
+    WINDOW: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -53,7 +68,7 @@ def upsample_linear1d_backward_kernel(
 
     acc = tl.zeros([BLOCK], dtype=tl.float32)
 
-    for i in range(-2, 3):
+    for i in tl.static_range(-WINDOW, WINDOW + 1):
         x_out = base + i
         valid = (x_out >= 0) & (x_out < out_w)
         x_out_f = x_out.to(tl.float32)
@@ -131,6 +146,9 @@ def upsample_linear1d_backward(
     gi_stride_n, gi_stride_c, gi_stride_w = grad_in.stride()
 
     BLOCK = 512
+    WINDOW = 2
+    if out_w > 2 * in_w:
+        WINDOW = triton.cdiv(out_w, in_w) + 2
     grid = (triton.cdiv(n * c * in_w, BLOCK),)
 
     upsample_linear1d_backward_kernel[grid](
@@ -147,6 +165,7 @@ def upsample_linear1d_backward(
         gi_stride_c,
         gi_stride_w,
         align_corners,
+        WINDOW=WINDOW,
         BLOCK=BLOCK,
     )
 

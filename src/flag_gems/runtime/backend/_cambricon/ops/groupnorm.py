@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -9,7 +23,7 @@ from flag_gems.utils import libentry, tl_extra_shim
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
 
 
@@ -572,7 +586,7 @@ def weight_bias_backward_kernel_opt(
 
 
 def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
-    logger.debug("GEMS_CAMBRICON GROUPNORM FORWARD")
+    logger.debug("GEMS_CAMBRICON GROUP_NORM")
     group_size = C // group
     input = input.contiguous()
     if weight is not None:
@@ -605,7 +619,7 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
 def group_norm_backward(
     grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
 ):
-    logger.debug("GEMS_CAMBRICON GROUPNORM BACKWARD")
+    logger.debug("GEMS_CAMBRICON GROUP_NORM_BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()

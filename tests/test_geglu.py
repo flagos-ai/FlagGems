@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -10,33 +24,23 @@ vendor_name = flag_gems.vendor_name
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
-    TE_AVAILABLE = True
+    TE_OP = getattr(tex, "geglu", None)
 except ImportError:
-    TE_AVAILABLE = False
+    TE_OP = None
 
 
 @pytest.mark.geglu
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", utils.GLU_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine is required")
+@pytest.mark.skipif(TE_OP is None, reason="'geglu' not found in TransformerEngine")
 @pytest.mark.skipif(
     vendor_name == "kunlunxin",
-    reason="Kunlunxin TE API signature differs from upstream NVIDIA TE (requires fp8_tensor/otype); "
-    "FlagGems kernel also fails to compile on XPU (xpu3-elfconv error)",
+    reason="Kunlunxin TransformerEngine API is incompatible with this test",
 )
 def test_geglu(shape, dtype):
-    if len(shape) == 0:
-        # GEGLU does not support 0-dim scalar tensors.
-        return
-
-    if shape[-1] % 2 != 0:
-        shape = list(shape)
-        shape[-1] += 1
-        shape = tuple(shape)
-
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_out = tex.geglu(input_tensor, None)
+    ref_out = TE_OP(input_tensor, None)
     ref_out = utils.to_reference(ref_out)
 
     with flag_gems.use_gems():
