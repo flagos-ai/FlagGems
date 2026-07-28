@@ -29,7 +29,7 @@ container_image: harbor.baai.ac.cn/flaggems/iluvatar-flaggems-test-bi-v150:20260
 
 # Container volumes to mount for this backends
 container_volumes:
-  - /data1:/data1
+  - /data:/data
   - /lib/modules:/lib/modules
   - /dev:/dev
   - /etc/localtime:/etc/localtime:ro
@@ -55,4 +55,4 @@ test_env:
 gpu_check_script: tools/gpu_check_iluvatar.sh
 
 # Output base directory for this backends
-output_base_dir: /home/flaggems/weekly
+output_base_dir: /data/flaggems/weekly
