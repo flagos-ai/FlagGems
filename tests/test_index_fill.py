@@ -32,11 +32,7 @@ INDEX_FILL_OPS = [
     "index_fill_tensor_",
     "index_fill_tensor_out",
 ]
-INDEX_FILL_OOB_PATHS = (
-    ("cpp", "python_contiguous", "python_strided")
-    if flag_gems.device == "cuda"
-    else ("python_contiguous", "python_strided")
-)
+INDEX_FILL_OOB_PATHS = ("python_contiguous", "python_strided")
 
 
 def _make_input(shape, dtype):
@@ -707,7 +703,13 @@ def test_index_fill_out_of_range_index_device_assert(op_name, execution_path):
         else "inp.index_fill_(dim, index, 1.0)"
     )
 
+    source_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"
+    )
     child_code = f"""
+import sys
+sys.path.insert(0, {source_dir!r})
+
 import torch
 import flag_gems
 from flag_gems.runtime import torch_device_fn
@@ -725,15 +727,9 @@ except Exception as exc:
     raise SystemExit(0)
 raise SystemExit(1)
 """
-    env = os.environ.copy()
-    env.pop("FLAG_GEMS_INDEX_FILL_BOUNDS_CHECK", None)
-    if execution_path != "cpp":
-        env["FLAG_GEMS_INDEX_FILL_CPP_LAUNCHER"] = "0"
-
     result = subprocess.run(
         [sys.executable, "-c", child_code],
         cwd=os.path.dirname(os.path.dirname(__file__)),
-        env=env,
         capture_output=True,
         text=True,
         timeout=120,
@@ -748,8 +744,10 @@ raise SystemExit(1)
 
 
 @pytest.mark.index_fill_
-def test_index_fill_out_of_range_index(monkeypatch):
-    monkeypatch.setenv("FLAG_GEMS_INDEX_FILL_BOUNDS_CHECK", "sync")
+@pytest.mark.skipif(
+    flag_gems.device != "npu", reason="NPU validates index bounds on the host"
+)
+def test_index_fill_out_of_range_index():
     inp = torch.randn((3, 4), device=flag_gems.device)
     index = torch.tensor([4], dtype=torch.long, device=flag_gems.device)
     with (

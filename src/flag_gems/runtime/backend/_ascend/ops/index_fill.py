@@ -11,7 +11,6 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.index_fill import (
-    _index_fill_uses_device_bounds_check,
     _native_clone,
     _prepare_index,
     _prepare_tensor_value,
@@ -937,7 +936,7 @@ def _prepare_ascend_index(inp, dim, index):
     bounds_checked = False
     has_negative = False
     host_index = None
-    if index.numel() > 0 and _index_fill_uses_device_bounds_check():
+    if index.numel() > 0:
         has_negative, host_index = _check_ascend_index_bounds(index, inp.size(dim))
         bounds_checked = True
     return dim, index.contiguous(), bounds_checked, has_negative, host_index

@@ -1,3 +1,4 @@
+#include <c10/core/DispatchKeySet.h>
 #include <algorithm>
 #include <limits>
 
@@ -33,6 +34,17 @@ namespace {
     return dim;
   }
 
+  at::Tensor redispatch_clone_fallback(const at::Tensor& input) {
+    static auto op = c10::Dispatcher::singleton()
+                         .findSchemaOrThrow("aten::clone", "")
+                         .typed<at::Tensor(const at::Tensor&, c10::optional<at::MemoryFormat>)>();
+
+    constexpr c10::DispatchKeySet fallback_keyset =
+        c10::DispatchKeySet(c10::DispatchKey::CompositeExplicitAutograd);
+
+    return op.redispatch(fallback_keyset, input, c10::nullopt);
+  }
+
 }  // namespace
 
 at::Tensor& index_fill_scalar_(at::Tensor& input,
@@ -48,7 +60,10 @@ at::Tensor& index_fill_scalar_(at::Tensor& input,
   TORCH_CHECK(input.is_contiguous(), "C++ index_fill_ launcher only supports contiguous input");
   TORCH_CHECK(backend::isOnDevice(input), "input must be on the active backend device");
 
-  const int64_t index_len = index.numel();
+  at::Tensor prepared_index = index.contiguous();
+  if (prepared_index.dim() == 0) prepared_index = prepared_index.reshape({1});
+
+  const int64_t index_len = prepared_index.numel();
   if (input.numel() == 0 || index_len == 0) return input;
 
   const int64_t dim_size = input.size(dim);
@@ -70,7 +85,7 @@ at::Tensor& index_fill_scalar_(at::Tensor& input,
         TritonJITFunction::get_instance((utils::get_triton_src_path() / "index_fill.py").string(),
                                         "index_fill_contiguous_scalar_1d_kernel");
 
-    one_dim_kernel(raw_stream, grid_x, 1, 1, 4, 0, input, index, value, index_len, dim_size, BLOCK);
+    one_dim_kernel(raw_stream, grid_x, 1, 1, 4, 0, input, prepared_index, value, index_len, dim_size, BLOCK);
     return input;
   }
 
@@ -89,7 +104,7 @@ at::Tensor& index_fill_scalar_(at::Tensor& input,
                   4,
                   0,
                   input,
-                  index,
+                  prepared_index,
                   value,
                   outer_index_len,
                   index_len,
@@ -120,7 +135,7 @@ at::Tensor& index_fill_scalar_(at::Tensor& input,
                           4,
                           0,
                           input,
-                          index,
+                          prepared_index,
                           value,
                           row_elements,
                           static_cast<int32_t>(dim_size),
@@ -143,7 +158,7 @@ at::Tensor& index_fill_scalar_(at::Tensor& input,
                        8,
                        0,
                        input,
-                       index,
+                       prepared_index,
                        value,
                        outer_index_len,
                        index_len,
@@ -183,7 +198,7 @@ at::Tensor& index_fill_scalar_(at::Tensor& input,
            4,
            0,
            input,
-           index,
+           prepared_index,
            value,
            static_cast<int32_t>(outer_index_len),
            static_cast<int32_t>(index_len),
@@ -199,7 +214,7 @@ at::Tensor& index_fill_scalar_(at::Tensor& input,
            4,
            0,
            input,
-           index,
+           prepared_index,
            value,
            outer_index_len,
            index_len,
@@ -216,27 +231,7 @@ at::Tensor index_fill_scalar(const at::Tensor& input,
                              int64_t dim,
                              const at::Tensor& index,
                              const c10::Scalar& value) {
-#if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
-  if (input.is_contiguous()) {
-    c10::DeviceGuard guard(input.device());
-    at::Tensor output = at::empty_like(input);
-    if (input.nbytes() > 0) {
-      backend::StreamType stream = backend::getCurrentStream();
-      backend::RawStreamType raw_stream = backend::getRawStream(stream);
-      CUresult status = cuMemcpyDtoDAsync(reinterpret_cast<CUdeviceptr>(output.data_ptr()),
-                                          reinterpret_cast<CUdeviceptr>(input.data_ptr()),
-                                          input.nbytes(),
-                                          raw_stream);
-      TORCH_CHECK(status == CUDA_SUCCESS,
-                  "index_fill device-to-device copy failed with CUDA error ",
-                  static_cast<int>(status));
-    }
-    index_fill_scalar_(output, dim, index, value);
-    return output;
-  }
-#endif
-
-  at::Tensor output = input.clone();
+  at::Tensor output = redispatch_clone_fallback(input);
   index_fill_scalar_(output, dim, index, value);
   return output;
 }

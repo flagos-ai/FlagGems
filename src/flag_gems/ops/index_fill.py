@@ -1,9 +1,6 @@
 import importlib
-import importlib.abc
-import importlib.machinery
 import logging
 import os
-import sys
 from typing import Any, Callable, Mapping, Tuple
 
 import torch
@@ -13,207 +10,6 @@ from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
-
-_CPP_INDEX_FILL_SCALAR = None
-_CPP_INDEX_FILL_SCALAR_INPLACE = None
-_CPP_INDEX_FILL_LOOKED_UP = False
-
-
-def _get_cpp_index_fill_scalar_inplace():
-    global _CPP_INDEX_FILL_SCALAR
-    global _CPP_INDEX_FILL_SCALAR_INPLACE, _CPP_INDEX_FILL_LOOKED_UP
-    if _CPP_INDEX_FILL_LOOKED_UP:
-        return _CPP_INDEX_FILL_SCALAR_INPLACE
-    _CPP_INDEX_FILL_LOOKED_UP = True
-    try:
-        from flag_gems.config import c_operators
-    except ImportError:
-        c_operators = None
-    if c_operators is not None:
-        _CPP_INDEX_FILL_SCALAR = getattr(
-            c_operators,
-            "index_fill_scalar_raw",
-            getattr(c_operators, "index_fill_scalar", None),
-        )
-        _CPP_INDEX_FILL_SCALAR_INPLACE = getattr(
-            c_operators,
-            "index_fill_scalar_raw_",
-            getattr(c_operators, "index_fill_scalar_", None),
-        )
-    return _CPP_INDEX_FILL_SCALAR_INPLACE
-
-
-def _get_cpp_index_fill_scalar():
-    _get_cpp_index_fill_scalar_inplace()
-    return _CPP_INDEX_FILL_SCALAR
-
-
-_CPP_INDEX_FILL_ENABLED = os.environ.get(
-    "FLAG_GEMS_INDEX_FILL_CPP_LAUNCHER", "1"
-).lower() not in ("", "0", "false", "off", "none", "disable", "disabled")
-
-
-# libtriton_jit builds ASTSource directly and otherwise loses JITFunction.debug.
-class _TritonJitCompileProxy:
-    def __init__(self, triton_module):
-        self._triton_module = triton_module
-
-    def __getattr__(self, name):
-        return getattr(self._triton_module, name)
-
-    def compile(self, source, *args, **kwargs):
-        if getattr(getattr(source, "fn", None), "debug", False):
-            options = dict(kwargs.get("options", {}))
-            options["debug"] = True
-            kwargs["options"] = options
-        return self._triton_module.compile(source, *args, **kwargs)
-
-
-def _patch_triton_jit_standalone_compile(module):
-    if getattr(module, "_flag_gems_debug_proxy", False):
-        return
-    if not hasattr(module, "compile_a_kernel"):
-        return
-
-    triton_module = getattr(module, "triton", None)
-    if triton_module is None:
-        return
-
-    module.triton = _TritonJitCompileProxy(triton_module)
-    module._flag_gems_debug_proxy = True
-
-
-class _TritonJitStandaloneCompileLoader(importlib.abc.Loader):
-    def __init__(self, loader):
-        self._loader = loader
-
-    def create_module(self, spec):
-        create_module = getattr(self._loader, "create_module", None)
-        return create_module(spec) if create_module is not None else None
-
-    def exec_module(self, module):
-        self._loader.exec_module(module)
-        _patch_triton_jit_standalone_compile(module)
-
-
-class _TritonJitStandaloneCompileFinder(importlib.abc.MetaPathFinder):
-    def find_spec(self, fullname, path=None, target=None):
-        if fullname != "standalone_compile":
-            return None
-
-        spec = importlib.machinery.PathFinder.find_spec(fullname, path)
-        if spec is not None and spec.loader is not None:
-            spec.loader = _TritonJitStandaloneCompileLoader(spec.loader)
-        return spec
-
-
-def _enable_triton_jit_debug_decorator():
-    standalone_compile = sys.modules.get("standalone_compile")
-    if standalone_compile is not None:
-        _patch_triton_jit_standalone_compile(standalone_compile)
-        return
-
-    if not any(
-        isinstance(finder, _TritonJitStandaloneCompileFinder)
-        for finder in sys.meta_path
-    ):
-        sys.meta_path.insert(0, _TritonJitStandaloneCompileFinder())
-
-
-if _CPP_INDEX_FILL_ENABLED:
-    _enable_triton_jit_debug_decorator()
-
-
-def _cpp_index_fill_enabled():
-    return _CPP_INDEX_FILL_ENABLED
-
-
-def _index_fill_uses_device_bounds_check():
-    mode = os.environ.get("FLAG_GEMS_INDEX_FILL_BOUNDS_CHECK", "device").lower()
-    return mode in (
-        "",
-        "0",
-        "false",
-        "off",
-        "device",
-        "default",
-        # Keep former no-host-check spellings as device-check aliases.
-        "none",
-        "disable",
-        "disabled",
-    )
-
-
-def _is_supported_cpp_scalar(value):
-    return type(value) in (bool, int, float)
-
-
-def _index_fill_shape_factors(out, dim):
-    dim_size = out.size(dim)
-    inner_size = 1
-    for size in out.shape[dim + 1 :]:
-        inner_size *= size
-    outer_size = out.numel() // (dim_size * inner_size)
-    return dim_size, inner_size, outer_size
-
-
-def _should_use_cpp_index_fill(out, dim, index, value):
-    if not _is_supported_cpp_scalar(value) or not out.is_contiguous():
-        return False
-
-    dim_size, inner_size, outer_size = _index_fill_shape_factors(out, dim)
-
-    # For many tiny rows, the Python path is better once index becomes large.
-    if inner_size <= 4 and outer_size > 1 and dim_size > 8192:
-        return index.numel() * 16 <= dim_size
-    return True
-
-
-def _should_skip_cpp_index_fill_out(out, dim):
-    dim_size, inner_size, outer_size = _index_fill_shape_factors(out, dim)
-    return inner_size <= 4 and outer_size > 1 and dim_size > 8192
-
-
-def _try_cpp_index_fill_scalar_(out, dim, index, value):
-    if not _cpp_index_fill_enabled() or not _should_use_cpp_index_fill(
-        out, dim, index, value
-    ):
-        return None
-    cpp_func = _get_cpp_index_fill_scalar_inplace()
-    if cpp_func is None:
-        return None
-    return cpp_func(out, dim, index, value)
-
-
-def _try_cpp_index_fill_scalar_fast(inp, dim, index, value):
-    if (
-        not _CPP_INDEX_FILL_ENABLED
-        or not _index_fill_uses_device_bounds_check()
-        or not _is_supported_cpp_scalar(value)
-        or not inp.is_contiguous()
-    ):
-        return None
-
-    cpp_func = _get_cpp_index_fill_scalar()
-    if cpp_func is None:
-        return None
-    return cpp_func(inp, dim, index, value)
-
-
-def _try_cpp_index_fill_scalar_fast_(out, dim, index, value):
-    if (
-        not _CPP_INDEX_FILL_ENABLED
-        or not _index_fill_uses_device_bounds_check()
-        or not _is_supported_cpp_scalar(value)
-        or not out.is_contiguous()
-    ):
-        return None
-
-    cpp_func = _get_cpp_index_fill_scalar_inplace()
-    if cpp_func is None:
-        return None
-    return cpp_func(out, dim, index, value)
-
 
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
@@ -525,33 +321,7 @@ def _prepare_index(inp, dim, index):
     if index.ndim == 0:
         index = index.reshape(1)
 
-    if index.numel() > 0:
-        _check_index_bounds(inp, dim, index)
-
     return dim, index
-
-
-def _check_index_bounds(inp, dim, index):
-    mode = os.environ.get("FLAG_GEMS_INDEX_FILL_BOUNDS_CHECK", "device").lower()
-    if _index_fill_uses_device_bounds_check():
-        return
-
-    dim_size = inp.size(dim)
-    if mode in ("sync", "1", "true", "on"):
-        min_index = int(torch.min(index).item())
-        max_index = int(torch.max(index).item())
-        if min_index < -dim_size or max_index >= dim_size:
-            raise IndexError("index out of range in self")
-        return
-
-    if mode == "async":
-        valid = ((index >= -dim_size) & (index < dim_size)).all()
-        torch.ops.aten._assert_async.msg(valid, "index out of range in self")
-        return
-
-    raise ValueError(
-        "FLAG_GEMS_INDEX_FILL_BOUNDS_CHECK must be one of device, sync, or async"
-    )
 
 
 def _prepare_tensor_value(inp, value):
@@ -592,15 +362,8 @@ def _index_fill_impl(out, dim, index, value, value_is_tensor):
 
 def index_fill_scalar(inp, dim, index, value):
     logger.debug("GEMS INDEX_FILL SCALAR")
-    cpp_out = _try_cpp_index_fill_scalar_fast(inp, dim, index, value)
-    if cpp_out is not None:
-        return cpp_out
     dim, index = _prepare_index(inp, dim, index)
     out = _native_clone(inp)
-    if not _should_skip_cpp_index_fill_out(out, dim):
-        cpp_out = _try_cpp_index_fill_scalar_(out, dim, index, value)
-        if cpp_out is not None:
-            return cpp_out
     return _index_fill_impl(out, dim, index, value, False)
 
 
@@ -618,10 +381,6 @@ def index_fill_scalar_out(inp, dim, index, value, *, out):
     if tuple(out.shape) != tuple(inp.shape):
         out.resize_(inp.shape)
     _native_copy_(out, inp)
-    if not _should_skip_cpp_index_fill_out(out, dim):
-        cpp_out = _try_cpp_index_fill_scalar_(out, dim, index, value)
-        if cpp_out is not None:
-            return cpp_out
     return _index_fill_impl(out, dim, index, value, False)
 
 
@@ -637,13 +396,7 @@ def index_fill_tensor_out(inp, dim, index, value, *, out):
 
 def index_fill_scalar_(inp, dim, index, value):
     logger.debug("GEMS INDEX_FILL_ SCALAR")
-    cpp_out = _try_cpp_index_fill_scalar_fast_(inp, dim, index, value)
-    if cpp_out is not None:
-        return cpp_out
     dim, index = _prepare_index(inp, dim, index)
-    cpp_out = _try_cpp_index_fill_scalar_(inp, dim, index, value)
-    if cpp_out is not None:
-        return cpp_out
     return _index_fill_impl(inp, dim, index, value, False)
 
 

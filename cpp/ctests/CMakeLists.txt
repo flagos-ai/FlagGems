@@ -144,6 +144,11 @@ target_link_libraries(test_triton_copy
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_copy COMMAND test_triton_copy)
 
+add_executable(test_triton_index_fill test_triton_index_fill.cpp)
+target_link_libraries(test_triton_index_fill
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_index_fill COMMAND test_triton_index_fill)
+
 # Set FLAGGEMS_SOURCE_DIR for all tests that load Triton kernels at runtime.
 # The Python sources live in the parent repo (cpp/ is one level below repo root).
 set(_FLAGGEMS_SRC_DIR "${CMAKE_SOURCE_DIR}/../src/flag_gems")
