@@ -62,14 +62,27 @@ WGRAD_SHAPES_LARGE_2D = [
     (1024, 1024, 1024),
     (2048, 2048, 2048),
     (4096, 4096, 4096),
-    (8192, 4096, 4096),  # large K ≈ token-batch × seq
+    pytest.param(
+        8192,
+        4096,
+        4096,
+        marks=pytest.mark.wgrad_large_shape_8192,
+        id="k8192_2d",
+    ),  # large K ≈ token-batch × seq
 ]
 
 # Collapsed K = dim0 * dim1 matches the large-K 2d case above.
 # Keep identical to the last entry of
 # benchmark/test_wgrad_gemm_accum.py::WGRAD_GEMM_ACCUM_SHAPES_3D.
 WGRAD_SHAPES_LARGE_3D = [
-    (8, 1024, 4096, 4096),
+    pytest.param(
+        8,
+        1024,
+        4096,
+        4096,
+        marks=pytest.mark.wgrad_large_shape_8192,
+        id="k8192_3d",
+    ),
 ]
 
 FP32_ACCUM_INPUT_DTYPES = [torch.float32, torch.float16]
