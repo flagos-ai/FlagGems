@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
 import hashlib
@@ -29,7 +43,7 @@ from typing import (
 import triton
 
 from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device, torch_device_fn
 from flag_gems.runtime.backend import _state
 from flag_gems.utils.code_cache import config_cache_dir
 from flag_gems.utils.models import PersistantModel, SQLPersistantModel
@@ -173,12 +187,10 @@ class LibCache(object):
         self.model: PersistantModel = SQLPersistantModel(self.db_url)
 
     @overload
-    def __getitem__(self, key: str) -> ConfigCache:
-        ...
+    def __getitem__(self, key: str) -> ConfigCache: ...
 
     @overload
-    def __getitem__(self, key: Tuple[Union[int, float, str]]) -> BenchmarkCache:
-        ...
+    def __getitem__(self, key: Tuple[Union[int, float, str]]) -> BenchmarkCache: ...
 
     def __getitem__(
         self, key: Union[str, Tuple[Union[int, float, str], ...]]
@@ -775,6 +787,15 @@ class LibEntry(triton.KernelInterface):
     def key(self, spec_args, dns_args, const_args):
         def spec_arg(arg):
             if hasattr(arg, "data_ptr"):
+                if device.vendor_name == "hygon" and hasattr(triton.backends, "hcu"):
+                    from triton.backends.hcu.compiler import HIPBackend
+
+                    if hasattr(HIPBackend, "get_tensor_specialization"):
+                        return (
+                            arg.dtype,
+                            arg.data_ptr() % self.divisibility == 0,
+                            HIPBackend.get_tensor_specialization(arg),
+                        )
                 return (arg.dtype, arg.data_ptr() % self.divisibility == 0)
             return (type(arg), arg)
 

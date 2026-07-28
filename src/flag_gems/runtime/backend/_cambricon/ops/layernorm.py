@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -12,7 +26,7 @@ from flag_gems.utils.type_utils import get_accumulator_dtype
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 MAX_C_MLU_LAYERNORM_FORWARD = 8192
 MAX_C_MLU_LAYERNORM_BACKWARD = 5120
 
@@ -489,7 +503,7 @@ def layer_norm_backward_kernel_middle_n(
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
-    logger.debug("GEMS_CAMBRICON LAYERNORM FORWARD")
+    logger.debug("GEMS_CAMBRICON LAYER_NORM")
     # dim = x.ndim - len(normalized_shape)
     # M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
@@ -528,7 +542,7 @@ def layer_norm_backward(
     bias=None,
     output_mask=None,
 ):
-    logger.debug("GEMS_CAMBRICON LAYERNORM BACKWARD")
+    logger.debug("GEMS_CAMBRICON LAYER_NORM_BACKWARD")
     grad_out = grad_out.contiguous()
     input = input.contiguous()
     mean = mean.contiguous()

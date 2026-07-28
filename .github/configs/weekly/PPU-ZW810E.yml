@@ -1,0 +1,36 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# FlagGems backends Configuration
+# This file defines environment settings for weekly testing
+name: PPU-ZW810E
+vendor: THead
+
+# Runner labels for this backends (self-hosted)
+runner_labels: 810e-flaggems-weekly
+
+# Use container or not for this backends
+use_container: false
+
+# Container image for this backends
+# container_image: baai-cp-registry.cn-wulanchabu.cr.aliyuncs.com/flagos/flagos:vllm-qwen3-next-0528
+
+# GPUs to test for this backends
+test_gpus: "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"
+
+# GPU availability check script for this backend
+gpu_check_script: tools/gpu_check_thead.sh
+
+# Output base directory for this backends
+output_base_dir: /home/flaggems/weekly

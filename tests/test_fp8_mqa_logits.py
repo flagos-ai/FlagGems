@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import pytest
@@ -5,6 +19,7 @@ import torch
 
 import flag_gems
 
+from . import conftest as cfg
 from .accuracy_utils import gems_assert_close
 
 try:
@@ -45,6 +60,14 @@ def has_deep_gemm() -> bool:
 DEEPGEMM_AVAILABLE = has_deep_gemm()
 
 device = flag_gems.device
+
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    MN_SHAPES = [(32, 2048)]
+    HD_SHAPES = [(32, 128)]
+else:
+    MN_SHAPES = [(32, 2048), (32, 4096), (32, 1024)]
+    HD_SHAPES = [(32, 128)]
 
 
 @pytest.mark.fp8_mqa_logits
@@ -108,8 +131,8 @@ def test_fp8_mqa_logits(clean_logits: bool):
     not (VLLM_AVAILABLE and DEEPGEMM_AVAILABLE),
     reason="requires vLLM with DeepGEMM support",
 )
-@pytest.mark.parametrize("M, N", [(32, 2048), (32, 4096), (32, 1024)])
-@pytest.mark.parametrize("H, D", [(32, 128)])
+@pytest.mark.parametrize("M, N", MN_SHAPES)
+@pytest.mark.parametrize("H, D", HD_SHAPES)
 def test_fp8_mqa_logits_param(M: int, N: int, H: int, D: int):
     torch.manual_seed(0)
     random.seed(0)

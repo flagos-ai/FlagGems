@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import triton
@@ -8,7 +22,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 div_rn = tl_extra_shim.div_rn
 
 config_ = CodeGenConfig(
@@ -31,7 +45,13 @@ def silu_forward(x):
     return y
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+# silu_backward_kernel was config-less: on XPU a bare pointwise_dynamic
+# recompiles per shape (tile<512>) and never unrolls -> large shapes stall at
+# ~0.32 gems speedup. Reuse silu_forward's tuned config_ (vec CLOSE + unroll8):
+# a swept comparison showed all unroll8 variants land at ~0.55ms for
+# [4096,4096] fp16 (vs 0.80ms config-less, ~1.45x) with bit-identical output;
+# vec OPEN spiked to 28.9ms on fp32 [1024,65536] so keep isCloseVectorization.
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=config_)
 @triton.jit
 def silu_backward_kernel(x, dy):
     dy_fp32 = dy.to(tl.float32)

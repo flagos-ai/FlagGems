@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -34,7 +48,7 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
     for start_n in range(0, N, BLOCK_SIZE):
         cols_offsets = start_n + tl.arange(0, BLOCK_SIZE)
         offset = pid_x * N + cols_offsets
-        mask = offset < numel and cols_offsets < N
+        mask = (offset < numel) & (cols_offsets < N)
         x = tl.load(x_ptr + offset, mask=mask, other=0)
         is_nonzero = (x != 0).to(tl.int64)
         nonzero_count += tl.sum(is_nonzero)
@@ -51,7 +65,7 @@ def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.const
     for start_n in range(0, N, BLOCK_SIZE):
         cols_offsets = start_n + tl.arange(0, BLOCK_SIZE)
         offset = pid_x * N + cols_offsets
-        mask = offset < numel and cols_offsets < N
+        mask = (offset < numel) & (cols_offsets < N)
         x = tl.load(x_ptr + offset, mask=mask, other=0)
         nonzero_count += tl.sum(x)
     tl.store(out_ptr + pid_x, nonzero_count)
@@ -66,7 +80,7 @@ def count_nonzero_combin_kernel(
     pid_y = ext.program_id(1)
     cols_offsets = pid_y * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     offset = pid_x * N + cols_offsets
-    mask = offset < numel and cols_offsets < N
+    mask = (offset < numel) & (cols_offsets < N)
     x = tl.load(x_ptr + offset, mask=mask, other=0)
     is_nonzero = (x != 0).to(tl.int64)
     nonzero_count = tl.sum(is_nonzero)
@@ -75,8 +89,13 @@ def count_nonzero_combin_kernel(
 
 def count_nonzero(x, dim=None):
     logger.debug("GEMS COUNT NONZERO")
+
+    if x.is_sparse:
+        x = x.to_dense()
+
     if dim is not None:
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
+        dim = dim % x.ndim
         shape = x.shape
         BLOCK_SIZE = 2048
         numel = x.numel()

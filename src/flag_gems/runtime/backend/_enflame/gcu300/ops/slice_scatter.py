@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -50,7 +64,7 @@ def slice_scatter_kernel(
 
 
 def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
-    logger.debug("GEMS SLICE_SCATTER")
+    logger.debug("GEMS_ENFLAME SLICE_SCATTER")
     assert src.device == inp.device, "inp and src reside on different devices."
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert step > 0, "slice step must be positive"

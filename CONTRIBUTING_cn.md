@@ -1,8 +1,26 @@
+<!--
+ Copyright 2026 FlagOS Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
 [English](./CONTRIBUTING.md)
 
 # FlagGems 贡献者指南
 
 感谢您对 FlagGems 的兴趣！我们使用 GitHub 来托管代码、管理问题和处理拉取请求。在贡献之前，请阅读以下指南。
+
+有关项目治理、角色定义和决策流程，请参阅 [GOVERNANCE_cn.md](./GOVERNANCE_cn.md)。
 
 ## 1. 错误报告
 

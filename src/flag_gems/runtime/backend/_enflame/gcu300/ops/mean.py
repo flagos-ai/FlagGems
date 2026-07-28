@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -184,6 +198,7 @@ def mean_kernel_dim_mid(
     pid_n = tl.program_id(0)
     step = tl.num_programs(1)
     for tile_id_b in tl.range(pid_b, B, step):
+        print("tile_id_b", tile_id_b)
         b_offset = tile_id_b * M * N
         inp = inpIn + b_offset
         out_value = out_value_in + tile_id_b * N
@@ -193,6 +208,7 @@ def mean_kernel_dim_mid(
         mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
         inp_ptrs_0 = inp + offset_0
         _mean = tl.load(inp_ptrs_0, mask_0, other=0.0).to(tl.float32)
+        print("_mean", _mean)
         if M > BLOCK_M:
             for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
                 m_offset = i + tl.arange(0, BLOCK_M)
@@ -228,7 +244,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     # print("dim:", dim)
     if len(dim) == 1:
         inp = x
-        mean_dim = dim[0]
+        mean_dim = dim[0] % inp.ndim
         shape = list(x.shape)
         if shape[mean_dim] == 1:
             if not keepdim:

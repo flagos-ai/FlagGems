@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -63,7 +77,7 @@ def normal_distribution(shape, device, *, generator=None):
 
 
 def normal_tensor_tensor(mean, std, *, generator=None):
-    logger.debug("GEMS NORMAL_TENSOR_TENSOR")
+    logger.debug("GEMS_ENFLAME NORMAL_TENSOR_TENSOR")
     shape = broadcast_shapes([mean.shape, std.shape])
     device = mean.device
     out = normal_distribution(shape, device)
@@ -71,7 +85,7 @@ def normal_tensor_tensor(mean, std, *, generator=None):
 
 
 def normal_tensor_float(mean, std, *, generator=None):
-    logger.debug("GEMS NORMAL_TENSOR_FLOAT")
+    logger.debug("GEMS_ENFLAME NORMAL_TENSOR_FLOAT")
     shape = mean.shape
     device = mean.device
     out = normal_distribution(shape, device)
@@ -79,7 +93,7 @@ def normal_tensor_float(mean, std, *, generator=None):
 
 
 def normal_float_tensor(mean, std, *, generator=None):
-    logger.debug("GEMS NORMAL_FLOAT_TENSOR")
+    logger.debug("GEMS_ENFLAME NORMAL_FLOAT_TENSOR")
     shape = std.shape
     device = std.device
     out = normal_distribution(shape, device)

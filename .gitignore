@@ -24,6 +24,9 @@ dist/
 .skbuild-info.json
 CMakeInit.txt
 
+# Auto-generated version file (setuptools-scm)
+src/flag_gems/_version.py
+
 # An auxiliary product of unittests
 /*.json
 tests/*.json
