@@ -1,0 +1,7 @@
+{
+  "reglu": {
+    "result": "failed",
+    "test_case": "benchmark/test_reglu.py::test_reglu",
+    "reason": "Failed: reglu() missing 2 required positional arguments: 'fp8_tensor' and 'otype'"
+  }
+}

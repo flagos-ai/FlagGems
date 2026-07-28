@@ -1,0 +1,145 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_sinh.py F                                                           [100%]
+
+=================================== FAILURES ===================================
+______________________________ test_sinh_inplace _______________________________
+
+a = tensor([[ 0.1953,  0.7969, -1.6016,  ...,  0.8008, -1.6016, -0.1416],
+        [ 0.0796, -1.3125,  0.1973,  ...,  0.160...],
+        [ 0.9531,  0.9805, -0.3750,  ...,  1.5000, -0.2070, -2.3750]],
+       device='cuda:0', dtype=torch.bfloat16)
+
+>       torch_op=lambda a: a.sinh_(),
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    )
+E   RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:12632)
+
+test_sinh.py:35: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.sinh_
+    def test_sinh_inplace():
+        bench = base.UnaryPointwiseBenchmark(
+            op_name="sinh_",
+            torch_op=lambda a: a.sinh_(),
+            dtypes=consts.FLOAT_DTYPES,
+            is_inplace=True,
+        )
+>       bench.run()
+
+test_sinh.py:39: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.base.UnaryPointwiseBenchmark object at 0x7f7b7c887b80>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+    
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+    
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+>                   pytest.fail(str(e))  # raise exception again
+E                   Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:12632)
+
+base.py:480: Failed
+----------------------------- Captured stdout call -----------------------------
+
+Operator: sinh_  Performance Test (dtype=torch.float16, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup               TFLOPS          Size Detail
+--------------------------------------------------------------------------------------------------------------------
+SUCCESS               0.018746            0.006326               2.963               0.001          [torch.Size([64, 64])]
+SUCCESS               0.645481            3.271623               0.197               0.005          [torch.Size([4096, 4096])]
+SUCCESS               0.645659            3.265715               0.198               0.005          [torch.Size([64, 512, 512])]
+
+
+Operator: sinh_  Performance Test (dtype=torch.float32, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup               TFLOPS          Size Detail
+--------------------------------------------------------------------------------------------------------------------
+SUCCESS               0.018199            0.005431               3.351               0.001          [torch.Size([64, 64])]
+SUCCESS               0.619496            2.098249               0.295               0.008          [torch.Size([4096, 4096])]
+SUCCESS               0.619449            2.098065               0.295               0.008          [torch.Size([64, 512, 512])]
+
+[[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/sinh.cpp:30]scalar type of ret : kbfloat16 is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/sinh.cpp:30]
+=========================== short test summary info ============================
+FAILED test_sinh.py::test_sinh_inplace - Failed: [NOT IMPLEMENTED]: error cod...
+====================== 1 failed, 950 deselected in 19.65s ======================

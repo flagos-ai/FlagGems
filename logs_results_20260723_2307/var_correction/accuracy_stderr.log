@@ -1,0 +1,53 @@
+[CMD] pytest -m "var_correction" --record json --output accuracy_var_correction.json --ref cpu --continue-on-collection-errors -vs
+[CWD] /workspace/FlagGems/tests
+
+XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results
+loc(callsite("/workspace/FlagGems/src/flag_gems/ops/var.py":32:31 at "/workspace/FlagGems/src/flag_gems/ops/var.py":129:30)): error: 'arith.maxnumf' op requires the same type for all operands and results

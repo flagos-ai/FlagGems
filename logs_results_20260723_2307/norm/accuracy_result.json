@@ -1,0 +1,692 @@
+{
+  "tests/test_norm.py::test_norm[dtype0-2-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": 2,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0-2-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": 2,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0-2-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": 2,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "norm"
+    ],
+    "reason": "AssertionError: Scalars are not close!\n\nExpected 4952.0 but got 4960.0.\nAbsolute difference: 8.0 (up to 0.0001 allowed)\nRelative difference: 0.0016155088852988692 (up to 0.001 allowed)"
+  },
+  "tests/test_norm.py::test_norm[dtype0-inf-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": Infinity,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0-inf-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": Infinity,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0-inf-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": Infinity,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0--inf-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": -Infinity,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0--inf-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": -Infinity,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0--inf-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": -Infinity,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0-0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": 0,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0-0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": 0,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0-0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": 0,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0-1-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": 1,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0-1-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": 1,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype0-1-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "ord": 1,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype1-2-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": 2,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype1-2-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": 2,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "norm"
+    ],
+    "reason": "AssertionError: Scalars are not close!\n\nExpected 1024.08251953125 but got 1024.0931396484375.\nAbsolute difference: 0.0106201171875 (up to 0.0001 allowed)\nRelative difference: 1.037037248947586e-05 (up to 1.3e-06 allowed)"
+  },
+  "tests/test_norm.py::test_norm[dtype1-2-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": 2,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "norm"
+    ],
+    "reason": "AssertionError: Scalars are not close!\n\nExpected 4952.142578125 but got 4959.95751953125.\nAbsolute difference: 7.81494140625 (up to 0.0001 allowed)\nRelative difference: 0.0015780929734880381 (up to 1.3e-06 allowed)"
+  },
+  "tests/test_norm.py::test_norm[dtype1-inf-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": Infinity,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype1-inf-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": Infinity,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype1-inf-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": Infinity,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype1--inf-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": -Infinity,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype1--inf-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": -Infinity,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype1--inf-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": -Infinity,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype1-0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": 0,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype1-0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": 0,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype1-0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": 0,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "norm"
+    ],
+    "reason": "AssertionError: Scalars are not close!\n\nExpected 24599364.0 but got 24608614.0.\nAbsolute difference: 9250.0 (up to 0.0001 allowed)\nRelative difference: 0.00037602598180993624 (up to 1.3e-06 allowed)"
+  },
+  "tests/test_norm.py::test_norm[dtype1-1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": 1,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype1-1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": 1,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype1-1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "ord": 1,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "norm"
+    ],
+    "reason": "AssertionError: Scalars are not close!\n\nExpected 19625838.0 but got 19633194.0.\nAbsolute difference: 7356.0 (up to 0.0001 allowed)\nRelative difference: 0.00037481202076568656 (up to 1.3e-06 allowed)"
+  },
+  "tests/test_norm.py::test_norm[dtype2-2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": 2,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2-2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": 2,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2-2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": 2,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2-inf-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": Infinity,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2-inf-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": Infinity,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2-inf-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": Infinity,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2--inf-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": -Infinity,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2--inf-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": -Infinity,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2--inf-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": -Infinity,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2-0-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": 0,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2-0-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": 0,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2-0-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": 0,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2-1-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": 1,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2-1-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": 1,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  },
+  "tests/test_norm.py::test_norm[dtype2-1-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "ord": 1,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "norm"
+    ],
+    "reason": null
+  }
+}

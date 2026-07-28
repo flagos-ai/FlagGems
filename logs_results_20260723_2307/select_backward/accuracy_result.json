@@ -1,0 +1,1331 @@
+{
+  "tests/test_select_backward.py::test_select_backward[0-dtype0-shape0]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype0-shape1]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype0-shape2]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype0-shape3]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 120 (3.3%)\nGreatest absolute difference: 0.7861328125 at index (0, 0, 0, 1) (up to 0.0001 allowed)\nGreatest relative difference: 2.22265625 at index (0, 0, 0, 2) (up to 0.001 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype0-shape4]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype0-shape5]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        7,
+        11
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 231 (1.3%)\nGreatest absolute difference: 2.8125 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2.03125 at index (0, 0, 1) (up to 0.001 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype0-shape6]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        1,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 8 (50.0%)\nGreatest absolute difference: 5.87890625 at index (0, 0, 2) (up to 0.0001 allowed)\nGreatest relative difference: 81.875 at index (0, 0, 3) (up to 0.001 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype0-shape7]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype0-shape8]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype1-shape0]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype1-shape1]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype1-shape2]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype1-shape3]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 120 (3.3%)\nGreatest absolute difference: 1.401553750038147 at index (0, 0, 0, 3) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (0, 0, 0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype1-shape4]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype1-shape5]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        7,
+        11
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 231 (1.3%)\nGreatest absolute difference: 1.2787495851516724 at index (0, 0, 2) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (0, 0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype1-shape6]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        1,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 8 (50.0%)\nGreatest absolute difference: 1.917286992073059 at index (0, 0, 1) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (0, 0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype1-shape7]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype1-shape8]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype2-shape0]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype2-shape1]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype2-shape2]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype2-shape3]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 120 (3.3%)\nGreatest absolute difference: nan at index (0, 0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: nan at index (0, 0, 0, 0) (up to 0.016 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype2-shape4]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype2-shape5]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        7,
+        11
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 3 / 231 (1.3%)\nGreatest absolute difference: 3782319999549440.0 at index (0, 0, 1) (up to 0.0001 allowed)\nGreatest relative difference: 6051711999279104.0 at index (0, 0, 1) (up to 0.016 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype2-shape6]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        1,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 8 (50.0%)\nGreatest absolute difference: 6.618868862390095e+25 at index (0, 0, 2) (up to 0.0001 allowed)\nGreatest relative difference: 7.495340081610701e+25 at index (0, 0, 2) (up to 0.016 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype2-shape7]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[0-dtype2-shape8]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype0-shape0]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype0-shape1]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype0-shape2]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype0-shape3]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 8 / 120 (6.7%)\nGreatest absolute difference: 4.0859375 at index (0, 0, 0, 1) (up to 0.0001 allowed)\nGreatest relative difference: 23.34375 at index (0, 0, 0, 3) (up to 0.001 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype0-shape4]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype0-shape5]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        7,
+        11
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 231 (1.7%)\nGreatest absolute difference: 2.96875 at index (0, 0, 0) (up to 0.0001 allowed)\nGreatest relative difference: 84.5625 at index (0, 0, 2) (up to 0.001 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype0-shape6]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype0-shape7]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype0-shape8]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype1-shape0]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype1-shape1]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype1-shape2]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype1-shape3]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 8 / 120 (6.7%)\nGreatest absolute difference: 1.7525675296783447 at index (0, 0, 1, 1) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (0, 0, 0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype1-shape4]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype1-shape5]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        7,
+        11
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 231 (1.7%)\nGreatest absolute difference: 1.182863712310791 at index (0, 0, 3) (up to 0.0001 allowed)\nGreatest relative difference: 1.0 at index (0, 0, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype1-shape6]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype1-shape7]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype1-shape8]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype2-shape0]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype2-shape1]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype2-shape2]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype2-shape3]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 8 / 120 (6.7%)\nGreatest absolute difference: 3.2071560185774204e+32 at index (0, 0, 1, 1) (up to 0.0001 allowed)\nGreatest relative difference: 3.0423614405477506e+32 at index (0, 0, 1, 1) (up to 0.016 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype2-shape4]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype2-shape5]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        7,
+        11
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 231 (1.7%)\nGreatest absolute difference: 3.84375 at index (0, 0, 3) (up to 0.0001 allowed)\nGreatest relative difference: 14.5625 at index (0, 0, 1) (up to 0.016 allowed)"
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype2-shape6]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype2-shape7]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[1-dtype2-shape8]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype0-shape0]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype0-shape1]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype0-shape2]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype0-shape3]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype0-shape4]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype0-shape5]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        7,
+        11
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype0-shape6]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype0-shape7]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype0-shape8]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype1-shape0]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype1-shape1]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype1-shape2]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype1-shape3]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype1-shape4]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype1-shape5]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        7,
+        11
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype1-shape6]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype1-shape7]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype1-shape8]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype2-shape0]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype2-shape1]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype2-shape2]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype2-shape3]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype2-shape4]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype2-shape5]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        7,
+        11
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype2-shape6]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype2-shape7]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward[-1-dtype2-shape8]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward_non_contiguous[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward_non_contiguous[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward_non_contiguous[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward_small_and_edge[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward_small_and_edge[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_select_backward.py::test_select_backward_small_and_edge[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "select_backward"
+    ],
+    "reason": null
+  }
+}

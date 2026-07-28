@@ -1,0 +1,806 @@
+{
+  "tests/test_softmax.py::test_softmax_out[True-0-dtype0-shape0]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[True-0-dtype0-shape1]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 523981 / 1048576 (50.0%)\nGreatest absolute difference: nan at index (230, 51) (up to 0.0001 allowed)\nGreatest relative difference: nan at index (230, 51) (up to 0.001 allowed)"
+  },
+  "tests/test_softmax.py::test_softmax_out[True-0-dtype0-shape2]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[True-0-dtype0-shape3]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[True-0-dtype1-shape0]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[True-0-dtype1-shape1]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 524516 / 1048576 (50.0%)\nGreatest absolute difference: 0.99981290102005 at index (3852, 46) (up to 0.0001 allowed)\nGreatest relative difference: 5343.95947265625 at index (3852, 46) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_softmax.py::test_softmax_out[True-0-dtype1-shape2]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[True-0-dtype1-shape3]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[True-0-dtype2-shape0]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[True-0-dtype2-shape1]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 524197 / 1048576 (50.0%)\nGreatest absolute difference: nan at index (9, 148) (up to 0.0001 allowed)\nGreatest relative difference: nan at index (9, 148) (up to 0.016 allowed)"
+  },
+  "tests/test_softmax.py::test_softmax_out[True-0-dtype2-shape2]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[True-0-dtype2-shape3]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[True-1-dtype0-shape0]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[True-1-dtype0-shape1]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[True-1-dtype0-shape2]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[True-1-dtype0-shape3]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[True-1-dtype1-shape0]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[True-1-dtype1-shape1]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[True-1-dtype1-shape2]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[True-1-dtype1-shape3]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[True-1-dtype2-shape0]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[True-1-dtype2-shape1]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[True-1-dtype2-shape2]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[True-1-dtype2-shape3]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[False-0-dtype0-shape0]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[False-0-dtype0-shape1]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 1048576 / 1048576 (100.0%)\nGreatest absolute difference: 0.900390625 at index (2513, 48) (up to 0.0001 allowed)\nGreatest relative difference: 881.0 at index (638, 118) (up to 0.001 allowed)"
+  },
+  "tests/test_softmax.py::test_softmax_out[False-0-dtype0-shape2]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[False-0-dtype0-shape3]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[False-0-dtype1-shape0]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[False-0-dtype1-shape1]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 1048576 / 1048576 (100.0%)\nGreatest absolute difference: 0.8451841473579407 at index (1256, 216) (up to 0.0001 allowed)\nGreatest relative difference: 968.6234741210938 at index (3871, 238) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_softmax.py::test_softmax_out[False-0-dtype1-shape2]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[False-0-dtype1-shape3]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[False-0-dtype2-shape0]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[False-0-dtype2-shape1]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 1048576 / 1048576 (100.0%)\nGreatest absolute difference: 0.87109375 at index (3457, 58) (up to 0.0001 allowed)\nGreatest relative difference: 852.0 at index (228, 48) (up to 0.016 allowed)"
+  },
+  "tests/test_softmax.py::test_softmax_out[False-0-dtype2-shape2]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[False-0-dtype2-shape3]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[False-1-dtype0-shape0]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[False-1-dtype0-shape1]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[False-1-dtype0-shape2]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[False-1-dtype0-shape3]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[False-1-dtype1-shape0]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[False-1-dtype1-shape1]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[False-1-dtype1-shape2]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[False-1-dtype1-shape3]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[False-1-dtype2-shape0]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[False-1-dtype2-shape1]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  },
+  "tests/test_softmax.py::test_softmax_out[False-1-dtype2-shape2]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_softmax.py::test_softmax_out[False-1-dtype2-shape3]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "softmax_out"
+    ],
+    "reason": null
+  }
+}

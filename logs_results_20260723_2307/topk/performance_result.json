@@ -1,0 +1,927 @@
+{
+  "topk": {
+    "details": [
+      {
+        "op_name": "topk",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                64,
+                64
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.011099999770522118,
+            "latency": 0.0111480001360178,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9956942622075686,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                4096,
+                4096
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.2805599868297577,
+            "latency": 0.2805840075016022,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9999143904456338,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                10000,
+                256
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.19212999939918518,
+            "latency": 0.19218100607395172,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9997345904477838,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                10000,
+                65536
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 5.1848978996276855,
+            "latency": 5.185184001922607,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9999448231162451,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                4,
+                128
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.013213000260293484,
+            "latency": 0.013194000348448753,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0014400417873996,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                8,
+                256
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.019349999725818634,
+            "latency": 0.019338000565767288,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0006204964163972,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                64,
+                128
+              ],
+              "k": 8,
+              "dim": -1
+            },
+            "latency_base": 0.0158929992467165,
+            "latency": 0.015874000266194344,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0011968615474083,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                64,
+                1024
+              ],
+              "k": 32,
+              "dim": -1
+            },
+            "latency_base": 0.07990899682044983,
+            "latency": 0.07988899946212769,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0002503142917896,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                64,
+                8192
+              ],
+              "k": 128,
+              "dim": -1
+            },
+            "latency_base": 0.4512470066547394,
+            "latency": 0.45118600130081177,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0001352110964252,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                128,
+                32768
+              ],
+              "k": 256,
+              "dim": -1
+            },
+            "latency_base": 1.2460919618606567,
+            "latency": 1.2460700273513794,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0000176029507137,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                4,
+                128,
+                64
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.012903999537229538,
+            "latency": 0.012941000051796436,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9971408303516882,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                4,
+                128,
+                64
+              ],
+              "k": 64,
+              "dim": -1
+            },
+            "latency_base": 0.027824999764561653,
+            "latency": 0.02782600000500679,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9999640537466773,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                8,
+                512,
+                32
+              ],
+              "k": 32,
+              "dim": -1
+            },
+            "latency_base": 0.06189199909567833,
+            "latency": 0.061873000115156174,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0003070641553957,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                16,
+                1024,
+                256
+              ],
+              "k": 256,
+              "dim": -1
+            },
+            "latency_base": 2.4715559482574463,
+            "latency": 2.4708750247955322,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0002755798877243,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "topk",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                64,
+                64
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.010533000342547894,
+            "latency": 0.01054999977350235,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9983886794957899,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                4096,
+                4096
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.2789509892463684,
+            "latency": 0.2789340019226074,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0000609008713313,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                10000,
+                256
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.16204799711704254,
+            "latency": 0.16205400228500366,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9999629434146862,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                10000,
+                65536
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 4.52083683013916,
+            "latency": 4.5206379890441895,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.000043985184271,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                4,
+                128
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.01307199988514185,
+            "latency": 0.013085000216960907,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9990064706455101,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                8,
+                256
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.018647000193595886,
+            "latency": 0.018660999834537506,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9992497914867504,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                64,
+                128
+              ],
+              "k": 8,
+              "dim": -1
+            },
+            "latency_base": 0.015804000198841095,
+            "latency": 0.015768000856041908,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0022830632194817,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                64,
+                1024
+              ],
+              "k": 32,
+              "dim": -1
+            },
+            "latency_base": 0.08481200039386749,
+            "latency": 0.08475299924612045,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.000696154098048,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                64,
+                8192
+              ],
+              "k": 128,
+              "dim": -1
+            },
+            "latency_base": 0.4452059864997864,
+            "latency": 0.44525501132011414,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9998898949611316,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                128,
+                32768
+              ],
+              "k": 256,
+              "dim": -1
+            },
+            "latency_base": 1.2169040441513062,
+            "latency": 1.216729998588562,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0001430437015164,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                4,
+                128,
+                64
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.011146999895572662,
+            "latency": 0.011114000342786312,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0029691876703755,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                4,
+                128,
+                64
+              ],
+              "k": 64,
+              "dim": -1
+            },
+            "latency_base": 0.0278329998254776,
+            "latency": 0.027823999524116516,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0003234725961407,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                8,
+                512,
+                32
+              ],
+              "k": 32,
+              "dim": -1
+            },
+            "latency_base": 0.06157099828124046,
+            "latency": 0.06156500056385994,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0000974208937805,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                16,
+                1024,
+                256
+              ],
+              "k": 256,
+              "dim": -1
+            },
+            "latency_base": 2.5030720233917236,
+            "latency": 2.5032529830932617,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9999277101824066,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "topk",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                64,
+                64
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.011475999839603901,
+            "latency": 0.011458000168204308,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0015709260896628,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                4096,
+                4096
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.2880200147628784,
+            "latency": 0.2878760099411011,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0005002321027265,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                10000,
+                256
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.1898449957370758,
+            "latency": 0.18985800445079803,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9999314818789976,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                10000,
+                65536
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 5.295474052429199,
+            "latency": 5.294218063354492,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0002372378809632,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                4,
+                128
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.013875000178813934,
+            "latency": 0.013869999907910824,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0003605098007433,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                8,
+                256
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.020357999950647354,
+            "latency": 0.02029299922287464,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.003203110937857,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                64,
+                128
+              ],
+              "k": 8,
+              "dim": -1
+            },
+            "latency_base": 0.016110999509692192,
+            "latency": 0.01604600064456463,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0040507829064298,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                64,
+                1024
+              ],
+              "k": 32,
+              "dim": -1
+            },
+            "latency_base": 0.07826299965381622,
+            "latency": 0.07824400067329407,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0002428170896,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                64,
+                8192
+              ],
+              "k": 128,
+              "dim": -1
+            },
+            "latency_base": 0.4483549892902374,
+            "latency": 0.44839999079704285,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9998996398132716,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                128,
+                32768
+              ],
+              "k": 256,
+              "dim": -1
+            },
+            "latency_base": 1.2286289930343628,
+            "latency": 1.2286449670791626,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9999869986487326,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                4,
+                128,
+                64
+              ],
+              "k": 5,
+              "dim": -1
+            },
+            "latency_base": 0.013300999999046326,
+            "latency": 0.013265999965369701,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0026383260792997,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                4,
+                128,
+                64
+              ],
+              "k": 64,
+              "dim": -1
+            },
+            "latency_base": 0.027737999334931374,
+            "latency": 0.027744999155402184,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9997477087517068,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                8,
+                512,
+                32
+              ],
+              "k": 32,
+              "dim": -1
+            },
+            "latency_base": 0.06171799823641777,
+            "latency": 0.06169600039720535,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.000356552111495,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "x": [
+                16,
+                1024,
+                256
+              ],
+              "k": 256,
+              "dim": -1
+            },
+            "latency_base": 2.4656031131744385,
+            "latency": 2.4656620025634766,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9999761161955788,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_topk.py::test_topk",
+    "reason": null
+  }
+}

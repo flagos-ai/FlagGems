@@ -1,0 +1,806 @@
+{
+  "tests/test_softmax.py::test_softmax[True-0-dtype0-shape0]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "RuntimeError: [RUNTIME ERROR]: error code= 719, unspecified launch failure;"
+  },
+  "tests/test_softmax.py::test_softmax[True-0-dtype0-shape1]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-0-dtype0-shape2]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-0-dtype0-shape3]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-0-dtype1-shape0]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-0-dtype1-shape1]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-0-dtype1-shape2]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-0-dtype1-shape3]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-0-dtype2-shape0]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-0-dtype2-shape1]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-0-dtype2-shape2]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-0-dtype2-shape3]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-1-dtype0-shape0]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-1-dtype0-shape1]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-1-dtype0-shape2]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-1-dtype0-shape3]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-1-dtype1-shape0]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-1-dtype1-shape1]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-1-dtype1-shape2]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-1-dtype1-shape3]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-1-dtype2-shape0]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-1-dtype2-shape1]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-1-dtype2-shape2]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[True-1-dtype2-shape3]": {
+    "params": {
+      "neg_inf": true,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-0-dtype0-shape0]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-0-dtype0-shape1]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-0-dtype0-shape2]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-0-dtype0-shape3]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-0-dtype1-shape0]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-0-dtype1-shape1]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-0-dtype1-shape2]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-0-dtype1-shape3]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-0-dtype2-shape0]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-0-dtype2-shape1]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-0-dtype2-shape2]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-0-dtype2-shape3]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-1-dtype0-shape0]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-1-dtype0-shape1]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-1-dtype0-shape2]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-1-dtype0-shape3]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-1-dtype1-shape0]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-1-dtype1-shape1]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-1-dtype1-shape2]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-1-dtype1-shape3]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-1-dtype2-shape0]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-1-dtype2-shape1]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-1-dtype2-shape2]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_softmax.py::test_softmax[False-1-dtype2-shape3]": {
+    "params": {
+      "neg_inf": false,
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        0,
+        128,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "softmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: unspecified launch failure\nSearch for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

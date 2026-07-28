@@ -1,0 +1,7 @@
+{
+  "masked_select": {
+    "result": "failed",
+    "test_case": "benchmark/test_masked_select.py::test_masked_select",
+    "reason": "Failed: /tmp/tmprwvukn1m/main.c:71: xpuLaunchKernel(\"masked_select_gather_kernel\", function, gridX, gridY, gridZ, nclusters, ncores, stream, (void **)&kernel_params[0][0], (void **)&kernel_consts[0][0], &extra_data[0]) -> Exception in kernel execution(err_code: -714)"
+  }
+}

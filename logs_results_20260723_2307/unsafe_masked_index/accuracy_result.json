@@ -1,0 +1,353 @@
+{
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        33
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype0-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        81
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype0-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        273
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype0-shape8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1041
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        33
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype1-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        81
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype1-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        273
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype1-shape8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1041
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        33
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype2-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        81
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype2-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        273
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  },
+  "tests/test_unsafe_masked_index.py::test_unsafe_masked_index[dtype2-shape8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1041
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unsafe_masked_index"
+    ],
+    "reason": null
+  }
+}

@@ -1,0 +1,350 @@
+{
+  "tests/test_aminmax.py::test_aminmax[dtype0-True-0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "keepdim": true,
+      "dim": 0,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": null
+  },
+  "tests/test_aminmax.py::test_aminmax[dtype0-False-1-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "keepdim": false,
+      "dim": 1,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": null
+  },
+  "tests/test_aminmax.py::test_aminmax[dtype0-True-dim2-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "keepdim": true,
+      "dim": [
+        0,
+        1
+      ],
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_aminmax.py::test_aminmax[dtype0-False-dim3-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "keepdim": false,
+      "dim": [
+        1,
+        0
+      ],
+      "shape": [
+        7,
+        4,
+        11,
+        1
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_aminmax.py::test_aminmax[dtype1-True-0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "keepdim": true,
+      "dim": 0,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": null
+  },
+  "tests/test_aminmax.py::test_aminmax[dtype1-False-1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "keepdim": false,
+      "dim": 1,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": null
+  },
+  "tests/test_aminmax.py::test_aminmax[dtype1-True-dim2-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "keepdim": true,
+      "dim": [
+        0,
+        1
+      ],
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_aminmax.py::test_aminmax[dtype1-False-dim3-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "keepdim": false,
+      "dim": [
+        1,
+        0
+      ],
+      "shape": [
+        7,
+        4,
+        11,
+        1
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_aminmax.py::test_aminmax[dtype2-True-0-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "keepdim": true,
+      "dim": 0,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": null
+  },
+  "tests/test_aminmax.py::test_aminmax[dtype2-False-1-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "keepdim": false,
+      "dim": 1,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": null
+  },
+  "tests/test_aminmax.py::test_aminmax[dtype2-True-dim2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "keepdim": true,
+      "dim": [
+        0,
+        1
+      ],
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_aminmax.py::test_aminmax[dtype2-False-dim3-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "keepdim": false,
+      "dim": [
+        1,
+        0
+      ],
+      "shape": [
+        7,
+        4,
+        11,
+        1
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_aminmax.py::test_accuracy_aminmax_no_dim[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": null
+  },
+  "tests/test_aminmax.py::test_accuracy_aminmax_no_dim[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": null
+  },
+  "tests/test_aminmax.py::test_accuracy_aminmax_no_dim[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": "AssertionError: Scalars are not equal!\n\nExpected 5.44921875 but got inf.\nAbsolute difference: inf\nRelative difference: inf"
+  },
+  "tests/test_aminmax.py::test_accuracy_aminmax_no_dim[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": null
+  },
+  "tests/test_aminmax.py::test_accuracy_aminmax_no_dim[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": null
+  },
+  "tests/test_aminmax.py::test_accuracy_aminmax_no_dim[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": "AssertionError: Scalars are not equal!\n\nExpected 5.239127159118652 but got inf.\nAbsolute difference: inf\nRelative difference: inf"
+  },
+  "tests/test_aminmax.py::test_accuracy_aminmax_no_dim[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": null
+  },
+  "tests/test_aminmax.py::test_accuracy_aminmax_no_dim[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": null
+  },
+  "tests/test_aminmax.py::test_accuracy_aminmax_no_dim[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "aminmax"
+    ],
+    "reason": "AssertionError: Scalars are not equal!\n\nExpected 5.40625 but got inf.\nAbsolute difference: inf\nRelative difference: inf"
+  }
+}

@@ -1,0 +1,52 @@
+[CMD] pytest -m "sparse_semi_structured_mm" --level core --record json --output benchmark_sparse_semi_structured_mm.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+
+Fatal Python error: Aborted
+
+Current thread 0x00007fb5e5d29740 (most recent call first):
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py", line 329 in make_ttxir
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py", line 516 in <lambda>
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/compiler/compiler.py", line 318 in compile
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py", line 686 in default_run
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py", line 795 in run
+  File "/workspace/FlagGems/src/flag_gems/utils/libentry.py", line 586 in run
+  File "/workspace/FlagGems/src/flag_gems/utils/libentry.py", line 889 in run
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/runtime/jit.py", line 364 in <lambda>
+  File "/workspace/FlagGems/src/flag_gems/ops/_sparse_semi_structured_mm.py", line 262 in _sparse_semi_structured_mm
+  File "/workspace/FlagGems/benchmark/base.py", line 288 in <lambda>
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/testing.py", line 103 in do_bench
+  File "/workspace/FlagGems/benchmark/base.py", line 318 in get_latency
+  File "/workspace/FlagGems/benchmark/base.py", line 440 in run
+  File "/workspace/FlagGems/benchmark/test_sparse_semi_structured_mm.py", line 54 in test_sparse_semi_structured_mm
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/python.py", line 167 in pytest_pyfunc_call
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_callers.py", line 121 in _multicall
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/python.py", line 1707 in runtest
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/runner.py", line 184 in pytest_runtest_call
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_callers.py", line 121 in _multicall
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/runner.py", line 250 in <lambda>
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/runner.py", line 361 in from_call
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/runner.py", line 249 in call_and_report
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/runner.py", line 139 in runtestprotocol
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/runner.py", line 118 in pytest_runtest_protocol
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_callers.py", line 121 in _multicall
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/main.py", line 408 in pytest_runtestloop
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_callers.py", line 121 in _multicall
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/main.py", line 384 in _main
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/main.py", line 330 in wrap_session
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/main.py", line 377 in pytest_cmdline_main
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_callers.py", line 121 in _multicall
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/config/__init__.py", line 229 in _main
+  File "/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/_pytest/config/__init__.py", line 253 in _console_main
+  File "/root/miniconda/envs/python310_torch29_cuda/bin/pytest", line 8 in <module>
+
+Extension modules: numpy.core._multiarray_umath, numpy.core._multiarray_tests, numpy.linalg._umath_linalg, numpy.fft._pocketfft_internal, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._mt19937, numpy.random.mtrand, numpy.random._philox, numpy.random._pcg64, numpy.random._sfc64, numpy.random._generator, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special, regex._regex, yaml._yaml, psutil._psutil_linux, psutil._psutil_posix, xpu_utils, sqlalchemy.cyextension.collections, sqlalchemy.cyextension.immutabledict, sqlalchemy.cyextension.processors, sqlalchemy.cyextension.resultproxy, sqlalchemy.cyextension.util, greenlet._greenlet, markupsafe._speedups, zmq.backend.cython._zmq, charset_normalizer.md, requests.packages.charset_normalizer.md, requests.packages.chardet.md, _cbor2, xxhash._xxhash, PIL._imaging, PIL._imagingft, scipy._lib._ccallback_c, scipy.linalg._fblas, scipy.linalg._flapack, scipy.linalg.cython_lapack, scipy.linalg._cythonized_array_utils, scipy.linalg._solve_toeplitz, scipy.linalg._decomp_lu_cython, scipy.linalg._matfuncs_sqrtm_triu, scipy.linalg._matfuncs_expm, scipy.linalg._linalg_pythran, scipy.linalg.cython_blas, scipy.linalg._decomp_update, scipy.sparse._sparsetools, _csparsetools, scipy.sparse._csparsetools, scipy.sparse.linalg._dsolve._superlu, scipy.sparse.linalg._eigen.arpack._arpack, scipy.sparse.linalg._propack._spropack, scipy.sparse.linalg._propack._dpropack, scipy.sparse.linalg._propack._cpropack, scipy.sparse.linalg._propack._zpropack, scipy.sparse.csgraph._tools, scipy.sparse.csgraph._shortest_path, scipy.sparse.csgraph._traversal, scipy.sparse.csgraph._min_spanning_tree, scipy.sparse.csgraph._flow, scipy.sparse.csgraph._matching, scipy.sparse.csgraph._reordering, scipy.optimize._group_columns, scipy._lib.messagestream, scipy.optimize._trlib._trlib, scipy.optimize._lbfgsb, _moduleTNC, scipy.optimize._moduleTNC, scipy.optimize._cobyla, scipy.optimize._slsqp, scipy.optimize._minpack, scipy.optimize._lsq.givens_elimination, scipy.optimize._zeros, scipy.optimize._cython_nnls, scipy._lib._uarray._uarray, scipy.special._ufuncs_cxx, scipy.special._ufuncs, scipy.special._specfun, scipy.special._comb, scipy.special._ellip_harm_2, scipy.linalg._decomp_interpolative, scipy.optimize._bglu_dense, scipy.optimize._lsap, scipy.spatial._ckdtree, scipy.spatial._qhull, scipy.spatial._voronoi, scipy.spatial._distance_wrap, scipy.spatial._hausdorff, scipy.spatial.transform._rotation, scipy.optimize._direct, sentencepiece._sentencepiece, multidict._multidict, yarl._quoting_c, propcache._helpers_c, aiohttp._http_writer, aiohttp._http_parser, aiohttp._websocket.mask, aiohttp._websocket.reader_c, frozenlist._frozenlist (total: 109)

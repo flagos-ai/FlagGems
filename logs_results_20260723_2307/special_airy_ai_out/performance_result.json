@@ -1,0 +1,100 @@
+{
+  "special_airy_ai_out": {
+    "details": [
+      {
+        "op_name": "special_airy_ai_out",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "out": [
+                  64,
+                  64
+                ]
+              }
+            ],
+            "latency_base": 0.21017099916934967,
+            "latency": 0.011668999679386616,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 18.011055355551896,
+            "accuracy": null,
+            "tflops": 0.0003510155208278579,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "out": [
+                  4096,
+                  4096
+                ]
+              }
+            ],
+            "latency_base": 102.18839263916016,
+            "latency": 19.28488540649414,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 5.298885136478356,
+            "accuracy": null,
+            "tflops": 0.0008699671087674865,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "out": [
+                  64,
+                  512,
+                  512
+                ]
+              }
+            ],
+            "latency_base": 103.17098999023438,
+            "latency": 19.286890029907227,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 5.349280772081565,
+            "accuracy": null,
+            "tflops": 0.0008698766869093152,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_special_airy_ai.py::test_special_airy_ai_out",
+    "reason": null
+  }
+}

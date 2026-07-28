@@ -1,0 +1,3 @@
+[CMD] pytest -m "safe_softmax" --level core --record json --output benchmark_safe_softmax.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

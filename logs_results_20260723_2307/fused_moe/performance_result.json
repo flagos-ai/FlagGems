@@ -1,0 +1,7 @@
+{
+  "fused_moe": {
+    "result": "skipped",
+    "reason": "Skipped: requires NVIDIA Hopper architecture",
+    "test_case": "benchmark/test_fused_moe_w8a16.py::test_fused_moe_w8a16_mxq_gems_vs_vllm"
+  }
+}

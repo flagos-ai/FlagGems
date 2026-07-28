@@ -1,0 +1,10 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: md-report-0.8.0
+collected 951 items / 950 deselected / 1 selected
+
+test_abs.py .                                                            [100%]
+
+====================== 1 passed, 950 deselected in 13.12s ======================

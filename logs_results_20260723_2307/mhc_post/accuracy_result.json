@@ -1,0 +1,74 @@
+{
+  "tests/test_mhc_ops.py::test_mhc_post_vs_ref[n4096_h1280_hc2]": {
+    "params": {
+      "n": 4096,
+      "h": 1280,
+      "hc_mult": 2
+    },
+    "result": "passed",
+    "opname": [
+      "mhc_post"
+    ],
+    "reason": null
+  },
+  "tests/test_mhc_ops.py::test_mhc_post_vs_ref[n4096_h1280_hc4]": {
+    "params": {
+      "n": 4096,
+      "h": 1280,
+      "hc_mult": 4
+    },
+    "result": "passed",
+    "opname": [
+      "mhc_post"
+    ],
+    "reason": null
+  },
+  "tests/test_mhc_ops.py::test_mhc_post_vs_ref[n4096_h2560_hc2]": {
+    "params": {
+      "n": 4096,
+      "h": 2560,
+      "hc_mult": 2
+    },
+    "result": "passed",
+    "opname": [
+      "mhc_post"
+    ],
+    "reason": null
+  },
+  "tests/test_mhc_ops.py::test_mhc_post_vs_ref[n4096_h2560_hc4]": {
+    "params": {
+      "n": 4096,
+      "h": 2560,
+      "hc_mult": 4
+    },
+    "result": "passed",
+    "opname": [
+      "mhc_post"
+    ],
+    "reason": null
+  },
+  "tests/test_mhc_ops.py::test_mhc_post_vs_ref[n4096_h7168_hc2]": {
+    "params": {
+      "n": 4096,
+      "h": 7168,
+      "hc_mult": 2
+    },
+    "result": "passed",
+    "opname": [
+      "mhc_post"
+    ],
+    "reason": null
+  },
+  "tests/test_mhc_ops.py::test_mhc_post_vs_ref[n4096_h7168_hc4]": {
+    "params": {
+      "n": 4096,
+      "h": 7168,
+      "hc_mult": 4
+    },
+    "result": "passed",
+    "opname": [
+      "mhc_post"
+    ],
+    "reason": null
+  }
+}

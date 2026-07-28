@@ -1,0 +1,1603 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 02:02:28 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 02:02:30 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:02:30 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:02:30 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:02:30 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:02:30 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:02:30 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:02:30 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 02:02:30 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 02:02:30 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 02:02:31 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49864 deselected / 87 selected
+
+test_select_backward.py::test_select_backward[0-dtype0-shape0] PASSED
+test_select_backward.py::test_select_backward[0-dtype0-shape1] PASSED
+test_select_backward.py::test_select_backward[0-dtype0-shape2] PASSED
+test_select_backward.py::test_select_backward[0-dtype0-shape3] FAILED
+test_select_backward.py::test_select_backward[0-dtype0-shape4] PASSED
+test_select_backward.py::test_select_backward[0-dtype0-shape5] FAILED
+test_select_backward.py::test_select_backward[0-dtype0-shape6] FAILED
+test_select_backward.py::test_select_backward[0-dtype0-shape7] PASSED
+test_select_backward.py::test_select_backward[0-dtype0-shape8] PASSED
+test_select_backward.py::test_select_backward[0-dtype1-shape0] PASSED
+test_select_backward.py::test_select_backward[0-dtype1-shape1] PASSED
+test_select_backward.py::test_select_backward[0-dtype1-shape2] PASSED
+test_select_backward.py::test_select_backward[0-dtype1-shape3] FAILED
+test_select_backward.py::test_select_backward[0-dtype1-shape4] PASSED
+test_select_backward.py::test_select_backward[0-dtype1-shape5] FAILED
+test_select_backward.py::test_select_backward[0-dtype1-shape6] FAILED
+test_select_backward.py::test_select_backward[0-dtype1-shape7] PASSED
+test_select_backward.py::test_select_backward[0-dtype1-shape8] PASSED
+test_select_backward.py::test_select_backward[0-dtype2-shape0] PASSED
+test_select_backward.py::test_select_backward[0-dtype2-shape1] PASSED
+test_select_backward.py::test_select_backward[0-dtype2-shape2] PASSED
+test_select_backward.py::test_select_backward[0-dtype2-shape3] FAILED
+test_select_backward.py::test_select_backward[0-dtype2-shape4] PASSED
+test_select_backward.py::test_select_backward[0-dtype2-shape5] FAILED
+test_select_backward.py::test_select_backward[0-dtype2-shape6] FAILED
+test_select_backward.py::test_select_backward[0-dtype2-shape7] PASSED
+test_select_backward.py::test_select_backward[0-dtype2-shape8] PASSED
+test_select_backward.py::test_select_backward[1-dtype0-shape0] PASSED
+test_select_backward.py::test_select_backward[1-dtype0-shape1] PASSED
+test_select_backward.py::test_select_backward[1-dtype0-shape2] PASSED
+test_select_backward.py::test_select_backward[1-dtype0-shape3] FAILED
+test_select_backward.py::test_select_backward[1-dtype0-shape4] PASSED
+test_select_backward.py::test_select_backward[1-dtype0-shape5] FAILED
+test_select_backward.py::test_select_backward[1-dtype0-shape6] PASSED
+test_select_backward.py::test_select_backward[1-dtype0-shape7] PASSED
+test_select_backward.py::test_select_backward[1-dtype0-shape8] PASSED
+test_select_backward.py::test_select_backward[1-dtype1-shape0] PASSED
+test_select_backward.py::test_select_backward[1-dtype1-shape1] PASSED
+test_select_backward.py::test_select_backward[1-dtype1-shape2] PASSED
+test_select_backward.py::test_select_backward[1-dtype1-shape3] FAILED
+test_select_backward.py::test_select_backward[1-dtype1-shape4] PASSED
+test_select_backward.py::test_select_backward[1-dtype1-shape5] FAILED
+test_select_backward.py::test_select_backward[1-dtype1-shape6] PASSED
+test_select_backward.py::test_select_backward[1-dtype1-shape7] PASSED
+test_select_backward.py::test_select_backward[1-dtype1-shape8] PASSED
+test_select_backward.py::test_select_backward[1-dtype2-shape0] PASSED
+test_select_backward.py::test_select_backward[1-dtype2-shape1] PASSED
+test_select_backward.py::test_select_backward[1-dtype2-shape2] PASSED
+test_select_backward.py::test_select_backward[1-dtype2-shape3] FAILED
+test_select_backward.py::test_select_backward[1-dtype2-shape4] PASSED
+test_select_backward.py::test_select_backward[1-dtype2-shape5] FAILED
+test_select_backward.py::test_select_backward[1-dtype2-shape6] PASSED
+test_select_backward.py::test_select_backward[1-dtype2-shape7] PASSED
+test_select_backward.py::test_select_backward[1-dtype2-shape8] PASSED
+test_select_backward.py::test_select_backward[-1-dtype0-shape0] PASSED
+test_select_backward.py::test_select_backward[-1-dtype0-shape1] PASSED
+test_select_backward.py::test_select_backward[-1-dtype0-shape2] PASSED
+test_select_backward.py::test_select_backward[-1-dtype0-shape3] PASSED
+test_select_backward.py::test_select_backward[-1-dtype0-shape4] PASSED
+test_select_backward.py::test_select_backward[-1-dtype0-shape5] PASSED
+test_select_backward.py::test_select_backward[-1-dtype0-shape6] PASSED
+test_select_backward.py::test_select_backward[-1-dtype0-shape7] PASSED
+test_select_backward.py::test_select_backward[-1-dtype0-shape8] PASSED
+test_select_backward.py::test_select_backward[-1-dtype1-shape0] PASSED
+test_select_backward.py::test_select_backward[-1-dtype1-shape1] PASSED
+test_select_backward.py::test_select_backward[-1-dtype1-shape2] PASSED
+test_select_backward.py::test_select_backward[-1-dtype1-shape3] PASSED
+test_select_backward.py::test_select_backward[-1-dtype1-shape4] PASSED
+test_select_backward.py::test_select_backward[-1-dtype1-shape5] PASSED
+test_select_backward.py::test_select_backward[-1-dtype1-shape6] PASSED
+test_select_backward.py::test_select_backward[-1-dtype1-shape7] PASSED
+test_select_backward.py::test_select_backward[-1-dtype1-shape8] PASSED
+test_select_backward.py::test_select_backward[-1-dtype2-shape0] PASSED
+test_select_backward.py::test_select_backward[-1-dtype2-shape1] PASSED
+test_select_backward.py::test_select_backward[-1-dtype2-shape2] PASSED
+test_select_backward.py::test_select_backward[-1-dtype2-shape3] PASSED
+test_select_backward.py::test_select_backward[-1-dtype2-shape4] PASSED
+test_select_backward.py::test_select_backward[-1-dtype2-shape5] PASSED
+test_select_backward.py::test_select_backward[-1-dtype2-shape6] PASSED
+test_select_backward.py::test_select_backward[-1-dtype2-shape7] PASSED
+test_select_backward.py::test_select_backward[-1-dtype2-shape8] PASSED
+test_select_backward.py::test_select_backward_non_contiguous[dtype0] PASSED
+test_select_backward.py::test_select_backward_non_contiguous[dtype1] PASSED
+test_select_backward.py::test_select_backward_non_contiguous[dtype2] PASSED
+test_select_backward.py::test_select_backward_small_and_edge[dtype0] PASSED
+test_select_backward.py::test_select_backward_small_and_edge[dtype1] PASSED
+test_select_backward.py::test_select_backward_small_and_edge[dtype2] PASSED
+
+=================================== FAILURES ===================================
+____________________ test_select_backward[0-dtype0-shape3] _____________________
+
+shape = (2, 3, 4, 5), dtype = torch.float16, dim = 0
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[-0.2512, -0.2512, -0.2512, -0.2512, -0.3755],
+          [-1.9619, -1.0449,  0.5854,  0.0627,  0.7988],
+    ...00,  0.0000,  0.0000,  0.0000],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]]]],
+       dtype=torch.float16)
+ref = tensor([[[[-0.7515,  0.5352,  0.2056, -0.6494, -0.3755],
+          [-1.9619, -1.0449,  0.5854,  0.0627,  0.7988],
+    ...00,  0.0000,  0.0000,  0.0000],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]]]],
+       dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 4 / 120 (3.3%)
+E       Greatest absolute difference: 0.7861328125 at index (0, 0, 0, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 2.22265625 at index (0, 0, 0, 2) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[0-dtype0-shape5] _____________________
+
+shape = (3, 7, 11), dtype = torch.float16, dim = 0
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[-5.0488e-01, -5.0488e-01, -5.0488e-01,  1.1514e+00,  1.7959e+00,
+           1.2432e+00, -7.1631e-01, -3.7158...         0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,
+           0.0000e+00]]], dtype=torch.float16)
+ref = tensor([[[ 2.3086e+00,  4.8926e-01, -2.4951e-01,  1.1514e+00,  1.7959e+00,
+           1.2432e+00, -7.1631e-01, -3.7158...         0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,
+           0.0000e+00]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 3 / 231 (1.3%)
+E       Greatest absolute difference: 2.8125 at index (0, 0, 0) (up to 0.0001 allowed)
+E       Greatest relative difference: 2.03125 at index (0, 0, 1) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[0-dtype0-shape6] _____________________
+
+shape = (2, 1, 4), dtype = torch.float16, dim = 0
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[-1.8096, -1.8096, -1.8096, -1.8096]],
+
+        [[ 0.0000,  0.0000,  0.0000,  0.0000]]], dtype=torch.float16)
+ref = tensor([[[ 0.5288,  0.0792,  4.0703, -0.0218]],
+
+        [[ 0.0000,  0.0000,  0.0000,  0.0000]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 4 / 8 (50.0%)
+E       Greatest absolute difference: 5.87890625 at index (0, 0, 2) (up to 0.0001 allowed)
+E       Greatest relative difference: 81.875 at index (0, 0, 3) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[0-dtype1-shape3] _____________________
+
+shape = (2, 3, 4, 5), dtype = torch.float32, dim = 0
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 0.0000,  0.0000,  0.0000,  0.0000,  0.9693],
+          [ 0.4342,  0.9997, -0.1008, -0.3944,  1.4047],
+    ...],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]]]])
+ref = tensor([[[[ 1.3931, -0.6987,  0.3304,  1.4016,  0.9693],
+          [ 0.4342,  0.9997, -0.1008, -0.3944,  1.4047],
+    ...],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 4 / 120 (3.3%)
+E       Greatest absolute difference: 1.401553750038147 at index (0, 0, 0, 3) (up to 0.0001 allowed)
+E       Greatest relative difference: 1.0 at index (0, 0, 0, 0) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[0-dtype1-shape5] _____________________
+
+shape = (3, 7, 11), dtype = torch.float32, dim = 0
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[ 0.0000,  0.0000,  0.0000, -0.0078,  0.1510,  0.8556, -0.1640,
+           1.1742, -1.2050,  0.7094, -0.2014]...       [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+           0.0000,  0.0000,  0.0000,  0.0000]]])
+ref = tensor([[[-0.5157, -0.3654, -1.2787, -0.0078,  0.1510,  0.8556, -0.1640,
+           1.1742, -1.2050,  0.7094, -0.2014]...       [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+           0.0000,  0.0000,  0.0000,  0.0000]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 3 / 231 (1.3%)
+E       Greatest absolute difference: 1.2787495851516724 at index (0, 0, 2) (up to 0.0001 allowed)
+E       Greatest relative difference: 1.0 at index (0, 0, 0) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[0-dtype1-shape6] _____________________
+
+shape = (2, 1, 4), dtype = torch.float32, dim = 0
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[0., 0., 0., 0.]],
+
+        [[0., 0., 0., 0.]]])
+ref = tensor([[[-0.7102,  1.9173,  0.9182,  0.4581]],
+
+        [[ 0.0000,  0.0000,  0.0000,  0.0000]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 4 / 8 (50.0%)
+E       Greatest absolute difference: 1.917286992073059 at index (0, 0, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 1.0 at index (0, 0, 0) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[0-dtype2-shape3] _____________________
+
+shape = (2, 3, 4, 5), dtype = torch.bfloat16, dim = 0
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[        nan, -8.3594e-01, -2.5526e-25,  2.6172e-01, -8.4766e-01],
+          [-1.3594e+00,  1.1182e-01,  1.2...0000e+00],
+          [ 0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00]]]],
+       dtype=torch.bfloat16)
+ref = tensor([[[[ 0.2236, -0.9648,  1.0391,  0.6484, -0.8477],
+          [-1.3594,  0.1118,  1.2812,  0.6797, -0.5273],
+    ...0,  0.0000,  0.0000,  0.0000],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]]]],
+       dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 4 / 120 (3.3%)
+E       Greatest absolute difference: nan at index (0, 0, 0, 0) (up to 0.0001 allowed)
+E       Greatest relative difference: nan at index (0, 0, 0, 0) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[0-dtype2-shape5] _____________________
+
+shape = (3, 7, 11), dtype = torch.bfloat16, dim = 0
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[-2.0625e+00, -3.7823e+15, -2.5586e-01,  8.8672e-01,  5.9766e-01,
+           2.1191e-01, -1.0547e+00, -1.6992...        0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,
+           0.0000e+00]]], dtype=torch.bfloat16)
+ref = tensor([[[ 0.8398,  0.6250, -0.1768,  0.8867,  0.5977,  0.2119, -1.0547,
+          -0.1699, -3.4062,  1.0938,  0.2041]...00,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+           0.0000,  0.0000,  0.0000,  0.0000]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 3 / 231 (1.3%)
+E       Greatest absolute difference: 3782319999549440.0 at index (0, 0, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 6051711999279104.0 at index (0, 0, 1) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[0-dtype2-shape6] _____________________
+
+shape = (2, 1, 4), dtype = torch.bfloat16, dim = 0
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[-8.6514e+24,  1.6641e+00, -6.6189e+25, -2.4414e-02]],
+
+        [[ 0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00]]],
+       dtype=torch.bfloat16)
+ref = tensor([[[-0.4453,  0.4551,  0.8828,  0.6836]],
+
+        [[ 0.0000,  0.0000,  0.0000,  0.0000]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 4 / 8 (50.0%)
+E       Greatest absolute difference: 6.618868862390095e+25 at index (0, 0, 2) (up to 0.0001 allowed)
+E       Greatest relative difference: 7.495340081610701e+25 at index (0, 0, 2) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[1-dtype0-shape3] _____________________
+
+shape = (2, 3, 4, 5), dtype = torch.float16, dim = 1
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 2.0332,  1.7139, -1.8896,  1.7061, -1.7627],
+          [ 1.7793, -1.7051,  1.9043,  0.9370, -1.2803],
+    ...00,  0.0000,  0.0000,  0.0000],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]]]],
+       dtype=torch.float16)
+ref = tensor([[[[-0.5220, -2.3730, -0.4702,  0.0701, -0.0867],
+          [-0.3984, -2.0215, -0.8003,  0.9370, -1.2803],
+    ...00,  0.0000,  0.0000,  0.0000],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]]]],
+       dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 8 / 120 (6.7%)
+E       Greatest absolute difference: 4.0859375 at index (0, 0, 0, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 23.34375 at index (0, 0, 0, 3) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[1-dtype0-shape5] _____________________
+
+shape = (3, 7, 11), dtype = torch.float16, dim = 1
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[ 1.9521, -1.8066,  1.7793,  1.5479, -0.8301, -1.4473,  1.1943,
+           0.5308, -0.7041, -0.7178, -0.5068]...000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+           0.0000,  0.0000,  0.0000,  0.0000]]], dtype=torch.float16)
+ref = tensor([[[-1.0176,  0.8237,  0.0208, -0.2236, -0.8301, -1.4473,  1.1943,
+           0.5308, -0.7041, -0.7178, -0.5068]...000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+           0.0000,  0.0000,  0.0000,  0.0000]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 4 / 231 (1.7%)
+E       Greatest absolute difference: 2.96875 at index (0, 0, 0) (up to 0.0001 allowed)
+E       Greatest relative difference: 84.5625 at index (0, 0, 2) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[1-dtype1-shape3] _____________________
+
+shape = (2, 3, 4, 5), dtype = torch.float32, dim = 1
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+          [ 0.0000,  0.0000,  0.0000, -0.3531, -0.2534],
+    ...],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]]]])
+ref = tensor([[[[ 0.9439, -0.4334,  0.5742, -0.3894, -1.1625],
+          [ 0.2637, -1.7526,  0.7579, -0.3531, -0.2534],
+    ...],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 8 / 120 (6.7%)
+E       Greatest absolute difference: 1.7525675296783447 at index (0, 0, 1, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 1.0 at index (0, 0, 0, 0) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[1-dtype1-shape5] _____________________
+
+shape = (3, 7, 11), dtype = torch.float32, dim = 1
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[ 0.0000,  0.0000,  0.0000,  0.0000,  0.4235,  1.5447, -0.4926,
+          -1.6287, -0.0182,  0.9114, -1.4387]...       [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+           0.0000,  0.0000,  0.0000,  0.0000]]])
+ref = tensor([[[ 0.8008, -0.4087,  0.3508, -1.1829,  0.4235,  1.5447, -0.4926,
+          -1.6287, -0.0182,  0.9114, -1.4387]...       [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+           0.0000,  0.0000,  0.0000,  0.0000]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 4 / 231 (1.7%)
+E       Greatest absolute difference: 1.182863712310791 at index (0, 0, 3) (up to 0.0001 allowed)
+E       Greatest relative difference: 1.0 at index (0, 0, 0) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[1-dtype2-shape3] _____________________
+
+shape = (2, 3, 4, 5), dtype = torch.bfloat16, dim = 1
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[[ 1.8131e-34,  1.5078e+00,  8.6975e-04, -2.0605e-01,  3.6351e-27],
+          [ 1.5312e+00, -3.2072e+32, -4.7...0000e+00],
+          [ 0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00]]]],
+       dtype=torch.bfloat16)
+ref = tensor([[[[ 1.9766,  1.2969, -2.7188,  1.1641, -0.3457],
+          [ 1.0703, -1.0547, -0.9570,  0.4473, -0.1973],
+    ...0,  0.0000,  0.0000,  0.0000],
+          [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]]]],
+       dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 8 / 120 (6.7%)
+E       Greatest absolute difference: 3.2071560185774204e+32 at index (0, 0, 1, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 3.0423614405477506e+32 at index (0, 0, 1, 1) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+____________________ test_select_backward[1-dtype2-shape5] _____________________
+
+shape = (3, 7, 11), dtype = torch.bfloat16, dim = 1
+
+    @pytest.mark.select_backward
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (10,),
+            (4, 8),
+            (4, 8, 16),
+            (2, 3, 4, 5),
+            (8, 16, 32),
+            (3, 7, 11),
+            (2, 1, 4),
+            (64, 512),
+            (32, 256, 256),
+        ],
+    )
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [0, 1, -1])
+    def test_select_backward(shape, dtype, dim):
+        ndim = len(shape)
+        actual_dim = dim + ndim if dim < 0 else dim
+    
+        if actual_dim >= ndim:
+            # Invalid input: dim out of range for shape
+            return
+    
+        dim_size = shape[actual_dim]
+    
+        indices_to_test = [0, dim_size // 2]
+        if dim_size > 1:
+            indices_to_test.append(dim_size - 1)
+    
+        for index in indices_to_test:
+            grad_shape = list(shape)
+            grad_shape.pop(actual_dim)
+    
+            res_grad = torch.randn(
+                grad_shape,
+                dtype=dtype,
+                device=flag_gems.device,
+            )
+            ref_grad = utils.to_reference(res_grad)
+    
+            ref_out = torch.ops.aten.select_backward(
+                ref_grad,
+                shape,
+                actual_dim,
+                index,
+            )
+    
+            with flag_gems.use_gems():
+                res_out = torch.ops.aten.select_backward(
+                    res_grad,
+                    shape,
+                    actual_dim,
+                    index,
+                )
+    
+            assert res_out.shape == tuple(shape)
+            assert res_out.dtype == res_grad.dtype
+    
+>           utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_select_backward.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[-5.0689e-26,  1.0000e+00, -2.9532e-14,  7.5391e-01,  2.3926e-01,
+           1.1719e+00,  1.8438e+00, -9.0332...        0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,
+           0.0000e+00]]], dtype=torch.bfloat16)
+ref = tensor([[[ 0.1738,  0.0645,  0.8555, -3.0938,  0.2393,  1.1719,  1.8438,
+          -0.0903, -0.0728, -1.2891,  0.3320]...00,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+           0.0000,  0.0000,  0.0000,  0.0000]]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 4 / 231 (1.7%)
+E       Greatest absolute difference: 3.84375 at index (0, 0, 3) (up to 0.0001 allowed)
+E       Greatest relative difference: 14.5625 at index (0, 0, 1) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+=========================== short test summary info ============================
+FAILED test_select_backward.py::test_select_backward[0-dtype0-shape3] - Asser...
+FAILED test_select_backward.py::test_select_backward[0-dtype0-shape5] - Asser...
+FAILED test_select_backward.py::test_select_backward[0-dtype0-shape6] - Asser...
+FAILED test_select_backward.py::test_select_backward[0-dtype1-shape3] - Asser...
+FAILED test_select_backward.py::test_select_backward[0-dtype1-shape5] - Asser...
+FAILED test_select_backward.py::test_select_backward[0-dtype1-shape6] - Asser...
+FAILED test_select_backward.py::test_select_backward[0-dtype2-shape3] - Asser...
+FAILED test_select_backward.py::test_select_backward[0-dtype2-shape5] - Asser...
+FAILED test_select_backward.py::test_select_backward[0-dtype2-shape6] - Asser...
+FAILED test_select_backward.py::test_select_backward[1-dtype0-shape3] - Asser...
+FAILED test_select_backward.py::test_select_backward[1-dtype0-shape5] - Asser...
+FAILED test_select_backward.py::test_select_backward[1-dtype1-shape3] - Asser...
+FAILED test_select_backward.py::test_select_backward[1-dtype1-shape5] - Asser...
+FAILED test_select_backward.py::test_select_backward[1-dtype2-shape3] - Asser...
+FAILED test_select_backward.py::test_select_backward[1-dtype2-shape5] - Asser...
+=============== 15 failed, 72 passed, 49864 deselected in 35.72s ===============

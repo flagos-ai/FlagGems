@@ -1,0 +1,47 @@
+{
+  "tests/test_normal.py::test_normal_[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "normal_"
+    ],
+    "reason": null
+  },
+  "tests/test_normal.py::test_normal_[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "normal_"
+    ],
+    "reason": null
+  },
+  "tests/test_normal.py::test_normal_[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "normal_"
+    ],
+    "reason": null
+  }
+}

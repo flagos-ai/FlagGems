@@ -1,0 +1,47 @@
+{
+  "tests/test_rand_like.py::test_rand_like[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rand_like"
+    ],
+    "reason": null
+  },
+  "tests/test_rand_like.py::test_rand_like[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rand_like"
+    ],
+    "reason": null
+  },
+  "tests/test_rand_like.py::test_rand_like[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "rand_like"
+    ],
+    "reason": null
+  }
+}

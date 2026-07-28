@@ -1,0 +1,3 @@
+[CMD] pytest -m "permute_copy" --level core --record json --output benchmark_permute_copy.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

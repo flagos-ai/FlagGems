@@ -1,0 +1,2594 @@
+{
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.0-dtype0-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.0-dtype0-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.0-dtype0-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.0-dtype1-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.0-dtype1-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.0-dtype1-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.0-dtype2-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.0-dtype2-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.0-dtype2-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.5-dtype0-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.5-dtype0-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.5-dtype0-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.5-dtype1-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.5-dtype1-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.5-dtype1-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.5-dtype2-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.5-dtype2-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-0.5-dtype2-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-1.0-dtype0-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-1.0-dtype0-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-1.0-dtype0-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-1.0-dtype1-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-1.0-dtype1-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-1.0-dtype1-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-1.0-dtype2-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-1.0-dtype2-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[0-1.0-dtype2-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.0-dtype0-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.0-dtype0-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.0-dtype0-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.0-dtype1-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.0-dtype1-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.0-dtype1-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.0-dtype2-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.0-dtype2-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.0-dtype2-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.5-dtype0-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.5-dtype0-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.5-dtype0-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.5-dtype1-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.5-dtype1-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.5-dtype1-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.5-dtype2-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.5-dtype2-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-0.5-dtype2-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-1.0-dtype0-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-1.0-dtype0-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-1.0-dtype0-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-1.0-dtype1-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-1.0-dtype1-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-1.0-dtype1-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-1.0-dtype2-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-1.0-dtype2-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[1-1.0-dtype2-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.0-dtype0-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.0-dtype0-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.0-dtype0-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.0-dtype1-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.0-dtype1-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.0-dtype1-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.0-dtype2-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.0-dtype2-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.0-dtype2-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.5-dtype0-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.5-dtype0-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.5-dtype0-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.5-dtype1-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.5-dtype1-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.5-dtype1-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.5-dtype2-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.5-dtype2-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-0.5-dtype2-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-1.0-dtype0-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-1.0-dtype0-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-1.0-dtype0-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-1.0-dtype1-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-1.0-dtype1-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-1.0-dtype1-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-1.0-dtype2-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-1.0-dtype2-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss[2-1.0-dtype2-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.0-dtype0-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.0-dtype0-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.0-dtype0-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.0-dtype1-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.0-dtype1-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.0-dtype1-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.0-dtype2-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.0-dtype2-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.0-dtype2-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.5-dtype0-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.5-dtype0-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.5-dtype0-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.5-dtype1-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.5-dtype1-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.5-dtype1-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.5-dtype2-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.5-dtype2-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-0.5-dtype2-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-1.0-dtype0-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-1.0-dtype0-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-1.0-dtype0-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-1.0-dtype1-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-1.0-dtype1-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-1.0-dtype1-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-1.0-dtype2-shape0]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-1.0-dtype2-shape1]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[0-1.0-dtype2-shape2]": {
+    "params": {
+      "reduction": 0,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.0-dtype0-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.0-dtype0-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.0-dtype0-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.0-dtype1-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.0-dtype1-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.0-dtype1-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.0-dtype2-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.0-dtype2-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.0-dtype2-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.5-dtype0-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.5-dtype0-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.5-dtype0-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.5-dtype1-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.5-dtype1-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.5-dtype1-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.5-dtype2-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.5-dtype2-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-0.5-dtype2-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-1.0-dtype0-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-1.0-dtype0-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-1.0-dtype0-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-1.0-dtype1-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-1.0-dtype1-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-1.0-dtype1-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-1.0-dtype2-shape0]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-1.0-dtype2-shape1]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[1-1.0-dtype2-shape2]": {
+    "params": {
+      "reduction": 1,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.0-dtype0-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.0-dtype0-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.0-dtype0-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.0-dtype1-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.0-dtype1-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.0-dtype1-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.0-dtype2-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.0-dtype2-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.0-dtype2-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.5-dtype0-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.5-dtype0-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.5-dtype0-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.5-dtype1-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.5-dtype1-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.5-dtype1-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.5-dtype2-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.5-dtype2-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-0.5-dtype2-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 0.5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-1.0-dtype0-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-1.0-dtype0-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-1.0-dtype0-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-1.0-dtype1-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-1.0-dtype1-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-1.0-dtype1-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-1.0-dtype2-shape0]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-1.0-dtype2-shape1]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  },
+  "tests/test_margin_ranking_loss.py::test_margin_ranking_loss_backward[2-1.0-dtype2-shape2]": {
+    "params": {
+      "reduction": 2,
+      "margin": 1.0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "margin_ranking_loss"
+    ],
+    "reason": "RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/mul.cpp:39)"
+  }
+}

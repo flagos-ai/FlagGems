@@ -1,0 +1,7 @@
+{
+  "embedding_dense_backward": {
+    "result": "failed",
+    "test_case": "benchmark/test_embedding_dense_backward.py::test_embedding_dense_backward",
+    "reason": "Failed: Check scale_grad_by_freq == false failed, left operand=1, scale_grad_by_freq = true for embedding_dense_backward is unimplemented."
+  }
+}

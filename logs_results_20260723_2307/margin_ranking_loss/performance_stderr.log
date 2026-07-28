@@ -1,0 +1,3 @@
+[CMD] pytest -m "margin_ranking_loss" --level core --record json --output benchmark_margin_ranking_loss.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

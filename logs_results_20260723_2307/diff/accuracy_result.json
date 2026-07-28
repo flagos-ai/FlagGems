@@ -1,0 +1,982 @@
+{
+  "tests/test_diff.py::test_diff[1-dtype0-shape0]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype0-shape1]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype0-shape2]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype1-shape0]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype1-shape1]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype1-shape2]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype2-shape0]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype2-shape1]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype2-shape2]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype3-shape0]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.int16",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype3-shape1]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.int16",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype3-shape2]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.int16",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype4-shape0]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.int32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype4-shape1]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.int32",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[1-dtype4-shape2]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.int32",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype0-shape0]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype0-shape1]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype0-shape2]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype1-shape0]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype1-shape1]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype1-shape2]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype2-shape0]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype2-shape1]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype2-shape2]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype3-shape0]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.int16",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype3-shape1]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.int16",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype3-shape2]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.int16",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype4-shape0]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.int32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype4-shape1]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.int32",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff[2-dtype4-shape2]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.int32",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[0-dtype0-shape0]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[0-dtype1-shape0]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[0-dtype2-shape0]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[0-dtype3-shape0]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.int16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[0-dtype4-shape0]": {
+    "params": {
+      "dim": 0,
+      "dtype": "torch.int32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[1-dtype0-shape0]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[1-dtype1-shape0]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[1-dtype2-shape0]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[1-dtype3-shape0]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.int16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[1-dtype4-shape0]": {
+    "params": {
+      "dim": 1,
+      "dtype": "torch.int32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[2-dtype0-shape0]": {
+    "params": {
+      "dim": 2,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[2-dtype1-shape0]": {
+    "params": {
+      "dim": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[2-dtype2-shape0]": {
+    "params": {
+      "dim": 2,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[2-dtype3-shape0]": {
+    "params": {
+      "dim": 2,
+      "dtype": "torch.int16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[2-dtype4-shape0]": {
+    "params": {
+      "dim": 2,
+      "dtype": "torch.int32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[-1-dtype0-shape0]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[-1-dtype1-shape0]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[-1-dtype2-shape0]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[-1-dtype3-shape0]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.int16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_3d[-1-dtype4-shape0]": {
+    "params": {
+      "dim": -1,
+      "dtype": "torch.int32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "diff"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "diff"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "diff"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "diff"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "diff"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "diff"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype3-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype3-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "diff"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype3-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "diff"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype4-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "diff"
+    ],
+    "reason": null
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype4-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        100,
+        200
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "diff"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_diff.py::test_diff_prepend_append[dtype4-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        10,
+        20,
+        30
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "diff"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

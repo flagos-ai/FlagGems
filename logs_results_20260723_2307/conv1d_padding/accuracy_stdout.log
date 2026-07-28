@@ -1,0 +1,35 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:35:39 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:35:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:35:41 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:35:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:35:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:35:41 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:35:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:35:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:35:41 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:35:41 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:35:42 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49943 deselected / 8 selected
+
+test_conv1d.py::test_conv1d_padding[dtype0-valid-1-shape0-kernel0] PASSED
+test_conv1d.py::test_conv1d_padding[dtype0-valid-1-shape1-kernel1] PASSED
+test_conv1d.py::test_conv1d_padding[dtype0-same-1-shape0-kernel0] PASSED
+test_conv1d.py::test_conv1d_padding[dtype0-same-1-shape1-kernel1] PASSED
+test_conv1d.py::test_conv1d_padding[dtype1-valid-1-shape0-kernel0] PASSED
+test_conv1d.py::test_conv1d_padding[dtype1-valid-1-shape1-kernel1] PASSED
+test_conv1d.py::test_conv1d_padding[dtype1-same-1-shape0-kernel0] PASSED
+test_conv1d.py::test_conv1d_padding[dtype1-same-1-shape1-kernel1] PASSED
+
+=============================== warnings summary ===============================
+tests/test_conv1d.py::test_conv1d_padding[dtype0-same-1-shape0-kernel0]
+  /workspace/FlagGems/tests/test_conv1d.py:89: UserWarning: Using padding='same' with even kernel lengths and odd dilation may require a zero-padded copy of the input be created (Triggered internally at /pytorch/aten/src/ATen/native/Convolution.cpp:1031.)
+    ref_out = torch.nn.functional.conv1d(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 8 passed, 49943 deselected, 1 warning in 13.40s ================

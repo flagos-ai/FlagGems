@@ -1,0 +1,207 @@
+{
+  "arcsin_": {
+    "details": [
+      {
+        "op_name": "arcsin_",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.005929999984800816,
+            "latency": 0.011094000190496445,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.5345231551267401,
+            "accuracy": null,
+            "tflops": 0.00036920857487534513,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.23467600345611572,
+            "latency": 2.1289329528808594,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.11023174926131589,
+            "accuracy": null,
+            "tflops": 0.007880575091525156,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.23431600630283356,
+            "latency": 2.1288259029388428,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.11006818640235468,
+            "accuracy": null,
+            "tflops": 0.007880971373393691,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "arcsin_",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.005814999807626009,
+            "latency": 0.01017600018531084,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.5714425807519167,
+            "accuracy": null,
+            "tflops": 0.0004025157159403965,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.22753800451755524,
+            "latency": 1.8205840587615967,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.12498077384701031,
+            "accuracy": null,
+            "tflops": 0.00921529325672128,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.2275329977273941,
+            "latency": 1.8208509683609009,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.124959703831344,
+            "accuracy": null,
+            "tflops": 0.009213942432148946,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "arcsin_",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.0061980001628398895,
+            "latency": 0.010316000320017338,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6008142662435932,
+            "accuracy": null,
+            "tflops": 0.00039705310904770464,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.2649199962615967,
+            "latency": 1.8823349475860596,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.14074009336188273,
+            "accuracy": null,
+            "tflops": 0.008912981200033185,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.26479798555374146,
+            "latency": 1.8819750547409058,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.1407021760924438,
+            "accuracy": null,
+            "tflops": 0.008914685642477735,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_arcsin.py::test_arcsin_",
+    "reason": null
+  }
+}

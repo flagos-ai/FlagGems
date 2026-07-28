@@ -1,0 +1,167 @@
+{
+  "bitwise_left_shift_": {
+    "details": [
+      {
+        "op_name": "bitwise_left_shift_",
+        "dtype": "torch.int16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.10293799638748169,
+            "latency": 0.1221420019865036,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8427731223764949,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 72.52946472167969,
+            "latency": 56.932193756103516,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.2739622336071328,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 64.24430084228516,
+            "latency": 65.23413848876953,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9848263858553941,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "bitwise_left_shift_",
+        "dtype": "torch.int32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.08951099961996078,
+            "latency": 0.11200200021266937,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.799191080962816,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 125.50255584716797,
+            "latency": 122.30690002441406,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0261281728350242,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 131.7079315185547,
+            "latency": 123.91743469238281,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0628684482172448,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_bitwise_left_shift_.py::test_bitwise_left_shift_",
+    "reason": null
+  }
+}

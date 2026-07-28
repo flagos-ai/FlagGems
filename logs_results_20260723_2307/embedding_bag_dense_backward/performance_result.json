@@ -1,0 +1,7 @@
+{
+  "embedding_bag_dense_backward": {
+    "result": "failed",
+    "test_case": "benchmark/test_embedding_bag_dense_backward.py::test_embedding_bag_dense_backward",
+    "reason": "Failed: index out of range in self"
+  }
+}

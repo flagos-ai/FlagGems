@@ -1,0 +1,264 @@
+{
+  "norm_scalar": {
+    "details": [
+      {
+        "op_name": "norm_scalar",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.006357000209391117,
+            "latency": 0.00861900020390749,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.7375565679310603,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                1024,
+                1024
+              ]
+            ],
+            "latency_base": 0.011706000193953514,
+            "latency": 0.019652999937534332,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.5956342660744012,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.02759999968111515,
+            "latency": 0.19006900489330292,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.14521041816685828,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.02761800028383732,
+            "latency": 0.19000999629497528,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.1453502490519635,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "norm_scalar",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.006178999785333872,
+            "latency": 0.007722000125795603,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8001812593466184,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                1024,
+                1024
+              ]
+            ],
+            "latency_base": 0.012570000253617764,
+            "latency": 0.020124999806284904,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6245962919061612,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.04372100159525871,
+            "latency": 0.1898059993982315,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.23034573055579652,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.04430999979376793,
+            "latency": 0.18979400396347046,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.2334636441006653,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "norm_scalar",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.006260999944061041,
+            "latency": 0.007914000190794468,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.7911296175281636,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                1024,
+                1024
+              ]
+            ],
+            "latency_base": 0.010893000289797783,
+            "latency": 0.019703000783920288,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.5528599632746101,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.02774900011718273,
+            "latency": 0.1889529973268509,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.14685662841951383,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.028020000085234642,
+            "latency": 0.18886899948120117,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.14835679842749194,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_norm.py::test_norm_scalar",
+    "reason": null
+  }
+}

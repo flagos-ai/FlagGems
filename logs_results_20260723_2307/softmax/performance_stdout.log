@@ -1,0 +1,33 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_softmax.py .                                                        [100%]
+
+=============================== warnings summary ===============================
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+  /workspace/FlagGems/benchmark/base.py:288: UserWarning: Implicit dimension choice for softmax has been deprecated. Change the call to include dim=X as an argument.
+    fn = lambda: op(*args, **kwargs)
+
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+benchmark/test_softmax.py::test_softmax
+  /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:222: UserWarning: XRE Version Must Be More than 5.0.21.37 (After 2025.07.22). And echo 1 > /proc/kunlun/dev4/dma_excp_mask
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 1 passed, 950 deselected, 15 warnings in 25.36s ================

@@ -1,0 +1,369 @@
+{
+  "addcdiv_out": {
+    "details": [
+      {
+        "op_name": "addcdiv_out",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "value": 0.5,
+                "out": [
+                  64,
+                  64
+                ]
+              }
+            ],
+            "latency_base": 0.010091999545693398,
+            "latency": 0.007966999895870686,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.2667252011543397,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "value": 0.5,
+                "out": [
+                  4096,
+                  4096
+                ]
+              }
+            ],
+            "latency_base": 0.2963710129261017,
+            "latency": 0.3083679974079132,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9610952349703729,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ],
+                [
+                  64,
+                  512,
+                  512
+                ],
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "value": 0.5,
+                "out": [
+                  64,
+                  512,
+                  512
+                ]
+              }
+            ],
+            "latency_base": 0.29614099860191345,
+            "latency": 0.30875200033187866,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9591549148947712,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "addcdiv_out",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "value": 0.5,
+                "out": [
+                  64,
+                  64
+                ]
+              }
+            ],
+            "latency_base": 0.009140999987721443,
+            "latency": 0.006221000105142593,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.4693778867106964,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "value": 0.5,
+                "out": [
+                  4096,
+                  4096
+                ]
+              }
+            ],
+            "latency_base": 0.2650359869003296,
+            "latency": 0.26253101229667664,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0095416331264597,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ],
+                [
+                  64,
+                  512,
+                  512
+                ],
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "value": 0.5,
+                "out": [
+                  64,
+                  512,
+                  512
+                ]
+              }
+            ],
+            "latency_base": 0.26418599486351013,
+            "latency": 0.2653979957103729,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9954332705353757,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "addcdiv_out",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ],
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "value": 0.5,
+                "out": [
+                  64,
+                  64
+                ]
+              }
+            ],
+            "latency_base": 0.011122999712824821,
+            "latency": 0.007884000428020954,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.410831951922778,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ],
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "value": 0.5,
+                "out": [
+                  4096,
+                  4096
+                ]
+              }
+            ],
+            "latency_base": 0.3318279981613159,
+            "latency": 0.30246999859809875,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0970608645461928,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ],
+                [
+                  64,
+                  512,
+                  512
+                ],
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "value": 0.5,
+                "out": [
+                  64,
+                  512,
+                  512
+                ]
+              }
+            ],
+            "latency_base": 0.331059992313385,
+            "latency": 0.3031040132045746,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0922322961456206,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_addcdiv.py::test_addcdiv_out",
+    "reason": null
+  }
+}

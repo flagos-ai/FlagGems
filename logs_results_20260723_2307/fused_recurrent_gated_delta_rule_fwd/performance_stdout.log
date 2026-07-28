@@ -1,0 +1,80 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_FLA/test_fused_recurrent_gated_delta_rule_perf.py F                 [100%]
+
+=================================== FAILURES ===================================
+______________ test_perf_fused_recurrent_gated_delta_rule[False] _______________
+
+self = <test_fused_recurrent_gated_delta_rule_perf.FusedRecurrentGatedDeltaRuleBenchmark object at 0x7f0687bae080>
+cur_dtype = torch.bfloat16
+
+    def get_input_iter(self, cur_dtype):
+>       for (T,) in self.shapes:
+E       ValueError: too many values to unpack (expected 1)
+
+test_FLA/test_fused_recurrent_gated_delta_rule_perf.py:113: ValueError
+
+During handling of the above exception, another exception occurred:
+
+qkv_contiguous = False
+
+    @pytest.mark.fused_recurrent_gated_delta_rule_fwd
+    @pytest.mark.fused_recurrent_gated_delta_rule
+    @pytest.mark.parametrize("qkv_contiguous", [False])
+    def test_perf_fused_recurrent_gated_delta_rule(qkv_contiguous):
+        bench = FusedRecurrentGatedDeltaRuleBenchmark(
+            qkv_contiguous,
+            op_name="fused_recurrent_gated_delta_rule",
+            torch_op=_torch_op_wrapper,
+        )
+        bench.set_gems(flag_gems.fused_recurrent_gated_delta_rule_fwd)
+>       bench.run()
+
+test_FLA/test_fused_recurrent_gated_delta_rule_perf.py:185: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_fused_recurrent_gated_delta_rule_perf.FusedRecurrentGatedDeltaRuleBenchmark object at 0x7f0687bae080>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+>                   pytest.fail(str(e))
+E                   Failed: too many values to unpack (expected 1)
+
+base.py:433: Failed
+----------------------------- Captured stdout call -----------------------------
+[31mFAILED[0m: Operator=fused_recurrent_gated_delta_rule dtype={dtype} err=<<<{e}>>>
+=========================== short test summary info ============================
+FAILED test_FLA/test_fused_recurrent_gated_delta_rule_perf.py::test_perf_fused_recurrent_gated_delta_rule[False]
+====================== 1 failed, 950 deselected in 7.86s =======================

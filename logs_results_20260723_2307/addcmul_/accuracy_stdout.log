@@ -1,0 +1,105 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:09:41 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:09:43 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:09:43 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:09:43 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:09:43 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:09:43 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:09:43 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:09:43 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:09:43 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:09:43 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:09:44 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49867 deselected / 84 selected
+
+test_addcmul_.py::test_addcmul_[1.0-dtype0-self_shape0-t1_shape0-t2_shape0] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype0-self_shape1-t1_shape1-t2_shape1] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype0-self_shape2-t1_shape2-t2_shape2] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype0-self_shape3-t1_shape3-t2_shape3] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype0-self_shape4-t1_shape4-t2_shape4] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype0-self_shape5-t1_shape5-t2_shape5] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype0-self_shape6-t1_shape6-t2_shape6] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype1-self_shape0-t1_shape0-t2_shape0] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype1-self_shape1-t1_shape1-t2_shape1] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype1-self_shape2-t1_shape2-t2_shape2] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype1-self_shape3-t1_shape3-t2_shape3] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype1-self_shape4-t1_shape4-t2_shape4] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype1-self_shape5-t1_shape5-t2_shape5] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype1-self_shape6-t1_shape6-t2_shape6] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype2-self_shape0-t1_shape0-t2_shape0] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype2-self_shape1-t1_shape1-t2_shape1] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype2-self_shape2-t1_shape2-t2_shape2] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype2-self_shape3-t1_shape3-t2_shape3] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype2-self_shape4-t1_shape4-t2_shape4] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype2-self_shape5-t1_shape5-t2_shape5] PASSED
+test_addcmul_.py::test_addcmul_[1.0-dtype2-self_shape6-t1_shape6-t2_shape6] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype0-self_shape0-t1_shape0-t2_shape0] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype0-self_shape1-t1_shape1-t2_shape1] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype0-self_shape2-t1_shape2-t2_shape2] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype0-self_shape3-t1_shape3-t2_shape3] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype0-self_shape4-t1_shape4-t2_shape4] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype0-self_shape5-t1_shape5-t2_shape5] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype0-self_shape6-t1_shape6-t2_shape6] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype1-self_shape0-t1_shape0-t2_shape0] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype1-self_shape1-t1_shape1-t2_shape1] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype1-self_shape2-t1_shape2-t2_shape2] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype1-self_shape3-t1_shape3-t2_shape3] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype1-self_shape4-t1_shape4-t2_shape4] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype1-self_shape5-t1_shape5-t2_shape5] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype1-self_shape6-t1_shape6-t2_shape6] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype2-self_shape0-t1_shape0-t2_shape0] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype2-self_shape1-t1_shape1-t2_shape1] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype2-self_shape2-t1_shape2-t2_shape2] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype2-self_shape3-t1_shape3-t2_shape3] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype2-self_shape4-t1_shape4-t2_shape4] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype2-self_shape5-t1_shape5-t2_shape5] PASSED
+test_addcmul_.py::test_addcmul_[0.5-dtype2-self_shape6-t1_shape6-t2_shape6] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype0-self_shape0-t1_shape0-t2_shape0] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype0-self_shape1-t1_shape1-t2_shape1] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype0-self_shape2-t1_shape2-t2_shape2] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype0-self_shape3-t1_shape3-t2_shape3] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype0-self_shape4-t1_shape4-t2_shape4] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype0-self_shape5-t1_shape5-t2_shape5] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype0-self_shape6-t1_shape6-t2_shape6] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype1-self_shape0-t1_shape0-t2_shape0] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype1-self_shape1-t1_shape1-t2_shape1] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype1-self_shape2-t1_shape2-t2_shape2] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype1-self_shape3-t1_shape3-t2_shape3] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype1-self_shape4-t1_shape4-t2_shape4] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype1-self_shape5-t1_shape5-t2_shape5] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype1-self_shape6-t1_shape6-t2_shape6] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype2-self_shape0-t1_shape0-t2_shape0] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype2-self_shape1-t1_shape1-t2_shape1] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype2-self_shape2-t1_shape2-t2_shape2] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype2-self_shape3-t1_shape3-t2_shape3] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype2-self_shape4-t1_shape4-t2_shape4] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype2-self_shape5-t1_shape5-t2_shape5] PASSED
+test_addcmul_.py::test_addcmul_[2.0-dtype2-self_shape6-t1_shape6-t2_shape6] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype0-self_shape0-t1_shape0-t2_shape0] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype0-self_shape1-t1_shape1-t2_shape1] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype0-self_shape2-t1_shape2-t2_shape2] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype0-self_shape3-t1_shape3-t2_shape3] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype0-self_shape4-t1_shape4-t2_shape4] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype0-self_shape5-t1_shape5-t2_shape5] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype0-self_shape6-t1_shape6-t2_shape6] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype1-self_shape0-t1_shape0-t2_shape0] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype1-self_shape1-t1_shape1-t2_shape1] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype1-self_shape2-t1_shape2-t2_shape2] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype1-self_shape3-t1_shape3-t2_shape3] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype1-self_shape4-t1_shape4-t2_shape4] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype1-self_shape5-t1_shape5-t2_shape5] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype1-self_shape6-t1_shape6-t2_shape6] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype2-self_shape0-t1_shape0-t2_shape0] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype2-self_shape1-t1_shape1-t2_shape1] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype2-self_shape2-t1_shape2-t2_shape2] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype2-self_shape3-t1_shape3-t2_shape3] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype2-self_shape4-t1_shape4-t2_shape4] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype2-self_shape5-t1_shape5-t2_shape5] PASSED
+test_addcmul_.py::test_addcmul_[-1.5-dtype2-self_shape6-t1_shape6-t2_shape6] PASSED
+
+==================== 84 passed, 49867 deselected in 11.77s =====================

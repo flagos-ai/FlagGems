@@ -1,0 +1,773 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:39:27 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:39:29 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:39:29 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:39:29 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:39:29 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:39:29 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:39:29 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:39:29 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:39:29 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:39:29 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:39:30 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49941 deselected / 10 selected
+
+test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens0-16-128-128-3] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]scalar type of (self, ret) : (kfloat32, UnknownScalarType) combined is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]
+FAILED
+test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens1-8-128-128-0] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]scalar type of (self, ret) : (kfloat32, UnknownScalarType) combined is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]
+FAILED
+test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens2-16-512-128-5] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]scalar type of (self, ret) : (kfloat32, UnknownScalarType) combined is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]
+FAILED
+test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens3-16-128-128-2] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]scalar type of (self, ret) : (kfloat32, UnknownScalarType) combined is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]
+FAILED
+test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens4-16-512-128-4] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]scalar type of (self, ret) : (kfloat32, UnknownScalarType) combined is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]
+FAILED
+test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens5-16-512-128-4] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]scalar type of (self, ret) : (kfloat32, UnknownScalarType) combined is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]
+FAILED
+test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens6-16-512-128-4] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]scalar type of (self, ret) : (kfloat32, UnknownScalarType) combined is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]
+FAILED
+test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens7-16-512-128-3] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]scalar type of (self, ret) : (kfloat32, UnknownScalarType) combined is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]
+FAILED
+test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens8-16-512-128-5] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]scalar type of (self, ret) : (kfloat32, UnknownScalarType) combined is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]
+FAILED
+test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens9-64-512-128-3] [[31mERROR[0m][XDNN_PYTORCH][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]scalar type of (self, ret) : (kfloat32, UnknownScalarType) combined is unsupported in xdnn_pytorch_wrapper !
+
+[XDNN_UNIMPLEMENTED][/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/cast.cpp:163]
+FAILED
+
+=================================== FAILURES ===================================
+_ test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens0-16-128-128-3] _
+
+seq_lens = [19], block_size = 16, head_dim = 128, quant_block_size = 128
+extra_tokens = 3
+
+    @pytest.mark.cp_gather_indexer_k_quant_cache
+    @pytest.mark.parametrize(
+        "seq_lens,block_size,head_dim,quant_block_size,extra_tokens",
+        [
+            ([19], 16, 128, 128, 3),
+            ([13, 7, 16], 8, 128, 128, 0),
+            ([17, 1, 33, 9], 16, 512, 128, 5),
+            ([3] * 9, 16, 128, 128, 2),
+            ([2] * 16, 16, 512, 128, 4),
+            ([2] * 17, 16, 512, 128, 4),
+            ([2] * 33, 16, 512, 128, 4),
+            ([1] * 129, 16, 512, 128, 3),
+            ([1, 2, 3, 4] * 64, 16, 512, 128, 5),
+            ([70, 1, 65], 64, 512, 128, 3),
+        ],
+    )
+    @torch.inference_mode()
+    def test_cp_gather_indexer_k_quant_cache_matches_reference(
+        seq_lens,
+        block_size,
+        head_dim,
+        quant_block_size,
+        extra_tokens,
+    ):
+        vllm_op, fp8_dtype, has_vllm = _load_vllm_cuda_op_and_fp8_dtype()
+    
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+        block_table, cu_seqlen, num_blocks = _make_gather_metadata(
+            seq_lens,
+            block_size,
+            device,
+        )
+        valid_tokens = int(cu_seqlen[-1].item())
+        allocated_tokens = valid_tokens + extra_tokens
+    
+>       k_cache = _make_cache(
+            num_blocks,
+            block_size,
+            head_dim,
+            quant_block_size,
+            fp8_dtype,
+            device,
+        )
+
+test_cp_gather_indexer_k_quant_cache.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+num_blocks = 2, block_size = 16, head_dim = 128, quant_block_size = 128
+fp8_dtype = torch.float8_e4m3fn, device = device(type='cuda')
+
+    def _make_cache(num_blocks, block_size, head_dim, quant_block_size, fp8_dtype, device):
+        cache_stride = head_dim + head_dim * 4 // quant_block_size
+        k_cache = torch.empty(
+            (num_blocks, block_size, cache_stride),
+            dtype=torch.uint8,
+            device=device,
+        )
+        num_quant_blocks = head_dim // quant_block_size
+        flat_cache = k_cache.view(num_blocks, -1)
+        values = flat_cache[:, : block_size * head_dim].view(fp8_dtype)
+>       values.copy_(torch.randn(values.shape, device=device).to(fp8_dtype))
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/copy_kernel.cpp:407)
+
+test_cp_gather_indexer_k_quant_cache.py:129: RuntimeError
+_ test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens1-8-128-128-0] _
+
+seq_lens = [13, 7, 16], block_size = 8, head_dim = 128, quant_block_size = 128
+extra_tokens = 0
+
+    @pytest.mark.cp_gather_indexer_k_quant_cache
+    @pytest.mark.parametrize(
+        "seq_lens,block_size,head_dim,quant_block_size,extra_tokens",
+        [
+            ([19], 16, 128, 128, 3),
+            ([13, 7, 16], 8, 128, 128, 0),
+            ([17, 1, 33, 9], 16, 512, 128, 5),
+            ([3] * 9, 16, 128, 128, 2),
+            ([2] * 16, 16, 512, 128, 4),
+            ([2] * 17, 16, 512, 128, 4),
+            ([2] * 33, 16, 512, 128, 4),
+            ([1] * 129, 16, 512, 128, 3),
+            ([1, 2, 3, 4] * 64, 16, 512, 128, 5),
+            ([70, 1, 65], 64, 512, 128, 3),
+        ],
+    )
+    @torch.inference_mode()
+    def test_cp_gather_indexer_k_quant_cache_matches_reference(
+        seq_lens,
+        block_size,
+        head_dim,
+        quant_block_size,
+        extra_tokens,
+    ):
+        vllm_op, fp8_dtype, has_vllm = _load_vllm_cuda_op_and_fp8_dtype()
+    
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+        block_table, cu_seqlen, num_blocks = _make_gather_metadata(
+            seq_lens,
+            block_size,
+            device,
+        )
+        valid_tokens = int(cu_seqlen[-1].item())
+        allocated_tokens = valid_tokens + extra_tokens
+    
+>       k_cache = _make_cache(
+            num_blocks,
+            block_size,
+            head_dim,
+            quant_block_size,
+            fp8_dtype,
+            device,
+        )
+
+test_cp_gather_indexer_k_quant_cache.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+num_blocks = 5, block_size = 8, head_dim = 128, quant_block_size = 128
+fp8_dtype = torch.float8_e4m3fn, device = device(type='cuda')
+
+    def _make_cache(num_blocks, block_size, head_dim, quant_block_size, fp8_dtype, device):
+        cache_stride = head_dim + head_dim * 4 // quant_block_size
+        k_cache = torch.empty(
+            (num_blocks, block_size, cache_stride),
+            dtype=torch.uint8,
+            device=device,
+        )
+        num_quant_blocks = head_dim // quant_block_size
+        flat_cache = k_cache.view(num_blocks, -1)
+        values = flat_cache[:, : block_size * head_dim].view(fp8_dtype)
+>       values.copy_(torch.randn(values.shape, device=device).to(fp8_dtype))
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/copy_kernel.cpp:407)
+
+test_cp_gather_indexer_k_quant_cache.py:129: RuntimeError
+_ test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens2-16-512-128-5] _
+
+seq_lens = [17, 1, 33, 9], block_size = 16, head_dim = 512
+quant_block_size = 128, extra_tokens = 5
+
+    @pytest.mark.cp_gather_indexer_k_quant_cache
+    @pytest.mark.parametrize(
+        "seq_lens,block_size,head_dim,quant_block_size,extra_tokens",
+        [
+            ([19], 16, 128, 128, 3),
+            ([13, 7, 16], 8, 128, 128, 0),
+            ([17, 1, 33, 9], 16, 512, 128, 5),
+            ([3] * 9, 16, 128, 128, 2),
+            ([2] * 16, 16, 512, 128, 4),
+            ([2] * 17, 16, 512, 128, 4),
+            ([2] * 33, 16, 512, 128, 4),
+            ([1] * 129, 16, 512, 128, 3),
+            ([1, 2, 3, 4] * 64, 16, 512, 128, 5),
+            ([70, 1, 65], 64, 512, 128, 3),
+        ],
+    )
+    @torch.inference_mode()
+    def test_cp_gather_indexer_k_quant_cache_matches_reference(
+        seq_lens,
+        block_size,
+        head_dim,
+        quant_block_size,
+        extra_tokens,
+    ):
+        vllm_op, fp8_dtype, has_vllm = _load_vllm_cuda_op_and_fp8_dtype()
+    
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+        block_table, cu_seqlen, num_blocks = _make_gather_metadata(
+            seq_lens,
+            block_size,
+            device,
+        )
+        valid_tokens = int(cu_seqlen[-1].item())
+        allocated_tokens = valid_tokens + extra_tokens
+    
+>       k_cache = _make_cache(
+            num_blocks,
+            block_size,
+            head_dim,
+            quant_block_size,
+            fp8_dtype,
+            device,
+        )
+
+test_cp_gather_indexer_k_quant_cache.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+num_blocks = 7, block_size = 16, head_dim = 512, quant_block_size = 128
+fp8_dtype = torch.float8_e4m3fn, device = device(type='cuda')
+
+    def _make_cache(num_blocks, block_size, head_dim, quant_block_size, fp8_dtype, device):
+        cache_stride = head_dim + head_dim * 4 // quant_block_size
+        k_cache = torch.empty(
+            (num_blocks, block_size, cache_stride),
+            dtype=torch.uint8,
+            device=device,
+        )
+        num_quant_blocks = head_dim // quant_block_size
+        flat_cache = k_cache.view(num_blocks, -1)
+        values = flat_cache[:, : block_size * head_dim].view(fp8_dtype)
+>       values.copy_(torch.randn(values.shape, device=device).to(fp8_dtype))
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/copy_kernel.cpp:407)
+
+test_cp_gather_indexer_k_quant_cache.py:129: RuntimeError
+_ test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens3-16-128-128-2] _
+
+seq_lens = [3, 3, 3, 3, 3, 3, ...], block_size = 16, head_dim = 128
+quant_block_size = 128, extra_tokens = 2
+
+    @pytest.mark.cp_gather_indexer_k_quant_cache
+    @pytest.mark.parametrize(
+        "seq_lens,block_size,head_dim,quant_block_size,extra_tokens",
+        [
+            ([19], 16, 128, 128, 3),
+            ([13, 7, 16], 8, 128, 128, 0),
+            ([17, 1, 33, 9], 16, 512, 128, 5),
+            ([3] * 9, 16, 128, 128, 2),
+            ([2] * 16, 16, 512, 128, 4),
+            ([2] * 17, 16, 512, 128, 4),
+            ([2] * 33, 16, 512, 128, 4),
+            ([1] * 129, 16, 512, 128, 3),
+            ([1, 2, 3, 4] * 64, 16, 512, 128, 5),
+            ([70, 1, 65], 64, 512, 128, 3),
+        ],
+    )
+    @torch.inference_mode()
+    def test_cp_gather_indexer_k_quant_cache_matches_reference(
+        seq_lens,
+        block_size,
+        head_dim,
+        quant_block_size,
+        extra_tokens,
+    ):
+        vllm_op, fp8_dtype, has_vllm = _load_vllm_cuda_op_and_fp8_dtype()
+    
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+        block_table, cu_seqlen, num_blocks = _make_gather_metadata(
+            seq_lens,
+            block_size,
+            device,
+        )
+        valid_tokens = int(cu_seqlen[-1].item())
+        allocated_tokens = valid_tokens + extra_tokens
+    
+>       k_cache = _make_cache(
+            num_blocks,
+            block_size,
+            head_dim,
+            quant_block_size,
+            fp8_dtype,
+            device,
+        )
+
+test_cp_gather_indexer_k_quant_cache.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+num_blocks = 9, block_size = 16, head_dim = 128, quant_block_size = 128
+fp8_dtype = torch.float8_e4m3fn, device = device(type='cuda')
+
+    def _make_cache(num_blocks, block_size, head_dim, quant_block_size, fp8_dtype, device):
+        cache_stride = head_dim + head_dim * 4 // quant_block_size
+        k_cache = torch.empty(
+            (num_blocks, block_size, cache_stride),
+            dtype=torch.uint8,
+            device=device,
+        )
+        num_quant_blocks = head_dim // quant_block_size
+        flat_cache = k_cache.view(num_blocks, -1)
+        values = flat_cache[:, : block_size * head_dim].view(fp8_dtype)
+>       values.copy_(torch.randn(values.shape, device=device).to(fp8_dtype))
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/copy_kernel.cpp:407)
+
+test_cp_gather_indexer_k_quant_cache.py:129: RuntimeError
+_ test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens4-16-512-128-4] _
+
+seq_lens = [2, 2, 2, 2, 2, 2, ...], block_size = 16, head_dim = 512
+quant_block_size = 128, extra_tokens = 4
+
+    @pytest.mark.cp_gather_indexer_k_quant_cache
+    @pytest.mark.parametrize(
+        "seq_lens,block_size,head_dim,quant_block_size,extra_tokens",
+        [
+            ([19], 16, 128, 128, 3),
+            ([13, 7, 16], 8, 128, 128, 0),
+            ([17, 1, 33, 9], 16, 512, 128, 5),
+            ([3] * 9, 16, 128, 128, 2),
+            ([2] * 16, 16, 512, 128, 4),
+            ([2] * 17, 16, 512, 128, 4),
+            ([2] * 33, 16, 512, 128, 4),
+            ([1] * 129, 16, 512, 128, 3),
+            ([1, 2, 3, 4] * 64, 16, 512, 128, 5),
+            ([70, 1, 65], 64, 512, 128, 3),
+        ],
+    )
+    @torch.inference_mode()
+    def test_cp_gather_indexer_k_quant_cache_matches_reference(
+        seq_lens,
+        block_size,
+        head_dim,
+        quant_block_size,
+        extra_tokens,
+    ):
+        vllm_op, fp8_dtype, has_vllm = _load_vllm_cuda_op_and_fp8_dtype()
+    
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+        block_table, cu_seqlen, num_blocks = _make_gather_metadata(
+            seq_lens,
+            block_size,
+            device,
+        )
+        valid_tokens = int(cu_seqlen[-1].item())
+        allocated_tokens = valid_tokens + extra_tokens
+    
+>       k_cache = _make_cache(
+            num_blocks,
+            block_size,
+            head_dim,
+            quant_block_size,
+            fp8_dtype,
+            device,
+        )
+
+test_cp_gather_indexer_k_quant_cache.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+num_blocks = 16, block_size = 16, head_dim = 512, quant_block_size = 128
+fp8_dtype = torch.float8_e4m3fn, device = device(type='cuda')
+
+    def _make_cache(num_blocks, block_size, head_dim, quant_block_size, fp8_dtype, device):
+        cache_stride = head_dim + head_dim * 4 // quant_block_size
+        k_cache = torch.empty(
+            (num_blocks, block_size, cache_stride),
+            dtype=torch.uint8,
+            device=device,
+        )
+        num_quant_blocks = head_dim // quant_block_size
+        flat_cache = k_cache.view(num_blocks, -1)
+        values = flat_cache[:, : block_size * head_dim].view(fp8_dtype)
+>       values.copy_(torch.randn(values.shape, device=device).to(fp8_dtype))
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/copy_kernel.cpp:407)
+
+test_cp_gather_indexer_k_quant_cache.py:129: RuntimeError
+_ test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens5-16-512-128-4] _
+
+seq_lens = [2, 2, 2, 2, 2, 2, ...], block_size = 16, head_dim = 512
+quant_block_size = 128, extra_tokens = 4
+
+    @pytest.mark.cp_gather_indexer_k_quant_cache
+    @pytest.mark.parametrize(
+        "seq_lens,block_size,head_dim,quant_block_size,extra_tokens",
+        [
+            ([19], 16, 128, 128, 3),
+            ([13, 7, 16], 8, 128, 128, 0),
+            ([17, 1, 33, 9], 16, 512, 128, 5),
+            ([3] * 9, 16, 128, 128, 2),
+            ([2] * 16, 16, 512, 128, 4),
+            ([2] * 17, 16, 512, 128, 4),
+            ([2] * 33, 16, 512, 128, 4),
+            ([1] * 129, 16, 512, 128, 3),
+            ([1, 2, 3, 4] * 64, 16, 512, 128, 5),
+            ([70, 1, 65], 64, 512, 128, 3),
+        ],
+    )
+    @torch.inference_mode()
+    def test_cp_gather_indexer_k_quant_cache_matches_reference(
+        seq_lens,
+        block_size,
+        head_dim,
+        quant_block_size,
+        extra_tokens,
+    ):
+        vllm_op, fp8_dtype, has_vllm = _load_vllm_cuda_op_and_fp8_dtype()
+    
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+        block_table, cu_seqlen, num_blocks = _make_gather_metadata(
+            seq_lens,
+            block_size,
+            device,
+        )
+        valid_tokens = int(cu_seqlen[-1].item())
+        allocated_tokens = valid_tokens + extra_tokens
+    
+>       k_cache = _make_cache(
+            num_blocks,
+            block_size,
+            head_dim,
+            quant_block_size,
+            fp8_dtype,
+            device,
+        )
+
+test_cp_gather_indexer_k_quant_cache.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+num_blocks = 17, block_size = 16, head_dim = 512, quant_block_size = 128
+fp8_dtype = torch.float8_e4m3fn, device = device(type='cuda')
+
+    def _make_cache(num_blocks, block_size, head_dim, quant_block_size, fp8_dtype, device):
+        cache_stride = head_dim + head_dim * 4 // quant_block_size
+        k_cache = torch.empty(
+            (num_blocks, block_size, cache_stride),
+            dtype=torch.uint8,
+            device=device,
+        )
+        num_quant_blocks = head_dim // quant_block_size
+        flat_cache = k_cache.view(num_blocks, -1)
+        values = flat_cache[:, : block_size * head_dim].view(fp8_dtype)
+>       values.copy_(torch.randn(values.shape, device=device).to(fp8_dtype))
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/copy_kernel.cpp:407)
+
+test_cp_gather_indexer_k_quant_cache.py:129: RuntimeError
+_ test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens6-16-512-128-4] _
+
+seq_lens = [2, 2, 2, 2, 2, 2, ...], block_size = 16, head_dim = 512
+quant_block_size = 128, extra_tokens = 4
+
+    @pytest.mark.cp_gather_indexer_k_quant_cache
+    @pytest.mark.parametrize(
+        "seq_lens,block_size,head_dim,quant_block_size,extra_tokens",
+        [
+            ([19], 16, 128, 128, 3),
+            ([13, 7, 16], 8, 128, 128, 0),
+            ([17, 1, 33, 9], 16, 512, 128, 5),
+            ([3] * 9, 16, 128, 128, 2),
+            ([2] * 16, 16, 512, 128, 4),
+            ([2] * 17, 16, 512, 128, 4),
+            ([2] * 33, 16, 512, 128, 4),
+            ([1] * 129, 16, 512, 128, 3),
+            ([1, 2, 3, 4] * 64, 16, 512, 128, 5),
+            ([70, 1, 65], 64, 512, 128, 3),
+        ],
+    )
+    @torch.inference_mode()
+    def test_cp_gather_indexer_k_quant_cache_matches_reference(
+        seq_lens,
+        block_size,
+        head_dim,
+        quant_block_size,
+        extra_tokens,
+    ):
+        vllm_op, fp8_dtype, has_vllm = _load_vllm_cuda_op_and_fp8_dtype()
+    
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+        block_table, cu_seqlen, num_blocks = _make_gather_metadata(
+            seq_lens,
+            block_size,
+            device,
+        )
+        valid_tokens = int(cu_seqlen[-1].item())
+        allocated_tokens = valid_tokens + extra_tokens
+    
+>       k_cache = _make_cache(
+            num_blocks,
+            block_size,
+            head_dim,
+            quant_block_size,
+            fp8_dtype,
+            device,
+        )
+
+test_cp_gather_indexer_k_quant_cache.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+num_blocks = 33, block_size = 16, head_dim = 512, quant_block_size = 128
+fp8_dtype = torch.float8_e4m3fn, device = device(type='cuda')
+
+    def _make_cache(num_blocks, block_size, head_dim, quant_block_size, fp8_dtype, device):
+        cache_stride = head_dim + head_dim * 4 // quant_block_size
+        k_cache = torch.empty(
+            (num_blocks, block_size, cache_stride),
+            dtype=torch.uint8,
+            device=device,
+        )
+        num_quant_blocks = head_dim // quant_block_size
+        flat_cache = k_cache.view(num_blocks, -1)
+        values = flat_cache[:, : block_size * head_dim].view(fp8_dtype)
+>       values.copy_(torch.randn(values.shape, device=device).to(fp8_dtype))
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/copy_kernel.cpp:407)
+
+test_cp_gather_indexer_k_quant_cache.py:129: RuntimeError
+_ test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens7-16-512-128-3] _
+
+seq_lens = [1, 1, 1, 1, 1, 1, ...], block_size = 16, head_dim = 512
+quant_block_size = 128, extra_tokens = 3
+
+    @pytest.mark.cp_gather_indexer_k_quant_cache
+    @pytest.mark.parametrize(
+        "seq_lens,block_size,head_dim,quant_block_size,extra_tokens",
+        [
+            ([19], 16, 128, 128, 3),
+            ([13, 7, 16], 8, 128, 128, 0),
+            ([17, 1, 33, 9], 16, 512, 128, 5),
+            ([3] * 9, 16, 128, 128, 2),
+            ([2] * 16, 16, 512, 128, 4),
+            ([2] * 17, 16, 512, 128, 4),
+            ([2] * 33, 16, 512, 128, 4),
+            ([1] * 129, 16, 512, 128, 3),
+            ([1, 2, 3, 4] * 64, 16, 512, 128, 5),
+            ([70, 1, 65], 64, 512, 128, 3),
+        ],
+    )
+    @torch.inference_mode()
+    def test_cp_gather_indexer_k_quant_cache_matches_reference(
+        seq_lens,
+        block_size,
+        head_dim,
+        quant_block_size,
+        extra_tokens,
+    ):
+        vllm_op, fp8_dtype, has_vllm = _load_vllm_cuda_op_and_fp8_dtype()
+    
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+        block_table, cu_seqlen, num_blocks = _make_gather_metadata(
+            seq_lens,
+            block_size,
+            device,
+        )
+        valid_tokens = int(cu_seqlen[-1].item())
+        allocated_tokens = valid_tokens + extra_tokens
+    
+>       k_cache = _make_cache(
+            num_blocks,
+            block_size,
+            head_dim,
+            quant_block_size,
+            fp8_dtype,
+            device,
+        )
+
+test_cp_gather_indexer_k_quant_cache.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+num_blocks = 129, block_size = 16, head_dim = 512, quant_block_size = 128
+fp8_dtype = torch.float8_e4m3fn, device = device(type='cuda')
+
+    def _make_cache(num_blocks, block_size, head_dim, quant_block_size, fp8_dtype, device):
+        cache_stride = head_dim + head_dim * 4 // quant_block_size
+        k_cache = torch.empty(
+            (num_blocks, block_size, cache_stride),
+            dtype=torch.uint8,
+            device=device,
+        )
+        num_quant_blocks = head_dim // quant_block_size
+        flat_cache = k_cache.view(num_blocks, -1)
+        values = flat_cache[:, : block_size * head_dim].view(fp8_dtype)
+>       values.copy_(torch.randn(values.shape, device=device).to(fp8_dtype))
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/copy_kernel.cpp:407)
+
+test_cp_gather_indexer_k_quant_cache.py:129: RuntimeError
+_ test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens8-16-512-128-5] _
+
+seq_lens = [1, 2, 3, 4, 1, 2, ...], block_size = 16, head_dim = 512
+quant_block_size = 128, extra_tokens = 5
+
+    @pytest.mark.cp_gather_indexer_k_quant_cache
+    @pytest.mark.parametrize(
+        "seq_lens,block_size,head_dim,quant_block_size,extra_tokens",
+        [
+            ([19], 16, 128, 128, 3),
+            ([13, 7, 16], 8, 128, 128, 0),
+            ([17, 1, 33, 9], 16, 512, 128, 5),
+            ([3] * 9, 16, 128, 128, 2),
+            ([2] * 16, 16, 512, 128, 4),
+            ([2] * 17, 16, 512, 128, 4),
+            ([2] * 33, 16, 512, 128, 4),
+            ([1] * 129, 16, 512, 128, 3),
+            ([1, 2, 3, 4] * 64, 16, 512, 128, 5),
+            ([70, 1, 65], 64, 512, 128, 3),
+        ],
+    )
+    @torch.inference_mode()
+    def test_cp_gather_indexer_k_quant_cache_matches_reference(
+        seq_lens,
+        block_size,
+        head_dim,
+        quant_block_size,
+        extra_tokens,
+    ):
+        vllm_op, fp8_dtype, has_vllm = _load_vllm_cuda_op_and_fp8_dtype()
+    
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+        block_table, cu_seqlen, num_blocks = _make_gather_metadata(
+            seq_lens,
+            block_size,
+            device,
+        )
+        valid_tokens = int(cu_seqlen[-1].item())
+        allocated_tokens = valid_tokens + extra_tokens
+    
+>       k_cache = _make_cache(
+            num_blocks,
+            block_size,
+            head_dim,
+            quant_block_size,
+            fp8_dtype,
+            device,
+        )
+
+test_cp_gather_indexer_k_quant_cache.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+num_blocks = 256, block_size = 16, head_dim = 512, quant_block_size = 128
+fp8_dtype = torch.float8_e4m3fn, device = device(type='cuda')
+
+    def _make_cache(num_blocks, block_size, head_dim, quant_block_size, fp8_dtype, device):
+        cache_stride = head_dim + head_dim * 4 // quant_block_size
+        k_cache = torch.empty(
+            (num_blocks, block_size, cache_stride),
+            dtype=torch.uint8,
+            device=device,
+        )
+        num_quant_blocks = head_dim // quant_block_size
+        flat_cache = k_cache.view(num_blocks, -1)
+        values = flat_cache[:, : block_size * head_dim].view(fp8_dtype)
+>       values.copy_(torch.randn(values.shape, device=device).to(fp8_dtype))
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/copy_kernel.cpp:407)
+
+test_cp_gather_indexer_k_quant_cache.py:129: RuntimeError
+_ test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens9-64-512-128-3] _
+
+seq_lens = [70, 1, 65], block_size = 64, head_dim = 512, quant_block_size = 128
+extra_tokens = 3
+
+    @pytest.mark.cp_gather_indexer_k_quant_cache
+    @pytest.mark.parametrize(
+        "seq_lens,block_size,head_dim,quant_block_size,extra_tokens",
+        [
+            ([19], 16, 128, 128, 3),
+            ([13, 7, 16], 8, 128, 128, 0),
+            ([17, 1, 33, 9], 16, 512, 128, 5),
+            ([3] * 9, 16, 128, 128, 2),
+            ([2] * 16, 16, 512, 128, 4),
+            ([2] * 17, 16, 512, 128, 4),
+            ([2] * 33, 16, 512, 128, 4),
+            ([1] * 129, 16, 512, 128, 3),
+            ([1, 2, 3, 4] * 64, 16, 512, 128, 5),
+            ([70, 1, 65], 64, 512, 128, 3),
+        ],
+    )
+    @torch.inference_mode()
+    def test_cp_gather_indexer_k_quant_cache_matches_reference(
+        seq_lens,
+        block_size,
+        head_dim,
+        quant_block_size,
+        extra_tokens,
+    ):
+        vllm_op, fp8_dtype, has_vllm = _load_vllm_cuda_op_and_fp8_dtype()
+    
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+        block_table, cu_seqlen, num_blocks = _make_gather_metadata(
+            seq_lens,
+            block_size,
+            device,
+        )
+        valid_tokens = int(cu_seqlen[-1].item())
+        allocated_tokens = valid_tokens + extra_tokens
+    
+>       k_cache = _make_cache(
+            num_blocks,
+            block_size,
+            head_dim,
+            quant_block_size,
+            fp8_dtype,
+            device,
+        )
+
+test_cp_gather_indexer_k_quant_cache.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+num_blocks = 5, block_size = 64, head_dim = 512, quant_block_size = 128
+fp8_dtype = torch.float8_e4m3fn, device = device(type='cuda')
+
+    def _make_cache(num_blocks, block_size, head_dim, quant_block_size, fp8_dtype, device):
+        cache_stride = head_dim + head_dim * 4 // quant_block_size
+        k_cache = torch.empty(
+            (num_blocks, block_size, cache_stride),
+            dtype=torch.uint8,
+            device=device,
+        )
+        num_quant_blocks = head_dim // quant_block_size
+        flat_cache = k_cache.view(num_blocks, -1)
+        values = flat_cache[:, : block_size * head_dim].view(fp8_dtype)
+>       values.copy_(torch.randn(values.shape, device=device).to(fp8_dtype))
+E       RuntimeError: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/copy_kernel.cpp:407)
+
+test_cp_gather_indexer_k_quant_cache.py:129: RuntimeError
+=========================== short test summary info ============================
+FAILED test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens0-16-128-128-3]
+FAILED test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens1-8-128-128-0]
+FAILED test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens2-16-512-128-5]
+FAILED test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens3-16-128-128-2]
+FAILED test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens4-16-512-128-4]
+FAILED test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens5-16-512-128-4]
+FAILED test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens6-16-512-128-4]
+FAILED test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens7-16-512-128-3]
+FAILED test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens8-16-512-128-5]
+FAILED test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_matches_reference[seq_lens9-64-512-128-3]
+==================== 10 failed, 49941 deselected in 10.46s =====================

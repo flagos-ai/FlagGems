@@ -1,0 +1,73 @@
+PR_ID=4816
+Running unit tests for tests/test_slice_scatter.py
+XCCL /workspace/FlagGems/.venv/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: md-report-0.8.0
+collected 49 items
+
+tests/test_slice_scatter.py .................................................
+
+============================== 49 passed in 2.51s ==============================
+Running quick-cpu mode unit tests for tests/test_slice_scatter.py
+XCCL /workspace/FlagGems/.venv/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: md-report-0.8.0
+collected 9 items
+
+tests/test_slice_scatter.py .........
+
+============================== 9 passed in 2.32s ===============================
+Running benchmark tests for benchmark/test_slice_scatter.py
+pytest -s benchmark/test_slice_scatter.py --level core --record log
+XCCL /workspace/FlagGems/.venv/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: md-report-0.8.0
+collected 1 item
+
+benchmark/test_slice_scatter.py TEST CI KUNLUNXIN
+
+Operator: slice_scatter  Performance Test (dtype=torch.float16, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup          Size Detail
+-----------------------------------------------------------------------------------------------
+SUCCESS               0.011308            0.044311               0.255          [torch.Size([64, 64]), torch.Size([64, 32]), 1, 0, 64, 2]
+SUCCESS               0.010011            0.339036               0.030          [torch.Size([256, 256]), torch.Size([256, 128]), 1, 0, 256, 2]
+SUCCESS               0.013013            4.667001               0.003          [torch.Size([1024, 1024]), torch.Size([1024, 512]), 1, 0, 1024, 2]
+SUCCESS               0.081308           74.419662               0.001          [torch.Size([4096, 4096]), torch.Size([4096, 2048]), 1, 0, 4096, 2]
+SUCCESS               0.296222          295.695892               0.001          [torch.Size([1024, 65536]), torch.Size([1024, 32768]), 1, 0, 65536, 2]
+
+
+Operator: slice_scatter  Performance Test (dtype=torch.float32, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup          Size Detail
+-----------------------------------------------------------------------------------------------
+SUCCESS               0.009127            0.044528               0.205          [torch.Size([64, 64]), torch.Size([64, 32]), 1, 0, 64, 2]
+SUCCESS               0.009366            0.312890               0.030          [torch.Size([256, 256]), torch.Size([256, 128]), 1, 0, 256, 2]
+SUCCESS               0.017488            4.776848               0.004          [torch.Size([1024, 1024]), torch.Size([1024, 512]), 1, 0, 1024, 2]
+SUCCESS               0.151712           72.272247               0.002          [torch.Size([4096, 4096]), torch.Size([4096, 2048]), 1, 0, 4096, 2]
+SUCCESS               0.577057          305.256805               0.002          [torch.Size([1024, 65536]), torch.Size([1024, 32768]), 1, 0, 65536, 2]
+
+
+Operator: slice_scatter  Performance Test (dtype=torch.bfloat16, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup          Size Detail
+-----------------------------------------------------------------------------------------------
+SUCCESS               0.011261            0.044376               0.254          [torch.Size([64, 64]), torch.Size([64, 32]), 1, 0, 64, 2]
+SUCCESS               0.009911            0.336974               0.029          [torch.Size([256, 256]), torch.Size([256, 128]), 1, 0, 256, 2]
+SUCCESS               0.013125            4.646384               0.003          [torch.Size([1024, 1024]), torch.Size([1024, 512]), 1, 0, 1024, 2]
+SUCCESS               0.081178           73.491310               0.001          [torch.Size([4096, 4096]), torch.Size([4096, 2048]), 1, 0, 4096, 2]
+SUCCESS               0.296225          290.718475               0.001          [torch.Size([1024, 65536]), torch.Size([1024, 32768]), 1, 0, 65536, 2]
+
+.
+
+========================= 1 passed in 67.66s (0:01:07) =========================
+exit_code=0

@@ -1,0 +1,67 @@
+[CMD] pytest -m "bucketize" --record json --output accuracy_bucketize.json --ref cpu --continue-on-collection-errors -vs
+[CWD] /workspace/FlagGems/tests
+
+XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":82:35): error: 'arith.addi' op requires the same type for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/bucketize.py":68:35): error: 'arith.addi' op requires the same type for all operands and results

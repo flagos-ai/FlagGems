@@ -1,0 +1,3 @@
+[CMD] pytest -m "searchsorted_out" --level core --record json --output benchmark_searchsorted_out.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

@@ -1,0 +1,131 @@
+{
+  "tests/test_add_rms_norm.py::test_add_rms_norm[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "add_rms_norm"
+    ],
+    "reason": "RuntimeError: /tmp/tmpufxniwoj/main.c:71: xpuLaunchKernel(\"add_rms_norm_kernel\", function, gridX, gridY, gridZ, nclusters, ncores, stream, (void **)&kernel_params[0][0], (void **)&kernel_consts[0][0], &extra_data[0]) -> Operation not permitted(err_code: 1)"
+  },
+  "tests/test_add_rms_norm.py::test_add_rms_norm[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "add_rms_norm"
+    ],
+    "reason": "RuntimeError: /tmp/tmpp4_ks6ja/main.c:71: xpuLaunchKernel(\"add_rms_norm_kernel\", function, gridX, gridY, gridZ, nclusters, ncores, stream, (void **)&kernel_params[0][0], (void **)&kernel_consts[0][0], &extra_data[0]) -> Operation not permitted(err_code: 1)"
+  },
+  "tests/test_add_rms_norm.py::test_add_rms_norm[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "add_rms_norm"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 8198205 / 8199800 (100.0%)\nGreatest absolute difference: nan at index (0, 324) (up to 0.0001 allowed)\nGreatest relative difference: nan at index (0, 324) (up to 0.001 allowed)"
+  },
+  "tests/test_add_rms_norm.py::test_add_rms_norm[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "add_rms_norm"
+    ],
+    "reason": "RuntimeError: /tmp/tmpmgwyhhc7/main.c:71: xpuLaunchKernel(\"add_rms_norm_kernel\", function, gridX, gridY, gridZ, nclusters, ncores, stream, (void **)&kernel_params[0][0], (void **)&kernel_consts[0][0], &extra_data[0]) -> Operation not permitted(err_code: 1)"
+  },
+  "tests/test_add_rms_norm.py::test_add_rms_norm[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "add_rms_norm"
+    ],
+    "reason": "RuntimeError: /tmp/tmp9de0e_ho/main.c:71: xpuLaunchKernel(\"add_rms_norm_kernel\", function, gridX, gridY, gridZ, nclusters, ncores, stream, (void **)&kernel_params[0][0], (void **)&kernel_consts[0][0], &extra_data[0]) -> Operation not permitted(err_code: 1)"
+  },
+  "tests/test_add_rms_norm.py::test_add_rms_norm[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "add_rms_norm"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 8194515 / 8199800 (99.9%)\nGreatest absolute difference: 105.56670379638672 at index (9, 32830) (up to 0.0001 allowed)\nGreatest relative difference: 10.703948020935059 at index (49, 19) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_add_rms_norm.py::test_add_rms_norm[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "add_rms_norm"
+    ],
+    "reason": "RuntimeError: /tmp/tmp2iu16_a6/main.c:71: xpuLaunchKernel(\"add_rms_norm_kernel\", function, gridX, gridY, gridZ, nclusters, ncores, stream, (void **)&kernel_params[0][0], (void **)&kernel_consts[0][0], &extra_data[0]) -> Operation not permitted(err_code: 1)"
+  },
+  "tests/test_add_rms_norm.py::test_add_rms_norm[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "add_rms_norm"
+    ],
+    "reason": "RuntimeError: /tmp/tmp3clovrb0/main.c:71: xpuLaunchKernel(\"add_rms_norm_kernel\", function, gridX, gridY, gridZ, nclusters, ncores, stream, (void **)&kernel_params[0][0], (void **)&kernel_consts[0][0], &extra_data[0]) -> Operation not permitted(err_code: 1)"
+  },
+  "tests/test_add_rms_norm.py::test_add_rms_norm[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "add_rms_norm"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 8181634 / 8199800 (99.8%)\nGreatest absolute difference: nan at index (0, 690) (up to 0.0001 allowed)\nGreatest relative difference: nan at index (0, 690) (up to 0.016 allowed)"
+  }
+}

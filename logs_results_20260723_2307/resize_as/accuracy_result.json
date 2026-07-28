@@ -1,0 +1,684 @@
+{
+  "tests/test_resize_as.py::test_resize_as[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_mismatched_numel": {
+    "params": {},
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape0-tgt_shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "src_shape": [
+        2,
+        3
+      ],
+      "tgt_shape": [
+        3,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape1-tgt_shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "src_shape": [
+        4,
+        4
+      ],
+      "tgt_shape": [
+        8,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape2-tgt_shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "src_shape": [
+        2,
+        6
+      ],
+      "tgt_shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape3-tgt_shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "src_shape": [
+        2,
+        2,
+        3
+      ],
+      "tgt_shape": [
+        3,
+        2,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape4-tgt_shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "src_shape": [
+        12
+      ],
+      "tgt_shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape5-tgt_shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "src_shape": [
+        3,
+        4
+      ],
+      "tgt_shape": [
+        4,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype0-src_shape6-tgt_shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "src_shape": [
+        1024,
+        1024
+      ],
+      "tgt_shape": [
+        2048,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape0-tgt_shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "src_shape": [
+        2,
+        3
+      ],
+      "tgt_shape": [
+        3,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape1-tgt_shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "src_shape": [
+        4,
+        4
+      ],
+      "tgt_shape": [
+        8,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape2-tgt_shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "src_shape": [
+        2,
+        6
+      ],
+      "tgt_shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape3-tgt_shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "src_shape": [
+        2,
+        2,
+        3
+      ],
+      "tgt_shape": [
+        3,
+        2,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape4-tgt_shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "src_shape": [
+        12
+      ],
+      "tgt_shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape5-tgt_shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "src_shape": [
+        3,
+        4
+      ],
+      "tgt_shape": [
+        4,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype1-src_shape6-tgt_shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "src_shape": [
+        1024,
+        1024
+      ],
+      "tgt_shape": [
+        2048,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape0-tgt_shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "src_shape": [
+        2,
+        3
+      ],
+      "tgt_shape": [
+        3,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape1-tgt_shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "src_shape": [
+        4,
+        4
+      ],
+      "tgt_shape": [
+        8,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape2-tgt_shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "src_shape": [
+        2,
+        6
+      ],
+      "tgt_shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape3-tgt_shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "src_shape": [
+        2,
+        2,
+        3
+      ],
+      "tgt_shape": [
+        3,
+        2,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape4-tgt_shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "src_shape": [
+        12
+      ],
+      "tgt_shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape5-tgt_shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "src_shape": [
+        3,
+        4
+      ],
+      "tgt_shape": [
+        4,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_broadcastable[dtype2-src_shape6-tgt_shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "src_shape": [
+        1024,
+        1024
+      ],
+      "tgt_shape": [
+        2048,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_empty": {
+    "params": {},
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_contiguous[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "failed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_resize_as.py::test_resize_as_non_contiguous[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_resize_as.py::test_resize_as_non_contiguous[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "failed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_resize_as.py::test_resize_as_non_contiguous_template[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_contiguous_template[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  },
+  "tests/test_resize_as.py::test_resize_as_non_contiguous_template[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "resize_as"
+    ],
+    "reason": null
+  }
+}

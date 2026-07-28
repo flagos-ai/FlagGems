@@ -1,0 +1,7 @@
+{
+  "special_hermite_polynomial_h": {
+    "result": "failed",
+    "test_case": "benchmark/test_special_hermite_polynomial_h.py::test_special_hermite_polynomial_h",
+    "reason": "Failed: at 26:15:\n    if one_tile_per_cta: # monolitic kernel style\n        tile_id = pid\n        tid = tile_id * tile_size + tl.arange(0, tile_size)\n        mask = tid < num_tasks\n        i0 = tid\n\n        # loads\n        in0 = tl.load(in0_ptr + i0 * in0_stride0, mask=mask).to(in0_ptr.type.element_ty)\n        in1 = tl.load(in1_ptr + i0 * in1_stride0, mask=mask).to(in1_ptr.type.element_ty)\n\n        # compute\n        out0 = hermite_polynomial_h_func(in0, in1)\n               ^"
+  }
+}

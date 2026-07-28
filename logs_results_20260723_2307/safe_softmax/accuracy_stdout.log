@@ -1,0 +1,2091 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 01:49:30 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 01:49:32 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:49:32 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:49:32 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:49:32 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:49:32 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:49:32 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:49:32 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:49:32 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:49:32 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 01:49:33 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49861 deselected / 90 selected
+
+test_safe_softmax.py::test_safe_softmax[none--1-in_dtype0-shape0]     [RUNTIME ERROR] 714 (Exception in kernel execution)[/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/kernel_wrapper/wrapper/isfinite.cpp:17]
+[ASSERT-FAIL](2==SUCCESS)[/home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/xdnn_pytorch/src/xdnn_pytorch_wrapper/isfinite.cpp:23]
+FAILED
+test_safe_softmax.py::test_safe_softmax[none--1-in_dtype0-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[none--1-in_dtype0-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[none--1-in_dtype1-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[none--1-in_dtype1-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[none--1-in_dtype1-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[none--1-in_dtype2-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[none--1-in_dtype2-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[none--1-in_dtype2-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[none-0-in_dtype0-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[none-0-in_dtype0-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[none-0-in_dtype0-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[none-0-in_dtype1-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[none-0-in_dtype1-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[none-0-in_dtype1-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[none-0-in_dtype2-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[none-0-in_dtype2-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[none-0-in_dtype2-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[same--1-in_dtype0-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[same--1-in_dtype0-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[same--1-in_dtype0-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[same--1-in_dtype1-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[same--1-in_dtype1-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[same--1-in_dtype1-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[same--1-in_dtype2-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[same--1-in_dtype2-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[same--1-in_dtype2-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[same-0-in_dtype0-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[same-0-in_dtype0-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[same-0-in_dtype0-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[same-0-in_dtype1-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[same-0-in_dtype1-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[same-0-in_dtype1-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[same-0-in_dtype2-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[same-0-in_dtype2-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[same-0-in_dtype2-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype0-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype0-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype0-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype1-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype1-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype1-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype2-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype2-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype2-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype0-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype0-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype0-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype1-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype1-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype1-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype2-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype2-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype2-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype0-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype0-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype0-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype1-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype1-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype1-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype2-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype2-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype2-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype0-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype0-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype0-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype1-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype1-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype1-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype2-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype2-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype2-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype0-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype0-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype0-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype1-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype1-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype1-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype2-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype2-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype2-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype0-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype0-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype0-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype1-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype1-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype1-shape2] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype2-shape0] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype2-shape1] FAILED
+test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype2-shape2] FAILED
+
+=================================== FAILURES ===================================
+_________________ test_safe_softmax[none--1-in_dtype0-shape0] __________________
+
+shape = (2, 3), in_dtype = torch.float16, dim = -1, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+        x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+        if dtype_arg_sel == "none":
+            dtype_arg = None
+        elif dtype_arg_sel == "same":
+            dtype_arg = in_dtype
+        else:
+            dtype_arg = dtype_arg_sel
+    
+        ref_x = utils.to_reference(x)
+        if dtype_arg in (torch.float16, torch.bfloat16):
+            ref_x = ref_x.float()
+            ref_out = torch.ops.aten._safe_softmax(ref_x, dim, dtype=torch.float32)
+            ref_out = ref_out.to(dtype_arg)
+        else:
+            ref_out = torch.ops.aten._safe_softmax(ref_x, dim, dtype=dtype_arg)
+    
+        with flag_gems.use_gems():
+            act_out = torch.ops.aten._safe_softmax(x, dim, dtype=dtype_arg)
+        expected_dtype = dtype_arg if dtype_arg is not None else in_dtype
+    
+>       utils.gems_assert_close(act_out, ref_out, expected_dtype)
+
+test_safe_softmax.py:57: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:311: in gems_assert_close
+    res = to_cpu(res, ref)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = <[RuntimeError('[RUNTIME ERROR]: error code= 719, unspecified launch failure(at /home/agent/xpytorch/workspace/8ba19c1...ch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:8454)') raised in repr()] Tensor object at 0x7f3527670810>
+ref = tensor([[0.1554, 0.4277, 0.4167],
+        [0.2404, 0.4548, 0.3049]], dtype=torch.float16)
+
+    def to_cpu(res, ref):
+        if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
+>           res = res.to("cpu")
+E           RuntimeError: [RUNTIME ERROR]: error code= 719, unspecified launch failure;
+
+accuracy_utils.py:305: RuntimeError
+_________________ test_safe_softmax[none--1-in_dtype0-shape1] __________________
+
+shape = (128, 256), in_dtype = torch.float16, dim = -1, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[none--1-in_dtype0-shape2] __________________
+
+shape = (512, 512), in_dtype = torch.float16, dim = -1, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[none--1-in_dtype1-shape0] __________________
+
+shape = (2, 3), in_dtype = torch.float32, dim = -1, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[none--1-in_dtype1-shape1] __________________
+
+shape = (128, 256), in_dtype = torch.float32, dim = -1, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[none--1-in_dtype1-shape2] __________________
+
+shape = (512, 512), in_dtype = torch.float32, dim = -1, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[none--1-in_dtype2-shape0] __________________
+
+shape = (2, 3), in_dtype = torch.bfloat16, dim = -1, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[none--1-in_dtype2-shape1] __________________
+
+shape = (128, 256), in_dtype = torch.bfloat16, dim = -1, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[none--1-in_dtype2-shape2] __________________
+
+shape = (512, 512), in_dtype = torch.bfloat16, dim = -1, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[none-0-in_dtype0-shape0] __________________
+
+shape = (2, 3), in_dtype = torch.float16, dim = 0, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[none-0-in_dtype0-shape1] __________________
+
+shape = (128, 256), in_dtype = torch.float16, dim = 0, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[none-0-in_dtype0-shape2] __________________
+
+shape = (512, 512), in_dtype = torch.float16, dim = 0, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[none-0-in_dtype1-shape0] __________________
+
+shape = (2, 3), in_dtype = torch.float32, dim = 0, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[none-0-in_dtype1-shape1] __________________
+
+shape = (128, 256), in_dtype = torch.float32, dim = 0, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[none-0-in_dtype1-shape2] __________________
+
+shape = (512, 512), in_dtype = torch.float32, dim = 0, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[none-0-in_dtype2-shape0] __________________
+
+shape = (2, 3), in_dtype = torch.bfloat16, dim = 0, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[none-0-in_dtype2-shape1] __________________
+
+shape = (128, 256), in_dtype = torch.bfloat16, dim = 0, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[none-0-in_dtype2-shape2] __________________
+
+shape = (512, 512), in_dtype = torch.bfloat16, dim = 0, dtype_arg_sel = 'none'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[same--1-in_dtype0-shape0] __________________
+
+shape = (2, 3), in_dtype = torch.float16, dim = -1, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[same--1-in_dtype0-shape1] __________________
+
+shape = (128, 256), in_dtype = torch.float16, dim = -1, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[same--1-in_dtype0-shape2] __________________
+
+shape = (512, 512), in_dtype = torch.float16, dim = -1, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[same--1-in_dtype1-shape0] __________________
+
+shape = (2, 3), in_dtype = torch.float32, dim = -1, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[same--1-in_dtype1-shape1] __________________
+
+shape = (128, 256), in_dtype = torch.float32, dim = -1, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[same--1-in_dtype1-shape2] __________________
+
+shape = (512, 512), in_dtype = torch.float32, dim = -1, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[same--1-in_dtype2-shape0] __________________
+
+shape = (2, 3), in_dtype = torch.bfloat16, dim = -1, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[same--1-in_dtype2-shape1] __________________
+
+shape = (128, 256), in_dtype = torch.bfloat16, dim = -1, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_________________ test_safe_softmax[same--1-in_dtype2-shape2] __________________
+
+shape = (512, 512), in_dtype = torch.bfloat16, dim = -1, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[same-0-in_dtype0-shape0] __________________
+
+shape = (2, 3), in_dtype = torch.float16, dim = 0, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[same-0-in_dtype0-shape1] __________________
+
+shape = (128, 256), in_dtype = torch.float16, dim = 0, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[same-0-in_dtype0-shape2] __________________
+
+shape = (512, 512), in_dtype = torch.float16, dim = 0, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[same-0-in_dtype1-shape0] __________________
+
+shape = (2, 3), in_dtype = torch.float32, dim = 0, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[same-0-in_dtype1-shape1] __________________
+
+shape = (128, 256), in_dtype = torch.float32, dim = 0, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[same-0-in_dtype1-shape2] __________________
+
+shape = (512, 512), in_dtype = torch.float32, dim = 0, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[same-0-in_dtype2-shape0] __________________
+
+shape = (2, 3), in_dtype = torch.bfloat16, dim = 0, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[same-0-in_dtype2-shape1] __________________
+
+shape = (128, 256), in_dtype = torch.bfloat16, dim = 0, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+__________________ test_safe_softmax[same-0-in_dtype2-shape2] __________________
+
+shape = (512, 512), in_dtype = torch.bfloat16, dim = 0, dtype_arg_sel = 'same'
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel2--1-in_dtype0-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.float16, dim = -1
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel2--1-in_dtype0-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.float16, dim = -1
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel2--1-in_dtype0-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.float16, dim = -1
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel2--1-in_dtype1-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.float32, dim = -1
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel2--1-in_dtype1-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.float32, dim = -1
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel2--1-in_dtype1-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.float32, dim = -1
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel2--1-in_dtype2-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.bfloat16, dim = -1
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel2--1-in_dtype2-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.bfloat16, dim = -1
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel2--1-in_dtype2-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.bfloat16, dim = -1
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel2-0-in_dtype0-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.float16, dim = 0, dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel2-0-in_dtype0-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.float16, dim = 0
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel2-0-in_dtype0-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.float16, dim = 0
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel2-0-in_dtype1-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.float32, dim = 0, dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel2-0-in_dtype1-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.float32, dim = 0
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel2-0-in_dtype1-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.float32, dim = 0
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel2-0-in_dtype2-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.bfloat16, dim = 0
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel2-0-in_dtype2-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.bfloat16, dim = 0
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel2-0-in_dtype2-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.bfloat16, dim = 0
+dtype_arg_sel = torch.float32
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel3--1-in_dtype0-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.float16, dim = -1
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel3--1-in_dtype0-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.float16, dim = -1
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel3--1-in_dtype0-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.float16, dim = -1
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel3--1-in_dtype1-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.float32, dim = -1
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel3--1-in_dtype1-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.float32, dim = -1
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel3--1-in_dtype1-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.float32, dim = -1
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel3--1-in_dtype2-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.bfloat16, dim = -1
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel3--1-in_dtype2-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.bfloat16, dim = -1
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel3--1-in_dtype2-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.bfloat16, dim = -1
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel3-0-in_dtype0-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.float16, dim = 0, dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel3-0-in_dtype0-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.float16, dim = 0
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel3-0-in_dtype0-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.float16, dim = 0
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel3-0-in_dtype1-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.float32, dim = 0, dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel3-0-in_dtype1-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.float32, dim = 0
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel3-0-in_dtype1-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.float32, dim = 0
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel3-0-in_dtype2-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.bfloat16, dim = 0
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel3-0-in_dtype2-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.bfloat16, dim = 0
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel3-0-in_dtype2-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.bfloat16, dim = 0
+dtype_arg_sel = torch.float16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel4--1-in_dtype0-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.float16, dim = -1
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel4--1-in_dtype0-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.float16, dim = -1
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel4--1-in_dtype0-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.float16, dim = -1
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel4--1-in_dtype1-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.float32, dim = -1
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel4--1-in_dtype1-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.float32, dim = -1
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel4--1-in_dtype1-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.float32, dim = -1
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel4--1-in_dtype2-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.bfloat16, dim = -1
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel4--1-in_dtype2-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.bfloat16, dim = -1
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+____________ test_safe_softmax[dtype_arg_sel4--1-in_dtype2-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.bfloat16, dim = -1
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel4-0-in_dtype0-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.float16, dim = 0
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel4-0-in_dtype0-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.float16, dim = 0
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel4-0-in_dtype0-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.float16, dim = 0
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel4-0-in_dtype1-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.float32, dim = 0
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel4-0-in_dtype1-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.float32, dim = 0
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel4-0-in_dtype1-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.float32, dim = 0
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel4-0-in_dtype2-shape0] _____________
+
+shape = (2, 3), in_dtype = torch.bfloat16, dim = 0
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel4-0-in_dtype2-shape1] _____________
+
+shape = (128, 256), in_dtype = torch.bfloat16, dim = 0
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+_____________ test_safe_softmax[dtype_arg_sel4-0-in_dtype2-shape2] _____________
+
+shape = (512, 512), in_dtype = torch.bfloat16, dim = 0
+dtype_arg_sel = torch.bfloat16
+
+    @pytest.mark.safe_softmax
+    @pytest.mark.parametrize("shape", SAFE_SOFTMAX_SHAPES)
+    @pytest.mark.parametrize("in_dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.parametrize("dim", [-1, 0])
+    @pytest.mark.parametrize(
+        "dtype_arg_sel", ["none", "same", torch.float32, torch.float16, torch.bfloat16]
+    )
+    def test_safe_softmax(shape, in_dtype, dim, dtype_arg_sel):
+>       x = torch.randn(shape, dtype=in_dtype, device=flag_gems.device)
+E       torch.AcceleratorError: CUDA error: unspecified launch failure
+E       Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_safe_softmax.py:37: AcceleratorError
+=============================== warnings summary ===============================
+tests/test_safe_softmax.py::test_safe_softmax[none--1-in_dtype0-shape0]
+  /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/compiler.py:222: UserWarning: XRE Version Must Be More than 5.0.21.37 (After 2025.07.22). And echo 1 > /proc/kunlun/dev4/dma_excp_mask
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED test_safe_softmax.py::test_safe_softmax[none--1-in_dtype0-shape0] - Ru...
+FAILED test_safe_softmax.py::test_safe_softmax[none--1-in_dtype0-shape1] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[none--1-in_dtype0-shape2] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[none--1-in_dtype1-shape0] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[none--1-in_dtype1-shape1] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[none--1-in_dtype1-shape2] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[none--1-in_dtype2-shape0] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[none--1-in_dtype2-shape1] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[none--1-in_dtype2-shape2] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[none-0-in_dtype0-shape0] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[none-0-in_dtype0-shape1] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[none-0-in_dtype0-shape2] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[none-0-in_dtype1-shape0] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[none-0-in_dtype1-shape1] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[none-0-in_dtype1-shape2] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[none-0-in_dtype2-shape0] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[none-0-in_dtype2-shape1] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[none-0-in_dtype2-shape2] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[same--1-in_dtype0-shape0] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[same--1-in_dtype0-shape1] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[same--1-in_dtype0-shape2] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[same--1-in_dtype1-shape0] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[same--1-in_dtype1-shape1] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[same--1-in_dtype1-shape2] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[same--1-in_dtype2-shape0] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[same--1-in_dtype2-shape1] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[same--1-in_dtype2-shape2] - to...
+FAILED test_safe_softmax.py::test_safe_softmax[same-0-in_dtype0-shape0] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[same-0-in_dtype0-shape1] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[same-0-in_dtype0-shape2] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[same-0-in_dtype1-shape0] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[same-0-in_dtype1-shape1] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[same-0-in_dtype1-shape2] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[same-0-in_dtype2-shape0] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[same-0-in_dtype2-shape1] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[same-0-in_dtype2-shape2] - tor...
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype0-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype0-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype0-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype1-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype1-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype1-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype2-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype2-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2--1-in_dtype2-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype0-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype0-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype0-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype1-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype1-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype1-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype2-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype2-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel2-0-in_dtype2-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype0-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype0-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype0-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype1-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype1-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype1-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype2-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype2-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3--1-in_dtype2-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype0-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype0-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype0-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype1-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype1-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype1-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype2-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype2-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel3-0-in_dtype2-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype0-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype0-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype0-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype1-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype1-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype1-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype2-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype2-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4--1-in_dtype2-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype0-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype0-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype0-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype1-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype1-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype1-shape2]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype2-shape0]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype2-shape1]
+FAILED test_safe_softmax.py::test_safe_softmax[dtype_arg_sel4-0-in_dtype2-shape2]
+=============== 90 failed, 49861 deselected, 1 warning in 11.75s ===============

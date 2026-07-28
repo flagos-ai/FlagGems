@@ -1,0 +1,7 @@
+{
+  "conv_depthwise2d": {
+    "result": "failed",
+    "test_case": "benchmark/test_conv_depthwise2d.py::test_conv_depthwise2d",
+    "reason": "Failed: not enough values to unpack (expected 9, got 2)"
+  }
+}

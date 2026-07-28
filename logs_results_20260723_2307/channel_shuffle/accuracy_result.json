@@ -1,0 +1,173 @@
+{
+  "tests/test_channel_shuffle.py::test_channel_shuffle[dtype0-shape_groups0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_groups": [
+        [
+          1,
+          4,
+          2,
+          2
+        ],
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "channel_shuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_channel_shuffle.py::test_channel_shuffle[dtype0-shape_groups1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_groups": [
+        [
+          2,
+          8,
+          4,
+          4
+        ],
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "channel_shuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_channel_shuffle.py::test_channel_shuffle[dtype0-shape_groups2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_groups": [
+        [
+          4,
+          16,
+          8,
+          8
+        ],
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "channel_shuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_channel_shuffle.py::test_channel_shuffle[dtype1-shape_groups0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_groups": [
+        [
+          1,
+          4,
+          2,
+          2
+        ],
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "channel_shuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_channel_shuffle.py::test_channel_shuffle[dtype1-shape_groups1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_groups": [
+        [
+          2,
+          8,
+          4,
+          4
+        ],
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "channel_shuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_channel_shuffle.py::test_channel_shuffle[dtype1-shape_groups2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_groups": [
+        [
+          4,
+          16,
+          8,
+          8
+        ],
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "channel_shuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_channel_shuffle.py::test_channel_shuffle[dtype2-shape_groups0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_groups": [
+        [
+          1,
+          4,
+          2,
+          2
+        ],
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "channel_shuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_channel_shuffle.py::test_channel_shuffle[dtype2-shape_groups1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_groups": [
+        [
+          2,
+          8,
+          4,
+          4
+        ],
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "channel_shuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_channel_shuffle.py::test_channel_shuffle[dtype2-shape_groups2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_groups": [
+        [
+          4,
+          16,
+          8,
+          8
+        ],
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "channel_shuffle"
+    ],
+    "reason": null
+  }
+}

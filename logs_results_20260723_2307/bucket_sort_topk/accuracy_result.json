@@ -1,0 +1,505 @@
+{
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk[starts_list0-ends_list0]": {
+    "params": {
+      "starts_list": [
+        0,
+        0,
+        0
+      ],
+      "ends_list": [
+        512,
+        768,
+        1024
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: TLE bucket_sort_topk is unavailable"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk[starts_list1-ends_list1]": {
+    "params": {
+      "starts_list": [
+        7,
+        31,
+        63
+      ],
+      "ends_list": [
+        700,
+        900,
+        1024
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: TLE bucket_sort_topk is unavailable"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-256-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 16,
+      "seq_len": 256,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-256-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 16,
+      "seq_len": 256,
+      "batch_size": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-256-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 16,
+      "seq_len": 256,
+      "batch_size": 16
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-1024-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 16,
+      "seq_len": 1024,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-1024-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 16,
+      "seq_len": 1024,
+      "batch_size": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-1024-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 16,
+      "seq_len": 1024,
+      "batch_size": 16
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-8192-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 16,
+      "seq_len": 8192,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-8192-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 16,
+      "seq_len": 8192,
+      "batch_size": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-16-8192-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 16,
+      "seq_len": 8192,
+      "batch_size": 16
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-256-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 64,
+      "seq_len": 256,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-256-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 64,
+      "seq_len": 256,
+      "batch_size": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-256-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 64,
+      "seq_len": 256,
+      "batch_size": 16
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-1024-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 64,
+      "seq_len": 1024,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-1024-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 64,
+      "seq_len": 1024,
+      "batch_size": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-1024-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 64,
+      "seq_len": 1024,
+      "batch_size": 16
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-8192-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 64,
+      "seq_len": 8192,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-8192-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 64,
+      "seq_len": 8192,
+      "batch_size": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-64-8192-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 64,
+      "seq_len": 8192,
+      "batch_size": 16
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-256-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 256,
+      "seq_len": 256,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-256-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 256,
+      "seq_len": 256,
+      "batch_size": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-256-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 256,
+      "seq_len": 256,
+      "batch_size": 16
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-1024-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 256,
+      "seq_len": 1024,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-1024-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 256,
+      "seq_len": 1024,
+      "batch_size": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-1024-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 256,
+      "seq_len": 1024,
+      "batch_size": 16
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-8192-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 256,
+      "seq_len": 8192,
+      "batch_size": 1
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-8192-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 256,
+      "seq_len": 8192,
+      "batch_size": 4
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_forward[dtype0-256-8192-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "topk": 256,
+      "seq_len": 8192,
+      "batch_size": 16
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_edge_cases[config0]": {
+    "params": {
+      "config": {
+        "batch_size": 1,
+        "seq_len": 1,
+        "topk": 1
+      }
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_edge_cases[config1]": {
+    "params": {
+      "config": {
+        "batch_size": 1,
+        "seq_len": 10,
+        "topk": 10
+      }
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_edge_cases[config2]": {
+    "params": {
+      "config": {
+        "batch_size": 2,
+        "seq_len": 100,
+        "topk": 50
+      }
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_edge_cases[config3]": {
+    "params": {
+      "config": {
+        "batch_size": 8,
+        "seq_len": 17,
+        "topk": 8
+      }
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_large_scale[config0]": {
+    "params": {
+      "config": {
+        "batch_size": 64,
+        "seq_len": 32768,
+        "topk": 2048
+      }
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_large_scale[config1]": {
+    "params": {
+      "config": {
+        "batch_size": 32,
+        "seq_len": 65536,
+        "topk": 4096
+      }
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_large_scale[config2]": {
+    "params": {
+      "config": {
+        "batch_size": 96,
+        "seq_len": 32768,
+        "topk": 2048
+      }
+    },
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_variable_length": {
+    "params": {},
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  },
+  "tests/test_DSA/test_bin_topk.py::test_bucket_sort_topk_correctness": {
+    "params": {},
+    "result": "skipped",
+    "opname": [
+      "bucket_sort_topk"
+    ],
+    "reason": "Skipped: #2352: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
+  }
+}

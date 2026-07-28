@@ -1,0 +1,1522 @@
+{
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-64-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-64-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-64-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-64-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-64-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-128-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-128-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-128-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-128-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-128-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-64-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-64-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-64-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-64-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-64-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-128-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-128-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-128-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-128-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-128-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": false,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "failed",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "ValueError: Check failed, max_seqlen_q not supported yet"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-64-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-64-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-64-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-64-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-64-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-128-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-128-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-128-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-128-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-128-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 0,
+      "expected_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-64-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-64-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-64-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-64-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-64-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-128-2-4-512-512]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 512,
+      "kv_seq_len": 512
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-128-1-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-128-1-2-128-256]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 2,
+      "q_seq_len": 128,
+      "kv_seq_len": 256
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-128-2-4-384-384]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 2,
+      "num_head": 4,
+      "q_seq_len": 384,
+      "kv_seq_len": 384
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  },
+  "tests/test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-128-1-1-64-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "bias_requires_grad": true,
+      "has_bias": false,
+      "custom_mask_type": 1,
+      "expected_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 64,
+      "kv_seq_len": 64
+    },
+    "result": "skipped",
+    "opname": [
+      "efficient_attention_backward"
+    ],
+    "reason": "Skipped: bias_requires_grad=True requires has_bias=True"
+  }
+}

@@ -1,0 +1,2498 @@
+{
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-32-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-32-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-32-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-32-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-64-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-64-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-64-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-64-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-128-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-128-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-128-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-128-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-256-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-256-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-256-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype0-256-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-32-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-32-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-32-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-32-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-64-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-64-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-64-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-64-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-128-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-128-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-128-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-128-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-256-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-256-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-256-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype1-256-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-32-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-32-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-32-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-32-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-64-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-64-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-64-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-64-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-128-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-128-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-128-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-128-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-256-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-256-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-256-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward[dtype2-256-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-32-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-32-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-32-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-32-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-64-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-64-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-64-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-64-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-128-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-128-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-128-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-128-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-256-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-256-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-256-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype0-256-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-32-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-32-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-32-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-32-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-64-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-64-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-64-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-64-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-128-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-128-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-128-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-128-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-256-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-256-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-256-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype1-256-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-32-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-32-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-32-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-32-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-64-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-64-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-64-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-64-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-128-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-128-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-128-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-128-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-256-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-256-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-256-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_input_only[dtype2-256-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "KeyError: 'Keyword argument SPLIT_K was specified but unrecognised'"
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-32-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-32-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-32-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-32-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-64-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-64-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-64-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-64-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-128-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-128-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-128-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-128-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-256-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-256-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-256-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype0-256-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-32-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-32-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-32-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-32-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-64-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-64-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-64-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-64-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-128-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-128-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-128-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-128-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-256-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-256-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-256-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype1-256-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-32-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-32-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-32-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-32-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-64-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-64-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-64-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-64-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-128-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-128-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-128-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-128-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-256-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-256-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-256-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_weight_only[dtype2-256-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-32-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-32-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-32-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-32-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 32,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-64-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-64-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-64-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-64-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 64,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-128-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-128-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-128-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-128-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 128,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-256-4-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-256-8-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-256-16-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype0-256-32-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "out_features": 256,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-32-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-32-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-32-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-32-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 32,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-64-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-64-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-64-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-64-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 64,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-128-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-128-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-128-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-128-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 128,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-256-4-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-256-8-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-256-16-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype1-256-32-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "out_features": 256,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-32-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-32-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-32-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-32-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 32,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-64-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-64-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-64-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-64-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 64,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-128-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-128-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-128-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-128-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 128,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-256-4-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 4,
+      "in_features": 16
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-256-8-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 8,
+      "in_features": 32
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-256-16-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 16,
+      "in_features": 64
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_linear_backward.py::test_linear_backward_grad_bias_only[dtype2-256-32-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "out_features": 256,
+      "batch": 32,
+      "in_features": 128
+    },
+    "result": "failed",
+    "opname": [
+      "linear_backward"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  }
+}

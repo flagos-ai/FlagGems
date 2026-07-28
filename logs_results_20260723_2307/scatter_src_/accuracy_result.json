@@ -1,0 +1,758 @@
+{
+  "tests/test_scatter.py::test_scatter_src_[dtype0-0-inp_shape0-src_shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype0-0-inp_shape0-src_shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype0-0-inp_shape1-src_shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype0-0-inp_shape1-src_shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype0-1-inp_shape0-src_shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype0-1-inp_shape0-src_shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype0-1-inp_shape1-src_shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype0-1-inp_shape1-src_shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype0-2-inp_shape0-src_shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 2,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype0-2-inp_shape0-src_shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 2,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype0-2-inp_shape1-src_shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 2,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype0-2-inp_shape1-src_shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 2,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype1-0-inp_shape0-src_shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype1-0-inp_shape0-src_shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype1-0-inp_shape1-src_shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype1-0-inp_shape1-src_shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype1-1-inp_shape0-src_shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype1-1-inp_shape0-src_shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype1-1-inp_shape1-src_shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype1-1-inp_shape1-src_shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype1-2-inp_shape0-src_shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 2,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype1-2-inp_shape0-src_shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 2,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype1-2-inp_shape1-src_shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 2,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype1-2-inp_shape1-src_shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 2,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype2-0-inp_shape0-src_shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype2-0-inp_shape0-src_shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype2-0-inp_shape1-src_shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype2-0-inp_shape1-src_shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype2-1-inp_shape0-src_shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype2-1-inp_shape0-src_shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype2-1-inp_shape1-src_shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype2-1-inp_shape1-src_shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype2-2-inp_shape0-src_shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 2,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype2-2-inp_shape0-src_shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 2,
+      "inp_shape": [
+        512,
+        128,
+        32
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype2-2-inp_shape1-src_shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 2,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        128,
+        16,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  },
+  "tests/test_scatter.py::test_scatter_src_[dtype2-2-inp_shape1-src_shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 2,
+      "inp_shape": [
+        1024,
+        64,
+        16
+      ],
+      "src_shape": [
+        256,
+        32,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scatter_src_"
+    ],
+    "reason": null
+  }
+}

@@ -1,0 +1,506 @@
+{
+  "tests/test_addmm_.py::test_addmm_[dtype0-0.001-1-1-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype0-0.001-15-160-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype0-0.001-495-5333-71]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 0.001,
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype0--0.999-1-1-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype0--0.999-15-160-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype0--0.999-495-5333-71]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -0.999,
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype0-100.001-1-1-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype0-100.001-15-160-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype0-100.001-495-5333-71]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": 100.001,
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype0--111.999-1-1-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype0--111.999-15-160-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype0--111.999-495-5333-71]": {
+    "params": {
+      "dtype": "torch.float16",
+      "scalar": -111.999,
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype1-0.001-1-1-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype1-0.001-15-160-1024]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype1-0.001-495-5333-71]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 0.001,
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype1--0.999-1-1-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype1--0.999-15-160-1024]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype1--0.999-495-5333-71]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -0.999,
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype1-100.001-1-1-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype1-100.001-15-160-1024]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype1-100.001-495-5333-71]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": 100.001,
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype1--111.999-1-1-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype1--111.999-15-160-1024]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype1--111.999-495-5333-71]": {
+    "params": {
+      "dtype": "torch.float32",
+      "scalar": -111.999,
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype2-0.001-1-1-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype2-0.001-15-160-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype2-0.001-495-5333-71]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 0.001,
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype2--0.999-1-1-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype2--0.999-15-160-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype2--0.999-495-5333-71]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -0.999,
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype2-100.001-1-1-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype2-100.001-15-160-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype2-100.001-495-5333-71]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": 100.001,
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype2--111.999-1-1-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype2--111.999-15-160-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm_.py::test_addmm_[dtype2--111.999-495-5333-71]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "scalar": -111.999,
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_"
+    ],
+    "reason": null
+  }
+}

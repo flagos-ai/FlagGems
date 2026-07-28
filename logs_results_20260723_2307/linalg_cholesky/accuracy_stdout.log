@@ -1,0 +1,537 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 00:32:33 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 00:32:35 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:32:35 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:32:35 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:32:35 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:32:35 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:32:35 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:32:35 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:32:35 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:32:35 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 00:32:37 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49931 deselected / 20 selected
+
+test_linalg_cholesky.py::test_linalg_cholesky[dtype0-shape0] PASSED
+test_linalg_cholesky.py::test_linalg_cholesky[dtype0-shape1] PASSED
+test_linalg_cholesky.py::test_linalg_cholesky[dtype0-shape2] PASSED
+test_linalg_cholesky.py::test_linalg_cholesky[dtype0-shape3] PASSED
+test_linalg_cholesky.py::test_linalg_cholesky[dtype0-shape4] PASSED
+test_linalg_cholesky.py::test_linalg_cholesky[dtype1-shape0] FAILED
+test_linalg_cholesky.py::test_linalg_cholesky[dtype1-shape1] FAILED
+test_linalg_cholesky.py::test_linalg_cholesky[dtype1-shape2] FAILED
+test_linalg_cholesky.py::test_linalg_cholesky[dtype1-shape3] FAILED
+test_linalg_cholesky.py::test_linalg_cholesky[dtype1-shape4] FAILED
+test_linalg_cholesky.py::test_linalg_cholesky_upper[dtype0-shape0] PASSED
+test_linalg_cholesky.py::test_linalg_cholesky_upper[dtype0-shape1] PASSED
+test_linalg_cholesky.py::test_linalg_cholesky_upper[dtype0-shape2] PASSED
+test_linalg_cholesky.py::test_linalg_cholesky_upper[dtype1-shape0] FAILED
+test_linalg_cholesky.py::test_linalg_cholesky_upper[dtype1-shape1] FAILED
+test_linalg_cholesky.py::test_linalg_cholesky_upper[dtype1-shape2] FAILED
+test_linalg_cholesky.py::test_linalg_cholesky_batch[dtype0-shape0] PASSED
+test_linalg_cholesky.py::test_linalg_cholesky_batch[dtype0-shape1] PASSED
+test_linalg_cholesky.py::test_linalg_cholesky_batch[dtype1-shape0] FAILED
+test_linalg_cholesky.py::test_linalg_cholesky_batch[dtype1-shape1] FAILED
+
+=================================== FAILURES ===================================
+_____________________ test_linalg_cholesky[dtype1-shape0] ______________________
+
+shape = (2, 2), dtype = torch.float64
+
+    @pytest.mark.linalg_cholesky
+    @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32)])
+    # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_linalg_cholesky(shape, dtype):
+        # Create a positive-definite matrix: A = B @ B^T + I
+        n = shape[-1]
+        B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        A = (
+            B @ B.transpose(-2, -1)
+            + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+        )
+    
+        # For reference, convert to CPU and use torch.linalg.cholesky
+        ref_A = utils.to_reference(A)
+        ref_out = torch.linalg.cholesky(ref_A)
+    
+        # For gems, use aten.linalg_cholesky with flag_gems
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.linalg_cholesky(A)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_linalg_cholesky.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[ 0.5146,  0.0000],
+        [-0.2160,  1.0361]])
+ref = tensor([[ 0.5146,  0.0000],
+        [-0.2160,  1.0361]])
+dtype = torch.float64, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+>       assert res.dtype == dtype
+E       AssertionError
+
+../src/flag_gems/testing/__init__.py:81: AssertionError
+_____________________ test_linalg_cholesky[dtype1-shape1] ______________________
+
+shape = (4, 4), dtype = torch.float64
+
+    @pytest.mark.linalg_cholesky
+    @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32)])
+    # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_linalg_cholesky(shape, dtype):
+        # Create a positive-definite matrix: A = B @ B^T + I
+        n = shape[-1]
+        B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        A = (
+            B @ B.transpose(-2, -1)
+            + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+        )
+    
+        # For reference, convert to CPU and use torch.linalg.cholesky
+        ref_A = utils.to_reference(A)
+        ref_out = torch.linalg.cholesky(ref_A)
+    
+        # For gems, use aten.linalg_cholesky with flag_gems
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.linalg_cholesky(A)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_linalg_cholesky.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[ 1.2486,  0.0000,  0.0000,  0.0000],
+        [-0.2051,  2.3993,  0.0000,  0.0000],
+        [-0.6777,  0.7446,  0.9824,  0.0000],
+        [ 0.2978, -1.0860,  0.3134,  0.7978]])
+ref = tensor([[ 1.2486,  0.0000,  0.0000,  0.0000],
+        [-0.2051,  2.3993,  0.0000,  0.0000],
+        [-0.6777,  0.7446,  0.9824,  0.0000],
+        [ 0.2978, -1.0860,  0.3134,  0.7978]])
+dtype = torch.float64, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+>       assert res.dtype == dtype
+E       AssertionError
+
+../src/flag_gems/testing/__init__.py:81: AssertionError
+_____________________ test_linalg_cholesky[dtype1-shape2] ______________________
+
+shape = (8, 8), dtype = torch.float64
+
+    @pytest.mark.linalg_cholesky
+    @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32)])
+    # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_linalg_cholesky(shape, dtype):
+        # Create a positive-definite matrix: A = B @ B^T + I
+        n = shape[-1]
+        B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        A = (
+            B @ B.transpose(-2, -1)
+            + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+        )
+    
+        # For reference, convert to CPU and use torch.linalg.cholesky
+        ref_A = utils.to_reference(A)
+        ref_out = torch.linalg.cholesky(ref_A)
+    
+        # For gems, use aten.linalg_cholesky with flag_gems
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.linalg_cholesky(A)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_linalg_cholesky.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[ 2.8898,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+        [ 2.1849,  2.7842,  0.0000, ...-1.3161, -0.2818,  0.6360,  0.0000],
+        [-1.3014,  0.8269,  0.4082, -0.3214, -1.1197,  0.8253,  0.0638,  0.8337]])
+ref = tensor([[ 2.8898,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+        [ 2.1849,  2.7842,  0.0000, ...-1.3161, -0.2818,  0.6360,  0.0000],
+        [-1.3014,  0.8269,  0.4082, -0.3214, -1.1197,  0.8253,  0.0638,  0.8337]])
+dtype = torch.float64, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+>       assert res.dtype == dtype
+E       AssertionError
+
+../src/flag_gems/testing/__init__.py:81: AssertionError
+_____________________ test_linalg_cholesky[dtype1-shape3] ______________________
+
+shape = (16, 16), dtype = torch.float64
+
+    @pytest.mark.linalg_cholesky
+    @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32)])
+    # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_linalg_cholesky(shape, dtype):
+        # Create a positive-definite matrix: A = B @ B^T + I
+        n = shape[-1]
+        B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        A = (
+            B @ B.transpose(-2, -1)
+            + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+        )
+    
+        # For reference, convert to CPU and use torch.linalg.cholesky
+        ref_A = utils.to_reference(A)
+        ref_out = torch.linalg.cholesky(ref_A)
+    
+        # For gems, use aten.linalg_cholesky with flag_gems
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.linalg_cholesky(A)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_linalg_cholesky.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[ 3.5666,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+          0.0000,  0.0000,  0.0000,  ...  1.0831, -0.4744, -1.7778, -0.2569,
+         -3.0265,  1.0044, -1.6581, -0.8659, -0.8453,  0.8767,  0.7400,  1.1949]])
+ref = tensor([[ 3.5666,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
+          0.0000,  0.0000,  0.0000,  ...  1.0831, -0.4744, -1.7778, -0.2569,
+         -3.0266,  1.0044, -1.6581, -0.8659, -0.8453,  0.8767,  0.7401,  1.1949]])
+dtype = torch.float64, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+>       assert res.dtype == dtype
+E       AssertionError
+
+../src/flag_gems/testing/__init__.py:81: AssertionError
+_____________________ test_linalg_cholesky[dtype1-shape4] ______________________
+
+shape = (32, 32), dtype = torch.float64
+
+    @pytest.mark.linalg_cholesky
+    @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32)])
+    # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_linalg_cholesky(shape, dtype):
+        # Create a positive-definite matrix: A = B @ B^T + I
+        n = shape[-1]
+        B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        A = (
+            B @ B.transpose(-2, -1)
+            + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+        )
+    
+        # For reference, convert to CPU and use torch.linalg.cholesky
+        ref_A = utils.to_reference(A)
+        ref_out = torch.linalg.cholesky(ref_A)
+    
+        # For gems, use aten.linalg_cholesky with flag_gems
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.linalg_cholesky(A)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_linalg_cholesky.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[ 4.2298,  0.0000,  0.0000,  ...,  0.0000,  0.0000,  0.0000],
+        [-0.2222,  5.0151,  0.0000,  ...,  0.000...3273, -1.0405,  ...,  0.1662,  3.2731,  0.0000],
+        [ 1.3845,  0.5375, -0.5105,  ...,  0.5157,  0.5132,  0.8023]])
+ref = tensor([[ 4.2298,  0.0000,  0.0000,  ...,  0.0000,  0.0000,  0.0000],
+        [-0.2222,  5.0151,  0.0000,  ...,  0.000...3273, -1.0405,  ...,  0.1662,  3.2731,  0.0000],
+        [ 1.3845,  0.5375, -0.5105,  ...,  0.5157,  0.5133,  0.8023]])
+dtype = torch.float64, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+>       assert res.dtype == dtype
+E       AssertionError
+
+../src/flag_gems/testing/__init__.py:81: AssertionError
+__________________ test_linalg_cholesky_upper[dtype1-shape0] ___________________
+
+shape = (2, 2), dtype = torch.float64
+
+    @pytest.mark.linalg_cholesky
+    @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8)])
+    # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_linalg_cholesky_upper(shape, dtype):
+        # Test with upper=True
+        n = shape[-1]
+        B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        A = (
+            B @ B.transpose(-2, -1)
+            + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+        )
+    
+        # For reference, convert to CPU and use torch.linalg.cholesky
+        ref_A = utils.to_reference(A)
+        ref_out = torch.linalg.cholesky(ref_A, upper=True)
+    
+        # For gems, use aten.linalg_cholesky with flag_gems
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.linalg_cholesky(A, upper=True)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_linalg_cholesky.py:68: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[1.7374, 0.9499],
+        [0.0000, 0.7198]])
+ref = tensor([[1.7374, 0.9499],
+        [0.0000, 0.7198]])
+dtype = torch.float64, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+>       assert res.dtype == dtype
+E       AssertionError
+
+../src/flag_gems/testing/__init__.py:81: AssertionError
+__________________ test_linalg_cholesky_upper[dtype1-shape1] ___________________
+
+shape = (4, 4), dtype = torch.float64
+
+    @pytest.mark.linalg_cholesky
+    @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8)])
+    # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_linalg_cholesky_upper(shape, dtype):
+        # Test with upper=True
+        n = shape[-1]
+        B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        A = (
+            B @ B.transpose(-2, -1)
+            + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+        )
+    
+        # For reference, convert to CPU and use torch.linalg.cholesky
+        ref_A = utils.to_reference(A)
+        ref_out = torch.linalg.cholesky(ref_A, upper=True)
+    
+        # For gems, use aten.linalg_cholesky with flag_gems
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.linalg_cholesky(A, upper=True)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_linalg_cholesky.py:68: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[ 1.5387, -1.8000,  0.9000, -0.3892],
+        [ 0.0000,  3.2702,  1.2382,  0.1537],
+        [ 0.0000,  0.0000,  1.7924, -0.8838],
+        [ 0.0000,  0.0000,  0.0000,  0.5838]])
+ref = tensor([[ 1.5387, -1.8000,  0.9000, -0.3892],
+        [ 0.0000,  3.2702,  1.2382,  0.1537],
+        [ 0.0000,  0.0000,  1.7924, -0.8838],
+        [ 0.0000,  0.0000,  0.0000,  0.5838]])
+dtype = torch.float64, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+>       assert res.dtype == dtype
+E       AssertionError
+
+../src/flag_gems/testing/__init__.py:81: AssertionError
+__________________ test_linalg_cholesky_upper[dtype1-shape2] ___________________
+
+shape = (8, 8), dtype = torch.float64
+
+    @pytest.mark.linalg_cholesky
+    @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8)])
+    # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_linalg_cholesky_upper(shape, dtype):
+        # Test with upper=True
+        n = shape[-1]
+        B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        A = (
+            B @ B.transpose(-2, -1)
+            + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+        )
+    
+        # For reference, convert to CPU and use torch.linalg.cholesky
+        ref_A = utils.to_reference(A)
+        ref_out = torch.linalg.cholesky(ref_A, upper=True)
+    
+        # For gems, use aten.linalg_cholesky with flag_gems
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.linalg_cholesky(A, upper=True)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_linalg_cholesky.py:68: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[ 1.6650,  0.0935,  0.1376, -1.1038, -0.4943,  0.3306,  0.3585, -1.2382],
+        [ 0.0000,  3.6288,  0.1457, ... 0.0000,  0.0000,  0.6272,  0.3003],
+        [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.8764]])
+ref = tensor([[ 1.6650,  0.0935,  0.1376, -1.1038, -0.4943,  0.3306,  0.3585, -1.2382],
+        [ 0.0000,  3.6288,  0.1457, ... 0.0000,  0.0000,  0.6272,  0.3003],
+        [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.8764]])
+dtype = torch.float64, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+>       assert res.dtype == dtype
+E       AssertionError
+
+../src/flag_gems/testing/__init__.py:81: AssertionError
+__________________ test_linalg_cholesky_batch[dtype1-shape0] ___________________
+
+shape = (2, 4, 4), dtype = torch.float64
+
+    @pytest.mark.linalg_cholesky
+    @pytest.mark.parametrize("shape", [(2, 4, 4), (3, 8, 8)])
+    # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_linalg_cholesky_batch(shape, dtype):
+        # Create positive-definite matrices for batched input: A = B @ B^T + I
+        n = shape[-1]
+        B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        A = (
+            B @ B.transpose(-2, -1)
+            + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+        )
+    
+        # For reference, convert to CPU and use torch.linalg.cholesky
+        ref_A = utils.to_reference(A)
+        ref_out = torch.linalg.cholesky(ref_A)
+    
+        # For gems, use aten.linalg_cholesky with flag_gems
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.linalg_cholesky(A)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_linalg_cholesky.py:92: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[ 1.9657,  0.0000,  0.0000,  0.0000],
+         [ 1.0680,  0.9194,  0.0000,  0.0000],
+         [-0.1155, -1.69...910,  0.0000,  0.0000],
+         [-0.0307,  0.5658,  1.6040,  0.0000],
+         [ 0.5829, -1.0606, -0.7054,  1.6637]]])
+ref = tensor([[[ 1.9657,  0.0000,  0.0000,  0.0000],
+         [ 1.0680,  0.9194,  0.0000,  0.0000],
+         [-0.1155, -1.69...910,  0.0000,  0.0000],
+         [-0.0307,  0.5658,  1.6040,  0.0000],
+         [ 0.5829, -1.0606, -0.7054,  1.6637]]])
+dtype = torch.float64, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+>       assert res.dtype == dtype
+E       AssertionError
+
+../src/flag_gems/testing/__init__.py:81: AssertionError
+__________________ test_linalg_cholesky_batch[dtype1-shape1] ___________________
+
+shape = (3, 8, 8), dtype = torch.float64
+
+    @pytest.mark.linalg_cholesky
+    @pytest.mark.parametrize("shape", [(2, 4, 4), (3, 8, 8)])
+    # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_linalg_cholesky_batch(shape, dtype):
+        # Create positive-definite matrices for batched input: A = B @ B^T + I
+        n = shape[-1]
+        B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        A = (
+            B @ B.transpose(-2, -1)
+            + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+        )
+    
+        # For reference, convert to CPU and use torch.linalg.cholesky
+        ref_A = utils.to_reference(A)
+        ref_out = torch.linalg.cholesky(ref_A)
+    
+        # For gems, use aten.linalg_cholesky with flag_gems
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.linalg_cholesky(A)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_linalg_cholesky.py:92: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[ 1.5922e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,
+           0.0000e+00,  0.0000e+00,  0.0000...  [-5.0542e-02,  7.4775e-01,  1.9176e+00,  6.7654e-01, -1.1006e+00,
+          -2.2325e-01, -1.2585e-01,  6.5981e-01]]])
+ref = tensor([[[ 1.5921e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,  0.0000e+00,
+           0.0000e+00,  0.0000e+00,  0.0000...  [-5.0542e-02,  7.4775e-01,  1.9176e+00,  6.7654e-01, -1.1006e+00,
+          -2.2326e-01, -1.2585e-01,  6.5979e-01]]])
+dtype = torch.float64, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+>       assert res.dtype == dtype
+E       AssertionError
+
+../src/flag_gems/testing/__init__.py:81: AssertionError
+=========================== short test summary info ============================
+FAILED test_linalg_cholesky.py::test_linalg_cholesky[dtype1-shape0] - Asserti...
+FAILED test_linalg_cholesky.py::test_linalg_cholesky[dtype1-shape1] - Asserti...
+FAILED test_linalg_cholesky.py::test_linalg_cholesky[dtype1-shape2] - Asserti...
+FAILED test_linalg_cholesky.py::test_linalg_cholesky[dtype1-shape3] - Asserti...
+FAILED test_linalg_cholesky.py::test_linalg_cholesky[dtype1-shape4] - Asserti...
+FAILED test_linalg_cholesky.py::test_linalg_cholesky_upper[dtype1-shape0] - A...
+FAILED test_linalg_cholesky.py::test_linalg_cholesky_upper[dtype1-shape1] - A...
+FAILED test_linalg_cholesky.py::test_linalg_cholesky_upper[dtype1-shape2] - A...
+FAILED test_linalg_cholesky.py::test_linalg_cholesky_batch[dtype1-shape0] - A...
+FAILED test_linalg_cholesky.py::test_linalg_cholesky_batch[dtype1-shape1] - A...
+=============== 10 failed, 10 passed, 49931 deselected in 11.24s ===============

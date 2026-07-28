@@ -1,0 +1,677 @@
+{
+  "tests/test_dequantize.py::test_dequantize[0-0.1-shape0]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.1,
+      "shape": [
+        4,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.1-shape1]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.1,
+      "shape": [
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.1-shape2]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.1,
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.1-shape3]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.1,
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.1-shape4]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.1,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.01-shape0]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.01,
+      "shape": [
+        4,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.01-shape1]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.01,
+      "shape": [
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.01-shape2]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.01,
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.01-shape3]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.01,
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.01-shape4]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.01,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.5-shape0]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.5,
+      "shape": [
+        4,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.5-shape1]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.5,
+      "shape": [
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.5-shape2]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.5,
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.5-shape3]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.5,
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[0-0.5-shape4]": {
+    "params": {
+      "zero_point": 0,
+      "scale": 0.5,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.1-shape0]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.1,
+      "shape": [
+        4,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.1-shape1]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.1,
+      "shape": [
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.1-shape2]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.1,
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.1-shape3]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.1,
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.1-shape4]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.1,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.01-shape0]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.01,
+      "shape": [
+        4,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.01-shape1]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.01,
+      "shape": [
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.01-shape2]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.01,
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.01-shape3]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.01,
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.01-shape4]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.01,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.5-shape0]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.5,
+      "shape": [
+        4,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.5-shape1]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.5,
+      "shape": [
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.5-shape2]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.5,
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.5-shape3]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.5,
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[10-0.5-shape4]": {
+    "params": {
+      "zero_point": 10,
+      "scale": 0.5,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.1-shape0]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.1,
+      "shape": [
+        4,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.1-shape1]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.1,
+      "shape": [
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.1-shape2]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.1,
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.1-shape3]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.1,
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.1-shape4]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.1,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.01-shape0]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.01,
+      "shape": [
+        4,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.01-shape1]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.01,
+      "shape": [
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.01-shape2]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.01,
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.01-shape3]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.01,
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.01-shape4]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.01,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.5-shape0]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.5,
+      "shape": [
+        4,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.5-shape1]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.5,
+      "shape": [
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.5-shape2]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.5,
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.5-shape3]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.5,
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_dequantize.py::test_dequantize[-20-0.5-shape4]": {
+    "params": {
+      "zero_point": -20,
+      "scale": 0.5,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "dequantize"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

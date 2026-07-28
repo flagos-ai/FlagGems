@@ -1,0 +1,41 @@
+{
+  "tests/test_grouped_mm.py::test_grouped_mm[dtype0-16-512-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "groups": 16,
+      "N": 512,
+      "K": 2048
+    },
+    "result": "passed",
+    "opname": [
+      "grouped_mm"
+    ],
+    "reason": null
+  },
+  "tests/test_grouped_mm.py::test_grouped_mm[dtype0-16-2560-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "groups": 16,
+      "N": 2560,
+      "K": 2048
+    },
+    "result": "passed",
+    "opname": [
+      "grouped_mm"
+    ],
+    "reason": null
+  },
+  "tests/test_grouped_mm.py::test_grouped_mm[dtype0-64-2048-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "groups": 64,
+      "N": 2048,
+      "K": 128
+    },
+    "result": "passed",
+    "opname": [
+      "grouped_mm"
+    ],
+    "reason": null
+  }
+}

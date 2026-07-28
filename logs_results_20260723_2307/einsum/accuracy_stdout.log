@@ -1,0 +1,630 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:49:59 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:50:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:50:01 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:50:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:50:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:50:01 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:50:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:50:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:50:01 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:50:01 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:50:03 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49891 deselected / 60 selected
+
+test_einsum.py::test_einsum_matmul[dtype0-32-64-128] PASSED
+test_einsum.py::test_einsum_matmul[dtype0-16-256-32] PASSED
+test_einsum.py::test_einsum_matmul[dtype1-32-64-128] PASSED
+test_einsum.py::test_einsum_matmul[dtype1-16-256-32] PASSED
+test_einsum.py::test_einsum_matmul[dtype2-32-64-128] PASSED
+test_einsum.py::test_einsum_matmul[dtype2-16-256-32] PASSED
+test_einsum.py::test_einsum_bmm[dtype0-4-32-64-128] PASSED
+test_einsum.py::test_einsum_bmm[dtype0-8-16-256-32] PASSED
+test_einsum.py::test_einsum_bmm[dtype1-4-32-64-128] PASSED
+test_einsum.py::test_einsum_bmm[dtype1-8-16-256-32] PASSED
+test_einsum.py::test_einsum_bmm[dtype2-4-32-64-128] PASSED
+test_einsum.py::test_einsum_bmm[dtype2-8-16-256-32] PASSED
+test_einsum.py::test_einsum_dot[dtype0-64] PASSED
+test_einsum.py::test_einsum_dot[dtype0-256] PASSED
+test_einsum.py::test_einsum_dot[dtype0-1024] PASSED
+test_einsum.py::test_einsum_dot[dtype1-64] PASSED
+test_einsum.py::test_einsum_dot[dtype1-256] PASSED
+test_einsum.py::test_einsum_dot[dtype1-1024] PASSED
+test_einsum.py::test_einsum_dot[dtype2-64] PASSED
+test_einsum.py::test_einsum_dot[dtype2-256] PASSED
+test_einsum.py::test_einsum_dot[dtype2-1024] PASSED
+test_einsum.py::test_einsum_outer[dtype0-32-64] PASSED
+test_einsum.py::test_einsum_outer[dtype0-128-256] PASSED
+test_einsum.py::test_einsum_outer[dtype1-32-64] PASSED
+test_einsum.py::test_einsum_outer[dtype1-128-256] PASSED
+test_einsum.py::test_einsum_outer[dtype2-32-64] PASSED
+test_einsum.py::test_einsum_outer[dtype2-128-256] PASSED
+test_einsum.py::test_einsum_trace[dtype0-32] FAILED
+test_einsum.py::test_einsum_trace[dtype0-64] FAILED
+test_einsum.py::test_einsum_trace[dtype0-128] FAILED
+test_einsum.py::test_einsum_trace[dtype1-32] FAILED
+test_einsum.py::test_einsum_trace[dtype1-64] FAILED
+test_einsum.py::test_einsum_trace[dtype1-128] FAILED
+test_einsum.py::test_einsum_trace[dtype2-32] FAILED
+test_einsum.py::test_einsum_trace[dtype2-64] FAILED
+test_einsum.py::test_einsum_trace[dtype2-128] FAILED
+test_einsum.py::test_einsum_diagonal[dtype0-32] PASSED
+test_einsum.py::test_einsum_diagonal[dtype0-64] PASSED
+test_einsum.py::test_einsum_diagonal[dtype0-128] PASSED
+test_einsum.py::test_einsum_diagonal[dtype1-32] PASSED
+test_einsum.py::test_einsum_diagonal[dtype1-64] PASSED
+test_einsum.py::test_einsum_diagonal[dtype1-128] PASSED
+test_einsum.py::test_einsum_diagonal[dtype2-32] PASSED
+test_einsum.py::test_einsum_diagonal[dtype2-64] PASSED
+test_einsum.py::test_einsum_diagonal[dtype2-128] PASSED
+test_einsum.py::test_einsum_transpose[dtype0-shape0] PASSED
+test_einsum.py::test_einsum_transpose[dtype0-shape1] PASSED
+test_einsum.py::test_einsum_transpose[dtype1-shape0] PASSED
+test_einsum.py::test_einsum_transpose[dtype1-shape1] PASSED
+test_einsum.py::test_einsum_transpose[dtype2-shape0] PASSED
+test_einsum.py::test_einsum_transpose[dtype2-shape1] PASSED
+test_einsum.py::test_einsum_sum_all[dtype0-shape0] PASSED
+test_einsum.py::test_einsum_sum_all[dtype1-shape0] PASSED
+test_einsum.py::test_einsum_sum_all[dtype2-shape0] PASSED
+test_einsum.py::test_einsum_sum_dim[dtype0-shape0] FAILED
+test_einsum.py::test_einsum_sum_dim[dtype1-shape0] FAILED
+test_einsum.py::test_einsum_sum_dim[dtype2-shape0] FAILED
+test_einsum.py::test_einsum_ellipsis[dtype0] PASSED
+test_einsum.py::test_einsum_ellipsis[dtype1] PASSED
+test_einsum.py::test_einsum_ellipsis[dtype2] PASSED
+
+=================================== FAILURES ===================================
+_________________________ test_einsum_trace[dtype0-32] _________________________
+
+size = 32, dtype = torch.float16
+
+    @pytest.mark.einsum
+    @pytest.mark.parametrize("size", EINSUM_SHAPES["trace"])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_einsum_trace(size, dtype):
+        inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ii->", ref_inp)
+        with flag_gems.use_gems():
+>           res_out = torch.einsum("ii->", inp)
+
+test_einsum.py:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([ 1.6826,  1.8604, -1.8760, -1.7021, -1.8037,  1.8232, -1.7646,  1.7051,
+         1.8818,  1.7725,  1.8369, -1...1, -0.6045,  1.5039,  0.2208,  0.0140, -0.8257,  0.7822, -1.0176],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________________ test_einsum_trace[dtype0-64] _________________________
+
+size = 64, dtype = torch.float16
+
+    @pytest.mark.einsum
+    @pytest.mark.parametrize("size", EINSUM_SHAPES["trace"])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_einsum_trace(size, dtype):
+        inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ii->", ref_inp)
+        with flag_gems.use_gems():
+>           res_out = torch.einsum("ii->", inp)
+
+test_einsum.py:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([-1.8770, -2.0781,  2.0996,  1.8906,  1.9980, -2.0254,  1.9443, -1.8926,
+        -2.1172, -1.9551, -2.0449,  1...2, -0.1399, -2.9414,  0.7856, -0.3147,  1.5957, -0.0306, -0.2040],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________________ test_einsum_trace[dtype0-128] _________________________
+
+size = 128, dtype = torch.float16
+
+    @pytest.mark.einsum
+    @pytest.mark.parametrize("size", EINSUM_SHAPES["trace"])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_einsum_trace(size, dtype):
+        inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ii->", ref_inp)
+        with flag_gems.use_gems():
+>           res_out = torch.einsum("ii->", inp)
+
+test_einsum.py:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([-1.3818, -1.5449,  1.5557,  1.3955,  1.5029, -1.5176,  1.4512, -1.3975,
+        -1.5654, -1.4619, -1.5273,  1...2,  0.7275, -0.2147, -0.6885,  0.1102, -0.5679, -1.6572, -0.5361],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________________ test_einsum_trace[dtype1-32] _________________________
+
+size = 32, dtype = torch.float32
+
+    @pytest.mark.einsum
+    @pytest.mark.parametrize("size", EINSUM_SHAPES["trace"])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_einsum_trace(size, dtype):
+        inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ii->", ref_inp)
+        with flag_gems.use_gems():
+>           res_out = torch.einsum("ii->", inp)
+
+test_einsum.py:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([ 0.0826, -0.0353,  0.0697,  0.0361,  0.0516, -0.0440, -0.1438, -0.0192,
+        -0.0238,  0.0211,  0.0176, -0....1274,
+        -1.4761,  0.5041,  0.3216, -2.4784,  0.6990,  0.4762,  1.2732, -0.1999],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________________ test_einsum_trace[dtype1-64] _________________________
+
+size = 64, dtype = torch.float32
+
+    @pytest.mark.einsum
+    @pytest.mark.parametrize("size", EINSUM_SHAPES["trace"])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_einsum_trace(size, dtype):
+        inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ii->", ref_inp)
+        with flag_gems.use_gems():
+>           res_out = torch.einsum("ii->", inp)
+
+test_einsum.py:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([ 1.8691, -0.8037,  1.5762,  0.8193,  1.1738, -0.9971, -3.2695, -0.4341,
+        -0.5400,  0.4810,  0.3989, -2....3456,
+        -0.5838,  0.1964, -1.2823,  0.2024, -0.9665,  0.7420, -0.1901, -0.0658],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________________ test_einsum_trace[dtype1-128] _________________________
+
+size = 128, dtype = torch.float32
+
+    @pytest.mark.einsum
+    @pytest.mark.parametrize("size", EINSUM_SHAPES["trace"])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_einsum_trace(size, dtype):
+        inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ii->", ref_inp)
+        with flag_gems.use_gems():
+>           res_out = torch.einsum("ii->", inp)
+
+test_einsum.py:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([-0.5080,  1.1830, -0.0312, -0.1506,  0.2562,  0.1108,  0.3253, -1.4772,
+        -0.2082, -0.7142,  1.0623, -0....7829,
+         1.3512,  0.1320, -0.5918, -0.8340,  0.8114,  1.2129,  1.0126, -0.0754],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________________ test_einsum_trace[dtype2-32] _________________________
+
+size = 32, dtype = torch.bfloat16
+
+    @pytest.mark.einsum
+    @pytest.mark.parametrize("size", EINSUM_SHAPES["trace"])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_einsum_trace(size, dtype):
+        inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ii->", ref_inp)
+        with flag_gems.use_gems():
+>           res_out = torch.einsum("ii->", inp)
+
+test_einsum.py:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([-1.1092e+30,  2.6406e+00, -1.0078e+00, -4.0430e-01, -7.1484e-01,
+         7.9297e-01, -5.5859e-01,  4.1016e-0...,  1.3594, -1.0547,  0.5586, -1.6641,  0.1270,  1.2188, -0.5352],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+_________________________ test_einsum_trace[dtype2-64] _________________________
+
+size = 64, dtype = torch.bfloat16
+
+    @pytest.mark.einsum
+    @pytest.mark.parametrize("size", EINSUM_SHAPES["trace"])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_einsum_trace(size, dtype):
+        inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ii->", ref_inp)
+        with flag_gems.use_gems():
+>           res_out = torch.einsum("ii->", inp)
+
+test_einsum.py:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([-1.0156, -2.6250,  2.7969,  1.1250,  1.9844, -2.2031,  1.5547, -1.1406,
+        -2.9375, -1.6406, -2.3594,  1...,  0.6172, -1.3672, -0.2490, -0.0175, -0.8203,  0.8086, -0.2334],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+________________________ test_einsum_trace[dtype2-128] _________________________
+
+size = 128, dtype = torch.bfloat16
+
+    @pytest.mark.einsum
+    @pytest.mark.parametrize("size", EINSUM_SHAPES["trace"])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_einsum_trace(size, dtype):
+        inp = torch.randn((size, size), dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ii->", ref_inp)
+        with flag_gems.use_gems():
+>           res_out = torch.einsum("ii->", inp)
+
+test_einsum.py:109: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([-0.0659, -0.1699,  0.1807,  0.0728,  0.1279, -0.1426,  0.1006, -0.0737,
+        -0.1904, -0.1060, -0.1523,  0..., -1.5781,  0.0586, -0.1816,  0.5117,  1.3984,  0.0918,  0.5664],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_einsum_sum_dim[dtype0-shape0] ______________________
+
+shape = (32, 64, 128), dtype = torch.float16
+
+    @pytest.mark.einsum
+    @pytest.mark.parametrize("shape", EINSUM_SHAPES["sum"])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_einsum_sum_dim(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ijk->j", ref_inp)
+        with flag_gems.use_gems():
+>           res_out = torch.einsum("ijk->j", inp)
+
+test_einsum.py:163: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 1.0766e+01, -1.3984e+00,  2.1896e-03,  ..., -1.9512e+00,
+          -1.8936e-02, -1.8877e+00],
+         [ 5...0,  1.4834e+00,  ...,  9.1748e-01,
+           4.0381e-01,  6.6064e-01]]], device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_einsum_sum_dim[dtype1-shape0] ______________________
+
+shape = (32, 64, 128), dtype = torch.float32
+
+    @pytest.mark.einsum
+    @pytest.mark.parametrize("shape", EINSUM_SHAPES["sum"])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_einsum_sum_dim(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ijk->j", ref_inp)
+        with flag_gems.use_gems():
+>           res_out = torch.einsum("ijk->j", inp)
+
+test_einsum.py:163: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-2.6483e+30,  2.0685e-38, -4.6605e+05,  ..., -1.0003e-32,
+           5.3990e+37, -1.7875e+02],
+         [ 1...175,  0.1604],
+         [-0.1266, -0.3280, -0.2026,  ...,  0.0802, -0.0092,  0.6124]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______________________ test_einsum_sum_dim[dtype2-shape0] ______________________
+
+shape = (32, 64, 128), dtype = torch.bfloat16
+
+    @pytest.mark.einsum
+    @pytest.mark.parametrize("shape", EINSUM_SHAPES["sum"])
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_einsum_sum_dim(shape, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        ref_inp = to_reference(inp, True)
+        ref_out = torch.einsum("ijk->j", ref_inp)
+        with flag_gems.use_gems():
+>           res_out = torch.einsum("ijk->j", inp)
+
+test_einsum.py:163: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/functional.py:373: in einsum
+    return _VF.einsum(equation, operands)  # type: ignore[attr-defined]
+../src/flag_gems/runtime/backend/_kunlunxin/ops/sum.py:241: in sum_dim
+    inp = dim_compress(inp, dim)
+../src/flag_gems/utils/shape_utils.py:223: in dim_compress
+    return inp.permute(order).contiguous()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 1.9185e-26, -1.5247e-20, -6.7428e-07,  ...,  5.3169e+36,
+           1.0482e-20, -1.4668e-08],
+         [ 2...  [ 0.6016, -0.7148,  0.2793,  ..., -0.9844,  0.2100,  1.4922]]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+=========================== short test summary info ============================
+FAILED test_einsum.py::test_einsum_trace[dtype0-32] - torch.AcceleratorError:...
+FAILED test_einsum.py::test_einsum_trace[dtype0-64] - torch.AcceleratorError:...
+FAILED test_einsum.py::test_einsum_trace[dtype0-128] - torch.AcceleratorError...
+FAILED test_einsum.py::test_einsum_trace[dtype1-32] - torch.AcceleratorError:...
+FAILED test_einsum.py::test_einsum_trace[dtype1-64] - torch.AcceleratorError:...
+FAILED test_einsum.py::test_einsum_trace[dtype1-128] - torch.AcceleratorError...
+FAILED test_einsum.py::test_einsum_trace[dtype2-32] - torch.AcceleratorError:...
+FAILED test_einsum.py::test_einsum_trace[dtype2-64] - torch.AcceleratorError:...
+FAILED test_einsum.py::test_einsum_trace[dtype2-128] - torch.AcceleratorError...
+FAILED test_einsum.py::test_einsum_sum_dim[dtype0-shape0] - torch.Accelerator...
+FAILED test_einsum.py::test_einsum_sum_dim[dtype1-shape0] - torch.Accelerator...
+FAILED test_einsum.py::test_einsum_sum_dim[dtype2-shape0] - torch.Accelerator...
+=============== 12 failed, 48 passed, 49891 deselected in 25.84s ===============

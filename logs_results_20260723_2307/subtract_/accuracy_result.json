@@ -1,0 +1,1106 @@
+{
+  "tests/test_subtract_.py::test_subtract_[dtype0-0.001-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": 0.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0-0.001-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": 0.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0-0.001-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": 0.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0-0.001-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": 0.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0-0.001-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": 0.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0-0.001-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": 0.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0--0.999-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": -0.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0--0.999-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": -0.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0--0.999-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": -0.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0--0.999-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": -0.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0--0.999-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": -0.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0--0.999-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": -0.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0-100.001-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": 100.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0-100.001-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": 100.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0-100.001-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": 100.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0-100.001-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": 100.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0-100.001-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": 100.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0-100.001-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": 100.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0--111.999-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": -111.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0--111.999-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": -111.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0--111.999-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": -111.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0--111.999-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": -111.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0--111.999-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": -111.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype0--111.999-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alpha": -111.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1-0.001-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": 0.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1-0.001-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": 0.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1-0.001-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": 0.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1-0.001-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": 0.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1-0.001-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": 0.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1-0.001-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": 0.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1--0.999-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": -0.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1--0.999-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": -0.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1--0.999-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": -0.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1--0.999-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": -0.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1--0.999-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": -0.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1--0.999-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": -0.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1-100.001-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": 100.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1-100.001-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": 100.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1-100.001-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": 100.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1-100.001-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": 100.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1-100.001-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": 100.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1-100.001-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": 100.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1--111.999-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": -111.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1--111.999-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": -111.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1--111.999-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": -111.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1--111.999-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": -111.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1--111.999-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": -111.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype1--111.999-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "alpha": -111.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2-0.001-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": 0.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2-0.001-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": 0.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2-0.001-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": 0.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2-0.001-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": 0.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2-0.001-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": 0.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2-0.001-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": 0.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2--0.999-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": -0.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2--0.999-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": -0.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2--0.999-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": -0.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2--0.999-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": -0.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2--0.999-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": -0.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2--0.999-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": -0.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2-100.001-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": 100.001,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2-100.001-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": 100.001,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2-100.001-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": 100.001,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2-100.001-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": 100.001,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2-100.001-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": 100.001,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2-100.001-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": 100.001,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2--111.999-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": -111.999,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2--111.999-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": -111.999,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2--111.999-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": -111.999,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2--111.999-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": -111.999,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2--111.999-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": -111.999,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  },
+  "tests/test_subtract_.py::test_subtract_[dtype2--111.999-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alpha": -111.999,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "subtract_"
+    ],
+    "reason": null
+  }
+}

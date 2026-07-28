@@ -1,0 +1,213 @@
+[CMD] pytest -m "rnn_relu" --record json --output accuracy_rnn_relu.json --continue-on-collection-errors -vs
+[CWD] /workspace/FlagGems/tests
+
+XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":136:26): error: 'arith.addf' op requires the same encoding for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/rnn_relu.py":116:30): error: 'arith.cmpi' op requires all operands to have the same type

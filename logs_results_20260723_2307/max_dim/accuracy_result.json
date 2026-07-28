@@ -1,0 +1,1382 @@
+{
+  "tests/test_max.py::test_max_dim[dtype0-0-True-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype0-0-True-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype0-0-True-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype0-0-False-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype0-0-False-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype0-0-False-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype0-1-True-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype0-1-True-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype0-1-True-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype0-1-False-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype0-1-False-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype0-1-False-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype1-0-True-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype1-0-True-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype1-0-True-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype1-0-False-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype1-0-False-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype1-0-False-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype1-1-True-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype1-1-True-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype1-1-True-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype1-1-False-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype1-1-False-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype1-1-False-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype2-0-True-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype2-0-True-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype2-0-True-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype2-0-False-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype2-0-False-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype2-0-False-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype2-1-True-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype2-1-True-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype2-1-True-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype2-1-False-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype2-1-False-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype2-1-False-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype3-0-True-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype3-0-True-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype3-0-True-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype3-0-False-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype3-0-False-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype3-0-False-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype3-1-True-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype3-1-True-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype3-1-True-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype3-1-False-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype3-1-False-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype3-1-False-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype4-0-True-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype4-0-True-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype4-0-True-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype4-0-False-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype4-0-False-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype4-0-False-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype4-1-True-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype4-1-True-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype4-1-True-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype4-1-False-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype4-1-False-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype4-1-False-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype5-0-True-shape0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype5-0-True-shape1]": {
+    "params": {
+      "dtype": "torch.int64",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype5-0-True-shape2]": {
+    "params": {
+      "dtype": "torch.int64",
+      "dim": 0,
+      "keepdim": true,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype5-0-False-shape0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype5-0-False-shape1]": {
+    "params": {
+      "dtype": "torch.int64",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype5-0-False-shape2]": {
+    "params": {
+      "dtype": "torch.int64",
+      "dim": 0,
+      "keepdim": false,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype5-1-True-shape0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype5-1-True-shape1]": {
+    "params": {
+      "dtype": "torch.int64",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype5-1-True-shape2]": {
+    "params": {
+      "dtype": "torch.int64",
+      "dim": 1,
+      "keepdim": true,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype5-1-False-shape0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype5-1-False-shape1]": {
+    "params": {
+      "dtype": "torch.int64",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim[dtype5-1-False-shape2]": {
+    "params": {
+      "dtype": "torch.int64",
+      "dim": 1,
+      "keepdim": false,
+      "shape": [
+        200,
+        2560,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim_big_shape[dtype0-True-1-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "keepdim": true,
+      "dim": 1,
+      "shape": [
+        4,
+        1048577,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim_big_shape[dtype0-False-1-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "keepdim": false,
+      "dim": 1,
+      "shape": [
+        4,
+        1048577,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim_big_shape[dtype1-True-1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "keepdim": true,
+      "dim": 1,
+      "shape": [
+        4,
+        1048577,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim_big_shape[dtype1-False-1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "keepdim": false,
+      "dim": 1,
+      "shape": [
+        4,
+        1048577,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim_big_shape[dtype2-True-1-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "keepdim": true,
+      "dim": 1,
+      "shape": [
+        4,
+        1048577,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim_big_shape[dtype2-False-1-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "keepdim": false,
+      "dim": 1,
+      "shape": [
+        4,
+        1048577,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim_big_shape[dtype3-True-1-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "keepdim": true,
+      "dim": 1,
+      "shape": [
+        4,
+        1048577,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim_big_shape[dtype3-False-1-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "keepdim": false,
+      "dim": 1,
+      "shape": [
+        4,
+        1048577,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim_big_shape[dtype4-True-1-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "keepdim": true,
+      "dim": 1,
+      "shape": [
+        4,
+        1048577,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim_big_shape[dtype4-False-1-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "keepdim": false,
+      "dim": 1,
+      "shape": [
+        4,
+        1048577,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim_big_shape[dtype5-True-1-shape0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "keepdim": true,
+      "dim": 1,
+      "shape": [
+        4,
+        1048577,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  },
+  "tests/test_max.py::test_max_dim_big_shape[dtype5-False-1-shape0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "keepdim": false,
+      "dim": 1,
+      "shape": [
+        4,
+        1048577,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "max_dim"
+    ],
+    "reason": null
+  }
+}

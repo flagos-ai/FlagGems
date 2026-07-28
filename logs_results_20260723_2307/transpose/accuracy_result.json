@@ -1,0 +1,2529 @@
+{
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 1D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair0-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair0-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair1-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair1-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair1-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair1-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair1-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair1-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair1-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair1-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair2-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair2-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 1D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair2-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair2-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair2-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair2-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair2-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair2-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair3-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair3-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 1D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair3-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: dim pair (1, 2) out of range for 2D tensor"
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair3-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: dim pair (1, 2) out of range for 2D tensor"
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair3-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair3-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair3-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair3-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair4-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair4-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 1D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair4-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair4-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair4-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair4-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair4-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype0-dim_pair4-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 1D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair0-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair0-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair0-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair0-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair0-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair1-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair1-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair2-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair2-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 1D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair2-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair2-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair2-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair2-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair2-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair2-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair3-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair3-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 1D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair3-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: dim pair (1, 2) out of range for 2D tensor"
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair3-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: dim pair (1, 2) out of range for 2D tensor"
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair3-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair3-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair3-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair3-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair4-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair4-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 1D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair4-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair4-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair4-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair4-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair4-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype1-dim_pair4-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair0-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair0-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 1D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair0-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair0-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair0-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair0-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair0-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair0-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        1
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair1-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair1-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair1-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair1-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair1-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair1-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair1-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair1-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        0,
+        -1
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 1D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair2-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair2-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        -1,
+        -2
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair3-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair3-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 1D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair3-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: dim pair (1, 2) out of range for 2D tensor"
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair3-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: dim pair (1, 2) out of range for 2D tensor"
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair3-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair3-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair3-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair3-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        2
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair4-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": []
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 0D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair4-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        5
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "transpose"
+    ],
+    "reason": "Skipped: 1D tensor only supports transpose(0, 0)"
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair4-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair4-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        128,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair4-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair4-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        16,
+        128,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair4-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose[dtype2-dim_pair4-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim_pair": [
+        1,
+        -1
+      ],
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_same_dim[dtype0-shape0-1-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "dim0": 1,
+      "dim1": 1
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_same_dim[dtype0-shape1-0-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "dim0": 0,
+      "dim1": 0
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_same_dim[dtype0-shape2-0-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        5
+      ],
+      "dim0": 0,
+      "dim1": 1
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_same_dim[dtype0-shape3-1-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        5
+      ],
+      "dim0": 1,
+      "dim1": 0
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_same_dim[dtype1-shape0-1-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "dim0": 1,
+      "dim1": 1
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_same_dim[dtype1-shape1-0-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "dim0": 0,
+      "dim1": 0
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_same_dim[dtype1-shape2-0-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        5
+      ],
+      "dim0": 0,
+      "dim1": 1
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_same_dim[dtype1-shape3-1-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        5
+      ],
+      "dim0": 1,
+      "dim1": 0
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_same_dim[dtype2-shape0-1-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "dim0": 1,
+      "dim1": 1
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_same_dim[dtype2-shape1-0-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "dim0": 0,
+      "dim1": 0
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_same_dim[dtype2-shape2-0-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        5,
+        5
+      ],
+      "dim0": 0,
+      "dim1": 1
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_same_dim[dtype2-shape3-1-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        5,
+        5
+      ],
+      "dim0": 1,
+      "dim1": 0
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_non_contiguous[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_non_contiguous[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_non_contiguous[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_non_contiguous[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_non_contiguous[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_non_contiguous[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_invalid_dims[shape0-0-5]": {
+    "params": {
+      "shape": [
+        2,
+        3
+      ],
+      "dim0": 0,
+      "dim1": 5
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_invalid_dims[shape1--3-0]": {
+    "params": {
+      "shape": [
+        2,
+        3
+      ],
+      "dim0": -3,
+      "dim1": 0
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  },
+  "tests/test_transpose.py::test_transpose_invalid_dims[shape2-0-3]": {
+    "params": {
+      "shape": [
+        2,
+        3,
+        4
+      ],
+      "dim0": 0,
+      "dim1": 3
+    },
+    "result": "passed",
+    "opname": [
+      "transpose"
+    ],
+    "reason": null
+  }
+}

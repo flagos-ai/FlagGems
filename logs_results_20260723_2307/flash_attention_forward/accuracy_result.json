@@ -1,0 +1,4146 @@
+{
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-False-64-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-False-64-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 64,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-False-64-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 64,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-False-128-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-False-128-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-False-128-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-False-192-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-False-192-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-False-192-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-False-256-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 256,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-False-256-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 256,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-False-256-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 256,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-True-64-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-True-64-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 64,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-True-64-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 64,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-True-128-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-True-128-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-True-128-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-True-192-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-True-192-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-True-192-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-True-256-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 256,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-True-256-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 256,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype0-True-256-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 256,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-False-64-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-False-64-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 64,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-False-64-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 64,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-False-128-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-False-128-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-False-128-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-False-192-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-False-192-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-False-192-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-False-256-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 256,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-False-256-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 256,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-False-256-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 256,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-True-64-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 64,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-True-64-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 64,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-True-64-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 64,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-True-128-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-True-128-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-True-128-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-True-192-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-True-192-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-True-192-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-True-256-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 256,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-True-256-4-8-1024-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 256,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_nonsquare_qk[dtype1-True-256-4-8-17-1030]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 256,
+      "batch": 4,
+      "num_head": 8,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2809: The operator fails this test on Nvidia at least."
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-None-False-128-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-None-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-None-False-192-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-None-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-None-True-128-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-None-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-None-True-192-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-None-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-10.0-False-128-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-10.0-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-10.0-False-192-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-10.0-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-10.0-True-128-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-10.0-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-10.0-True-192-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-10.0-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-50.0-False-128-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-50.0-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-50.0-False-192-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-50.0-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-50.0-True-128-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-50.0-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-50.0-True-192-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype0-True-50.0-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-None-False-128-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-None-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-None-False-192-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-None-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-None-True-128-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-None-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-None-True-192-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-None-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-10.0-False-128-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-10.0-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-10.0-False-192-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-10.0-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-10.0-True-128-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-10.0-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-10.0-True-192-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-10.0-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-50.0-False-128-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-50.0-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-50.0-False-192-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-50.0-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-50.0-True-128-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-50.0-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-50.0-True-192-4-8-2-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 8,
+      "num_head_k": 2,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap[dtype1-True-50.0-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-None-False-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-None-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-None-False-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-None-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-None-True-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-None-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-None-True-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-None-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-10.0-False-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-10.0-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-10.0-False-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-10.0-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-10.0-True-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-10.0-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-10.0-True-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-10.0-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-50.0-False-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-50.0-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-50.0-False-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-50.0-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-50.0-True-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-50.0-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-50.0-True-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-False-50.0-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-None-False-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-None-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-None-False-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-None-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-None-True-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-None-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-None-True-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-None-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-10.0-False-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-10.0-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-10.0-False-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-10.0-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-10.0-True-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-10.0-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-10.0-True-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-10.0-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-50.0-False-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-50.0-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-50.0-False-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-50.0-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-50.0-True-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-50.0-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-50.0-True-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype0-True-50.0-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.float16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-None-False-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-None-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-None-False-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-None-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-None-True-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-None-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-None-True-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-None-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-10.0-False-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-10.0-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-10.0-False-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-10.0-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-10.0-True-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-10.0-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-10.0-True-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-10.0-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-50.0-False-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-50.0-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-50.0-False-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-50.0-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-50.0-True-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-50.0-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-50.0-True-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-False-50.0-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": false,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-None-False-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-None-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-None-False-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-None-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-None-True-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-None-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-None-True-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-None-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": null,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-10.0-False-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-10.0-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-10.0-False-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-10.0-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-10.0-True-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-10.0-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-10.0-True-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-10.0-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 10.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-50.0-False-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-50.0-False-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-50.0-False-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-50.0-False-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": false,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-50.0-True-128-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-50.0-True-128-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-50.0-True-192-1-4-1-1-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 4,
+      "num_head_k": 1,
+      "q_seq_len": 1,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_splitkv[dtype1-True-50.0-True-192-4-4-4-1-519]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "alibi": true,
+      "soft_cap": 50.0,
+      "is_causal": true,
+      "head_size": 192,
+      "batch": 4,
+      "num_head": 4,
+      "num_head_k": 4,
+      "q_seq_len": 1,
+      "kv_seq_len": 519
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-256-0-128-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-256-0-128-8-32-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 128,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-256-0-128-8-32-1024-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 128,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-256-0-128-8-32-17-1030]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 128,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-256-0-192-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-256-0-192-8-32-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 192,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-256-0-192-8-32-1024-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 192,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-256-0-192-8-32-17-1030]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 192,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-128-128-128-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-128-128-128-8-32-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 128,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-128-128-128-8-32-1024-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 128,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-128-128-128-8-32-17-1030]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 128,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-128-128-192-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-128-128-192-8-32-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 192,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-128-128-192-8-32-1024-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 192,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype0-False-128-128-192-8-32-17-1030]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 192,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-256-0-128-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-256-0-128-8-32-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 128,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-256-0-128-8-32-1024-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 128,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-256-0-128-8-32-17-1030]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 128,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-256-0-192-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-256-0-192-8-32-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 192,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-256-0-192-8-32-1024-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 192,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-256-0-192-8-32-17-1030]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 256,
+      "window_size_right": 0,
+      "head_size": 192,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-128-128-128-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-128-128-128-8-32-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 128,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-128-128-128-8-32-1024-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 128,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-128-128-128-8-32-17-1030]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 128,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-128-128-192-1-1-128-2048]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 192,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 128,
+      "kv_seq_len": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-128-128-192-8-32-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 192,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-128-128-192-8-32-1024-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 192,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 1024,
+      "kv_seq_len": 128
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_attention_foward_swa[dtype1-False-128-128-192-8-32-17-1030]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "window_size_left": 128,
+      "window_size_right": 128,
+      "head_size": 192,
+      "batch": 8,
+      "num_head": 32,
+      "q_seq_len": 17,
+      "kv_seq_len": 1030
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not working"
+  },
+  "tests/test_flash_attention.py::test_flash_fwd_dropout[dtype0-False-128-1-1-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_fwd_dropout[dtype0-True-128-1-1-1024-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_fwd_dropout[dtype1-False-128-1-1-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": false,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  },
+  "tests/test_flash_attention.py::test_flash_fwd_dropout[dtype1-True-128-1-1-1024-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "is_causal": true,
+      "head_size": 128,
+      "batch": 1,
+      "num_head": 1,
+      "q_seq_len": 1024,
+      "kv_seq_len": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "flash_attention_forward"
+    ],
+    "reason": "Skipped: Issue #2814: Not supported"
+  }
+}

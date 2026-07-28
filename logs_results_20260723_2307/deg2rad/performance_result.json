@@ -1,0 +1,207 @@
+{
+  "deg2rad": {
+    "details": [
+      {
+        "op_name": "deg2rad",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.005013999994844198,
+            "latency": 0.005413999781012535,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9261175097252168,
+            "accuracy": null,
+            "tflops": 0.0007565571048534397,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.03857500106096268,
+            "latency": 0.040810998529195786,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9452109100777454,
+            "accuracy": null,
+            "tflops": 0.41109545477055026,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.03853499889373779,
+            "latency": 0.04049399867653847,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9516224663696725,
+            "accuracy": null,
+            "tflops": 0.41431364025110295,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "deg2rad",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.00559200020506978,
+            "latency": 0.00520200002938509,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.074971198285593,
+            "accuracy": null,
+            "tflops": 0.0007873894611423473,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.06943900138139725,
+            "latency": 0.07001200318336487,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9918156633732232,
+            "accuracy": null,
+            "tflops": 0.23963342337255583,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.06954599916934967,
+            "latency": 0.06983300298452377,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.995890140722751,
+            "accuracy": null,
+            "tflops": 0.24024766633218,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "deg2rad",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.005818000063300133,
+            "latency": 0.005717999767512083,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0174886848293034,
+            "accuracy": null,
+            "tflops": 0.0007163344117766868,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.03901899978518486,
+            "latency": 0.04952400177717209,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.7878805909253184,
+            "accuracy": null,
+            "tflops": 0.3387693925762962,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.03911399841308594,
+            "latency": 0.04956800118088722,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.7890977542214833,
+            "accuracy": null,
+            "tflops": 0.33846868141354625,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_deg2rad.py::test_deg2rad",
+    "reason": null
+  }
+}

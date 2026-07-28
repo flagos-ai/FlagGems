@@ -1,0 +1,141 @@
+{
+  "acosh_": {
+    "details": [
+      {
+        "op_name": "acosh_",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.01506900042295456,
+            "latency": 0.006297000218182802,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 2.3930442910645464,
+            "accuracy": null,
+            "tflops": 0.0006504684545146848,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.4875819981098175,
+            "latency": 3.362291097640991,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.14501480804321457,
+            "accuracy": null,
+            "tflops": 0.004989816619914624,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.4876450002193451,
+            "latency": 3.3671278953552246,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.14482520871631446,
+            "accuracy": null,
+            "tflops": 0.0049826488691276875,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "acosh_",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.014763000421226025,
+            "latency": 0.005102999974042177,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 2.893004212487187,
+            "accuracy": null,
+            "tflops": 0.0008026651030443735,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.472461998462677,
+            "latency": 2.1386449337005615,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.220916521025845,
+            "accuracy": null,
+            "tflops": 0.007844787947557932,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.4724839925765991,
+            "latency": 2.1383628845214844,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.22095594531530133,
+            "accuracy": null,
+            "tflops": 0.007845822671840074,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "failed",
+    "test_case": "benchmark/test_acosh.py::test_acosh_",
+    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:2677)"
+  }
+}

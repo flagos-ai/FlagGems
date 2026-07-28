@@ -1,0 +1,53 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 00:15:03 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 00:15:05 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:15:05 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:15:05 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:15:05 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:15:05 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:15:05 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:15:05 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:15:05 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:15:05 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 00:15:06 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49919 deselected / 32 selected
+
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n1_h1280_hc4] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n4_h2560_hc4] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n16_h4096_hc4] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n64_h7168_hc4] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n256_h1280_hc2] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n256_h1280_hc4] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n512_h1280_hc2] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n512_h1280_hc4] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n512_h2560_hc2] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n512_h2560_hc4] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n1024_h2560_hc2] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n1024_h2560_hc4] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n2048_h4096_hc2] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n2048_h4096_hc4] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n4096_h1280_hc2] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_ref[n4096_h1280_hc4] PASSED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n1_h1280_hc4] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n4_h2560_hc4] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n16_h4096_hc4] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n64_h7168_hc4] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n256_h1280_hc2] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n256_h1280_hc4] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n512_h1280_hc2] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n512_h1280_hc4] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n512_h2560_hc2] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n512_h2560_hc4] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n1024_h2560_hc2] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n1024_h2560_hc4] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n2048_h4096_hc2] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n2048_h4096_hc4] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n4096_h1280_hc2] SKIPPED
+test_mhc_ops.py::test_hc_head_fused_kernel_vs_vllm[n4096_h1280_hc4] SKIPPED
+
+============== 16 passed, 16 skipped, 49919 deselected in 16.36s ===============

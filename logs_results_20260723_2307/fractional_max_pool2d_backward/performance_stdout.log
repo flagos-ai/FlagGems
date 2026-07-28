@@ -1,0 +1,88 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_fractional_max_pool2d.py F                                          [100%]
+
+=================================== FAILURES ===================================
+_____________________ test_fractional_max_pool2d_backward ______________________
+
+self = <benchmark.test_fractional_max_pool2d.FractionalMaxPool2dBenchmark object at 0x7fde5b20fdf0>
+dtype = torch.float16
+
+    def get_input_iter(self, dtype) -> Generator:
+        for shape in self.shapes:
+>           yield from self.input_fn(shape, dtype, self.device)
+
+test_fractional_max_pool2d.py:14: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+shape = (64, 64), dtype = torch.float16, device = 'cuda'
+
+    def fractional_max_pool2d_backward_input_fn(shape, dtype, device):
+        inp = utils.generate_tensor_input(shape, dtype, device)
+        inp.requires_grad_(True)
+>       output_size = (shape[2] // 2, shape[3] // 2)
+E       IndexError: tuple index out of range
+
+test_fractional_max_pool2d.py:43: IndexError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.fractional_max_pool2d_backward
+    def test_fractional_max_pool2d_backward():
+        bench = FractionalMaxPool2dBenchmark(
+            input_fn=fractional_max_pool2d_backward_input_fn,
+            op_name="fractional_max_pool2d_backward",
+            torch_op=torch_fractional_max_pool2d_backward_wrapper,
+            dtypes=consts.FLOAT_DTYPES,
+        )
+        bench.set_gems(flag_gems.fractional_max_pool2d_backward)
+>       bench.run()
+
+test_fractional_max_pool2d.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.test_fractional_max_pool2d.FractionalMaxPool2dBenchmark object at 0x7fde5b20fdf0>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+>                   pytest.fail(str(e))
+E                   Failed: tuple index out of range
+
+base.py:433: Failed
+----------------------------- Captured stdout call -----------------------------
+[31mFAILED[0m: Operator=fractional_max_pool2d_backward dtype={dtype} err=<<<{e}>>>
+=========================== short test summary info ============================
+FAILED test_fractional_max_pool2d.py::test_fractional_max_pool2d_backward - F...
+====================== 1 failed, 950 deselected in 7.72s =======================

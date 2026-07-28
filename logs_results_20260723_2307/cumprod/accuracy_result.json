@@ -1,0 +1,3286 @@
+{
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          0
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          0,
+          7
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          3,
+          0,
+          5
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          1
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          1,
+          2
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          1,
+          1,
+          1
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          1023
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          1024
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          1025
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          2049
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim10]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          33,
+          17
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim11]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          4,
+          5,
+          6
+        ],
+        -2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim12]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          2,
+          1023,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim13]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          2,
+          1024,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim14]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          2,
+          1025,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim15]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          2,
+          7,
+          1031
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          3,
+          1,
+          4097
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim17]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          4096,
+          256
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim18]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          200,
+          2560,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim19]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          2637
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype0-shape_dim20]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dim": [
+        [
+          16,
+          1025,
+          255
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          0
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          0,
+          7
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          3,
+          0,
+          5
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          1
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          1,
+          2
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          1,
+          1,
+          1
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          1023
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          1024
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          1025
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          2049
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim10]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          33,
+          17
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim11]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          4,
+          5,
+          6
+        ],
+        -2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim12]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          2,
+          1023,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim13]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          2,
+          1024,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim14]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          2,
+          1025,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim15]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          2,
+          7,
+          1031
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          3,
+          1,
+          4097
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim17]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          4096,
+          256
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim18]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          200,
+          2560,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim19]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          2637
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype1-shape_dim20]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dim": [
+        [
+          16,
+          1025,
+          255
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          0
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          0,
+          7
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          3,
+          0,
+          5
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          1
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          1,
+          2
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          1,
+          1,
+          1
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          1023
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          1024
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          1025
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          2049
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim10]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          33,
+          17
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim11]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          4,
+          5,
+          6
+        ],
+        -2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim12]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          2,
+          1023,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim13]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          2,
+          1024,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim14]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          2,
+          1025,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim15]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          2,
+          7,
+          1031
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          3,
+          1,
+          4097
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim17]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          4096,
+          256
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim18]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          200,
+          2560,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim19]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          2637
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype2-shape_dim20]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dim": [
+        [
+          16,
+          1025,
+          255
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim0]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          0
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim1]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          0,
+          7
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim2]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          3,
+          0,
+          5
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim3]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          1
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim4]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          1,
+          2
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim5]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          1,
+          1,
+          1
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim6]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          1023
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim7]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          1024
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim8]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          1025
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim9]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          2049
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim10]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          33,
+          17
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim11]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          4,
+          5,
+          6
+        ],
+        -2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim12]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          2,
+          1023,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim13]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          2,
+          1024,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim14]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          2,
+          1025,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim15]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          2,
+          7,
+          1031
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim16]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          3,
+          1,
+          4097
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim17]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          4096,
+          256
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim18]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          200,
+          2560,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim19]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          2637
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype3-shape_dim20]": {
+    "params": {
+      "dtype": "torch.int8",
+      "shape_dim": [
+        [
+          16,
+          1025,
+          255
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim0]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          0
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim1]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          0,
+          7
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim2]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          3,
+          0,
+          5
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim3]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          1
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim4]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          1,
+          2
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim5]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          1,
+          1,
+          1
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim6]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          1023
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim7]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          1024
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim8]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          1025
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim9]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          2049
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim10]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          33,
+          17
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim11]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          4,
+          5,
+          6
+        ],
+        -2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim12]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          2,
+          1023,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim13]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          2,
+          1024,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim14]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          2,
+          1025,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim15]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          2,
+          7,
+          1031
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim16]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          3,
+          1,
+          4097
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim17]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          4096,
+          256
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim18]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          200,
+          2560,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim19]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          2637
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype4-shape_dim20]": {
+    "params": {
+      "dtype": "torch.uint8",
+      "shape_dim": [
+        [
+          16,
+          1025,
+          255
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          0
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          0,
+          7
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          3,
+          0,
+          5
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim3]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          1
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim4]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          1,
+          2
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim5]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          1,
+          1,
+          1
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim6]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          1023
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim7]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          1024
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim8]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          1025
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim9]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          2049
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim10]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          33,
+          17
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim11]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          4,
+          5,
+          6
+        ],
+        -2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim12]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          2,
+          1023,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim13]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          2,
+          1024,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim14]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          2,
+          1025,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim15]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          2,
+          7,
+          1031
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim16]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          3,
+          1,
+          4097
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim17]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          4096,
+          256
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim18]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          200,
+          2560,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim19]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          2637
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype5-shape_dim20]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape_dim": [
+        [
+          16,
+          1025,
+          255
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          0
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          0,
+          7
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          3,
+          0,
+          5
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          1
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim4]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          1,
+          2
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim5]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          1,
+          1,
+          1
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim6]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          1023
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim7]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          1024
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim8]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          1025
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim9]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          2049
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim10]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          33,
+          17
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim11]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          4,
+          5,
+          6
+        ],
+        -2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim12]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          2,
+          1023,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim13]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          2,
+          1024,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim14]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          2,
+          1025,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim15]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          2,
+          7,
+          1031
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim16]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          3,
+          1,
+          4097
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim17]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          4096,
+          256
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim18]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          200,
+          2560,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim19]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          2637
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype6-shape_dim20]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape_dim": [
+        [
+          16,
+          1025,
+          255
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          0
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim1]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          0,
+          7
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim2]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          3,
+          0,
+          5
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim3]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          1
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim4]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          1,
+          2
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim5]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          1,
+          1,
+          1
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim6]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          1023
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim7]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          1024
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim8]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          1025
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim9]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          2049
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim10]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          33,
+          17
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim11]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          4,
+          5,
+          6
+        ],
+        -2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim12]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          2,
+          1023,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim13]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          2,
+          1024,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim14]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          2,
+          1025,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim15]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          2,
+          7,
+          1031
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim16]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          3,
+          1,
+          4097
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim17]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          4096,
+          256
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim18]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          200,
+          2560,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim19]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          2637
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype7-shape_dim20]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape_dim": [
+        [
+          16,
+          1025,
+          255
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim0]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          0
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim1]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          0,
+          7
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim2]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          3,
+          0,
+          5
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim3]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          1
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim4]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          1,
+          2
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim5]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          1,
+          1,
+          1
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim6]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          1023
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim7]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          1024
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim8]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          1025
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim9]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          2049
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim10]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          33,
+          17
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim11]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          4,
+          5,
+          6
+        ],
+        -2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim12]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          2,
+          1023,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim13]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          2,
+          1024,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim14]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          2,
+          1025,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim15]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          2,
+          7,
+          1031
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim16]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          3,
+          1,
+          4097
+        ],
+        -1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim17]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          4096,
+          256
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim18]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          200,
+          2560,
+          3
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim19]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          2637
+        ],
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod[dtype8-shape_dim20]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape_dim": [
+        [
+          16,
+          1025,
+          255
+        ],
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod_dtype[input_dtype0-output_dtype0]": {
+    "params": {
+      "input_dtype": "torch.int8",
+      "output_dtype": "torch.int32"
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod_dtype[input_dtype1-output_dtype1]": {
+    "params": {
+      "input_dtype": "torch.uint8",
+      "output_dtype": "torch.int64"
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod_dtype[input_dtype2-output_dtype2]": {
+    "params": {
+      "input_dtype": "torch.float16",
+      "output_dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  },
+  "tests/test_cumprod.py::test_cumprod_dtype[input_dtype3-output_dtype3]": {
+    "params": {
+      "input_dtype": "torch.bool",
+      "output_dtype": "torch.int64"
+    },
+    "result": "passed",
+    "opname": [
+      "cumprod"
+    ],
+    "reason": null
+  }
+}

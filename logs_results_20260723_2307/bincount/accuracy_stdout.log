@@ -1,0 +1,111 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:24:33 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:24:35 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:24:35 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:24:35 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:24:35 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:24:35 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:24:35 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:24:35 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:24:35 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:24:35 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:24:37 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49861 deselected / 90 selected
+
+test_bincount.py::test_accuracy_bincount[10-16] PASSED
+test_bincount.py::test_accuracy_bincount[10-100] PASSED
+test_bincount.py::test_accuracy_bincount[10-1024] PASSED
+test_bincount.py::test_accuracy_bincount[10-10000] PASSED
+test_bincount.py::test_accuracy_bincount[100-16] PASSED
+test_bincount.py::test_accuracy_bincount[100-100] PASSED
+test_bincount.py::test_accuracy_bincount[100-1024] PASSED
+test_bincount.py::test_accuracy_bincount[100-10000] PASSED
+test_bincount.py::test_accuracy_bincount[1000-16] PASSED
+test_bincount.py::test_accuracy_bincount[1000-100] PASSED
+test_bincount.py::test_accuracy_bincount[1000-1024] PASSED
+test_bincount.py::test_accuracy_bincount[1000-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype0-10-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype0-10-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype0-10-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype0-10-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype0-100-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype0-100-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype0-100-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype0-100-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype0-1000-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype0-1000-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype0-1000-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype0-1000-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype1-10-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype1-10-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype1-10-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype1-10-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype1-100-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype1-100-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype1-100-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype1-100-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype1-1000-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype1-1000-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype1-1000-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype1-1000-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype2-10-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype2-10-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype2-10-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype2-10-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype2-100-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype2-100-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype2-100-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype2-100-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype2-1000-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype2-1000-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype2-1000-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_weights[dtype2-1000-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[0-10-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[0-10-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[0-10-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[0-10-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[0-100-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[0-100-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[0-100-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[0-100-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[0-1000-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[0-1000-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[0-1000-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[0-1000-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[50-10-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[50-10-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[50-10-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[50-10-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[50-100-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[50-100-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[50-100-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[50-100-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[50-1000-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[50-1000-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[50-1000-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[50-1000-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[2000-10-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[2000-10-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[2000-10-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[2000-10-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[2000-100-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[2000-100-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[2000-100-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[2000-100-10000] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[2000-1000-16] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[2000-1000-100] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[2000-1000-1024] PASSED
+test_bincount.py::test_accuracy_bincount_with_minlength[2000-1000-10000] PASSED
+test_bincount.py::test_accuracy_bincount_empty PASSED
+test_bincount.py::test_accuracy_bincount_single PASSED
+test_bincount.py::test_accuracy_bincount_all_zeros PASSED
+test_bincount.py::test_accuracy_bincount_weights_edge_cases[dtype0] PASSED
+test_bincount.py::test_accuracy_bincount_weights_edge_cases[dtype1] PASSED
+test_bincount.py::test_accuracy_bincount_weights_edge_cases[dtype2] PASSED
+
+==================== 90 passed, 49861 deselected in 16.42s =====================

@@ -1,0 +1,554 @@
+{
+  "tests/test_tensor_split.py::test_tensor_split_by_int[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_int[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_int[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_int[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_int[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_int[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_int[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_int[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_int[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_int[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_int[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_int[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_list[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_list[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_list[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_list[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_list[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_list[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_list[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_list[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_list[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_list[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_list[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_by_list[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_dim[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": "Skipped: Need at least 2 dimensions for dim test"
+  },
+  "tests/test_tensor_split.py::test_tensor_split_dim[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_dim[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_dim[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_dim[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": "Skipped: Need at least 2 dimensions for dim test"
+  },
+  "tests/test_tensor_split.py::test_tensor_split_dim[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_dim[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_dim[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_dim[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": "Skipped: Need at least 2 dimensions for dim test"
+  },
+  "tests/test_tensor_split.py::test_tensor_split_dim[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_dim[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_dim[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_uneven[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_uneven[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  },
+  "tests/test_tensor_split.py::test_tensor_split_uneven[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "tensor_split"
+    ],
+    "reason": null
+  }
+}

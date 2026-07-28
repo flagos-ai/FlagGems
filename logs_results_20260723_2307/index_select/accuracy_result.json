@@ -1,0 +1,278 @@
+{
+  "tests/test_index_select.py::test_index_select[dtype0-0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype0-0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype0-0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype0-1-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype0-1-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype0-1-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype1-0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype1-0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype1-0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype1-1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype1-1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype1-1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype2-0-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype2-0-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype2-0-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype2-1-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "shape": [
+        1,
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype2-1-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "shape": [
+        4096,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  },
+  "tests/test_index_select.py::test_index_select[dtype2-1-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "shape": [
+        200,
+        40999,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index_select"
+    ],
+    "reason": null
+  }
+}

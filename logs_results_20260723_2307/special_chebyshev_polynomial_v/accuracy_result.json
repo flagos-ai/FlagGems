@@ -1,0 +1,88 @@
+{
+  "tests/test_special_chebyshev_polynomial_v.py::test_special_chebyshev_polynomial_v[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_v"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_v.py::test_special_chebyshev_polynomial_v[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_v"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_v.py::test_special_chebyshev_polynomial_v[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_chebyshev_polynomial_v"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 149837 / 1048576 (14.3%)\nGreatest absolute difference: 0.024504467844963074 at index (957, 317) (up to 0.0001 allowed)\nGreatest relative difference: 3553.098388671875 at index (841, 645) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_special_chebyshev_polynomial_v.py::test_special_chebyshev_polynomial_v[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_chebyshev_polynomial_v"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 13724 / 96000 (14.3%)\nGreatest absolute difference: 0.02447286807000637 at index (12, 294, 8) (up to 0.0001 allowed)\nGreatest relative difference: 783.159423828125 at index (4, 277, 0) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_special_chebyshev_polynomial_v.py::test_special_chebyshev_polynomial_v[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_chebyshev_polynomial_v"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 1123683 / 7864320 (14.3%)\nGreatest absolute difference: 0.024506960064172745 at index (2, 109, 11, 25) (up to 0.0001 allowed)\nGreatest relative difference: 2283.681396484375 at index (4, 80, 18, 41) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_special_chebyshev_polynomial_v.py::test_special_chebyshev_polynomial_v[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_chebyshev_polynomial_v"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 846539 / 5924352 (14.3%)\nGreatest absolute difference: 0.0245079193264246 at index (10, 2, 45, 14, 0) (up to 0.0001 allowed)\nGreatest relative difference: 2390.951416015625 at index (3, 4, 11, 28, 8) (up to 1.3e-06 allowed)"
+  }
+}

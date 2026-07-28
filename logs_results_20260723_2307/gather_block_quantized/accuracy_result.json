@@ -1,0 +1,86 @@
+{
+  "tests/test_gather_block_quantized.py::test_gather_block_quantized[128-shape0-dtype0]": {
+    "params": {
+      "block_size": 128,
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "gather_block_quantized"
+    ],
+    "reason": null
+  },
+  "tests/test_gather_block_quantized.py::test_gather_block_quantized[128-shape1-dtype0]": {
+    "params": {
+      "block_size": 128,
+      "shape": [
+        2048
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "gather_block_quantized"
+    ],
+    "reason": null
+  },
+  "tests/test_gather_block_quantized.py::test_gather_block_quantized[128-shape2-dtype0]": {
+    "params": {
+      "block_size": 128,
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "gather_block_quantized"
+    ],
+    "reason": null
+  },
+  "tests/test_gather_block_quantized.py::test_gather_block_quantized[256-shape0-dtype0]": {
+    "params": {
+      "block_size": 256,
+      "shape": [
+        1024
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "gather_block_quantized"
+    ],
+    "reason": null
+  },
+  "tests/test_gather_block_quantized.py::test_gather_block_quantized[256-shape1-dtype0]": {
+    "params": {
+      "block_size": 256,
+      "shape": [
+        2048
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "gather_block_quantized"
+    ],
+    "reason": null
+  },
+  "tests/test_gather_block_quantized.py::test_gather_block_quantized[256-shape2-dtype0]": {
+    "params": {
+      "block_size": 256,
+      "shape": [
+        4096
+      ],
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "gather_block_quantized"
+    ],
+    "reason": null
+  }
+}

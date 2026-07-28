@@ -1,0 +1,500 @@
+{
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype0-shape0]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": null
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype0-shape1]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype0-shape2]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        32,
+        224,
+        224
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype0-shape3]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.float16",
+      "shape": [
+        2050,
+        16,
+        32,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype0-shape4]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        3,
+        224,
+        224
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype1-shape0]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": null
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype1-shape1]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype1-shape2]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        32,
+        224,
+        224
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype1-shape3]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.float32",
+      "shape": [
+        2050,
+        16,
+        32,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype1-shape4]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        3,
+        224,
+        224
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype2-shape0]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": null
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype2-shape1]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype2-shape2]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        32,
+        224,
+        224
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype2-shape3]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2050,
+        16,
+        32,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[True-dtype2-shape4]": {
+    "params": {
+      "affine": true,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        3,
+        224,
+        224
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype0-shape0]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": null
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype0-shape1]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype0-shape2]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        32,
+        224,
+        224
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype0-shape3]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.float16",
+      "shape": [
+        2050,
+        16,
+        32,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype0-shape4]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        3,
+        224,
+        224
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype1-shape0]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": null
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype1-shape1]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype1-shape2]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        32,
+        224,
+        224
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype1-shape3]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.float32",
+      "shape": [
+        2050,
+        16,
+        32,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype1-shape4]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        3,
+        224,
+        224
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype2-shape0]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": null
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype2-shape1]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        32,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype2-shape2]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        32,
+        224,
+        224
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype2-shape3]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2050,
+        16,
+        32,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  },
+  "tests/test_batch_norm_no_update.py::test_batch_norm_no_update[False-dtype2-shape4]": {
+    "params": {
+      "affine": false,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        3,
+        224,
+        224
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "batch_norm_no_update"
+    ],
+    "reason": "triton.runtime.errors.OutOfResources: out of resource: uni_sram PassManager::run failed, Required: 0, Hardware limit: 0. Reducing block sizes or `num_stages` may help."
+  }
+}

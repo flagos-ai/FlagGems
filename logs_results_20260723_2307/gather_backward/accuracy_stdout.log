@@ -1,0 +1,433 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 00:07:31 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 00:07:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:07:33 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:07:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:07:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:07:33 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:07:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:07:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 00:07:33 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 00:07:33 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 00:07:34 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49915 deselected / 36 selected
+
+test_gather.py::test_gather_backward[False-dtype0-0-inp_shape0] PASSED
+test_gather.py::test_gather_backward[False-dtype0-0-inp_shape1] PASSED
+test_gather.py::test_gather_backward[False-dtype0-0-inp_shape2] PASSED
+test_gather.py::test_gather_backward[False-dtype0-1-inp_shape0] PASSED
+test_gather.py::test_gather_backward[False-dtype0-1-inp_shape1] PASSED
+test_gather.py::test_gather_backward[False-dtype0-1-inp_shape2] PASSED
+test_gather.py::test_gather_backward[False-dtype0-2-inp_shape0] PASSED
+test_gather.py::test_gather_backward[False-dtype0-2-inp_shape1] PASSED
+test_gather.py::test_gather_backward[False-dtype0-2-inp_shape2] PASSED
+test_gather.py::test_gather_backward[False-dtype1-0-inp_shape0] PASSED
+test_gather.py::test_gather_backward[False-dtype1-0-inp_shape1] PASSED
+test_gather.py::test_gather_backward[False-dtype1-0-inp_shape2] PASSED
+test_gather.py::test_gather_backward[False-dtype1-1-inp_shape0] PASSED
+test_gather.py::test_gather_backward[False-dtype1-1-inp_shape1] PASSED
+test_gather.py::test_gather_backward[False-dtype1-1-inp_shape2] PASSED
+test_gather.py::test_gather_backward[False-dtype1-2-inp_shape0] PASSED
+test_gather.py::test_gather_backward[False-dtype1-2-inp_shape1] PASSED
+test_gather.py::test_gather_backward[False-dtype1-2-inp_shape2] PASSED
+test_gather.py::test_gather_backward[True-dtype0-0-inp_shape0] FAILED
+test_gather.py::test_gather_backward[True-dtype0-0-inp_shape1] FAILED
+test_gather.py::test_gather_backward[True-dtype0-0-inp_shape2] FAILED
+test_gather.py::test_gather_backward[True-dtype0-1-inp_shape0] PASSED
+test_gather.py::test_gather_backward[True-dtype0-1-inp_shape1] PASSED
+test_gather.py::test_gather_backward[True-dtype0-1-inp_shape2] PASSED
+test_gather.py::test_gather_backward[True-dtype0-2-inp_shape0] PASSED
+test_gather.py::test_gather_backward[True-dtype0-2-inp_shape1] PASSED
+test_gather.py::test_gather_backward[True-dtype0-2-inp_shape2] PASSED
+test_gather.py::test_gather_backward[True-dtype1-0-inp_shape0] FAILED
+test_gather.py::test_gather_backward[True-dtype1-0-inp_shape1] FAILED
+test_gather.py::test_gather_backward[True-dtype1-0-inp_shape2] FAILED
+test_gather.py::test_gather_backward[True-dtype1-1-inp_shape0] PASSED
+test_gather.py::test_gather_backward[True-dtype1-1-inp_shape1] PASSED
+test_gather.py::test_gather_backward[True-dtype1-1-inp_shape2] PASSED
+test_gather.py::test_gather_backward[True-dtype1-2-inp_shape0] PASSED
+test_gather.py::test_gather_backward[True-dtype1-2-inp_shape1] PASSED
+test_gather.py::test_gather_backward[True-dtype1-2-inp_shape2] PASSED
+
+=================================== FAILURES ===================================
+________________ test_gather_backward[True-dtype0-0-inp_shape0] ________________
+
+inp_shape = (512, 128, 32), dim = 0, dtype = torch.float32
+duplicate_indices = True
+
+    @pytest.mark.gather_backward
+    @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
+    @pytest.mark.parametrize("dim", [0, 1, 2])
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+    @pytest.mark.parametrize("duplicate_indices", [False, True])
+    def test_gather_backward(inp_shape, dim, dtype, duplicate_indices):
+        inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+        index = _make_gather_backward_index(inp_shape, dim, duplicate_indices)
+        grad = torch.ones(index.shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_grad = utils.to_reference(grad)
+        ref_inp = utils.to_reference(inp)
+        ref_index = utils.to_reference(index)
+        ref_out = torch.ops.aten.gather_backward.default(
+            ref_grad, ref_inp, dim, ref_index, False
+        )
+    
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.gather_backward.default(grad, inp, dim, index, False)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_gather.py:143: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[227., 227., 228.,  ..., 228., 228., 228.],
+         [228., 228., 228.,  ..., 228., 228., 228.],
+         [22... 0.,   0.],
+         [  0.,   0.,   0.,  ...,   0.,   0.,   0.],
+         [  0.,   0.,   0.,  ...,   0.,   0.,   0.]]])
+ref = tensor([[[256., 256., 256.,  ..., 256., 256., 256.],
+         [256., 256., 256.,  ..., 256., 256., 256.],
+         [25... 0.,   0.],
+         [  0.,   0.,   0.,  ...,   0.,   0.,   0.],
+         [  0.,   0.,   0.,  ...,   0.,   0.,   0.]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 3599 / 2097152 (0.2%)
+E       Greatest absolute difference: 32.0 at index (0, 4, 17) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.125 at index (0, 4, 17) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_gather_backward[True-dtype0-0-inp_shape1] ________________
+
+inp_shape = (1024, 64, 16), dim = 0, dtype = torch.float32
+duplicate_indices = True
+
+    @pytest.mark.gather_backward
+    @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
+    @pytest.mark.parametrize("dim", [0, 1, 2])
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+    @pytest.mark.parametrize("duplicate_indices", [False, True])
+    def test_gather_backward(inp_shape, dim, dtype, duplicate_indices):
+        inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+        index = _make_gather_backward_index(inp_shape, dim, duplicate_indices)
+        grad = torch.ones(index.shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_grad = utils.to_reference(grad)
+        ref_inp = utils.to_reference(inp)
+        ref_index = utils.to_reference(index)
+        ref_out = torch.ops.aten.gather_backward.default(
+            ref_grad, ref_inp, dim, ref_index, False
+        )
+    
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.gather_backward.default(grad, inp, dim, index, False)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_gather.py:143: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[501., 503., 500.,  ..., 499., 498., 499.],
+         [498., 499., 500.,  ..., 499., 501., 506.],
+         [50... 0.,   0.],
+         [  0.,   0.,   0.,  ...,   0.,   0.,   0.],
+         [  0.,   0.,   0.,  ...,   0.,   0.,   0.]]])
+ref = tensor([[[512., 512., 512.,  ..., 512., 512., 512.],
+         [512., 512., 512.,  ..., 512., 512., 512.],
+         [51... 0.,   0.],
+         [  0.,   0.,   0.,  ...,   0.,   0.,   0.],
+         [  0.,   0.,   0.,  ...,   0.,   0.,   0.]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 970 / 1048576 (0.1%)
+E       Greatest absolute difference: 18.0 at index (0, 0, 9) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.03515625 at index (0, 0, 9) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_gather_backward[True-dtype0-0-inp_shape2] ________________
+
+inp_shape = (128, 32, 256), dim = 0, dtype = torch.float32
+duplicate_indices = True
+
+    @pytest.mark.gather_backward
+    @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
+    @pytest.mark.parametrize("dim", [0, 1, 2])
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+    @pytest.mark.parametrize("duplicate_indices", [False, True])
+    def test_gather_backward(inp_shape, dim, dtype, duplicate_indices):
+        inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+        index = _make_gather_backward_index(inp_shape, dim, duplicate_indices)
+        grad = torch.ones(index.shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_grad = utils.to_reference(grad)
+        ref_inp = utils.to_reference(inp)
+        ref_index = utils.to_reference(index)
+        ref_out = torch.ops.aten.gather_backward.default(
+            ref_grad, ref_inp, dim, ref_index, False
+        )
+    
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.gather_backward.default(grad, inp, dim, index, False)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_gather.py:143: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[55., 54., 56.,  ..., 64., 64., 64.],
+         [64., 64., 64.,  ..., 64., 64., 64.],
+         [64., 64., 64.,...,  ...,  0.,  0.,  0.],
+         [ 0.,  0.,  0.,  ...,  0.,  0.,  0.],
+         [ 0.,  0.,  0.,  ...,  0.,  0.,  0.]]])
+ref = tensor([[[64., 64., 64.,  ..., 64., 64., 64.],
+         [64., 64., 64.,  ..., 64., 64., 64.],
+         [64., 64., 64.,...,  ...,  0.,  0.,  0.],
+         [ 0.,  0.,  0.,  ...,  0.,  0.,  0.],
+         [ 0.,  0.,  0.,  ...,  0.,  0.,  0.]]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 75 / 1048576 (0.0%)
+E       Greatest absolute difference: 10.0 at index (0, 0, 1) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.15625 at index (0, 0, 1) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_gather_backward[True-dtype1-0-inp_shape0] ________________
+
+inp_shape = (512, 128, 32), dim = 0, dtype = torch.float16
+duplicate_indices = True
+
+    @pytest.mark.gather_backward
+    @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
+    @pytest.mark.parametrize("dim", [0, 1, 2])
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+    @pytest.mark.parametrize("duplicate_indices", [False, True])
+    def test_gather_backward(inp_shape, dim, dtype, duplicate_indices):
+        inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+        index = _make_gather_backward_index(inp_shape, dim, duplicate_indices)
+        grad = torch.ones(index.shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_grad = utils.to_reference(grad)
+        ref_inp = utils.to_reference(inp)
+        ref_index = utils.to_reference(index)
+        ref_out = torch.ops.aten.gather_backward.default(
+            ref_grad, ref_inp, dim, ref_index, False
+        )
+    
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.gather_backward.default(grad, inp, dim, index, False)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_gather.py:143: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[224., 222., 221.,  ..., 221., 221., 221.],
+         [221., 221., 221.,  ..., 221., 221., 221.],
+         [22...[  0.,   0.,   0.,  ...,   0.,   0.,   0.],
+         [  0.,   0.,   0.,  ...,   0.,   0.,   0.]]], dtype=torch.float16)
+ref = tensor([[[256., 256., 256.,  ..., 256., 256., 256.],
+         [256., 256., 256.,  ..., 256., 256., 256.],
+         [25...[  0.,   0.,   0.,  ...,   0.,   0.,   0.],
+         [  0.,   0.,   0.,  ...,   0.,   0.,   0.]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 4096 / 2097152 (0.2%)
+E       Greatest absolute difference: 35.0 at index (0, 0, 2) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.13671875 at index (0, 0, 2) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_gather_backward[True-dtype1-0-inp_shape1] ________________
+
+inp_shape = (1024, 64, 16), dim = 0, dtype = torch.float16
+duplicate_indices = True
+
+    @pytest.mark.gather_backward
+    @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
+    @pytest.mark.parametrize("dim", [0, 1, 2])
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+    @pytest.mark.parametrize("duplicate_indices", [False, True])
+    def test_gather_backward(inp_shape, dim, dtype, duplicate_indices):
+        inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+        index = _make_gather_backward_index(inp_shape, dim, duplicate_indices)
+        grad = torch.ones(index.shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_grad = utils.to_reference(grad)
+        ref_inp = utils.to_reference(inp)
+        ref_index = utils.to_reference(index)
+        ref_out = torch.ops.aten.gather_backward.default(
+            ref_grad, ref_inp, dim, ref_index, False
+        )
+    
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.gather_backward.default(grad, inp, dim, index, False)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_gather.py:143: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[500., 501., 502.,  ..., 504., 506., 505.],
+         [507., 505., 507.,  ..., 506., 505., 505.],
+         [50...[  0.,   0.,   0.,  ...,   0.,   0.,   0.],
+         [  0.,   0.,   0.,  ...,   0.,   0.,   0.]]], dtype=torch.float16)
+ref = tensor([[[512., 512., 512.,  ..., 512., 512., 512.],
+         [512., 512., 512.,  ..., 512., 512., 512.],
+         [51...[  0.,   0.,   0.,  ...,   0.,   0.,   0.],
+         [  0.,   0.,   0.,  ...,   0.,   0.,   0.]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 227 / 1048576 (0.0%)
+E       Greatest absolute difference: 12.0 at index (0, 0, 0) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.0234375 at index (0, 0, 0) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+________________ test_gather_backward[True-dtype1-0-inp_shape2] ________________
+
+inp_shape = (128, 32, 256), dim = 0, dtype = torch.float16
+duplicate_indices = True
+
+    @pytest.mark.gather_backward
+    @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
+    @pytest.mark.parametrize("dim", [0, 1, 2])
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+    @pytest.mark.parametrize("duplicate_indices", [False, True])
+    def test_gather_backward(inp_shape, dim, dtype, duplicate_indices):
+        inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
+        index = _make_gather_backward_index(inp_shape, dim, duplicate_indices)
+        grad = torch.ones(index.shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_grad = utils.to_reference(grad)
+        ref_inp = utils.to_reference(inp)
+        ref_index = utils.to_reference(index)
+        ref_out = torch.ops.aten.gather_backward.default(
+            ref_grad, ref_inp, dim, ref_index, False
+        )
+    
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.gather_backward.default(grad, inp, dim, index, False)
+    
+>       utils.gems_assert_close(res_out, ref_out, dtype)
+
+test_gather.py:143: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[[54., 56., 57.,  ..., 64., 64., 64.],
+         [64., 64., 64.,  ..., 64., 64., 64.],
+         [64., 64., 64.,...],
+         [ 0.,  0.,  0.,  ...,  0.,  0.,  0.],
+         [ 0.,  0.,  0.,  ...,  0.,  0.,  0.]]], dtype=torch.float16)
+ref = tensor([[[64., 64., 64.,  ..., 64., 64., 64.],
+         [64., 64., 64.,  ..., 64., 64., 64.],
+         [64., 64., 64.,...],
+         [ 0.,  0.,  0.,  ...,  0.,  0.,  0.],
+         [ 0.,  0.,  0.,  ...,  0.,  0.,  0.]]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 1, atol = 0.0001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 81 / 1048576 (0.0%)
+E       Greatest absolute difference: 10.0 at index (0, 0, 0) (up to 0.0001 allowed)
+E       Greatest relative difference: 0.15625 at index (0, 0, 0) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+=========================== short test summary info ============================
+FAILED test_gather.py::test_gather_backward[True-dtype0-0-inp_shape0] - Asser...
+FAILED test_gather.py::test_gather_backward[True-dtype0-0-inp_shape1] - Asser...
+FAILED test_gather.py::test_gather_backward[True-dtype0-0-inp_shape2] - Asser...
+FAILED test_gather.py::test_gather_backward[True-dtype1-0-inp_shape0] - Asser...
+FAILED test_gather.py::test_gather_backward[True-dtype1-0-inp_shape1] - Asser...
+FAILED test_gather.py::test_gather_backward[True-dtype1-0-inp_shape2] - Asser...
+=============== 6 failed, 30 passed, 49915 deselected in 45.21s ================

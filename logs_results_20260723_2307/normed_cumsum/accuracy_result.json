@@ -1,0 +1,392 @@
+{
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype0-shape0--1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        17
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype0-shape1--1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2637
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype0-shape2--1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        33
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype0-shape3--1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        1025
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype0-shape4-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        7,
+        19
+      ],
+      "dim": 0
+    },
+    "result": "failed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 133 / 133 (100.0%)\nGreatest absolute difference: 0.966796875 at index (6, 9) (up to 0.007 allowed)\nGreatest relative difference: 0.966796875 at index (0, 9) (up to 0.001 allowed)"
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype0-shape5-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        513,
+        16
+      ],
+      "dim": 0
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype0-shape6--1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        5,
+        31
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype0-shape7--1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        257
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype1-shape0--1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        17
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype1-shape1--1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2637
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype1-shape2--1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        33
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype1-shape3--1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        1025
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype1-shape4-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        7,
+        19
+      ],
+      "dim": 0
+    },
+    "result": "failed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 133 / 133 (100.0%)\nGreatest absolute difference: 0.966791570186615 at index (6, 9) (up to 0.007 allowed)\nGreatest relative difference: 0.9667915105819702 at index (0, 9) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype1-shape5-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        513,
+        16
+      ],
+      "dim": 0
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype1-shape6--1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        5,
+        31
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype1-shape7--1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        257
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype2-shape0--1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        17
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype2-shape1--1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2637
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype2-shape2--1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        33
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype2-shape3--1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        1025
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype2-shape4-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        7,
+        19
+      ],
+      "dim": 0
+    },
+    "result": "failed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 133 / 133 (100.0%)\nGreatest absolute difference: 0.96875 at index (6, 9) (up to 0.007 allowed)\nGreatest relative difference: 0.96875 at index (0, 9) (up to 0.016 allowed)"
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype2-shape5-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        513,
+        16
+      ],
+      "dim": 0
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype2-shape6--1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        5,
+        31
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum[dtype2-shape7--1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        257
+      ],
+      "dim": -1
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum_output_is_normalized[dtype0]": {
+    "params": {
+      "dtype": "torch.float16"
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum_output_is_normalized[dtype1]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  },
+  "tests/test_normed_cumsum.py::test_normed_cumsum_output_is_normalized[dtype2]": {
+    "params": {
+      "dtype": "torch.bfloat16"
+    },
+    "result": "passed",
+    "opname": [
+      "normed_cumsum"
+    ],
+    "reason": null
+  }
+}

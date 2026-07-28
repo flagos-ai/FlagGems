@@ -1,0 +1,141 @@
+{
+  "atanh_": {
+    "details": [
+      {
+        "op_name": "atanh_",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.021059999242424965,
+            "latency": 0.021090000867843628,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9985774478812656,
+            "accuracy": null,
+            "tflops": 0.00019421525990761138,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.7673869729042053,
+            "latency": 0.7675449848175049,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.999794133351888,
+            "accuracy": null,
+            "tflops": 0.0218582836600633,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.7673370242118835,
+            "latency": 0.7673019766807556,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0000456763206573,
+            "accuracy": null,
+            "tflops": 0.021865206281073277,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "atanh_",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.020715000107884407,
+            "latency": 0.020673999562859535,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0019831936679795,
+            "accuracy": null,
+            "tflops": 0.00019812325077912785,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.7314490079879761,
+            "latency": 0.7313699722290039,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0001080653594943,
+            "accuracy": null,
+            "tflops": 0.022939437818137245,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.7314850091934204,
+            "latency": 0.7314680218696594,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0000232236041127,
+            "accuracy": null,
+            "tflops": 0.022936362900891846,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "failed",
+    "test_case": "benchmark/test_atanh_.py::test_atanh_",
+    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:4364)"
+  }
+}

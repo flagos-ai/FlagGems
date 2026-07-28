@@ -1,0 +1,147 @@
+{
+  "fmod_scalar_": {
+    "details": [
+      {
+        "op_name": "fmod_scalar_",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              0.5
+            ],
+            "latency_base": 0.015043999999761581,
+            "latency": 0.007935999892652035,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.8956653481927166,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              0.5
+            ],
+            "latency_base": 0.632457971572876,
+            "latency": 3.5109939575195312,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.18013644546961818,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              0.5
+            ],
+            "latency_base": 0.6320739984512329,
+            "latency": 3.4939939975738525,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.1809030006605994,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "fmod_scalar_",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              0.5
+            ],
+            "latency_base": 0.011481000110507011,
+            "latency": 0.0056329998187720776,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 2.0381680241221316,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              0.5
+            ],
+            "latency_base": 0.6163010001182556,
+            "latency": 2.372589111328125,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.2597588420075246,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              0.5
+            ],
+            "latency_base": 0.6159430146217346,
+            "latency": 2.3729751110076904,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.2595657290143986,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "failed",
+    "test_case": "benchmark/test_fmod.py::test_fmod_scalar_",
+    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:7293)"
+  }
+}

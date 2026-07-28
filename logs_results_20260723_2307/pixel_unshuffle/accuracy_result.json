@@ -1,0 +1,173 @@
+{
+  "tests/test_pixel_unshuffle.py::test_pixel_unshuffle[dtype0-shape_factor0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_factor": [
+        [
+          1,
+          3,
+          8,
+          8
+        ],
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pixel_unshuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_pixel_unshuffle.py::test_pixel_unshuffle[dtype0-shape_factor1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_factor": [
+        [
+          2,
+          4,
+          12,
+          6
+        ],
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pixel_unshuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_pixel_unshuffle.py::test_pixel_unshuffle[dtype0-shape_factor2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_factor": [
+        [
+          4,
+          16,
+          64,
+          48
+        ],
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pixel_unshuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_pixel_unshuffle.py::test_pixel_unshuffle[dtype1-shape_factor0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_factor": [
+        [
+          1,
+          3,
+          8,
+          8
+        ],
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pixel_unshuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_pixel_unshuffle.py::test_pixel_unshuffle[dtype1-shape_factor1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_factor": [
+        [
+          2,
+          4,
+          12,
+          6
+        ],
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pixel_unshuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_pixel_unshuffle.py::test_pixel_unshuffle[dtype1-shape_factor2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_factor": [
+        [
+          4,
+          16,
+          64,
+          48
+        ],
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pixel_unshuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_pixel_unshuffle.py::test_pixel_unshuffle[dtype2-shape_factor0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_factor": [
+        [
+          1,
+          3,
+          8,
+          8
+        ],
+        2
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pixel_unshuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_pixel_unshuffle.py::test_pixel_unshuffle[dtype2-shape_factor1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_factor": [
+        [
+          2,
+          4,
+          12,
+          6
+        ],
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pixel_unshuffle"
+    ],
+    "reason": null
+  },
+  "tests/test_pixel_unshuffle.py::test_pixel_unshuffle[dtype2-shape_factor2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_factor": [
+        [
+          4,
+          16,
+          64,
+          48
+        ],
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "pixel_unshuffle"
+    ],
+    "reason": null
+  }
+}

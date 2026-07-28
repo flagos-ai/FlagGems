@@ -1,0 +1,246 @@
+{
+  "prelu_kernel": {
+    "details": [
+      {
+        "op_name": "prelu_kernel",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.006434999871999025,
+            "latency": 0.007726999931037426,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8327940894824187,
+            "accuracy": null,
+            "tflops": 0.0010601786040006012,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.05488999933004379,
+            "latency": 5.682207107543945,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.009659978647587386,
+            "accuracy": null,
+            "tflops": 0.005905175817236875,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.05489400029182434,
+            "latency": 5.9203338623046875,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.009272112277542236,
+            "accuracy": null,
+            "tflops": 0.00566765874702509,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "prelu_kernel",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.006347999908030033,
+            "latency": 0.006666999775916338,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9521524105882454,
+            "accuracy": null,
+            "tflops": 0.0012287386043708186,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.10207100212574005,
+            "latency": 3.2036149501800537,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.03186119546607913,
+            "accuracy": null,
+            "tflops": 0.01047392789764392,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.10151100158691406,
+            "latency": 3.1764519214630127,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.03195735496609061,
+            "accuracy": null,
+            "tflops": 0.010563494373478656,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "prelu_kernel",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.0063669998198747635,
+            "latency": 0.007697000168263912,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8272053632176112,
+            "accuracy": null,
+            "tflops": 0.001064310747163169,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.057130999863147736,
+            "latency": 5.692745208740234,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.010035755644821918,
+            "accuracy": null,
+            "tflops": 0.005894244476018867,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.05715300142765045,
+            "latency": 5.943260192871094,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.009616439390657193,
+            "accuracy": null,
+            "tflops": 0.005645795558513213,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_prelu_kernel.py::test_prelu_kernel",
+    "reason": null
+  }
+}

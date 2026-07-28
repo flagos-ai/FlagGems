@@ -1,0 +1,167 @@
+{
+  "mhc_bwd": {
+    "details": [
+      {
+        "op_name": "mhc_bwd",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                256,
+                4,
+                4
+              ],
+              [
+                256,
+                4,
+                4
+              ]
+            ],
+            "latency_base": 2.7959671020507812,
+            "latency": 0.02891799993813038,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 96.68604703066292,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                1024,
+                4,
+                4
+              ],
+              [
+                1024,
+                4,
+                4
+              ]
+            ],
+            "latency_base": 2.792407989501953,
+            "latency": 0.06594900041818619,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 42.341930458310856,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4,
+                4
+              ],
+              [
+                4096,
+                4,
+                4
+              ]
+            ],
+            "latency_base": 3.162583112716675,
+            "latency": 0.26107901334762573,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 12.11350951639191,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                8192,
+                4,
+                4
+              ],
+              [
+                8192,
+                4,
+                4
+              ]
+            ],
+            "latency_base": 3.1667261123657227,
+            "latency": 0.5106779932975769,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 6.201023255216798,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                16384,
+                4,
+                4
+              ],
+              [
+                16384,
+                4,
+                4
+              ]
+            ],
+            "latency_base": 2.784079074859619,
+            "latency": 1.0000699758529663,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 2.7838842701832536,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                65536,
+                4,
+                4
+              ],
+              [
+                65536,
+                4,
+                4
+              ]
+            ],
+            "latency_base": 3.4610230922698975,
+            "latency": 3.8006510734558105,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9106395260649117,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_mhc.py::test_mhc_bwd",
+    "reason": null
+  }
+}

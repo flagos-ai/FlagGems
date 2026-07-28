@@ -1,0 +1,677 @@
+{
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding0-dtype0-shape0]": {
+    "params": {
+      "padding": [
+        0,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding0-dtype0-shape1]": {
+    "params": {
+      "padding": [
+        0,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding0-dtype0-shape2]": {
+    "params": {
+      "padding": [
+        0,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding0-dtype0-shape3]": {
+    "params": {
+      "padding": [
+        0,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding0-dtype1-shape0]": {
+    "params": {
+      "padding": [
+        0,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding0-dtype1-shape1]": {
+    "params": {
+      "padding": [
+        0,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding0-dtype1-shape2]": {
+    "params": {
+      "padding": [
+        0,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding0-dtype1-shape3]": {
+    "params": {
+      "padding": [
+        0,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding0-dtype2-shape0]": {
+    "params": {
+      "padding": [
+        0,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding0-dtype2-shape1]": {
+    "params": {
+      "padding": [
+        0,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding0-dtype2-shape2]": {
+    "params": {
+      "padding": [
+        0,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding0-dtype2-shape3]": {
+    "params": {
+      "padding": [
+        0,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding1-dtype0-shape0]": {
+    "params": {
+      "padding": [
+        1,
+        2
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding1-dtype0-shape1]": {
+    "params": {
+      "padding": [
+        1,
+        2
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding1-dtype0-shape2]": {
+    "params": {
+      "padding": [
+        1,
+        2
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding1-dtype0-shape3]": {
+    "params": {
+      "padding": [
+        1,
+        2
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding1-dtype1-shape0]": {
+    "params": {
+      "padding": [
+        1,
+        2
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding1-dtype1-shape1]": {
+    "params": {
+      "padding": [
+        1,
+        2
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding1-dtype1-shape2]": {
+    "params": {
+      "padding": [
+        1,
+        2
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding1-dtype1-shape3]": {
+    "params": {
+      "padding": [
+        1,
+        2
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding1-dtype2-shape0]": {
+    "params": {
+      "padding": [
+        1,
+        2
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding1-dtype2-shape1]": {
+    "params": {
+      "padding": [
+        1,
+        2
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding1-dtype2-shape2]": {
+    "params": {
+      "padding": [
+        1,
+        2
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding1-dtype2-shape3]": {
+    "params": {
+      "padding": [
+        1,
+        2
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding2-dtype0-shape0]": {
+    "params": {
+      "padding": [
+        3,
+        1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding2-dtype0-shape1]": {
+    "params": {
+      "padding": [
+        3,
+        1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding2-dtype0-shape2]": {
+    "params": {
+      "padding": [
+        3,
+        1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding2-dtype0-shape3]": {
+    "params": {
+      "padding": [
+        3,
+        1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding2-dtype1-shape0]": {
+    "params": {
+      "padding": [
+        3,
+        1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding2-dtype1-shape1]": {
+    "params": {
+      "padding": [
+        3,
+        1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding2-dtype1-shape2]": {
+    "params": {
+      "padding": [
+        3,
+        1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding2-dtype1-shape3]": {
+    "params": {
+      "padding": [
+        3,
+        1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding2-dtype2-shape0]": {
+    "params": {
+      "padding": [
+        3,
+        1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        7
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding2-dtype2-shape1]": {
+    "params": {
+      "padding": [
+        3,
+        1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding2-dtype2-shape2]": {
+    "params": {
+      "padding": [
+        3,
+        1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  },
+  "tests/test_replication_pad1d.py::test_replication_pad1d[padding2-dtype2-shape3]": {
+    "params": {
+      "padding": [
+        3,
+        1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "replication_pad1d"
+    ],
+    "reason": null
+  }
+}

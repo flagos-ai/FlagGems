@@ -1,0 +1,162 @@
+{
+  "tests/test_special_chebyshev_polynomial_w.py::test_special_chebyshev_polynomial_w[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_chebyshev_polynomial_w"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 26:15:\n    if one_tile_per_cta: # monolitic kernel style\n        tile_id = pid\n        tid = tile_id * tile_size + tl.arange(0, tile_size)\n        mask = tid < num_tasks\n        i0 = tid\n\n        # loads\n        in0 = tl.load(in0_ptr + i0 * in0_stride0, mask=mask).to(in0_ptr.type.element_ty)\n        in1 = tl.load(in1_ptr + i0 * in1_stride0, mask=mask).to(in1_ptr.type.element_ty)\n\n        # compute\n        out0 = chebyshev_polynomial_w_func(in0, in1)\n               ^"
+  },
+  "tests/test_special_chebyshev_polynomial_w.py::test_special_chebyshev_polynomial_w[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_chebyshev_polynomial_w"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 28:15:\n        tid = tile_id * tile_size + tl.arange(0, tile_size)\n        mask = tid < num_tasks\n        i1 = tid % s1\n        tid //= s1\n        i0 = tid\n\n        # loads\n        in0 = tl.load(in0_ptr + i0 * in0_stride0 + i1 * in0_stride1, mask=mask).to(in0_ptr.type.element_ty)\n        in1 = tl.load(in1_ptr + i0 * in1_stride0 + i1 * in1_stride1, mask=mask).to(in1_ptr.type.element_ty)\n\n        # compute\n        out0 = chebyshev_polynomial_w_func(in0, in1)\n               ^"
+  },
+  "tests/test_special_chebyshev_polynomial_w.py::test_special_chebyshev_polynomial_w[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_chebyshev_polynomial_w"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 30:15:\n        i2 = tid % s2\n        tid //= s2\n        i1 = tid % s1\n        tid //= s1\n        i0 = tid\n\n        # loads\n        in0 = tl.load(in0_ptr + i0 * in0_stride0 + i1 * in0_stride1 + i2 * in0_stride2, mask=mask).to(in0_ptr.type.element_ty)\n        in1 = tl.load(in1_ptr + i0 * in1_stride0 + i1 * in1_stride1 + i2 * in1_stride2, mask=mask).to(in1_ptr.type.element_ty)\n\n        # compute\n        out0 = chebyshev_polynomial_w_func(in0, in1)\n               ^"
+  },
+  "tests/test_special_chebyshev_polynomial_w.py::test_special_chebyshev_polynomial_w[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_chebyshev_polynomial_w"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 54:19:\n            i2 = tid % s2\n            tid //= s2\n            i1 = tid % s1\n            tid //= s1\n            i0 = tid\n\n            # loads\n            in0 = tl.load(in0_ptr + i0 * in0_stride0 + i1 * in0_stride1 + i2 * in0_stride2 + i3 * in0_stride3, mask=mask).to(in0_ptr.type.element_ty)\n            in1 = tl.load(in1_ptr + i0 * in1_stride0 + i1 * in1_stride1 + i2 * in1_stride2 + i3 * in1_stride3, mask=mask).to(in1_ptr.type.element_ty)\n\n            # compute\n            out0 = chebyshev_polynomial_w_func(in0, in1)\n                   ^"
+  },
+  "tests/test_special_chebyshev_polynomial_w.py::test_special_chebyshev_polynomial_w[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_chebyshev_polynomial_w"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 34:15:\n        i2 = tid % s2\n        tid //= s2\n        i1 = tid % s1\n        tid //= s1\n        i0 = tid\n\n        # loads\n        in0 = tl.load(in0_ptr + i0 * in0_stride0 + i1 * in0_stride1 + i2 * in0_stride2 + i3 * in0_stride3 + i4 * in0_stride4, mask=mask).to(in0_ptr.type.element_ty)\n        in1 = tl.load(in1_ptr + i0 * in1_stride0 + i1 * in1_stride1 + i2 * in1_stride2 + i3 * in1_stride3 + i4 * in1_stride4, mask=mask).to(in1_ptr.type.element_ty)\n\n        # compute\n        out0 = chebyshev_polynomial_w_func(in0, in1)\n               ^"
+  },
+  "tests/test_special_chebyshev_polynomial_w.py::test_special_chebyshev_polynomial_w_out_of_domain[dtype0]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "failed",
+    "opname": [
+      "special_chebyshev_polynomial_w"
+    ],
+    "reason": "triton.compiler.errors.CompilationError: at 26:15:\n    if one_tile_per_cta: # monolitic kernel style\n        tile_id = pid\n        tid = tile_id * tile_size + tl.arange(0, tile_size)\n        mask = tid < num_tasks\n        i0 = tid\n\n        # loads\n        in0 = tl.load(in0_ptr + i0 * in0_stride0, mask=mask).to(in0_ptr.type.element_ty)\n        in1 = tl.load(in1_ptr + i0 * in1_stride0, mask=mask).to(in1_ptr.type.element_ty)\n\n        # compute\n        out0 = chebyshev_polynomial_w_func(in0, in1)\n               ^"
+  },
+  "tests/test_special_chebyshev_polynomial_w.py::test_special_chebyshev_polynomial_w_out[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_w"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_w.py::test_special_chebyshev_polynomial_w_out[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_w"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_w.py::test_special_chebyshev_polynomial_w_out[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_w"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_w.py::test_special_chebyshev_polynomial_w_out[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_w"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_w.py::test_special_chebyshev_polynomial_w_out[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_w"
+    ],
+    "reason": null
+  }
+}

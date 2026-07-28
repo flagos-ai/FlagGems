@@ -1,0 +1,7 @@
+{
+  "special_gammainc": {
+    "result": "failed",
+    "test_case": "benchmark/test_special_gammainc.py::test_special_gammainc",
+    "reason": "Failed: 'NoneType' object has no attribute 'device'"
+  }
+}

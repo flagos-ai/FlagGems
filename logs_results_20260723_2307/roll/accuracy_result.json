@@ -1,0 +1,5318 @@
+{
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype0-shape0]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype0-shape1]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype0-shape2]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype0-shape3]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype0-shape4]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype0-shape5]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype1-shape0]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype1-shape1]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype1-shape2]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype1-shape3]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype1-shape4]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype1-shape5]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype2-shape0]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype2-shape1]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype2-shape2]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype2-shape3]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype2-shape4]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype2-shape5]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype3-shape0]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype3-shape1]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype3-shape2]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype3-shape3]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype3-shape4]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype3-shape5]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype4-shape0]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype4-shape1]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype4-shape2]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype4-shape3]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype4-shape4]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype4-shape5]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype5-shape0]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int64",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype5-shape1]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype5-shape2]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype5-shape3]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype5-shape4]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims0-dtype5-shape5]": {
+    "params": {
+      "shifts_dims": [
+        1,
+        0
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype0-shape0]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype0-shape1]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype0-shape2]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype0-shape3]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype0-shape4]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype0-shape5]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype1-shape0]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype1-shape1]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype1-shape2]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype1-shape3]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype1-shape4]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype1-shape5]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype2-shape0]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype2-shape1]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype2-shape2]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype2-shape3]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype2-shape4]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype2-shape5]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype3-shape0]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype3-shape1]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype3-shape2]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype3-shape3]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype3-shape4]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype3-shape5]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype4-shape0]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype4-shape1]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype4-shape2]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype4-shape3]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype4-shape4]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype4-shape5]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype5-shape0]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int64",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype5-shape1]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype5-shape2]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype5-shape3]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype5-shape4]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims1-dtype5-shape5]": {
+    "params": {
+      "shifts_dims": [
+        -1,
+        0
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype0-shape0]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype0-shape1]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype0-shape2]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype0-shape3]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype0-shape4]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype0-shape5]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype1-shape0]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype1-shape1]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype1-shape2]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype1-shape3]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype1-shape4]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype1-shape5]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype2-shape0]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype2-shape1]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype2-shape2]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype2-shape3]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype2-shape4]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype2-shape5]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype3-shape0]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype3-shape1]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype3-shape2]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype3-shape3]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype3-shape4]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype3-shape5]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype4-shape0]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype4-shape1]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype4-shape2]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype4-shape3]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype4-shape4]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype4-shape5]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype5-shape0]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int64",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype5-shape1]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype5-shape2]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype5-shape3]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype5-shape4]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims2-dtype5-shape5]": {
+    "params": {
+      "shifts_dims": [
+        2,
+        -1
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype0-shape0]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype0-shape1]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype0-shape2]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype0-shape3]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype0-shape4]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype0-shape5]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype1-shape0]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype1-shape1]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype1-shape2]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype1-shape3]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype1-shape4]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype1-shape5]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype2-shape0]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype2-shape1]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype2-shape2]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype2-shape3]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype2-shape4]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype2-shape5]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype3-shape0]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype3-shape1]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype3-shape2]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype3-shape3]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype3-shape4]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype3-shape5]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype4-shape0]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype4-shape1]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype4-shape2]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype4-shape3]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype4-shape4]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype4-shape5]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype5-shape0]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int64",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype5-shape1]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype5-shape2]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype5-shape3]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype5-shape4]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_single_dim[shifts_dims3-dtype5-shape5]": {
+    "params": {
+      "shifts_dims": [
+        3,
+        1
+      ],
+      "dtype": "torch.int64",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype0-shape0]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype0-shape1]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype0-shape2]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype0-shape3]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype0-shape4]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype0-shape5]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype1-shape0]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype1-shape1]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype1-shape2]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype1-shape3]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype1-shape4]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype1-shape5]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype2-shape0]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype2-shape1]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype2-shape2]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype2-shape3]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype2-shape4]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims0-dtype2-shape5]": {
+    "params": {
+      "shifts_dims": [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype0-shape0]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype0-shape1]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype0-shape2]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype0-shape3]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype0-shape4]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype0-shape5]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype1-shape0]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype1-shape1]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype1-shape2]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype1-shape3]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype1-shape4]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype1-shape5]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype2-shape0]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype2-shape1]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype2-shape2]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype2-shape3]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype2-shape4]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims1-dtype2-shape5]": {
+    "params": {
+      "shifts_dims": [
+        [
+          -1,
+          1
+        ],
+        [
+          0,
+          -1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype0-shape0]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype0-shape1]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype0-shape2]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype0-shape3]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype0-shape4]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype0-shape5]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype1-shape0]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype1-shape1]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype1-shape2]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype1-shape3]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype1-shape4]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype1-shape5]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype2-shape0]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype2-shape1]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype2-shape2]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype2-shape3]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype2-shape4]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_multi_dims[shifts_dims2-dtype2-shape5]": {
+    "params": {
+      "shifts_dims": [
+        [
+          2,
+          -2
+        ],
+        [
+          -2,
+          -1
+        ]
+      ],
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype0-shape0]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype0-shape1]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype0-shape2]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype0-shape3]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype0-shape4]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype0-shape5]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype1-shape0]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype1-shape1]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype1-shape2]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype1-shape3]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype1-shape4]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype1-shape5]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype2-shape0]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype2-shape1]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype2-shape2]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype2-shape3]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype2-shape4]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[1-dtype2-shape5]": {
+    "params": {
+      "shifts": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype0-shape0]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype0-shape1]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype0-shape2]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype0-shape3]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype0-shape4]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype0-shape5]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype1-shape0]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype1-shape1]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype1-shape2]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype1-shape3]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype1-shape4]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype1-shape5]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype2-shape0]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype2-shape1]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype2-shape2]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype2-shape3]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype2-shape4]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-1-dtype2-shape5]": {
+    "params": {
+      "shifts": -1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype0-shape0]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype0-shape1]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype0-shape2]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype0-shape3]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype0-shape4]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype0-shape5]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype1-shape0]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype1-shape1]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype1-shape2]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype1-shape3]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype1-shape4]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype1-shape5]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype2-shape0]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype2-shape1]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype2-shape2]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype2-shape3]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype2-shape4]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[5-dtype2-shape5]": {
+    "params": {
+      "shifts": 5,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype0-shape0]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype0-shape1]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype0-shape2]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype0-shape3]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype0-shape4]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype0-shape5]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype1-shape0]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype1-shape1]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype1-shape2]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype1-shape3]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype1-shape4]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype1-shape5]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype2-shape0]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype2-shape1]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype2-shape2]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype2-shape3]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype2-shape4]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_flatten[-3-dtype2-shape5]": {
+    "params": {
+      "shifts": -3,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "roll"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "roll"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "roll"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "roll"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "roll"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "roll"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "roll"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "roll"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "roll"
+    ],
+    "reason": null
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "roll"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "roll"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "roll"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_roll.py::test_roll_with_non_dense_input[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "roll"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

@@ -1,0 +1,286 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: md-report-0.8.0
+collected 938 items / 10 errors / 937 deselected / 1 selected
+
+test_add.py F                                                            [100%]
+
+==================================== ERRORS ====================================
+_____________ ERROR collecting benchmark/test_cutlass_scaled_mm.py _____________
+test_cutlass_scaled_mm.py:47: in <module>
+    CUDA_AVAILABLE = is_cuda_available()
+test_cutlass_scaled_mm.py:42: in is_cuda_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+________________ ERROR collecting benchmark/test_fp8_einsum.py _________________
+test_fp8_einsum.py:44: in <module>
+    CUDA_AVAILABLE = is_cuda_available()
+test_fp8_einsum.py:39: in is_cuda_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+______________ ERROR collecting benchmark/test_fp8_mqa_logits.py _______________
+test_fp8_mqa_logits.py:58: in <module>
+    HOPPER_AVAILABLE = is_hopper_available()
+test_fp8_mqa_logits.py:42: in is_hopper_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+_________ ERROR collecting benchmark/test_fp8_paged_mqa_logits_perf.py _________
+test_fp8_paged_mqa_logits_perf.py:48: in <module>
+    HOPPER_AVAILABLE = is_hopper_available()
+test_fp8_paged_mqa_logits_perf.py:43: in is_hopper_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+_____________ ERROR collecting benchmark/test_fused_marlin_moe.py ______________
+test_fused_marlin_moe.py:67: in <module>
+    CUDA_AVAILABLE = is_cuda_available()
+test_fused_marlin_moe.py:62: in is_cuda_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+_______________ ERROR collecting benchmark/test_fused_moe_fp8.py _______________
+test_fused_moe_fp8.py:31: in <module>
+    CUDA_AVAILABLE = is_cuda_available()
+test_fused_moe_fp8.py:26: in is_cuda_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+__________ ERROR collecting benchmark/test_fused_moe_fp8_blockwise.py __________
+test_fused_moe_fp8_blockwise.py:33: in <module>
+    CUDA_AVAILABLE = is_cuda_available()
+test_fused_moe_fp8_blockwise.py:28: in is_cuda_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+___________ ERROR collecting benchmark/test_fused_moe_int4_w4a16.py ____________
+test_fused_moe_int4_w4a16.py:31: in <module>
+    CUDA_AVAILABLE = is_cuda_available()
+test_fused_moe_int4_w4a16.py:26: in is_cuda_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+___________ ERROR collecting benchmark/test_fused_moe_int8_w8a16.py ____________
+test_fused_moe_int8_w8a16.py:31: in <module>
+    CUDA_AVAILABLE = is_cuda_available()
+test_fused_moe_int8_w8a16.py:26: in is_cuda_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+______________ ERROR collecting benchmark/test_fused_moe_w8a16.py ______________
+test_fused_moe_w8a16.py:31: in <module>
+    CUDA_AVAILABLE = is_cuda_available()
+test_fused_moe_w8a16.py:26: in is_cuda_available
+    major, minor = torch.cuda.get_device_capability()
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:598: in get_device_capability
+    prop = get_device_properties(device)
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:614: in get_device_properties
+    _lazy_init()  # will define _get_device_properties
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: in _lazy_init
+    torch._C._cuda_init()
+E   RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+=================================== FAILURES ===================================
+___________________________________ test_add ___________________________________
+
+self = <benchmark.base.BinaryPointwiseBenchmark object at 0x7f6fcbc927a0>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+>                   input = next(input_iter)
+
+base.py:424: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+base.py:740: in get_input_iter
+    inp1 = generate_tensor_input(shape, dtype, self.device)
+base.py:837: in generate_tensor_input
+    return torch.randn(shape, dtype=dtype, device=device)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _lazy_init():
+        global _initialized, _queued_calls
+        if is_initialized() or hasattr(_tls, "is_initializing"):
+            return
+        with _initialization_lock:
+            # We be double-checked locking, boys!  This is OK because
+            # the above test was GIL protected anyway.  The inner test
+            # is for when a thread blocked on some other thread which was
+            # doing the initialization; when they get the lock, they will
+            # find there is nothing left to do.
+            if is_initialized():
+                return
+            # It is important to prevent other threads from entering _lazy_init
+            # immediately, while we are still guaranteed to have the GIL, because some
+            # of the C calls we make below will release the GIL
+            if _is_in_bad_fork():
+                raise RuntimeError(
+                    "Cannot re-initialize CUDA in forked subprocess. To use CUDA with "
+                    "multiprocessing, you must use the 'spawn' start method"
+                )
+            if not hasattr(torch._C, "_cuda_getDeviceCount"):
+                raise AssertionError("Torch not compiled with CUDA enabled")
+            if _cudart is None:
+                raise AssertionError(
+                    "libcudart functions unavailable. It looks like you have a broken build?"
+                )
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+>           torch._C._cuda_init()
+E           RuntimeError: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:410: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.add
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    )
+    def test_add():
+        bench = base.BinaryPointwiseBenchmark(
+            op_name="add",
+            torch_op=torch.add,
+            dtypes=consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES,
+        )
+>       bench.run()
+
+test_add.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.base.BinaryPointwiseBenchmark object at 0x7f6fcbc927a0>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+>                   pytest.fail(str(e))
+E                   Failed: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver.
+
+base.py:433: Failed
+----------------------------- Captured stdout call -----------------------------
+[31mFAILED[0m: Operator=add dtype={dtype} err=<<<{e}>>>
+=============================== warnings summary ===============================
+../.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:1034
+  /workspace/FlagGems/.venv/lib/python3.10/site-packages/torch/cuda/__init__.py:1034: UserWarning: CUDA initialization: The NVIDIA driver on your system is too old (found version 10020). Please update your GPU driver by downloading and installing a new version from the URL: http://www.nvidia.com/Download/index.aspx Alternatively, go to: https://pytorch.org to install a PyTorch version that has been compiled with your version of the CUDA driver. (Triggered internally at /pytorch/c10/cuda/CUDAFunctions.cpp:119.)
+    r = torch._C._cuda_getDeviceCount() if nvml_count < 0 else nvml_count
+
+../src/flag_gems/utils/device_info.py:34
+../src/flag_gems/utils/device_info.py:34
+  /workspace/FlagGems/src/flag_gems/utils/device_info.py:34: UserWarning: [device_info] Failed to get current device, fallback to device_id=0.
+    warnings.warn(
+
+../src/flag_gems/utils/device_info.py:46
+../src/flag_gems/utils/device_info.py:46
+  /workspace/FlagGems/src/flag_gems/utils/device_info.py:46: UserWarning: [device_info] Failed to get device properties for device_id=0, fallback to None.
+    warnings.warn(
+
+../src/flag_gems/utils/device_info.py:65
+../src/flag_gems/utils/device_info.py:65
+  /workspace/FlagGems/src/flag_gems/utils/device_info.py:65: UserWarning: [device_info] Failed to get device capability for device_id=0 using torch_device_fn, fallback to (0, 0).
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED test_add.py::test_add - Failed: The NVIDIA driver on your system is to...
+ERROR test_cutlass_scaled_mm.py - RuntimeError: The NVIDIA driver on your sys...
+ERROR test_fp8_einsum.py - RuntimeError: The NVIDIA driver on your system is ...
+ERROR test_fp8_mqa_logits.py - RuntimeError: The NVIDIA driver on your system...
+ERROR test_fp8_paged_mqa_logits_perf.py - RuntimeError: The NVIDIA driver on ...
+ERROR test_fused_marlin_moe.py - RuntimeError: The NVIDIA driver on your syst...
+ERROR test_fused_moe_fp8.py - RuntimeError: The NVIDIA driver on your system ...
+ERROR test_fused_moe_fp8_blockwise.py - RuntimeError: The NVIDIA driver on yo...
+ERROR test_fused_moe_int4_w4a16.py - RuntimeError: The NVIDIA driver on your ...
+ERROR test_fused_moe_int8_w8a16.py - RuntimeError: The NVIDIA driver on your ...
+ERROR test_fused_moe_w8a16.py - RuntimeError: The NVIDIA driver on your syste...
+=========== 1 failed, 937 deselected, 7 warnings, 10 errors in 4.06s ===========

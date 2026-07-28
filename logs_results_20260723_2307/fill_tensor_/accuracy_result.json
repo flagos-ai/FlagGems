@@ -1,0 +1,1574 @@
+{
+  "tests/test_fill.py::test_fill_[dtype0-shape0-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape0-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape0-9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape1-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape1-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape1-9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape2-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape2-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape2-9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape3-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape3-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape3-9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape4-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape4-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape4-9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape5-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape5-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype0-shape5-9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape0-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape0-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape0-9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape1-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape1-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape1-9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape2-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape2-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape2-9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape3-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape3-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape3-9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape4-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape4-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape4-9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape5-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape5-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype1-shape5-9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape0-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape0-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape0-9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape1-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape1-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape1-9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape2-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape2-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape2-9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape3-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape3-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape3-9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape4-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape4-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape4-9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape5-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape5-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_[dtype2-shape5-9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[zero-dtype0-shape0-slc0]": {
+    "params": {
+      "value": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        128
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(64, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[zero-dtype0-shape1-slc1]": {
+    "params": {
+      "value": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        1,
+        1,
+        512
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(358, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[zero-dtype0-shape2-slc2]": {
+    "params": {
+      "value": 0,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        32,
+        64
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(16, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[zero-dtype1-shape0-slc0]": {
+    "params": {
+      "value": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        128
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(64, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[zero-dtype1-shape1-slc1]": {
+    "params": {
+      "value": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        1,
+        1,
+        512
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(358, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[zero-dtype1-shape2-slc2]": {
+    "params": {
+      "value": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        32,
+        64
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(16, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[zero-dtype2-shape0-slc0]": {
+    "params": {
+      "value": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        128
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(64, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[zero-dtype2-shape1-slc1]": {
+    "params": {
+      "value": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        1,
+        1,
+        512
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(358, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[zero-dtype2-shape2-slc2]": {
+    "params": {
+      "value": 0,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        32,
+        64
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(16, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[zero-dtype3-shape0-slc0]": {
+    "params": {
+      "value": 0,
+      "dtype": "torch.bool",
+      "shape": [
+        4,
+        128
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(64, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[zero-dtype3-shape1-slc1]": {
+    "params": {
+      "value": 0,
+      "dtype": "torch.bool",
+      "shape": [
+        2,
+        1,
+        1,
+        512
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(358, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[zero-dtype3-shape2-slc2]": {
+    "params": {
+      "value": 0,
+      "dtype": "torch.bool",
+      "shape": [
+        8,
+        32,
+        64
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(16, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[one-dtype0-shape0-slc0]": {
+    "params": {
+      "value": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        128
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(64, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[one-dtype0-shape1-slc1]": {
+    "params": {
+      "value": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        1,
+        1,
+        512
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(358, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[one-dtype0-shape2-slc2]": {
+    "params": {
+      "value": 1,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        32,
+        64
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(16, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[one-dtype1-shape0-slc0]": {
+    "params": {
+      "value": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        128
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(64, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[one-dtype1-shape1-slc1]": {
+    "params": {
+      "value": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        1,
+        1,
+        512
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(358, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[one-dtype1-shape2-slc2]": {
+    "params": {
+      "value": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        32,
+        64
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(16, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[one-dtype2-shape0-slc0]": {
+    "params": {
+      "value": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        128
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(64, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[one-dtype2-shape1-slc1]": {
+    "params": {
+      "value": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        1,
+        1,
+        512
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(358, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[one-dtype2-shape2-slc2]": {
+    "params": {
+      "value": 1,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        32,
+        64
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(16, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[one-dtype3-shape0-slc0]": {
+    "params": {
+      "value": 1,
+      "dtype": "torch.bool",
+      "shape": [
+        4,
+        128
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(64, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[one-dtype3-shape1-slc1]": {
+    "params": {
+      "value": 1,
+      "dtype": "torch.bool",
+      "shape": [
+        2,
+        1,
+        1,
+        512
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(358, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[one-dtype3-shape2-slc2]": {
+    "params": {
+      "value": 1,
+      "dtype": "torch.bool",
+      "shape": [
+        8,
+        32,
+        64
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(16, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[true-dtype0-shape0-slc0]": {
+    "params": {
+      "value": true,
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        128
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(64, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[true-dtype0-shape1-slc1]": {
+    "params": {
+      "value": true,
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        1,
+        1,
+        512
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(358, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[true-dtype0-shape2-slc2]": {
+    "params": {
+      "value": true,
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        32,
+        64
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(16, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[true-dtype1-shape0-slc0]": {
+    "params": {
+      "value": true,
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        128
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(64, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[true-dtype1-shape1-slc1]": {
+    "params": {
+      "value": true,
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        1,
+        1,
+        512
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(358, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[true-dtype1-shape2-slc2]": {
+    "params": {
+      "value": true,
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        32,
+        64
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(16, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[true-dtype2-shape0-slc0]": {
+    "params": {
+      "value": true,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        128
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(64, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[true-dtype2-shape1-slc1]": {
+    "params": {
+      "value": true,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        1,
+        1,
+        512
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(358, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[true-dtype2-shape2-slc2]": {
+    "params": {
+      "value": true,
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        32,
+        64
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(16, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[true-dtype3-shape0-slc0]": {
+    "params": {
+      "value": true,
+      "dtype": "torch.bool",
+      "shape": [
+        4,
+        128
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(64, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[true-dtype3-shape1-slc1]": {
+    "params": {
+      "value": true,
+      "dtype": "torch.bool",
+      "shape": [
+        2,
+        1,
+        1,
+        512
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(None, None, None)",
+        "slice(358, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_fill.py::test_fill_sliced_view_tensor[true-dtype3-shape2-slc2]": {
+    "params": {
+      "value": true,
+      "dtype": "torch.bool",
+      "shape": [
+        8,
+        32,
+        64
+      ],
+      "slc": [
+        "slice(None, None, None)",
+        "slice(16, None, None)"
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "fill_tensor_"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

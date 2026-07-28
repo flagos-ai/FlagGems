@@ -1,0 +1,218 @@
+{
+  "tests/test_scaled_mm.py::test_scaled_mm[float16-default-scalar-bias_False-16-16-16]": {
+    "params": {
+      "case": [
+        "torch.float16",
+        null,
+        "scalar",
+        false
+      ],
+      "M": 16,
+      "N": 16,
+      "K": 16
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm"
+    ],
+    "reason": null
+  },
+  "tests/test_scaled_mm.py::test_scaled_mm[float16-default-scalar-bias_False-17-31-32]": {
+    "params": {
+      "case": [
+        "torch.float16",
+        null,
+        "scalar",
+        false
+      ],
+      "M": 17,
+      "N": 31,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm"
+    ],
+    "reason": null
+  },
+  "tests/test_scaled_mm.py::test_scaled_mm[float16-default-scalar-bias_False-64-48-80]": {
+    "params": {
+      "case": [
+        "torch.float16",
+        null,
+        "scalar",
+        false
+      ],
+      "M": 64,
+      "N": 48,
+      "K": 80
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm"
+    ],
+    "reason": null
+  },
+  "tests/test_scaled_mm.py::test_scaled_mm[float16-float32-rowwise_2d-bias_True-16-16-16]": {
+    "params": {
+      "case": [
+        "torch.float16",
+        "torch.float32",
+        "rowwise_2d",
+        true
+      ],
+      "M": 16,
+      "N": 16,
+      "K": 16
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm"
+    ],
+    "reason": null
+  },
+  "tests/test_scaled_mm.py::test_scaled_mm[float16-float32-rowwise_2d-bias_True-17-31-32]": {
+    "params": {
+      "case": [
+        "torch.float16",
+        "torch.float32",
+        "rowwise_2d",
+        true
+      ],
+      "M": 17,
+      "N": 31,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm"
+    ],
+    "reason": null
+  },
+  "tests/test_scaled_mm.py::test_scaled_mm[float16-float32-rowwise_2d-bias_True-64-48-80]": {
+    "params": {
+      "case": [
+        "torch.float16",
+        "torch.float32",
+        "rowwise_2d",
+        true
+      ],
+      "M": 64,
+      "N": 48,
+      "K": 80
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm"
+    ],
+    "reason": null
+  },
+  "tests/test_scaled_mm.py::test_scaled_mm[float32-float16-rowwise_1d-bias_True-16-16-16]": {
+    "params": {
+      "case": [
+        "torch.float32",
+        "torch.float16",
+        "rowwise_1d",
+        true
+      ],
+      "M": 16,
+      "N": 16,
+      "K": 16
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm"
+    ],
+    "reason": null
+  },
+  "tests/test_scaled_mm.py::test_scaled_mm[float32-float16-rowwise_1d-bias_True-17-31-32]": {
+    "params": {
+      "case": [
+        "torch.float32",
+        "torch.float16",
+        "rowwise_1d",
+        true
+      ],
+      "M": 17,
+      "N": 31,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm"
+    ],
+    "reason": null
+  },
+  "tests/test_scaled_mm.py::test_scaled_mm[float32-float16-rowwise_1d-bias_True-64-48-80]": {
+    "params": {
+      "case": [
+        "torch.float32",
+        "torch.float16",
+        "rowwise_1d",
+        true
+      ],
+      "M": 64,
+      "N": 48,
+      "K": 80
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm"
+    ],
+    "reason": null
+  },
+  "tests/test_scaled_mm.py::test_scaled_mm[bfloat16-float32-rowwise_2d-bias_False-16-16-16]": {
+    "params": {
+      "case": [
+        "torch.bfloat16",
+        "torch.float32",
+        "rowwise_2d",
+        false
+      ],
+      "M": 16,
+      "N": 16,
+      "K": 16
+    },
+    "result": "failed",
+    "opname": [
+      "scaled_mm"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 127 / 256 (49.6%)\nGreatest absolute difference: 0.8013235330581665 at index (8, 3) (up to 0.0016 allowed)\nGreatest relative difference: 77.39537811279297 at index (2, 14) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_scaled_mm.py::test_scaled_mm[bfloat16-float32-rowwise_2d-bias_False-17-31-32]": {
+    "params": {
+      "case": [
+        "torch.bfloat16",
+        "torch.float32",
+        "rowwise_2d",
+        false
+      ],
+      "M": 17,
+      "N": 31,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm"
+    ],
+    "reason": null
+  },
+  "tests/test_scaled_mm.py::test_scaled_mm[bfloat16-float32-rowwise_2d-bias_False-64-48-80]": {
+    "params": {
+      "case": [
+        "torch.bfloat16",
+        "torch.float32",
+        "rowwise_2d",
+        false
+      ],
+      "M": 64,
+      "N": 48,
+      "K": 80
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm"
+    ],
+    "reason": null
+  }
+}

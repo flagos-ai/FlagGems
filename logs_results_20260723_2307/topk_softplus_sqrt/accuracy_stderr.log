@@ -1,0 +1,26 @@
+[CMD] pytest -m "topk_softplus_sqrt" --record json --output accuracy_topk_softplus_sqrt.json --ref cpu --continue-on-collection-errors -vs
+[CWD] /workspace/FlagGems/tests
+
+XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type
+loc("/workspace/FlagGems/src/flag_gems/fused/topk_softplus_sqrt.py":53:29): error: 'arith.cmpi' op requires all operands to have the same type

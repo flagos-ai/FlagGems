@@ -1,0 +1,3 @@
+[CMD] pytest -m "functional_sym_constrain_range" --level core --record json --output benchmark_functional_sym_constrain_range.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

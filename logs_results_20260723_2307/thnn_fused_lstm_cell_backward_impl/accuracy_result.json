@@ -1,0 +1,212 @@
+{
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        8
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        8
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        8
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_thnn_fused_lstm_cell_backward_impl.py::test_thnn_fused_lstm_cell_backward_impl[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "thnn_fused_lstm_cell_backward_impl"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

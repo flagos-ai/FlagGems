@@ -1,0 +1,507 @@
+{
+  "tests/test_expand.py::test_expand[dtype0-shape_expand_sizes0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_expand_sizes": [
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype0-shape_expand_sizes1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_expand_sizes": [
+        [
+          1,
+          3
+        ],
+        [
+          5,
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype0-shape_expand_sizes2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_expand_sizes": [
+        [
+          2,
+          1,
+          3
+        ],
+        [
+          2,
+          4,
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype0-shape_expand_sizes3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_expand_sizes": [
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          3,
+          4
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype0-shape_expand_sizes4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_expand_sizes": [
+        [
+          1
+        ],
+        [
+          2,
+          3,
+          4
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype0-shape_expand_sizes5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_expand_sizes": [
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          2
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype0-shape_expand_sizes6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_expand_sizes": [
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          -1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype1-shape_expand_sizes0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_expand_sizes": [
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype1-shape_expand_sizes1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_expand_sizes": [
+        [
+          1,
+          3
+        ],
+        [
+          5,
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype1-shape_expand_sizes2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_expand_sizes": [
+        [
+          2,
+          1,
+          3
+        ],
+        [
+          2,
+          4,
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype1-shape_expand_sizes3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_expand_sizes": [
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          3,
+          4
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype1-shape_expand_sizes4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_expand_sizes": [
+        [
+          1
+        ],
+        [
+          2,
+          3,
+          4
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype1-shape_expand_sizes5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_expand_sizes": [
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          2
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype1-shape_expand_sizes6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_expand_sizes": [
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          -1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype2-shape_expand_sizes0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_expand_sizes": [
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype2-shape_expand_sizes1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_expand_sizes": [
+        [
+          1,
+          3
+        ],
+        [
+          5,
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype2-shape_expand_sizes2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_expand_sizes": [
+        [
+          2,
+          1,
+          3
+        ],
+        [
+          2,
+          4,
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype2-shape_expand_sizes3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_expand_sizes": [
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          3,
+          4
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype2-shape_expand_sizes4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_expand_sizes": [
+        [
+          1
+        ],
+        [
+          2,
+          3,
+          4
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype2-shape_expand_sizes5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_expand_sizes": [
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          2
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand[dtype2-shape_expand_sizes6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_expand_sizes": [
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          -1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand_invalid_sizes[input_shape0-expand_size0]": {
+    "params": {
+      "input_shape": [
+        1,
+        3
+      ],
+      "expand_size": [
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand_invalid_sizes[input_shape1-expand_size1]": {
+    "params": {
+      "input_shape": [
+        3
+      ],
+      "expand_size": [
+        -1,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand_invalid_sizes[input_shape2-expand_size2]": {
+    "params": {
+      "input_shape": [
+        3
+      ],
+      "expand_size": [
+        -2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand_invalid_sizes[input_shape3-expand_size3]": {
+    "params": {
+      "input_shape": [
+        2,
+        3
+      ],
+      "expand_size": [
+        2,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  },
+  "tests/test_expand.py::test_expand_zero_size_singleton_stride": {
+    "params": {},
+    "result": "passed",
+    "opname": [
+      "expand"
+    ],
+    "reason": null
+  }
+}

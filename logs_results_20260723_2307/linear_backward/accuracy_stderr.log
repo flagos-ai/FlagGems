@@ -1,0 +1,65 @@
+[CMD] pytest -m "linear_backward" --record json --output accuracy_linear_backward.json --ref cpu --continue-on-collection-errors -vs
+[CWD] /workspace/FlagGems/tests
+
+XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+loc("/workspace/FlagGems/src/flag_gems/ops/mm_streamk.py":381:57): error: unexpected op in ptr sequence
+loc("/workspace/FlagGems/src/flag_gems/ops/mm_streamk.py":291:0): error: failed to legalize operation 'builtin.unrealized_conversion_cast' that was explicitly marked illegal
+loc("/workspace/FlagGems/src/flag_gems/ops/mm_streamk.py":381:57): error: unexpected op in ptr sequence
+loc("/workspace/FlagGems/src/flag_gems/ops/mm_streamk.py":291:0): error: failed to legalize operation 'builtin.unrealized_conversion_cast' that was explicitly marked illegal
+loc("/workspace/FlagGems/src/flag_gems/ops/mm_streamk.py":381:57): error: unexpected op in ptr sequence
+loc("/workspace/FlagGems/src/flag_gems/ops/mm_streamk.py":291:0): error: failed to legalize operation 'builtin.unrealized_conversion_cast' that was explicitly marked illegal
+loc("/workspace/FlagGems/src/flag_gems/ops/mm_streamk.py":381:57): error: unexpected op in ptr sequence
+loc("/workspace/FlagGems/src/flag_gems/ops/mm_streamk.py":291:0): error: failed to legalize operation 'builtin.unrealized_conversion_cast' that was explicitly marked illegal
+loc("/workspace/FlagGems/src/flag_gems/ops/mm_streamk.py":381:57): error: unexpected op in ptr sequence
+loc("/workspace/FlagGems/src/flag_gems/ops/mm_streamk.py":291:0): error: failed to legalize operation 'builtin.unrealized_conversion_cast' that was explicitly marked illegal
+loc("/workspace/FlagGems/src/flag_gems/ops/mm_streamk.py":381:57): error: unexpected op in ptr sequence
+loc("/workspace/FlagGems/src/flag_gems/ops/mm_streamk.py":291:0): error: failed to legalize operation 'builtin.unrealized_conversion_cast' that was explicitly marked illegal
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results
+loc("/workspace/FlagGems/src/flag_gems/ops/sum.py":143:41): error: 'triton_xpu.convert_layout' op requires the same shape for all operands and results

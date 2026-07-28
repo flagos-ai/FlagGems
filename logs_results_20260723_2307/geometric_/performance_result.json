@@ -1,0 +1,216 @@
+{
+  "geometric_": {
+    "details": [
+      {
+        "op_name": "geometric_",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              0.5
+            ],
+            "latency_base": 0.1394300013780594,
+            "latency": 0.13511399924755096,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0319434118932473,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              0.5
+            ],
+            "latency_base": 312.8885192871094,
+            "latency": 300.1452331542969,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0424570665303936,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              0.5
+            ],
+            "latency_base": 310.2988586425781,
+            "latency": 299.2855224609375,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.03679876023097,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "geometric_",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              0.5
+            ],
+            "latency_base": 0.11771900206804276,
+            "latency": 0.118087999522686,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9968752332486388,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              0.5
+            ],
+            "latency_base": 309.6186828613281,
+            "latency": 305.2739562988281,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0142322214943453,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              0.5
+            ],
+            "latency_base": 312.0195617675781,
+            "latency": 312.8638610839844,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9973013843354072,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "geometric_",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              0.5
+            ],
+            "latency_base": 0.13617800176143646,
+            "latency": 0.1314679980278015,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0358262375961558,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              0.5
+            ],
+            "latency_base": 310.2449035644531,
+            "latency": 310.6858215332031,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9985808236546678,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              0.5
+            ],
+            "latency_base": 308.6085510253906,
+            "latency": 307.5267028808594,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0035178998584404,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_geometric.py::test_geometric_inplace",
+    "reason": null
+  }
+}

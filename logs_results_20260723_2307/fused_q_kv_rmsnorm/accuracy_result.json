@@ -1,0 +1,34 @@
+{
+  "tests/test_deepseek_v4_attention_fused_q_kv_rmsnorm.py::test_fused_q_kv_rmsnorm_accuracy[4-256-128]": {
+    "params": {
+      "tokens": 4,
+      "qdim": 256,
+      "kvdim": 128
+    },
+    "result": "passed",
+    "opname": [
+      "fused_q_kv_rmsnorm"
+    ],
+    "reason": null
+  },
+  "tests/test_deepseek_v4_attention_fused_q_kv_rmsnorm.py::test_fused_q_kv_rmsnorm_accuracy[8-1536-512]": {
+    "params": {
+      "tokens": 8,
+      "qdim": 1536,
+      "kvdim": 512
+    },
+    "result": "passed",
+    "opname": [
+      "fused_q_kv_rmsnorm"
+    ],
+    "reason": null
+  },
+  "tests/test_deepseek_v4_attention_fused_q_kv_rmsnorm.py::test_fused_q_kv_rmsnorm_vllm_accuracy": {
+    "params": {},
+    "result": "skipped",
+    "opname": [
+      "fused_q_kv_rmsnorm"
+    ],
+    "reason": "Skipped: requires cuda and vllm deepseek_v4_ops.fused_q_kv_rmsnorm"
+  }
+}

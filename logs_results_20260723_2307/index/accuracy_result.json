@@ -1,0 +1,1596 @@
+{
+  "tests/test_index.py::test_index[dtype0-input_shape0-indices_shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        268435456
+      ],
+      "indices_shape": [
+        [
+          65536
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype0-input_shape1-indices_shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        32,
+        32
+      ],
+      "indices_shape": [
+        [
+          8
+        ],
+        [
+          8
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype0-input_shape2-indices_shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        32,
+        32
+      ],
+      "indices_shape": [
+        [
+          8
+        ],
+        [
+          2,
+          8
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype0-input_shape3-indices_shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        32,
+        32
+      ],
+      "indices_shape": [
+        [
+          2,
+          8
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype0-input_shape4-indices_shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        1024,
+        1024
+      ],
+      "indices_shape": [
+        [
+          64
+        ],
+        [
+          64
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype0-input_shape5-indices_shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        512,
+        512,
+        512
+      ],
+      "indices_shape": [
+        [
+          128
+        ],
+        [
+          128
+        ],
+        [
+          128
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype0-input_shape6-indices_shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        512,
+        512,
+        512
+      ],
+      "indices_shape": [
+        [
+          2,
+          128
+        ],
+        [
+          2,
+          128
+        ],
+        [
+          2,
+          128
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype0-input_shape7-indices_shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        512,
+        512,
+        512
+      ],
+      "indices_shape": [
+        [
+          2,
+          128
+        ],
+        [
+          128
+        ],
+        [
+          128
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype0-input_shape8-indices_shape8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        512,
+        512,
+        512
+      ],
+      "indices_shape": [
+        [
+          2,
+          128
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype0-input_shape9-indices_shape9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        64,
+        64,
+        64
+      ],
+      "indices_shape": [
+        [
+          2,
+          8
+        ],
+        [
+          2,
+          8
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype1-input_shape0-indices_shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        268435456
+      ],
+      "indices_shape": [
+        [
+          65536
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype1-input_shape1-indices_shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        32,
+        32
+      ],
+      "indices_shape": [
+        [
+          8
+        ],
+        [
+          8
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype1-input_shape2-indices_shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        32,
+        32
+      ],
+      "indices_shape": [
+        [
+          8
+        ],
+        [
+          2,
+          8
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype1-input_shape3-indices_shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        32,
+        32
+      ],
+      "indices_shape": [
+        [
+          2,
+          8
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype1-input_shape4-indices_shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        1024,
+        1024
+      ],
+      "indices_shape": [
+        [
+          64
+        ],
+        [
+          64
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype1-input_shape5-indices_shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        512,
+        512,
+        512
+      ],
+      "indices_shape": [
+        [
+          128
+        ],
+        [
+          128
+        ],
+        [
+          128
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype1-input_shape6-indices_shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        512,
+        512,
+        512
+      ],
+      "indices_shape": [
+        [
+          2,
+          128
+        ],
+        [
+          2,
+          128
+        ],
+        [
+          2,
+          128
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype1-input_shape7-indices_shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        512,
+        512,
+        512
+      ],
+      "indices_shape": [
+        [
+          2,
+          128
+        ],
+        [
+          128
+        ],
+        [
+          128
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype1-input_shape8-indices_shape8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        512,
+        512,
+        512
+      ],
+      "indices_shape": [
+        [
+          2,
+          128
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype1-input_shape9-indices_shape9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        64,
+        64,
+        64
+      ],
+      "indices_shape": [
+        [
+          2,
+          8
+        ],
+        [
+          2,
+          8
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype2-input_shape0-indices_shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        268435456
+      ],
+      "indices_shape": [
+        [
+          65536
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype2-input_shape1-indices_shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        32,
+        32
+      ],
+      "indices_shape": [
+        [
+          8
+        ],
+        [
+          8
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype2-input_shape2-indices_shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        32,
+        32
+      ],
+      "indices_shape": [
+        [
+          8
+        ],
+        [
+          2,
+          8
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype2-input_shape3-indices_shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        32,
+        32
+      ],
+      "indices_shape": [
+        [
+          2,
+          8
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype2-input_shape4-indices_shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        1024,
+        1024
+      ],
+      "indices_shape": [
+        [
+          64
+        ],
+        [
+          64
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype2-input_shape5-indices_shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        512,
+        512,
+        512
+      ],
+      "indices_shape": [
+        [
+          128
+        ],
+        [
+          128
+        ],
+        [
+          128
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype2-input_shape6-indices_shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        512,
+        512,
+        512
+      ],
+      "indices_shape": [
+        [
+          2,
+          128
+        ],
+        [
+          2,
+          128
+        ],
+        [
+          2,
+          128
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype2-input_shape7-indices_shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        512,
+        512,
+        512
+      ],
+      "indices_shape": [
+        [
+          2,
+          128
+        ],
+        [
+          128
+        ],
+        [
+          128
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype2-input_shape8-indices_shape8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        512,
+        512,
+        512
+      ],
+      "indices_shape": [
+        [
+          2,
+          128
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index[dtype2-input_shape9-indices_shape9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        64,
+        64,
+        64
+      ],
+      "indices_shape": [
+        [
+          2,
+          8
+        ],
+        [
+          2,
+          8
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype0-input_shape0-indices_shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        1,
+        4096,
+        512
+      ],
+      "indices_shape": [
+        null,
+        [
+          32768
+        ],
+        null
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype0-input_shape1-indices_shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        4,
+        512,
+        128
+      ],
+      "indices_shape": [
+        null,
+        [
+          4096
+        ],
+        null
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype0-input_shape2-indices_shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        2,
+        256,
+        256,
+        64
+      ],
+      "indices_shape": [
+        null,
+        [
+          4096
+        ],
+        [
+          4096
+        ],
+        null
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype0-input_shape3-indices_shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        2,
+        128,
+        128,
+        128
+      ],
+      "indices_shape": [
+        null,
+        [
+          2048
+        ],
+        [
+          2048
+        ],
+        [
+          2048
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype0-input_shape4-indices_shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_shape": [
+        1,
+        128,
+        128,
+        64,
+        8
+      ],
+      "indices_shape": [
+        null,
+        [
+          2048
+        ],
+        [
+          2048
+        ],
+        [
+          2048
+        ],
+        null
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype1-input_shape0-indices_shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        1,
+        4096,
+        512
+      ],
+      "indices_shape": [
+        null,
+        [
+          32768
+        ],
+        null
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype1-input_shape1-indices_shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        4,
+        512,
+        128
+      ],
+      "indices_shape": [
+        null,
+        [
+          4096
+        ],
+        null
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype1-input_shape2-indices_shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        2,
+        256,
+        256,
+        64
+      ],
+      "indices_shape": [
+        null,
+        [
+          4096
+        ],
+        [
+          4096
+        ],
+        null
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype1-input_shape3-indices_shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        2,
+        128,
+        128,
+        128
+      ],
+      "indices_shape": [
+        null,
+        [
+          2048
+        ],
+        [
+          2048
+        ],
+        [
+          2048
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype1-input_shape4-indices_shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        1,
+        128,
+        128,
+        64,
+        8
+      ],
+      "indices_shape": [
+        null,
+        [
+          2048
+        ],
+        [
+          2048
+        ],
+        [
+          2048
+        ],
+        null
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype2-input_shape0-indices_shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        1,
+        4096,
+        512
+      ],
+      "indices_shape": [
+        null,
+        [
+          32768
+        ],
+        null
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype2-input_shape1-indices_shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        4,
+        512,
+        128
+      ],
+      "indices_shape": [
+        null,
+        [
+          4096
+        ],
+        null
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype2-input_shape2-indices_shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        2,
+        256,
+        256,
+        64
+      ],
+      "indices_shape": [
+        null,
+        [
+          4096
+        ],
+        [
+          4096
+        ],
+        null
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype2-input_shape3-indices_shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        2,
+        128,
+        128,
+        128
+      ],
+      "indices_shape": [
+        null,
+        [
+          2048
+        ],
+        [
+          2048
+        ],
+        [
+          2048
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_nonleading_adjacent_tensor_indices[dtype2-input_shape4-indices_shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_shape": [
+        1,
+        128,
+        128,
+        64,
+        8
+      ],
+      "indices_shape": [
+        null,
+        [
+          2048
+        ],
+        [
+          2048
+        ],
+        [
+          2048
+        ],
+        null
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_basic_indexing[dtype0-input_shape0-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_shape": [
+        32,
+        32
+      ],
+      "index_pos": 0
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape0-indices_idx0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        1024,
+        1024
+      ],
+      "indices_idx": [
+        0,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape1-indices_idx1]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        16,
+        16,
+        16
+      ],
+      "indices_idx": [
+        1,
+        0,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape2-indices_idx2]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        16,
+        16,
+        16
+      ],
+      "indices_idx": [
+        0,
+        1,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape3-indices_idx3]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        32,
+        32,
+        32
+      ],
+      "indices_idx": [
+        0,
+        0,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape4-indices_idx4]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        32,
+        32,
+        32
+      ],
+      "indices_idx": [
+        1,
+        1,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape5-indices_idx5]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        64,
+        64,
+        64
+      ],
+      "indices_idx": [
+        1,
+        0,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape6-indices_idx6]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        64,
+        64,
+        64
+      ],
+      "indices_idx": [
+        0,
+        1,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape7-indices_idx7]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        12,
+        12,
+        12,
+        12
+      ],
+      "indices_idx": [
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape8-indices_idx8]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        12,
+        12,
+        12,
+        12
+      ],
+      "indices_idx": [
+        0,
+        1,
+        0,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape9-indices_idx9]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        10,
+        10,
+        10,
+        10
+      ],
+      "indices_idx": [
+        0,
+        0,
+        1,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape10-indices_idx10]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        10,
+        10,
+        10,
+        10
+      ],
+      "indices_idx": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape11-indices_idx11]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        10,
+        10,
+        10,
+        10
+      ],
+      "indices_idx": [
+        1,
+        1,
+        0,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape12-indices_idx12]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        10,
+        10,
+        10,
+        10
+      ],
+      "indices_idx": [
+        1,
+        0,
+        1,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape13-indices_idx13]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        16,
+        16,
+        16,
+        16
+      ],
+      "indices_idx": [
+        1,
+        0,
+        0,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape14-indices_idx14]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        16,
+        16,
+        16,
+        16
+      ],
+      "indices_idx": [
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape15-indices_idx15]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        32,
+        32,
+        32,
+        32
+      ],
+      "indices_idx": [
+        0,
+        1,
+        0,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape16-indices_idx16]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        32,
+        32,
+        32,
+        32
+      ],
+      "indices_idx": [
+        0,
+        0,
+        1,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape17-indices_idx17]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "indices_idx": [
+        0,
+        1,
+        1,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape18-indices_idx18]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "indices_idx": [
+        1,
+        0,
+        1,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape19-indices_idx19]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "indices_idx": [
+        1,
+        1,
+        0,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_with_none_and_tensor[dtype0-input_shape20-indices_idx20]": {
+    "params": {
+      "dtype": "torch.int64",
+      "input_shape": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "indices_idx": [
+        1,
+        1,
+        1,
+        0
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_boolean_mask[dtype0]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_empty_tensor[dtype0]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_1d_special_case[dtype0]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_error_empty_indices[dtype0]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  },
+  "tests/test_index.py::test_index_error_too_many_indices[dtype0]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "index"
+    ],
+    "reason": null
+  }
+}

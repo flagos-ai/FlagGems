@@ -1,0 +1,10 @@
+{
+  "tests/test_one_hot.py::test_one_hot": {
+    "params": {},
+    "result": "passed",
+    "opname": [
+      "one_hot"
+    ],
+    "reason": null
+  }
+}

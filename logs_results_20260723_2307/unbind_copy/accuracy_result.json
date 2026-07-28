@@ -1,0 +1,1394 @@
+{
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 0,
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-1-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-1-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-1-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-1-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-1-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-1-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 1,
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-2-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 2,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 2 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-2-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 2,
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 2 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-2-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 2,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 2 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-2-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 2,
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-2-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 2,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-2-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 2,
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-3-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 3,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-3-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 3,
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-3-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 3,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-3-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 3,
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 3"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-3-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 3,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 3"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype0-3-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "dim": 3,
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-0-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-0-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-0-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 0,
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 1,
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-2-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 2,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 2 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-2-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 2,
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 2 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-2-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 2,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 2 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-2-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 2,
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-2-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 2,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-2-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 2,
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-3-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 3,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-3-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 3,
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-3-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 3,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-3-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 3,
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 3"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-3-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 3,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 3"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype1-3-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "dim": 3,
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-0-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-0-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-0-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-0-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-0-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-0-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 0,
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-1-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-1-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-1-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-1-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-1-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-1-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 1,
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 2,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 2 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 2,
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 2 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 2,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 2 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 2,
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 2,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 2,
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-3-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 3,
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-3-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 3,
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-3-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 3,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 2"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-3-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 3,
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 3"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-3-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 3,
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "skipped",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "Skipped: dim 3 >= len(shape) 3"
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy[dtype2-3-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "dim": 3,
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_unbind_copy.py::test_unbind_copy_default_dim[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "unbind_copy"
+    ],
+    "reason": null
+  }
+}

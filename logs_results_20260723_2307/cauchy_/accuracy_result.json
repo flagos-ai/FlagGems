@@ -1,0 +1,643 @@
+{
+  "tests/test_cauchy.py::test_cauchy_accuracy[1.0-0.0-dtype0-shape0]": {
+    "params": {
+      "sigma": 1.0,
+      "median": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[1.0-0.0-dtype0-shape1]": {
+    "params": {
+      "sigma": 1.0,
+      "median": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[1.0-0.0-dtype1-shape0]": {
+    "params": {
+      "sigma": 1.0,
+      "median": 0.0,
+      "dtype": "torch.float64",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[1.0-0.0-dtype1-shape1]": {
+    "params": {
+      "sigma": 1.0,
+      "median": 0.0,
+      "dtype": "torch.float64",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[1.0-1.0-dtype0-shape0]": {
+    "params": {
+      "sigma": 1.0,
+      "median": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[1.0-1.0-dtype0-shape1]": {
+    "params": {
+      "sigma": 1.0,
+      "median": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[1.0-1.0-dtype1-shape0]": {
+    "params": {
+      "sigma": 1.0,
+      "median": 1.0,
+      "dtype": "torch.float64",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[1.0-1.0-dtype1-shape1]": {
+    "params": {
+      "sigma": 1.0,
+      "median": 1.0,
+      "dtype": "torch.float64",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[1.0--0.5-dtype0-shape0]": {
+    "params": {
+      "sigma": 1.0,
+      "median": -0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[1.0--0.5-dtype0-shape1]": {
+    "params": {
+      "sigma": 1.0,
+      "median": -0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[1.0--0.5-dtype1-shape0]": {
+    "params": {
+      "sigma": 1.0,
+      "median": -0.5,
+      "dtype": "torch.float64",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[1.0--0.5-dtype1-shape1]": {
+    "params": {
+      "sigma": 1.0,
+      "median": -0.5,
+      "dtype": "torch.float64",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[0.5-0.0-dtype0-shape0]": {
+    "params": {
+      "sigma": 0.5,
+      "median": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[0.5-0.0-dtype0-shape1]": {
+    "params": {
+      "sigma": 0.5,
+      "median": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[0.5-0.0-dtype1-shape0]": {
+    "params": {
+      "sigma": 0.5,
+      "median": 0.0,
+      "dtype": "torch.float64",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[0.5-0.0-dtype1-shape1]": {
+    "params": {
+      "sigma": 0.5,
+      "median": 0.0,
+      "dtype": "torch.float64",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[0.5-1.0-dtype0-shape0]": {
+    "params": {
+      "sigma": 0.5,
+      "median": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[0.5-1.0-dtype0-shape1]": {
+    "params": {
+      "sigma": 0.5,
+      "median": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[0.5-1.0-dtype1-shape0]": {
+    "params": {
+      "sigma": 0.5,
+      "median": 1.0,
+      "dtype": "torch.float64",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[0.5-1.0-dtype1-shape1]": {
+    "params": {
+      "sigma": 0.5,
+      "median": 1.0,
+      "dtype": "torch.float64",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[0.5--0.5-dtype0-shape0]": {
+    "params": {
+      "sigma": 0.5,
+      "median": -0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[0.5--0.5-dtype0-shape1]": {
+    "params": {
+      "sigma": 0.5,
+      "median": -0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[0.5--0.5-dtype1-shape0]": {
+    "params": {
+      "sigma": 0.5,
+      "median": -0.5,
+      "dtype": "torch.float64",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[0.5--0.5-dtype1-shape1]": {
+    "params": {
+      "sigma": 0.5,
+      "median": -0.5,
+      "dtype": "torch.float64",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[2.0-0.0-dtype0-shape0]": {
+    "params": {
+      "sigma": 2.0,
+      "median": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[2.0-0.0-dtype0-shape1]": {
+    "params": {
+      "sigma": 2.0,
+      "median": 0.0,
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[2.0-0.0-dtype1-shape0]": {
+    "params": {
+      "sigma": 2.0,
+      "median": 0.0,
+      "dtype": "torch.float64",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[2.0-0.0-dtype1-shape1]": {
+    "params": {
+      "sigma": 2.0,
+      "median": 0.0,
+      "dtype": "torch.float64",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[2.0-1.0-dtype0-shape0]": {
+    "params": {
+      "sigma": 2.0,
+      "median": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[2.0-1.0-dtype0-shape1]": {
+    "params": {
+      "sigma": 2.0,
+      "median": 1.0,
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[2.0-1.0-dtype1-shape0]": {
+    "params": {
+      "sigma": 2.0,
+      "median": 1.0,
+      "dtype": "torch.float64",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[2.0-1.0-dtype1-shape1]": {
+    "params": {
+      "sigma": 2.0,
+      "median": 1.0,
+      "dtype": "torch.float64",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[2.0--0.5-dtype0-shape0]": {
+    "params": {
+      "sigma": 2.0,
+      "median": -0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[2.0--0.5-dtype0-shape1]": {
+    "params": {
+      "sigma": 2.0,
+      "median": -0.5,
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[2.0--0.5-dtype1-shape0]": {
+    "params": {
+      "sigma": 2.0,
+      "median": -0.5,
+      "dtype": "torch.float64",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_accuracy[2.0--0.5-dtype1-shape1]": {
+    "params": {
+      "sigma": 2.0,
+      "median": -0.5,
+      "dtype": "torch.float64",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_reproducibility[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_reproducibility[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_reproducibility[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float64",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_reproducibility[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float64",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_large_tensors[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  },
+  "tests/test_cauchy.py::test_cauchy_large_tensors[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        512,
+        512,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "cauchy_"
+    ],
+    "reason": null
+  }
+}

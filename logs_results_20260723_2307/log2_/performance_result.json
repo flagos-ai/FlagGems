@@ -1,0 +1,141 @@
+{
+  "log2_": {
+    "details": [
+      {
+        "op_name": "log2_",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.007575999945402145,
+            "latency": 0.00648100022226572,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.168955359602444,
+            "accuracy": null,
+            "tflops": 0.0006320012127029464,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.17671999335289001,
+            "latency": 3.2438058853149414,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.05447921349206512,
+            "accuracy": null,
+            "tflops": 0.005172077674546514,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.17669600248336792,
+            "latency": 3.2472729682922363,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.05441365854016689,
+            "accuracy": null,
+            "tflops": 0.005166555495586579,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "log2_",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.008062000386416912,
+            "latency": 0.005253000184893608,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.5347420717024391,
+            "accuracy": null,
+            "tflops": 0.0007797448802265668,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.20739099383354187,
+            "latency": 1.9394840002059937,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.10693101557502653,
+            "accuracy": null,
+            "tflops": 0.008650350298439215,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.20747900009155273,
+            "latency": 1.9388259649276733,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.10701269935762006,
+            "accuracy": null,
+            "tflops": 0.008653286217273176,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "failed",
+    "test_case": "benchmark/test_log2.py::test_log2_",
+    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:9438)"
+  }
+}

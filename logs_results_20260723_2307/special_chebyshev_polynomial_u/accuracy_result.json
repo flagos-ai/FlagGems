@@ -1,0 +1,600 @@
+{
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[0-dtype0-shape0]": {
+    "params": {
+      "n": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[0-dtype0-shape1]": {
+    "params": {
+      "n": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[0-dtype0-shape2]": {
+    "params": {
+      "n": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[0-dtype0-shape3]": {
+    "params": {
+      "n": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[0-dtype0-shape4]": {
+    "params": {
+      "n": 0,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[1-dtype0-shape0]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[1-dtype0-shape1]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[1-dtype0-shape2]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[1-dtype0-shape3]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[1-dtype0-shape4]": {
+    "params": {
+      "n": 1,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[2-dtype0-shape0]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[2-dtype0-shape1]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[2-dtype0-shape2]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[2-dtype0-shape3]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[2-dtype0-shape4]": {
+    "params": {
+      "n": 2,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[3-dtype0-shape0]": {
+    "params": {
+      "n": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[3-dtype0-shape1]": {
+    "params": {
+      "n": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[3-dtype0-shape2]": {
+    "params": {
+      "n": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[3-dtype0-shape3]": {
+    "params": {
+      "n": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[3-dtype0-shape4]": {
+    "params": {
+      "n": 3,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[4-dtype0-shape0]": {
+    "params": {
+      "n": 4,
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[4-dtype0-shape1]": {
+    "params": {
+      "n": 4,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[4-dtype0-shape2]": {
+    "params": {
+      "n": 4,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[4-dtype0-shape3]": {
+    "params": {
+      "n": 4,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[4-dtype0-shape4]": {
+    "params": {
+      "n": 4,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[5-dtype0-shape0]": {
+    "params": {
+      "n": 5,
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[5-dtype0-shape1]": {
+    "params": {
+      "n": 5,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[5-dtype0-shape2]": {
+    "params": {
+      "n": 5,
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[5-dtype0-shape3]": {
+    "params": {
+      "n": 5,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u[5-dtype0-shape4]": {
+    "params": {
+      "n": 5,
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u_tensor_n[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u_tensor_n[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u_tensor_n[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u_tensor_n[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u_tensor_n[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u_guard_scalar[-1-dtype0]": {
+    "params": {
+      "n": -1,
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u_guard_scalar[6-dtype0]": {
+    "params": {
+      "n": 6,
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u_guard_scalar[10-dtype0]": {
+    "params": {
+      "n": 10,
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  },
+  "tests/test_special_chebyshev_polynomial_u.py::test_special_chebyshev_polynomial_u_guard_tensor[dtype0]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "special_chebyshev_polynomial_u"
+    ],
+    "reason": null
+  }
+}

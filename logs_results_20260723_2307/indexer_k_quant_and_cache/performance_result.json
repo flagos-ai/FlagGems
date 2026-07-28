@@ -1,0 +1,7 @@
+{
+  "indexer_k_quant_and_cache": {
+    "result": "skipped",
+    "reason": "Skipped: fp8e4nv requires device capability >= 8.9",
+    "test_case": "benchmark/test_indexer_k_quant_and_cache.py::test_indexer_k_quant_and_cache_benchmark"
+  }
+}

@@ -1,0 +1,692 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 01:38:50 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 01:38:52 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:38:52 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:38:52 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:38:52 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:38:52 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:38:52 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:38:52 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:38:52 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:38:52 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 01:38:54 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49870 deselected / 81 selected
+
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0--1-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0--1-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0--1-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0--1-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0--1-shape4] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0-0-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0-0-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0-0-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0-0-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0-0-shape4] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0-None-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0-None-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0-None-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0-None-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype0-None-shape4] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1--1-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1--1-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1--1-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1--1-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1--1-shape4] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1-0-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1-0-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1-0-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1-0-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1-0-shape4] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1-None-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1-None-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1-None-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1-None-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype1-None-shape4] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2--1-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2--1-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2--1-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2--1-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2--1-shape4] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2-0-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2-0-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2-0-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2-0-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2-0-shape4] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2-None-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2-None-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2-None-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2-None-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int[dtype2-None-shape4] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0--1-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0--1-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0--1-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0--1-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0-0-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0-0-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0-0-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0-0-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0-None-shape0] FAILED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0-None-shape1] FAILED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0-None-shape2] FAILED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0-None-shape3] FAILED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1--1-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1--1-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1--1-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1--1-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1-0-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1-0-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1-0-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1-0-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1-None-shape0] FAILED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1-None-shape1] FAILED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1-None-shape2] FAILED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1-None-shape3] FAILED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2--1-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2--1-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2--1-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2--1-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2-0-shape0] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2-0-shape1] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2-0-shape2] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2-0-shape3] PASSED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2-None-shape0] FAILED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2-None-shape1] FAILED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2-None-shape2] FAILED
+test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2-None-shape3] FAILED
+
+=================================== FAILURES ===================================
+______ test_repeat_interleave_self_int_non_contiguous[dtype0-None-shape0] ______
+
+shape = (1024, 1024), dim = None, dtype = torch.float16
+
+    @pytest.mark.repeat_interleave_self_int
+    @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+    @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
+        repeats = 2
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        with flag_gems.use_gems():
+>           res_out = torch.repeat_interleave(inp, repeats, dim)
+
+test_repeat_interleave.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/repeat_interleave.py:39: in repeat_interleave_self_int
+    inp = inp.flatten()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[ 5.1270e-01, -1.6144e-02,  1.8184e+00,  ..., -1.7080e+00,
+         -2.1328e+00,  6.7017e-02],
+        [ 1.13...+00,  5.6641e-01,  ...,  2.9121e+00,
+         -9.4043e-01, -6.3515e-04]], device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______ test_repeat_interleave_self_int_non_contiguous[dtype0-None-shape1] ______
+
+shape = (20, 320, 15), dim = None, dtype = torch.float16
+
+    @pytest.mark.repeat_interleave_self_int
+    @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+    @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
+        repeats = 2
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        with flag_gems.use_gems():
+>           res_out = torch.repeat_interleave(inp, repeats, dim)
+
+test_repeat_interleave.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/repeat_interleave.py:39: in repeat_interleave_self_int
+    inp = inp.flatten()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-0.0626, -0.4773,  0.8916,  ..., -0.4072,  1.1475,  0.5190],
+         [-1.3594, -0.0651, -0.4866,  ..., -0....   [ 0.4065, -0.2351,  1.5264,  ...,  1.5127, -0.7300,  0.2024]]],
+       device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______ test_repeat_interleave_self_int_non_contiguous[dtype0-None-shape2] ______
+
+shape = (16, 128, 64, 60), dim = None, dtype = torch.float16
+
+    @pytest.mark.repeat_interleave_self_int
+    @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+    @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
+        repeats = 2
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        with flag_gems.use_gems():
+>           res_out = torch.repeat_interleave(inp, repeats, dim)
+
+test_repeat_interleave.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/repeat_interleave.py:39: in repeat_interleave_self_int
+    inp = inp.flatten()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[ 3.7573e-01, -5.8301e-01,  1.2769e-01,  ...,  7.3340e-01,
+           -1.7686e+00,  7.5684e-01],
+          ...  2.0898e+00,  ..., -3.2153e-01,
+           -2.2773e+00, -7.8369e-01]]]], device='cuda:0', dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______ test_repeat_interleave_self_int_non_contiguous[dtype0-None-shape3] ______
+
+shape = (16, 7, 57, 32, 29), dim = None, dtype = torch.float16
+
+    @pytest.mark.repeat_interleave_self_int
+    @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+    @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
+        repeats = 2
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        with flag_gems.use_gems():
+>           res_out = torch.repeat_interleave(inp, repeats, dim)
+
+test_repeat_interleave.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/repeat_interleave.py:39: in repeat_interleave_self_int
+    inp = inp.flatten()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[[-2.1191e+00, -2.1350e-01,  1.6045e+00,  ...,  5.7861e-01,
+            -1.1895e+00,  9.2871e-01],
+        ...-01,  ...,  7.9004e-01,
+            -1.0723e+00,  2.1484e-01]]]]], device='cuda:0',
+       dtype=torch.float16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______ test_repeat_interleave_self_int_non_contiguous[dtype1-None-shape0] ______
+
+shape = (1024, 1024), dim = None, dtype = torch.float32
+
+    @pytest.mark.repeat_interleave_self_int
+    @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+    @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
+        repeats = 2
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        with flag_gems.use_gems():
+>           res_out = torch.repeat_interleave(inp, repeats, dim)
+
+test_repeat_interleave.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/repeat_interleave.py:39: in repeat_interleave_self_int
+    inp = inp.flatten()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[-0.1903,  0.9481, -0.8328,  ...,  0.9055, -0.6857,  0.2259],
+        [-0.2148,  1.9906, -1.3477,  ...,  0.61....5867, -1.0143],
+        [-0.8144,  0.8811,  0.4376,  ...,  1.2186,  2.3424,  0.2190]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______ test_repeat_interleave_self_int_non_contiguous[dtype1-None-shape1] ______
+
+shape = (20, 320, 15), dim = None, dtype = torch.float32
+
+    @pytest.mark.repeat_interleave_self_int
+    @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+    @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
+        repeats = 2
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        with flag_gems.use_gems():
+>           res_out = torch.repeat_interleave(inp, repeats, dim)
+
+test_repeat_interleave.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/repeat_interleave.py:39: in repeat_interleave_self_int
+    inp = inp.flatten()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[ 0.0243, -0.5694,  0.4435,  ...,  2.1834, -0.7221,  0.4658],
+         [-1.5470,  2.4399, -2.4736,  ...,  0....086, -0.1388],
+         [-1.3748,  0.7812, -0.5212,  ..., -0.3122,  0.6145, -1.8684]]],
+       device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______ test_repeat_interleave_self_int_non_contiguous[dtype1-None-shape2] ______
+
+shape = (16, 128, 64, 60), dim = None, dtype = torch.float32
+
+    @pytest.mark.repeat_interleave_self_int
+    @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+    @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
+        repeats = 2
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        with flag_gems.use_gems():
+>           res_out = torch.repeat_interleave(inp, repeats, dim)
+
+test_repeat_interleave.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/repeat_interleave.py:39: in repeat_interleave_self_int
+    inp = inp.flatten()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[ 3.8495e-01, -1.2182e+00, -4.1594e-01,  ..., -9.0383e-01,
+            1.6819e+00, -4.2308e-01],
+          ...749e-02, -1.2750e-01, -3.1818e-01,  ...,  1.9104e-01,
+           -2.1987e-01, -1.1665e+00]]]], device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______ test_repeat_interleave_self_int_non_contiguous[dtype1-None-shape3] ______
+
+shape = (16, 7, 57, 32, 29), dim = None, dtype = torch.float32
+
+    @pytest.mark.repeat_interleave_self_int
+    @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+    @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
+        repeats = 2
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        with flag_gems.use_gems():
+>           res_out = torch.repeat_interleave(inp, repeats, dim)
+
+test_repeat_interleave.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/repeat_interleave.py:39: in repeat_interleave_self_int
+    inp = inp.flatten()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[[ 1.2940e+00,  2.7857e-01, -1.2961e+00,  ...,  8.0962e-01,
+            -1.6483e+00, -5.0233e-02],
+        ...0e-01,  1.1483e+00,  6.7942e-01,  ...,  3.1888e-02,
+             2.0803e+00, -1.1133e-02]]]]], device='cuda:0'), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______ test_repeat_interleave_self_int_non_contiguous[dtype2-None-shape0] ______
+
+shape = (1024, 1024), dim = None, dtype = torch.bfloat16
+
+    @pytest.mark.repeat_interleave_self_int
+    @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+    @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
+        repeats = 2
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        with flag_gems.use_gems():
+>           res_out = torch.repeat_interleave(inp, repeats, dim)
+
+test_repeat_interleave.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/repeat_interleave.py:39: in repeat_interleave_self_int
+    inp = inp.flatten()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[-0.1196,  0.3223, -0.8867,  ...,  1.2891,  0.5469,  0.6641],
+        [ 0.5430, -0.2207, -0.9062,  ..., -0.54...   [ 1.2578, -0.0439,  1.1875,  ...,  1.1094,  0.8438,  0.2812]],
+       device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______ test_repeat_interleave_self_int_non_contiguous[dtype2-None-shape1] ______
+
+shape = (20, 320, 15), dim = None, dtype = torch.bfloat16
+
+    @pytest.mark.repeat_interleave_self_int
+    @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+    @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
+        repeats = 2
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        with flag_gems.use_gems():
+>           res_out = torch.repeat_interleave(inp, repeats, dim)
+
+test_repeat_interleave.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/repeat_interleave.py:39: in repeat_interleave_self_int
+    inp = inp.flatten()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[-8.0078e-01, -1.1172e+00,  1.3516e+00,  ..., -1.0498e-01,
+          -2.3047e-01,  2.5977e-01],
+         [ 1..., -8.7891e-01,  ..., -1.0312e+00,
+          -1.5312e+00,  4.1797e-01]]], device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______ test_repeat_interleave_self_int_non_contiguous[dtype2-None-shape2] ______
+
+shape = (16, 128, 64, 60), dim = None, dtype = torch.bfloat16
+
+    @pytest.mark.repeat_interleave_self_int
+    @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+    @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
+        repeats = 2
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        with flag_gems.use_gems():
+>           res_out = torch.repeat_interleave(inp, repeats, dim)
+
+test_repeat_interleave.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/repeat_interleave.py:39: in repeat_interleave_self_int
+    inp = inp.flatten()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[ 8.9062e-01,  8.9062e-01, -3.5938e-01,  ..., -8.9844e-01,
+           -7.9590e-02,  8.3984e-02],
+          ... 7.0703e-01,  ..., -1.7656e+00,
+           -1.5156e+00, -3.4375e-01]]]], device='cuda:0', dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+______ test_repeat_interleave_self_int_non_contiguous[dtype2-None-shape3] ______
+
+shape = (16, 7, 57, 32, 29), dim = None, dtype = torch.bfloat16
+
+    @pytest.mark.repeat_interleave_self_int
+    @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+    @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+    @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "tsingmicro",
+        reason="Issues #3861: some ops hang in op tests",
+    )
+    def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
+        repeats = 2
+        ref_inp = utils.to_reference(inp)
+    
+        ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+        with flag_gems.use_gems():
+>           res_out = torch.repeat_interleave(inp, repeats, dim)
+
+test_repeat_interleave.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../src/flag_gems/runtime/backend/_kunlunxin/ops/repeat_interleave.py:39: in repeat_interleave_self_int
+    inp = inp.flatten()
+../src/flag_gems/runtime/backend/_kunlunxin/ops/copy.py:120: in copy_
+    return torch.ops.aten.copy_.default.redispatch(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.copy_', overload='default')>
+keyset = DispatchKeySet()
+args = (tensor([[[[[ 5.3125e-01, -1.1719e+00,  7.6172e-01,  ...,  1.0859e+00,
+            -3.6328e-01,  1.1562e+00],
+        ...02,  ..., -2.1719e+00,
+             4.6289e-01, -2.2168e-01]]]]], device='cuda:0',
+       dtype=torch.bfloat16), False)
+kwargs = {}
+
+    def redispatch(
+        self, /, keyset: torch._C.DispatchKeySet, *args: _P.args, **kwargs: _P.kwargs
+    ) -> _T:
+>       return self._handle.redispatch_boxed(keyset, *args, **kwargs)  # type: ignore[return-value]
+E       torch.AcceleratorError: CUDA error: invalid device function
+E       Search for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:848: AcceleratorError
+=========================== short test summary info ============================
+FAILED test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0-None-shape0]
+FAILED test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0-None-shape1]
+FAILED test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0-None-shape2]
+FAILED test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype0-None-shape3]
+FAILED test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1-None-shape0]
+FAILED test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1-None-shape1]
+FAILED test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1-None-shape2]
+FAILED test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype1-None-shape3]
+FAILED test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2-None-shape0]
+FAILED test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2-None-shape1]
+FAILED test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2-None-shape2]
+FAILED test_repeat_interleave.py::test_repeat_interleave_self_int_non_contiguous[dtype2-None-shape3]
+========== 12 failed, 69 passed, 49870 deselected in 93.97s (0:01:33) ==========

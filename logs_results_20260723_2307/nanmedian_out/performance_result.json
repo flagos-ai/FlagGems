@@ -1,0 +1,7 @@
+{
+  "nanmedian_out": {
+    "result": "skipped",
+    "reason": "Skipped: Issue #4253: nanmedian accuracy failure on Kunlunxin",
+    "test_case": "benchmark/test_nanmedian.py::test_nanmedian_out"
+  }
+}

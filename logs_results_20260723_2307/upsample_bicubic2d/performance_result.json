@@ -1,0 +1,7 @@
+{
+  "upsample_bicubic2d": {
+    "result": "skipped",
+    "reason": "Skipped: Benchmark fails: issue #2666",
+    "test_case": "benchmark/test_upsample_bicubic2d.py::test_upsample_bicubic2d[True]"
+  }
+}

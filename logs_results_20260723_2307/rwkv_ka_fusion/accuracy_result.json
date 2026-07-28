@@ -1,0 +1,200 @@
+{
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype0-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "T": 16
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype0-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "T": 64
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype0-256]": {
+    "params": {
+      "dtype": "torch.float16",
+      "T": 256
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype0-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "T": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype0-4096]": {
+    "params": {
+      "dtype": "torch.float16",
+      "T": 4096
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype0-16384]": {
+    "params": {
+      "dtype": "torch.float16",
+      "T": 16384
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype1-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "T": 16
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype1-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "T": 64
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype1-256]": {
+    "params": {
+      "dtype": "torch.float32",
+      "T": 256
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype1-1024]": {
+    "params": {
+      "dtype": "torch.float32",
+      "T": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype1-4096]": {
+    "params": {
+      "dtype": "torch.float32",
+      "T": 4096
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype1-16384]": {
+    "params": {
+      "dtype": "torch.float32",
+      "T": 16384
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype2-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "T": 16
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype2-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "T": 64
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype2-256]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "T": 256
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype2-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "T": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype2-4096]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "T": 4096
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  },
+  "tests/test_rwkv_ka_fusion.py::test_accuracy_rwkv_kafusion[dtype2-16384]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "T": 16384
+    },
+    "result": "passed",
+    "opname": [
+      "rwkv_ka_fusion"
+    ],
+    "reason": null
+  }
+}

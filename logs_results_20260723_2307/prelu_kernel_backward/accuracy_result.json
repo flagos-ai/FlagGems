@@ -1,0 +1,317 @@
+{
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward_per_channel[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward_per_channel[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward_per_channel[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward_per_channel[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward_per_channel[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_prelu_kernel_backward.py::test_prelu_kernel_backward_per_channel[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "prelu_kernel_backward"
+    ],
+    "reason": null
+  }
+}

@@ -1,0 +1,210 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: md-report-0.8.0
+collected 946 items / 945 deselected / 1 selected
+
+test_abs.py F                                                            [100%]
+
+=================================== FAILURES ===================================
+___________________________________ test_abs ___________________________________
+
+self = <benchmark.base.UnaryPointwiseBenchmark object at 0x7f787d0b5570>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+>                       metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+
+base.py:440: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+base.py:318: in get_latency
+    latency = do_bench(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+fn = <function Benchmark.get_latency.<locals>.<lambda> at 0x7f787d0a6050>
+warmup = 1000, rep = 100, grad_to_none = None, quantiles = None
+fast_flush = True, return_mode = 'median'
+
+    def do_bench(fn, warmup=25, rep=100, grad_to_none=None, quantiles=None, fast_flush=True, return_mode="mean"):
+        """
+        Benchmark the runtime of the provided function. By default, return the median runtime of :code:`fn` along with
+        the 20-th and 80-th performance percentile.
+    
+        :param fn: Function to benchmark
+        :type fn: Callable
+        :param warmup: Warmup time (in ms)
+        :type warmup: int
+        :param rep: Repetition time (in ms)
+        :type rep: int
+        :param grad_to_none: Reset the gradient of the provided tensor to None
+        :type grad_to_none: torch.tensor, optional
+        :param quantiles: Performance percentile to return in addition to the median.
+        :type quantiles: list[float]
+        :param fast_flush: Use faster kernel to flush L2 between measurements
+        :type fast_flush: bool
+        """
+        assert return_mode in ["min", "max", "mean", "median"]
+        import torch
+    
+        fn()
+        torch.cuda.synchronize()
+    
+        # We maintain a buffer of 256 MB that we clear
+        # before each kernel call to make sure that the L2
+        # doesn't contain any input data before the run
+        if fast_flush:
+            cache = torch.empty(int(256e6 // 4), dtype=torch.int, device='cuda')
+        else:
+            cache = torch.empty(int(256e6), dtype=torch.int8, device='cuda')
+    
+        # Estimate the runtime of the function
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
+        for _ in range(5):
+            cache.zero_()
+            fn()
+        end_event.record()
+        torch.cuda.synchronize()
+        estimate_ms = start_event.elapsed_time(end_event) / 5
+    
+        # compute number of warmup and repeat
+>       n_warmup = max(1, int(warmup / estimate_ms))
+E       ZeroDivisionError: float division by zero
+
+../.venv/lib/python3.10/site-packages/triton/testing.py:126: ZeroDivisionError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.abs
+    def test_abs():
+        bench = base.UnaryPointwiseBenchmark(
+            op_name="abs", torch_op=torch.abs, dtypes=consts.FLOAT_DTYPES
+        )
+>       bench.run()
+
+test_abs.py:26: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.base.UnaryPointwiseBenchmark object at 0x7f787d0b5570>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+    
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+    
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+>                   pytest.fail(str(e))  # raise exception again
+E                   Failed: float division by zero
+
+base.py:480: Failed
+=========================== short test summary info ============================
+FAILED test_abs.py::test_abs - Failed: float division by zero
+====================== 1 failed, 945 deselected in 3.65s =======================

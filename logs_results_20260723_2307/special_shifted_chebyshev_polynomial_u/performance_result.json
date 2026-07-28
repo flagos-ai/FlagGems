@@ -1,0 +1,88 @@
+{
+  "special_shifted_chebyshev_polynomial_u": {
+    "details": [
+      {
+        "op_name": "special_shifted_chebyshev_polynomial_u",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.10020799934864044,
+            "latency": 0.009317000396549702,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 10.755392839282239,
+            "accuracy": null,
+            "tflops": 0.0008792529410038112,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 125.5486831665039,
+            "latency": 13.064987182617188,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 9.609552723751996,
+            "accuracy": null,
+            "tflops": 0.002568271329392789,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 126.89739227294922,
+            "latency": 13.019872665405273,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 9.746438811965081,
+            "accuracy": null,
+            "tflops": 0.0025771705194288508,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_special_shifted_chebyshev_polynomial_u.py::test_special_shifted_chebyshev_polynomial_u",
+    "reason": null
+  }
+}

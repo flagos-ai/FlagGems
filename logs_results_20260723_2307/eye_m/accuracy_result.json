@@ -1,0 +1,982 @@
+{
+  "tests/test_eye.py::test_eye_m[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        256,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        8192,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        4096,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype0-shape6]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype0-shape7]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype0-shape8]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        2048,
+        2048
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype0-shape9]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        4096,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        256,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        8192,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        4096,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype1-shape6]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype1-shape7]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype1-shape8]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        2048,
+        2048
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype1-shape9]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        4096,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        256,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        8192,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        4096,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype2-shape6]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype2-shape7]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype2-shape8]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        2048,
+        2048
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype2-shape9]": {
+    "params": {
+      "dtype": "torch.int64",
+      "shape": [
+        4096,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype3-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        256,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype3-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype3-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8192,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype3-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype3-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype3-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype3-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype3-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype3-shape8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2048,
+        2048
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype3-shape9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4096,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype4-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype4-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype4-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8192,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype4-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype4-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype4-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype4-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype4-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype4-shape8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2048,
+        2048
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype4-shape9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4096,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype5-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        256,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype5-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype5-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8192,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype5-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype5-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype5-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype5-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype5-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype5-shape8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2048,
+        2048
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype5-shape9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4096,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype6-shape0]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        256,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype6-shape1]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        1024,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype6-shape2]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        8192,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype6-shape3]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        4096,
+        8192
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype6-shape4]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        128,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype6-shape5]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        256,
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype6-shape6]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        512,
+        512
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype6-shape7]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype6-shape8]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        2048,
+        2048
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  },
+  "tests/test_eye.py::test_eye_m[dtype6-shape9]": {
+    "params": {
+      "dtype": "torch.bool",
+      "shape": [
+        4096,
+        4096
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "eye_m"
+    ],
+    "reason": null
+  }
+}

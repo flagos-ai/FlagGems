@@ -1,0 +1,38 @@
+{
+  "tests/test_addmm.py::test_addmm_dtype_fp32_accum[1-1-32]": {
+    "params": {
+      "M": 1,
+      "N": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_dtype"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm.py::test_addmm_dtype_fp32_accum[15-160-1024]": {
+    "params": {
+      "M": 15,
+      "N": 160,
+      "K": 1024
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_dtype"
+    ],
+    "reason": null
+  },
+  "tests/test_addmm.py::test_addmm_dtype_fp32_accum[495-5333-71]": {
+    "params": {
+      "M": 495,
+      "N": 5333,
+      "K": 71
+    },
+    "result": "passed",
+    "opname": [
+      "addmm_dtype"
+    ],
+    "reason": null
+  }
+}

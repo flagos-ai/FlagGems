@@ -1,0 +1,315 @@
+{
+  "roll": {
+    "details": [
+      {
+        "op_name": "roll",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "shifts": [
+                  1,
+                  2
+                ],
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.0056779999285936356,
+            "latency": 0.011427000164985657,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.4968933094087133,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "shifts": [
+                  1,
+                  2
+                ],
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.07154600322246552,
+            "latency": 8.545848846435547,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.00837201833406019,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "shifts": [
+                  1,
+                  2
+                ],
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.04951699823141098,
+            "latency": 8.561497688293457,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.005783684120959108,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "roll",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "shifts": [
+                  1,
+                  2
+                ],
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.005917000118643045,
+            "latency": 0.011429999954998493,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.5176728033192565,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "shifts": [
+                  1,
+                  2
+                ],
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.12124600261449814,
+            "latency": 8.882948875427246,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.013649296457159506,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "shifts": [
+                  1,
+                  2
+                ],
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.07077199965715408,
+            "latency": 8.911214828491211,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.00794190253733752,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "roll",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  64
+                ]
+              ],
+              {
+                "shifts": [
+                  1,
+                  2
+                ],
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.005932999774813652,
+            "latency": 0.011392000131309032,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.520804047263639,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  4096,
+                  4096
+                ]
+              ],
+              {
+                "shifts": [
+                  1,
+                  2
+                ],
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.07162600010633469,
+            "latency": 8.549041748046875,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.008378248956697218,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                [
+                  64,
+                  512,
+                  512
+                ]
+              ],
+              {
+                "shifts": [
+                  1,
+                  2
+                ],
+                "dims": [
+                  0,
+                  1
+                ]
+              }
+            ],
+            "latency_base": 0.04957899823784828,
+            "latency": 8.563756942749023,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.005789398107547537,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "failed",
+    "test_case": "benchmark/test_roll.py::test_roll",
+    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:11675)"
+  }
+}

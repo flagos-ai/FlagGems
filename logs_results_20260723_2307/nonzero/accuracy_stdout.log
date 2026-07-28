@@ -1,0 +1,605 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 01:19:45 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 01:19:47 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:19:47 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:19:47 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:19:47 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:19:47 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:19:47 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:19:47 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:19:47 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:19:47 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 01:19:48 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49927 deselected / 24 selected
+
+test_nonzero.py::test_nonzero[dtype0-shape0] FAILED
+test_nonzero.py::test_nonzero[dtype0-shape1] FAILED
+test_nonzero.py::test_nonzero[dtype0-shape2] FAILED
+test_nonzero.py::test_nonzero[dtype0-shape3] FAILED
+test_nonzero.py::test_nonzero[dtype1-shape0] FAILED
+test_nonzero.py::test_nonzero[dtype1-shape1] FAILED
+test_nonzero.py::test_nonzero[dtype1-shape2] FAILED
+test_nonzero.py::test_nonzero[dtype1-shape3] FAILED
+test_nonzero.py::test_nonzero[dtype2-shape0] FAILED
+test_nonzero.py::test_nonzero[dtype2-shape1] FAILED
+test_nonzero.py::test_nonzero[dtype2-shape2] FAILED
+test_nonzero.py::test_nonzero[dtype2-shape3] FAILED
+test_nonzero.py::test_nonzero[dtype3-shape0] FAILED
+test_nonzero.py::test_nonzero[dtype3-shape1] FAILED
+test_nonzero.py::test_nonzero[dtype3-shape2] FAILED
+test_nonzero.py::test_nonzero[dtype3-shape3] FAILED
+test_nonzero.py::test_nonzero[dtype4-shape0] FAILED
+test_nonzero.py::test_nonzero[dtype4-shape1] FAILED
+test_nonzero.py::test_nonzero[dtype4-shape2] FAILED
+test_nonzero.py::test_nonzero[dtype4-shape3] FAILED
+test_nonzero.py::test_nonzero[dtype5-shape0] FAILED
+test_nonzero.py::test_nonzero[dtype5-shape1] FAILED
+test_nonzero.py::test_nonzero[dtype5-shape2] FAILED
+test_nonzero.py::test_nonzero[dtype5-shape3] FAILED
+
+=================================== FAILURES ===================================
+_________________________ test_nonzero[dtype0-shape0] __________________________
+
+shape = (1, 2), dtype = torch.float16
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+            inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    
+        ref_inp = utils.to_reference(inp, False)
+        ref_out = torch.nonzero(ref_inp)
+    
+        with flag_gems.use_gems():
+            res_out = torch.nonzero(inp)
+    
+>       utils.gems_assert_equal(res_out, ref_out)
+
+test_nonzero.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:318: in gems_assert_equal
+    res = to_cpu(res, ref)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = <[RuntimeError('[RUNTIME ERROR]: error code= 719, unspecified launch failure;') raised in repr()] Tensor object at 0x7ff5a6295fd0>
+ref = tensor([[0, 0],
+        [0, 1]])
+
+    def to_cpu(res, ref):
+        if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
+>           res = res.to("cpu")
+E           RuntimeError: [RUNTIME ERROR]: error code= 719, unspecified launch failure;
+
+accuracy_utils.py:305: RuntimeError
+_________________________ test_nonzero[dtype0-shape1] __________________________
+
+shape = (4096, 256), dtype = torch.float16
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+>           inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:47: AcceleratorError
+_________________________ test_nonzero[dtype0-shape2] __________________________
+
+shape = (200, 40999, 3), dtype = torch.float16
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+>           inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:47: AcceleratorError
+_________________________ test_nonzero[dtype0-shape3] __________________________
+
+shape = (2637,), dtype = torch.float16
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+>           inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:47: AcceleratorError
+_________________________ test_nonzero[dtype1-shape0] __________________________
+
+shape = (1, 2), dtype = torch.float32
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+>           inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:47: AcceleratorError
+_________________________ test_nonzero[dtype1-shape1] __________________________
+
+shape = (4096, 256), dtype = torch.float32
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+>           inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:47: AcceleratorError
+_________________________ test_nonzero[dtype1-shape2] __________________________
+
+shape = (200, 40999, 3), dtype = torch.float32
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+>           inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:47: AcceleratorError
+_________________________ test_nonzero[dtype1-shape3] __________________________
+
+shape = (2637,), dtype = torch.float32
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+>           inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:47: AcceleratorError
+_________________________ test_nonzero[dtype2-shape0] __________________________
+
+shape = (1, 2), dtype = torch.bfloat16
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+>           inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:47: AcceleratorError
+_________________________ test_nonzero[dtype2-shape1] __________________________
+
+shape = (4096, 256), dtype = torch.bfloat16
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+>           inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:47: AcceleratorError
+_________________________ test_nonzero[dtype2-shape2] __________________________
+
+shape = (200, 40999, 3), dtype = torch.bfloat16
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+>           inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:47: AcceleratorError
+_________________________ test_nonzero[dtype2-shape3] __________________________
+
+shape = (2637,), dtype = torch.bfloat16
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+            inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        else:
+>           inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:47: AcceleratorError
+_________________________ test_nonzero[dtype3-shape0] __________________________
+
+shape = (1, 2), dtype = torch.int16
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+>           inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:45: AcceleratorError
+_________________________ test_nonzero[dtype3-shape1] __________________________
+
+shape = (4096, 256), dtype = torch.int16
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+>           inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:45: AcceleratorError
+_________________________ test_nonzero[dtype3-shape2] __________________________
+
+shape = (200, 40999, 3), dtype = torch.int16
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+>           inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:45: AcceleratorError
+_________________________ test_nonzero[dtype3-shape3] __________________________
+
+shape = (2637,), dtype = torch.int16
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+>           inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:45: AcceleratorError
+_________________________ test_nonzero[dtype4-shape0] __________________________
+
+shape = (1, 2), dtype = torch.int32
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+>           inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:45: AcceleratorError
+_________________________ test_nonzero[dtype4-shape1] __________________________
+
+shape = (4096, 256), dtype = torch.int32
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+>           inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:45: AcceleratorError
+_________________________ test_nonzero[dtype4-shape2] __________________________
+
+shape = (200, 40999, 3), dtype = torch.int32
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+>           inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:45: AcceleratorError
+_________________________ test_nonzero[dtype4-shape3] __________________________
+
+shape = (2637,), dtype = torch.int32
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+            )
+        elif dtype in utils.INT_DTYPES:
+>           inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+E           torch.AcceleratorError: CUDA error: unspecified launch failure
+E           Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E           CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E           Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:45: AcceleratorError
+_________________________ test_nonzero[dtype5-shape0] __________________________
+
+shape = (1, 2), dtype = torch.bool
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+>           inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+E               torch.AcceleratorError: CUDA error: unspecified launch failure
+E               Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E               CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E               For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E               Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:41: AcceleratorError
+_________________________ test_nonzero[dtype5-shape1] __________________________
+
+shape = (4096, 256), dtype = torch.bool
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+>           inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+E               torch.AcceleratorError: CUDA error: unspecified launch failure
+E               Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E               CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E               For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E               Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:41: AcceleratorError
+_________________________ test_nonzero[dtype5-shape2] __________________________
+
+shape = (200, 40999, 3), dtype = torch.bool
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+>           inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+E               torch.AcceleratorError: CUDA error: unspecified launch failure
+E               Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E               CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E               For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E               Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:41: AcceleratorError
+_________________________ test_nonzero[dtype5-shape3] __________________________
+
+shape = (2637,), dtype = torch.bool
+
+    @pytest.mark.nonzero
+    @pytest.mark.parametrize("shape", NONZERO_SHAPES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES + [torch.bool])
+    def test_nonzero(shape, dtype):
+        if dtype == torch.bool:
+>           inp = torch.randint(0, 2, shape, dtype=torch.int, device=flag_gems.device).to(
+                dtype
+E               torch.AcceleratorError: CUDA error: unspecified launch failure
+E               Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+E               CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E               For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E               Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+test_nonzero.py:41: AcceleratorError
+=========================== short test summary info ============================
+FAILED test_nonzero.py::test_nonzero[dtype0-shape0] - RuntimeError: [RUNTIME ...
+FAILED test_nonzero.py::test_nonzero[dtype0-shape1] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype0-shape2] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype0-shape3] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype1-shape0] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype1-shape1] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype1-shape2] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype1-shape3] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype2-shape0] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype2-shape1] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype2-shape2] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype2-shape3] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype3-shape0] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype3-shape1] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype3-shape2] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype3-shape3] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype4-shape0] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype4-shape1] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype4-shape2] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype4-shape3] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype5-shape0] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype5-shape1] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype5-shape2] - torch.AcceleratorError:...
+FAILED test_nonzero.py::test_nonzero[dtype5-shape3] - torch.AcceleratorError:...
+==================== 24 failed, 49927 deselected in 11.47s =====================

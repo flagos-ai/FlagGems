@@ -1,0 +1,216 @@
+{
+  "bernoulli_": {
+    "details": [
+      {
+        "op_name": "bernoulli_",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              0.5
+            ],
+            "latency_base": 0.01272599957883358,
+            "latency": 0.018919000402092934,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6726570806259803,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              0.5
+            ],
+            "latency_base": 3.3500349521636963,
+            "latency": 4.925644874572754,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6801210881964517,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              0.5
+            ],
+            "latency_base": 3.3500540256500244,
+            "latency": 4.92556619644165,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6801358243992712,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "bernoulli_",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              0.5
+            ],
+            "latency_base": 0.013054000213742256,
+            "latency": 0.013132000342011452,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9940603010784533,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              0.5
+            ],
+            "latency_base": 3.349682092666626,
+            "latency": 2.9331560134887695,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.1420061112543516,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              0.5
+            ],
+            "latency_base": 3.3525118827819824,
+            "latency": 2.933466911315918,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.1428497351886222,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "bernoulli_",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              0.5
+            ],
+            "latency_base": 0.012849999591708183,
+            "latency": 0.013264999724924564,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.9687146519546015,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              0.5
+            ],
+            "latency_base": 3.2750461101531982,
+            "latency": 2.957206964492798,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.107479506668521,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              0.5
+            ],
+            "latency_base": 3.274955987930298,
+            "latency": 2.957310914993286,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.1074101039990694,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_bernoulli.py::test_bernoulli_inplace",
+    "reason": null
+  }
+}

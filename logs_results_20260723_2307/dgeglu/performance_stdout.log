@@ -1,0 +1,223 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_dgeglu.py F                                                         [100%]
+
+=================================== FAILURES ===================================
+_________________________________ test_dgeglu __________________________________
+
+self = <benchmark.base.TexGluBackwardBenchmark object at 0x7f632797c6d0>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+>                       metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+
+base.py:440: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+base.py:318: in get_latency
+    latency = do_bench(
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/testing.py:103: in do_bench
+    fn()
+base.py:288: in <lambda>
+    fn = lambda: op(*args, **kwargs)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+grad_output = tensor([[-8.3984e-01,  1.4150e+00, -2.1973e-01,  ...,  6.4514e-02,
+          8.6572e-01, -7.1289e-02],
+        [ 4.209... 8.4473e-01, -4.7534e-01,  ..., -8.1543e-01,
+         -1.3975e+00,  7.5195e-01]], device='cuda:0', dtype=torch.float16)
+inp = tensor([[ 2.3809,  0.3657, -0.2051,  ...,  0.2006,  0.4150, -0.0403],
+        [ 1.1416, -0.2507,  0.8384,  ..., -1.133...8],
+        [-1.1826, -1.7510, -1.8018,  ...,  1.3848, -0.7349,  1.2803]],
+       device='cuda:0', dtype=torch.float16)
+otype = None
+
+    def dgeglu(
+        grad_output: torch.Tensor,
+        inp: torch.Tensor,
+        otype: tex.DType,
+    ) -> torch.Tensor:
+        """dGeGLU"""
+        x1, x2 = inp.chunk(2, dim=-1)
+    
+        dgelu_dx1 = gelu_derivative(x1)
+    
+        # dy/dx1 = dGELU(x1)/dx1 * x2 * grad_output
+        dx1 = dgelu_dx1 * x2 * grad_output
+    
+        # dy/dx2 = GELU(x1) * grad_output
+>       gelu_x1 = tex.gelu(x1, torch.Tensor(), torch.Tensor(), torch.Tensor(), otype)
+E       TypeError: gelu(): incompatible function arguments. The following argument types are supported:
+E           1. (arg0: torch.Tensor, arg1: torch.Tensor, arg2: torch.Tensor, arg3: torch.Tensor, arg4: transformer_engine_torch.DType) -> torch.Tensor
+E       
+E       Invoked with: tensor([[ 2.3809,  0.3657, -0.2051,  ..., -0.0132,  1.1016,  0.2344],
+E               [ 1.1416, -0.2507,  0.8384,  ..., -0.7202, -0.3340,  1.3418],
+E               [-0.4280,  0.2277,  0.9736,  ...,  1.3525,  1.4785,  0.8408],
+E               ...,
+E               [ 0.1543, -0.8438, -1.2578,  ..., -0.0118,  0.1589, -0.5044],
+E               [ 0.0693,  1.2119, -0.2778,  ...,  0.1023, -1.3350, -0.6089],
+E               [-1.1826, -1.7510, -1.8018,  ...,  1.0938, -1.2021,  0.6953]],
+E              device='cuda:0', dtype=torch.float16), tensor([]), tensor([]), tensor([]), None
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/transformer_engine/pytorch/cpp_extensions/activation.py:415: TypeError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.dgeglu
+    @pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine not installed")
+    @pytest.mark.skipif(TE_OP is None, reason="'dgeglu' not found in TransformerEngine")
+    def test_dgeglu():
+        bench = base.TexGluBackwardBenchmark(
+            op_name="dgeglu",
+            torch_op=TE_OP,
+            gems_op=flag_gems.dgeglu,
+            dtypes=consts.FLOAT_DTYPES,
+            # TODO(Qiming): Is this flag correct?
+            is_backward=False,
+        )
+>       bench.run()
+
+test_dgeglu.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.base.TexGluBackwardBenchmark object at 0x7f632797c6d0>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+                    pytest.fail(str(e))
+    
+                metric = BenchmarkMetrics()
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
+                            metric.latency = self.get_latency(
+                                self.gems_op, *args, **kwargs
+                            )
+                        else:
+                            if self.op_name == "zero_":
+                                with flag_gems.use_gems():
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                            else:
+                                # exclude flaggems' zero_ to avoid the overhead of zero_
+                                # in do_bench's clear_cache
+                                with flag_gems.use_gems(exclude=["zero_"]):
+                                    metric.latency = self.get_latency(
+                                        self.torch_op, *args, **kwargs
+                                    )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+    
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+    
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except (RuntimeError, Exception) as e:
+                    metric.error_msg = str(e)
+>                   pytest.fail(str(e))  # raise exception again
+E                   Failed: gelu(): incompatible function arguments. The following argument types are supported:
+E                       1. (arg0: torch.Tensor, arg1: torch.Tensor, arg2: torch.Tensor, arg3: torch.Tensor, arg4: transformer_engine_torch.DType) -> torch.Tensor
+E                   
+E                   Invoked with: tensor([[ 2.3809,  0.3657, -0.2051,  ..., -0.0132,  1.1016,  0.2344],
+E                           [ 1.1416, -0.2507,  0.8384,  ..., -0.7202, -0.3340,  1.3418],
+E                           [-0.4280,  0.2277,  0.9736,  ...,  1.3525,  1.4785,  0.8408],
+E                           ...,
+E                           [ 0.1543, -0.8438, -1.2578,  ..., -0.0118,  0.1589, -0.5044],
+E                           [ 0.0693,  1.2119, -0.2778,  ...,  0.1023, -1.3350, -0.6089],
+E                           [-1.1826, -1.7510, -1.8018,  ...,  1.0938, -1.2021,  0.6953]],
+E                          device='cuda:0', dtype=torch.float16), tensor([]), tensor([]), tensor([]), None
+
+base.py:480: Failed
+=============================== warnings summary ===============================
+benchmark/test_dgeglu.py::test_dgeglu
+  /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/transformer_engine/pytorch/cpp_extensions/activation.py:389: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+    sqrt_2_over_pi = torch.sqrt(torch.tensor(2.0 / pi))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED test_dgeglu.py::test_dgeglu - Failed: gelu(): incompatible function ar...
+================= 1 failed, 950 deselected, 1 warning in 8.17s =================

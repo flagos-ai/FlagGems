@@ -1,0 +1,422 @@
+{
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        4
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        32
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  },
+  "tests/test_thnn_fused_lstm_cell.py::test_thnn_fused_lstm_cell_with_bias[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        128
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "thnn_fused_lstm_cell"
+    ],
+    "reason": null
+  }
+}

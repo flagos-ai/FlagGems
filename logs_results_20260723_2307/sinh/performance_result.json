@@ -1,0 +1,141 @@
+{
+  "sinh": {
+    "details": [
+      {
+        "op_name": "sinh",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.01836800016462803,
+            "latency": 0.0075240000151097775,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 2.4412546687588006,
+            "accuracy": null,
+            "tflops": 0.000544391280140134,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.6457870006561279,
+            "latency": 4.057744026184082,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.15914927025681028,
+            "accuracy": null,
+            "tflops": 0.004134616647018358,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.645950973033905,
+            "latency": 4.056816101074219,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.15922609182675582,
+            "accuracy": null,
+            "tflops": 0.004135562367630493,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "sinh",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.018201999366283417,
+            "latency": 0.005319000221788883,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 3.422071556177099,
+            "accuracy": null,
+            "tflops": 0.0007700695298377776,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.6198750138282776,
+            "latency": 2.116457939147949,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.29288321887361907,
+            "accuracy": null,
+            "tflops": 0.007927025474814883,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.6199210286140442,
+            "latency": 2.1161890029907227,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.2929421841517631,
+            "accuracy": null,
+            "tflops": 0.00792803288188789,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "failed",
+    "test_case": "benchmark/test_sinh.py::test_sinh",
+    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:12556)"
+  }
+}

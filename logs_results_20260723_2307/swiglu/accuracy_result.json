@@ -1,0 +1,518 @@
+{
+  "tests/test_swiglu.py::test_swiglu[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        256,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype0-shape6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype0-shape7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype0-shape8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype0-shape9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype0-shape10]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype0-shape11]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        30
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        256,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype1-shape6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype1-shape7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype1-shape8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype1-shape9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype1-shape10]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype1-shape11]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        30
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        256,
+        512
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        128
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype2-shape6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype2-shape7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        16
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype2-shape8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        8,
+        16,
+        32
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype2-shape9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype2-shape10]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        10
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  },
+  "tests/test_swiglu.py::test_swiglu[dtype2-shape11]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        30
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "swiglu"
+    ],
+    "reason": "TypeError: swiglu() got an unexpected keyword argument 'quantizer'"
+  }
+}

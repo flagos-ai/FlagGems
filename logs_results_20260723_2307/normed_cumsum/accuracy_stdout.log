@@ -1,0 +1,214 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 01:22:36 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 01:22:38 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:22:38 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:22:38 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:22:38 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:22:38 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:22:38 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:22:38 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:22:38 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:22:38 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 01:22:39 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49924 deselected / 27 selected
+
+test_normed_cumsum.py::test_normed_cumsum[dtype0-shape0--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype0-shape1--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype0-shape2--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype0-shape3--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype0-shape4-0] FAILED
+test_normed_cumsum.py::test_normed_cumsum[dtype0-shape5-0] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype0-shape6--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype0-shape7--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype1-shape0--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype1-shape1--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype1-shape2--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype1-shape3--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype1-shape4-0] FAILED
+test_normed_cumsum.py::test_normed_cumsum[dtype1-shape5-0] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype1-shape6--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype1-shape7--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype2-shape0--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype2-shape1--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype2-shape2--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype2-shape3--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype2-shape4-0] FAILED
+test_normed_cumsum.py::test_normed_cumsum[dtype2-shape5-0] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype2-shape6--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum[dtype2-shape7--1] PASSED
+test_normed_cumsum.py::test_normed_cumsum_output_is_normalized[dtype0] PASSED
+test_normed_cumsum.py::test_normed_cumsum_output_is_normalized[dtype1] PASSED
+test_normed_cumsum.py::test_normed_cumsum_output_is_normalized[dtype2] PASSED
+
+=================================== FAILURES ===================================
+_____________________ test_normed_cumsum[dtype0-shape4-0] ______________________
+
+shape = (7, 19), dim = 0, dtype = torch.float16
+
+    @pytest.mark.normed_cumsum
+    @pytest.mark.parametrize(("shape", "dim"), NORMED_CUMSUM_CASES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_normed_cumsum(shape, dim, dtype):
+        torch.manual_seed(0)
+        inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
+    
+        ref_out = torch_normed_cumsum(inp, dim=dim)
+        res_out = flag_gems.normed_cumsum(inp, dim=dim)
+    
+>       utils.gems_assert_close(
+            res_out,
+            ref_out,
+            dtype,
+            reduce_dim=shape[dim],
+            atol=1e-3,
+        )
+
+test_normed_cumsum.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[0.0077, 0.0077, 0.0068, 0.0079, 0.0080, 0.0079, 0.0077, 0.0079, 0.0076,
+         0.0080, 0.0070, 0.0069, 0.00...        0.0332, 0.1545, 0.1659, 0.0591, 0.0437, 0.1074, 0.0818, 0.0363, 0.0529,
+         0.0645]], dtype=torch.float16)
+ref = tensor([[0.1113, 0.1231, 0.0377, 0.1874, 0.2195, 0.1960, 0.1224, 0.1890, 0.0938,
+         0.2406, 0.0452, 0.0416, 0.13...        1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
+         1.0000]], dtype=torch.float16)
+dtype = torch.float16, equal_nan = False, reduce_dim = 7, atol = 0.001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 133 / 133 (100.0%)
+E       Greatest absolute difference: 0.966796875 at index (6, 9) (up to 0.007 allowed)
+E       Greatest relative difference: 0.966796875 at index (0, 9) (up to 0.001 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_____________________ test_normed_cumsum[dtype1-shape4-0] ______________________
+
+shape = (7, 19), dim = 0, dtype = torch.float32
+
+    @pytest.mark.normed_cumsum
+    @pytest.mark.parametrize(("shape", "dim"), NORMED_CUMSUM_CASES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_normed_cumsum(shape, dim, dtype):
+        torch.manual_seed(0)
+        inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
+    
+        ref_out = torch_normed_cumsum(inp, dim=dim)
+        res_out = flag_gems.normed_cumsum(inp, dim=dim)
+    
+>       utils.gems_assert_close(
+            res_out,
+            ref_out,
+            dtype,
+            reduce_dim=shape[dim],
+            atol=1e-3,
+        )
+
+test_normed_cumsum.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[0.0077, 0.0077, 0.0068, 0.0079, 0.0080, 0.0079, 0.0077, 0.0079, 0.0076,
+         0.0080, 0.0070, 0.0069, 0.00...33, 0.0419, 0.0810,
+         0.0332, 0.1546, 0.1658, 0.0591, 0.0436, 0.1074, 0.0818, 0.0363, 0.0529,
+         0.0645]])
+ref = tensor([[0.1113, 0.1231, 0.0377, 0.1874, 0.2194, 0.1961, 0.1223, 0.1889, 0.0938,
+         0.2406, 0.0452, 0.0416, 0.13...00, 1.0000, 1.0000,
+         1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
+         1.0000]])
+dtype = torch.float32, equal_nan = False, reduce_dim = 7, atol = 0.001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 133 / 133 (100.0%)
+E       Greatest absolute difference: 0.966791570186615 at index (6, 9) (up to 0.007 allowed)
+E       Greatest relative difference: 0.9667915105819702 at index (0, 9) (up to 1.3e-06 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+_____________________ test_normed_cumsum[dtype2-shape4-0] ______________________
+
+shape = (7, 19), dim = 0, dtype = torch.bfloat16
+
+    @pytest.mark.normed_cumsum
+    @pytest.mark.parametrize(("shape", "dim"), NORMED_CUMSUM_CASES)
+    @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+    def test_normed_cumsum(shape, dim, dtype):
+        torch.manual_seed(0)
+        inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
+    
+        ref_out = torch_normed_cumsum(inp, dim=dim)
+        res_out = flag_gems.normed_cumsum(inp, dim=dim)
+    
+>       utils.gems_assert_close(
+            res_out,
+            ref_out,
+            dtype,
+            reduce_dim=shape[dim],
+            atol=1e-3,
+        )
+
+test_normed_cumsum.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+accuracy_utils.py:312: in gems_assert_close
+    flag_gems.testing.assert_close(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+res = tensor([[0.0077, 0.0078, 0.0068, 0.0079, 0.0079, 0.0079, 0.0078, 0.0079, 0.0076,
+         0.0080, 0.0070, 0.0069, 0.00...       0.0332, 0.1553, 0.1660, 0.0588, 0.0437, 0.1074, 0.0815, 0.0364, 0.0530,
+         0.0645]], dtype=torch.bfloat16)
+ref = tensor([[0.1108, 0.1230, 0.0376, 0.1865, 0.2188, 0.1963, 0.1221, 0.1885, 0.0938,
+         0.2402, 0.0452, 0.0415, 0.13...       1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
+         1.0000]], dtype=torch.bfloat16)
+dtype = torch.bfloat16, equal_nan = False, reduce_dim = 7, atol = 0.001
+
+    def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
+        if dtype is None:
+            dtype = torch.float32
+        assert res.dtype == dtype
+        ref = ref.to(dtype)
+        res, ref = _maybe_move_to_cpu(res, ref)
+        rtol = RESOLUTION[dtype]
+>       torch.testing.assert_close(
+            res, ref, atol=atol * reduce_dim, rtol=rtol, equal_nan=equal_nan
+        )
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 133 / 133 (100.0%)
+E       Greatest absolute difference: 0.96875 at index (6, 9) (up to 0.007 allowed)
+E       Greatest relative difference: 0.96875 at index (0, 9) (up to 0.016 allowed)
+
+../src/flag_gems/testing/__init__.py:85: AssertionError
+=========================== short test summary info ============================
+FAILED test_normed_cumsum.py::test_normed_cumsum[dtype0-shape4-0] - Assertion...
+FAILED test_normed_cumsum.py::test_normed_cumsum[dtype1-shape4-0] - Assertion...
+FAILED test_normed_cumsum.py::test_normed_cumsum[dtype2-shape4-0] - Assertion...
+=============== 3 failed, 24 passed, 49924 deselected in 11.14s ================

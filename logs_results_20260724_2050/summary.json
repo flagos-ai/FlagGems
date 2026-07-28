@@ -1,0 +1,54 @@
+{
+  "timestamp": "2026-07-24 20:50:59",
+  "total_duration": "0:00:30",
+  "env": {
+    "architecture": "x86_64",
+    "os_name": "ubuntu",
+    "os_release": "22.04",
+    "python": "3.10.20",
+    "torch": {
+      "version": "2.9.0+cu129",
+      "cuda_available": true,
+      "device_name": "GPU",
+      "device_count": 8
+    },
+    "flagtree": "0.5.1+xpu3.0",
+    "triton": {
+      "version": "3.0.0",
+      "has_config": true
+    },
+    "flag_gems": {
+      "version": "5.3.1.post1.dev49+g55470c128",
+      "vendor": "kunlunxin",
+      "device": "cuda"
+    },
+    "vllm": {
+      "version": null
+    }
+  },
+  "result": {
+    "abs": {
+      "customized": true,
+      "accuracy": {
+        "total": 18,
+        "skipped": 0,
+        "failed": 0,
+        "passed": 18,
+        "details": {},
+        "status": "Passed",
+        "exit_code": 0,
+        "duration": 17.588152408599854,
+        "data_file": "abs/accuracy_result.json"
+      },
+      "performance": {
+        "duration": 11.928921222686768,
+        "exit_code": 1,
+        "data_file": "abs/performance_result.json",
+        "data": {},
+        "status": "Failed",
+        "reason": "Failed: float division by zero",
+        "test_case": "benchmark/test_abs.py::test_abs"
+      }
+    }
+  }
+}

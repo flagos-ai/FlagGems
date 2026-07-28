@@ -1,0 +1,2322 @@
+{
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype0-valid-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype0-valid-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype0-valid-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype0-valid-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype0-valid-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype0-same-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype0-same-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype0-same-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype0-same-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype0-same-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype1-valid-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype1-valid-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype1-valid-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype1-valid-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype1-valid-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype1-same-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype1-same-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype1-same-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype1-same-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-1-dtype1-same-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype0-valid-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype0-valid-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype0-valid-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype0-valid-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype0-valid-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype0-same-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype0-same-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype0-same-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype0-same-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype0-same-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype1-valid-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype1-valid-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype1-valid-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype1-valid-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype1-valid-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype1-same-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype1-same-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype1-same-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype1-same-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[True-2-dtype1-same-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": true,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype0-valid-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype0-valid-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype0-valid-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype0-valid-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype0-valid-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype0-same-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype0-same-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype0-same-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype0-same-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype0-same-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype1-valid-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype1-valid-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype1-valid-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype1-valid-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype1-valid-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype1-same-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype1-same-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype1-same-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype1-same-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-1-dtype1-same-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 1,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype0-valid-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype0-valid-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype0-valid-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype0-valid-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype0-valid-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype0-same-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype0-same-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype0-same-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype0-same-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype0-same-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float16",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype1-valid-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype1-valid-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype1-valid-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype1-valid-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype1-valid-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "valid",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype1-same-1-shape0-kernel0-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        1,
+        2,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        1,
+        2,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype1-same-1-shape1-kernel1-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        2,
+        3,
+        9,
+        9,
+        9
+      ],
+      "kernel": [
+        1,
+        3,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype1-same-1-shape2-kernel2-4]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        9,
+        16,
+        4,
+        4,
+        4
+      ],
+      "kernel": [
+        128,
+        4,
+        2,
+        2,
+        2
+      ],
+      "groups": 4
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype1-same-1-shape3-kernel3-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        32,
+        8,
+        8,
+        8,
+        8
+      ],
+      "kernel": [
+        32,
+        8,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  },
+  "tests/test_conv3d.py::test_conv3d_padding[False-2-dtype1-same-1-shape4-kernel4-1]": {
+    "params": {
+      "bias": false,
+      "dilation": 2,
+      "dtype": "torch.float32",
+      "padding": "same",
+      "stride": 1,
+      "shape": [
+        18,
+        16,
+        5,
+        5,
+        5
+      ],
+      "kernel": [
+        16,
+        16,
+        3,
+        3,
+        3
+      ],
+      "groups": 1
+    },
+    "result": "passed",
+    "opname": [
+      "conv3d_padding"
+    ],
+    "reason": null
+  }
+}

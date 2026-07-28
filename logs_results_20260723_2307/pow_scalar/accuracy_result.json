@@ -1,0 +1,1106 @@
+{
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape0-0.001]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape0--0.999]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape0-100.001]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape0--111.999]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape1-0.001]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape1--0.999]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape1-100.001]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape1--111.999]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape2-0.001]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape2--0.999]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape2-100.001]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape2--111.999]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape3-0.001]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape3--0.999]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape3-100.001]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape3--111.999]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape4-0.001]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape4--0.999]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape4-100.001]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape4--111.999]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape5-0.001]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape5--0.999]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape5-100.001]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype0-shape5--111.999]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape0-0.001]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape0--0.999]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape0-100.001]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape0--111.999]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape1-0.001]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape1--0.999]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape1-100.001]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape1--111.999]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape2-0.001]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape2--0.999]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape2-100.001]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape2--111.999]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape3-0.001]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape3--0.999]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape3-100.001]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape3--111.999]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape4-0.001]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape4--0.999]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape4-100.001]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape4--111.999]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape5-0.001]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape5--0.999]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape5-100.001]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype1-shape5--111.999]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape0-0.001]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape0--0.999]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape0-100.001]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape0--111.999]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape1-0.001]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape1--0.999]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape1-100.001]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape1--111.999]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape2-0.001]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape2--0.999]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape2-100.001]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape2--111.999]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape3-0.001]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape3--0.999]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape3-100.001]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape3--111.999]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape4-0.001]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape4--0.999]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape4-100.001]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape4--111.999]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape5-0.001]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "scalar": 0.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape5--0.999]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "scalar": -0.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape5-100.001]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "scalar": 100.001
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_pow.py::test_pow_scalar[dtype2-shape5--111.999]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "scalar": -111.999
+    },
+    "result": "passed",
+    "opname": [
+      "pow_scalar"
+    ],
+    "reason": null
+  }
+}

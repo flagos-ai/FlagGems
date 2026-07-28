@@ -1,0 +1,32 @@
+{
+  "tests/test_scaled_mm.py::test_scaled_mm_out[float16-float32-rowwise_2d-bias_True]": {
+    "params": {
+      "case": [
+        "torch.float16",
+        "torch.float32",
+        "rowwise_2d",
+        true
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm_out"
+    ],
+    "reason": null
+  },
+  "tests/test_scaled_mm.py::test_scaled_mm_out[bfloat16-float32-rowwise_2d-bias_False]": {
+    "params": {
+      "case": [
+        "torch.bfloat16",
+        "torch.float32",
+        "rowwise_2d",
+        false
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "scaled_mm_out"
+    ],
+    "reason": null
+  }
+}

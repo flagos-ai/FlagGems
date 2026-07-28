@@ -1,0 +1,12 @@
+{
+  "tests/test_cat.py::test_cat_out_matches_reference[dtype0]": {
+    "params": {
+      "dtype": "torch.float32"
+    },
+    "result": "passed",
+    "opname": [
+      "cat_out"
+    ],
+    "reason": null
+  }
+}

@@ -1,0 +1,866 @@
+{
+  "tests/test_topk.py::test_topk[dtype0-True-0-128-4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": true,
+      "topk": 0,
+      "hiddensize": 128,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-True-0-128-8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": true,
+      "topk": 0,
+      "hiddensize": 128,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-True-0-256-4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": true,
+      "topk": 0,
+      "hiddensize": 256,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-True-0-256-8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": true,
+      "topk": 0,
+      "hiddensize": 256,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-True-5-128-4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": true,
+      "topk": 5,
+      "hiddensize": 128,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-True-5-128-8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": true,
+      "topk": 5,
+      "hiddensize": 128,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-True-5-256-4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": true,
+      "topk": 5,
+      "hiddensize": 256,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-True-5-256-8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": true,
+      "topk": 5,
+      "hiddensize": 256,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-False-0-128-4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": false,
+      "topk": 0,
+      "hiddensize": 128,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-False-0-128-8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": false,
+      "topk": 0,
+      "hiddensize": 128,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-False-0-256-4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": false,
+      "topk": 0,
+      "hiddensize": 256,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-False-0-256-8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": false,
+      "topk": 0,
+      "hiddensize": 256,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-False-5-128-4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": false,
+      "topk": 5,
+      "hiddensize": 128,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-False-5-128-8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": false,
+      "topk": 5,
+      "hiddensize": 128,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-False-5-256-4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": false,
+      "topk": 5,
+      "hiddensize": 256,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype0-False-5-256-8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "largest": false,
+      "topk": 5,
+      "hiddensize": 256,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-True-0-128-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": true,
+      "topk": 0,
+      "hiddensize": 128,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-True-0-128-8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": true,
+      "topk": 0,
+      "hiddensize": 128,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-True-0-256-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": true,
+      "topk": 0,
+      "hiddensize": 256,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-True-0-256-8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": true,
+      "topk": 0,
+      "hiddensize": 256,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-True-5-128-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": true,
+      "topk": 5,
+      "hiddensize": 128,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-True-5-128-8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": true,
+      "topk": 5,
+      "hiddensize": 128,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-True-5-256-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": true,
+      "topk": 5,
+      "hiddensize": 256,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-True-5-256-8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": true,
+      "topk": 5,
+      "hiddensize": 256,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-False-0-128-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": false,
+      "topk": 0,
+      "hiddensize": 128,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-False-0-128-8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": false,
+      "topk": 0,
+      "hiddensize": 128,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-False-0-256-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": false,
+      "topk": 0,
+      "hiddensize": 256,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-False-0-256-8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": false,
+      "topk": 0,
+      "hiddensize": 256,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-False-5-128-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": false,
+      "topk": 5,
+      "hiddensize": 128,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-False-5-128-8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": false,
+      "topk": 5,
+      "hiddensize": 128,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-False-5-256-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": false,
+      "topk": 5,
+      "hiddensize": 256,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype1-False-5-256-8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "largest": false,
+      "topk": 5,
+      "hiddensize": 256,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-True-0-128-4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": true,
+      "topk": 0,
+      "hiddensize": 128,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-True-0-128-8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": true,
+      "topk": 0,
+      "hiddensize": 128,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-True-0-256-4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": true,
+      "topk": 0,
+      "hiddensize": 256,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-True-0-256-8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": true,
+      "topk": 0,
+      "hiddensize": 256,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-True-5-128-4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": true,
+      "topk": 5,
+      "hiddensize": 128,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-True-5-128-8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": true,
+      "topk": 5,
+      "hiddensize": 128,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-True-5-256-4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": true,
+      "topk": 5,
+      "hiddensize": 256,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-True-5-256-8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": true,
+      "topk": 5,
+      "hiddensize": 256,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-False-0-128-4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": false,
+      "topk": 0,
+      "hiddensize": 128,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-False-0-128-8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": false,
+      "topk": 0,
+      "hiddensize": 128,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-False-0-256-4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": false,
+      "topk": 0,
+      "hiddensize": 256,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-False-0-256-8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": false,
+      "topk": 0,
+      "hiddensize": 256,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-False-5-128-4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": false,
+      "topk": 5,
+      "hiddensize": 128,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-False-5-128-8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": false,
+      "topk": 5,
+      "hiddensize": 128,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-False-5-256-4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": false,
+      "topk": 5,
+      "hiddensize": 256,
+      "batch_size": 4
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk[dtype2-False-5-256-8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "largest": false,
+      "topk": 5,
+      "hiddensize": 256,
+      "batch_size": 8
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk_3d_lastdim[dtype0-shape0-256]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        1024,
+        256
+      ],
+      "topk": 256
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk_3d_lastdim[dtype0-shape1-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        512,
+        32
+      ],
+      "topk": 32
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk_3d_lastdim[dtype0-shape2-64]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        128,
+        64
+      ],
+      "topk": 64
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk_3d_lastdim[dtype0-shape3-128]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        33,
+        128
+      ],
+      "topk": 128
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk_3d_lastdim[dtype1-shape0-256]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        1024,
+        256
+      ],
+      "topk": 256
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk_3d_lastdim[dtype1-shape1-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        512,
+        32
+      ],
+      "topk": 32
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk_3d_lastdim[dtype1-shape2-64]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        128,
+        64
+      ],
+      "topk": 64
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk_3d_lastdim[dtype1-shape3-128]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        33,
+        128
+      ],
+      "topk": 128
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk_3d_lastdim[dtype2-shape0-256]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        1024,
+        256
+      ],
+      "topk": 256
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk_3d_lastdim[dtype2-shape1-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        512,
+        32
+      ],
+      "topk": 32
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk_3d_lastdim[dtype2-shape2-64]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        128,
+        64
+      ],
+      "topk": 64
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  },
+  "tests/test_topk.py::test_topk_3d_lastdim[dtype2-shape3-128]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        33,
+        128
+      ],
+      "topk": 128
+    },
+    "result": "passed",
+    "opname": [
+      "topk"
+    ],
+    "reason": null
+  }
+}

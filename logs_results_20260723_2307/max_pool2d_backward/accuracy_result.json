@@ -1,0 +1,470 @@
+{
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype0-shape0-3-2-1-1-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        4,
+        3,
+        32,
+        32
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "passed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype0-shape1-kernel_size1-stride1-1-1-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        8,
+        16,
+        28,
+        28
+      ],
+      "kernel_size": [
+        3,
+        5
+      ],
+      "stride": [
+        1,
+        2
+      ],
+      "padding": 1,
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "passed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype0-shape2-3-2-1-1-True]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        4,
+        15,
+        15
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "dilation": 1,
+      "ceil_mode": true
+    },
+    "result": "passed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype0-shape3-2-1-0-2-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        1,
+        7,
+        7
+      ],
+      "kernel_size": 2,
+      "stride": 1,
+      "padding": 0,
+      "dilation": 2,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "RuntimeError: [RUNTIME ERROR]: error code= 700, an illegal memory access was encountered;"
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype0-shape4-3-2-1-1-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype0-shape5-2-2-0-1-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        8,
+        16,
+        16
+      ],
+      "kernel_size": 2,
+      "stride": 2,
+      "padding": 0,
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype0-shape6-2-2-padding6-1-False]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        8,
+        16,
+        20
+      ],
+      "kernel_size": 2,
+      "stride": 2,
+      "padding": [
+        1,
+        0
+      ],
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype1-shape0-3-2-1-1-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        4,
+        3,
+        32,
+        32
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype1-shape1-kernel_size1-stride1-1-1-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        8,
+        16,
+        28,
+        28
+      ],
+      "kernel_size": [
+        3,
+        5
+      ],
+      "stride": [
+        1,
+        2
+      ],
+      "padding": 1,
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype1-shape2-3-2-1-1-True]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        4,
+        15,
+        15
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "dilation": 1,
+      "ceil_mode": true
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype1-shape3-2-1-0-2-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        1,
+        7,
+        7
+      ],
+      "kernel_size": 2,
+      "stride": 1,
+      "padding": 0,
+      "dilation": 2,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype1-shape4-3-2-1-1-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype1-shape5-2-2-0-1-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        8,
+        16,
+        16
+      ],
+      "kernel_size": 2,
+      "stride": 2,
+      "padding": 0,
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype1-shape6-2-2-padding6-1-False]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        8,
+        16,
+        20
+      ],
+      "kernel_size": 2,
+      "stride": 2,
+      "padding": [
+        1,
+        0
+      ],
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype2-shape0-3-2-1-1-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        4,
+        3,
+        32,
+        32
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype2-shape1-kernel_size1-stride1-1-1-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        8,
+        16,
+        28,
+        28
+      ],
+      "kernel_size": [
+        3,
+        5
+      ],
+      "stride": [
+        1,
+        2
+      ],
+      "padding": 1,
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype2-shape2-3-2-1-1-True]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        4,
+        15,
+        15
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "dilation": 1,
+      "ceil_mode": true
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype2-shape3-2-1-0-2-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        1,
+        7,
+        7
+      ],
+      "kernel_size": 2,
+      "stride": 1,
+      "padding": 0,
+      "dilation": 2,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype2-shape4-3-2-1-1-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        64,
+        56,
+        56
+      ],
+      "kernel_size": 3,
+      "stride": 2,
+      "padding": 1,
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype2-shape5-2-2-0-1-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        8,
+        16,
+        16
+      ],
+      "kernel_size": 2,
+      "stride": 2,
+      "padding": 0,
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_max_pool2d.py::test_max_pool2d_backward[dtype2-shape6-2-2-padding6-1-False]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        8,
+        16,
+        20
+      ],
+      "kernel_size": 2,
+      "stride": 2,
+      "padding": [
+        1,
+        0
+      ],
+      "dilation": 1,
+      "ceil_mode": false
+    },
+    "result": "failed",
+    "opname": [
+      "max_pool2d_backward"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

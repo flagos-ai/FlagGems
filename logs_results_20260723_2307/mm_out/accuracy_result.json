@@ -1,0 +1,254 @@
+{
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype0-1-32]": {
+    "params": {
+      "dtype": "torch.float16",
+      "M": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": null
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype0-7-33]": {
+    "params": {
+      "dtype": "torch.float16",
+      "M": 7,
+      "K": 33
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype0-31-65]": {
+    "params": {
+      "dtype": "torch.float16",
+      "M": 31,
+      "K": 65
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype0-160-1024]": {
+    "params": {
+      "dtype": "torch.float16",
+      "M": 160,
+      "K": 1024
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype0-257-96]": {
+    "params": {
+      "dtype": "torch.float16",
+      "M": 257,
+      "K": 96
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype0-1023-255]": {
+    "params": {
+      "dtype": "torch.float16",
+      "M": 1023,
+      "K": 255
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype0-5333-71]": {
+    "params": {
+      "dtype": "torch.float16",
+      "M": 5333,
+      "K": 71
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype1-1-32]": {
+    "params": {
+      "dtype": "torch.float32",
+      "M": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": null
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype1-7-33]": {
+    "params": {
+      "dtype": "torch.float32",
+      "M": 7,
+      "K": 33
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype1-31-65]": {
+    "params": {
+      "dtype": "torch.float32",
+      "M": 31,
+      "K": 65
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype1-160-1024]": {
+    "params": {
+      "dtype": "torch.float32",
+      "M": 160,
+      "K": 1024
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype1-257-96]": {
+    "params": {
+      "dtype": "torch.float32",
+      "M": 257,
+      "K": 96
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype1-1023-255]": {
+    "params": {
+      "dtype": "torch.float32",
+      "M": 1023,
+      "K": 255
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype1-5333-71]": {
+    "params": {
+      "dtype": "torch.float32",
+      "M": 5333,
+      "K": 71
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype2-1-32]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "M": 1,
+      "K": 32
+    },
+    "result": "passed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": null
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype2-7-33]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "M": 7,
+      "K": 33
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype2-31-65]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "M": 31,
+      "K": 65
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype2-160-1024]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "M": 160,
+      "K": 1024
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype2-257-96]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "M": 257,
+      "K": 96
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype2-1023-255]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "M": 1023,
+      "K": 255
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  },
+  "tests/test_mm.py::test_mm_out_self_transpose[dtype2-5333-71]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "M": 5333,
+      "K": 71
+    },
+    "result": "failed",
+    "opname": [
+      "mm_out"
+    ],
+    "reason": "torch.AcceleratorError: CUDA error: invalid device function\nSearch for `cudaErrorInvalidDeviceFunction' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions."
+  }
+}

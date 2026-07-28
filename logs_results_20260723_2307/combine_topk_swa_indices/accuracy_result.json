@@ -1,0 +1,116 @@
+{
+  "tests/test_deepseek_v4_attention_combine_topk_swa_indices.py::test_combine_topk_swa_indices_accuracy[topk_values0-query_start_values0-seq_len_values0-gather_len_values0-4-2-4-64-16]": {
+    "params": {
+      "topk_values": [
+        [
+          1,
+          2,
+          3,
+          4
+        ],
+        [
+          5,
+          6,
+          7,
+          8
+        ],
+        [
+          9,
+          10,
+          11,
+          12
+        ]
+      ],
+      "query_start_values": [
+        0,
+        2,
+        3
+      ],
+      "seq_len_values": [
+        8,
+        10
+      ],
+      "gather_len_values": [
+        8,
+        10
+      ],
+      "window_size": 4,
+      "compress_ratio": 2,
+      "topk": 4,
+      "M": 64,
+      "N": 16
+    },
+    "result": "failed",
+    "opname": [
+      "combine_topk_swa_indices"
+    ],
+    "reason": "AssertionError: Tensor-likes are not equal!\n\nMismatched elements: 4 / 384 (1.0%)\nGreatest absolute difference: 89 at index (2, 6)\nGreatest relative difference: 1.045454502105713 at index (0, 6)"
+  },
+  "tests/test_deepseek_v4_attention_combine_topk_swa_indices.py::test_combine_topk_swa_indices_accuracy[topk_values1-query_start_values1-seq_len_values1-gather_len_values1-3-2-4-20-8]": {
+    "params": {
+      "topk_values": [
+        [
+          100,
+          101,
+          102,
+          103
+        ],
+        [
+          110,
+          111,
+          112,
+          113
+        ],
+        [
+          120,
+          121,
+          122,
+          123
+        ],
+        [
+          130,
+          131,
+          132,
+          133
+        ],
+        [
+          140,
+          141,
+          142,
+          143
+        ]
+      ],
+      "query_start_values": [
+        0,
+        3,
+        5
+      ],
+      "seq_len_values": [
+        6,
+        4
+      ],
+      "gather_len_values": [
+        4,
+        3
+      ],
+      "window_size": 3,
+      "compress_ratio": 2,
+      "topk": 4,
+      "M": 20,
+      "N": 8
+    },
+    "result": "failed",
+    "opname": [
+      "combine_topk_swa_indices"
+    ],
+    "reason": "AssertionError: Tensor-likes are not equal!\n\nMismatched elements: 6 / 640 (0.9%)\nGreatest absolute difference: 162 at index (4, 1)\nGreatest relative difference: 1.1111111640930176 at index (0, 4)"
+  },
+  "tests/test_deepseek_v4_attention_combine_topk_swa_indices.py::test_combine_topk_swa_indices_vllm_accuracy": {
+    "params": {},
+    "result": "skipped",
+    "opname": [
+      "combine_topk_swa_indices"
+    ],
+    "reason": "Skipped: requires cuda and vllm deepseek_v4_ops.combine_topk_swa_indices"
+  }
+}

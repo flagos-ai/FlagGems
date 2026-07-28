@@ -1,0 +1,123 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:56:56 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:56:58 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:56:58 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:56:58 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:56:58 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:56:58 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:56:58 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:56:58 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:56:58 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:56:58 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:56:59 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49849 deselected / 102 selected
+
+test_fill.py::test_fill_scalar_[dtype0-shape0-0] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape0-1] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape0-9] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape1-0] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape1-1] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape1-9] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape2-0] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape2-1] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape2-9] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape3-0] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape3-1] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape3-9] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape4-0] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape4-1] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape4-9] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape5-0] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape5-1] PASSED
+test_fill.py::test_fill_scalar_[dtype0-shape5-9] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape0-0] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape0-1] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape0-9] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape1-0] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape1-1] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape1-9] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape2-0] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape2-1] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape2-9] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape3-0] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape3-1] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape3-9] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape4-0] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape4-1] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape4-9] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape5-0] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape5-1] PASSED
+test_fill.py::test_fill_scalar_[dtype1-shape5-9] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape0-0] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape0-1] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape0-9] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape1-0] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape1-1] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape1-9] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape2-0] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape2-1] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape2-9] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape3-0] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape3-1] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape3-9] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape4-0] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape4-1] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape4-9] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape5-0] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape5-1] PASSED
+test_fill.py::test_fill_scalar_[dtype2-shape5-9] PASSED
+test_fill.py::test_fill_scalar_sliced_view[zero-dtype0-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[zero-dtype0-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[zero-dtype0-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[zero-dtype1-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[zero-dtype1-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[zero-dtype1-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[zero-dtype2-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[zero-dtype2-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[zero-dtype2-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[zero-dtype3-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[zero-dtype3-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[zero-dtype3-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[one-dtype0-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[one-dtype0-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[one-dtype0-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[one-dtype1-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[one-dtype1-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[one-dtype1-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[one-dtype2-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[one-dtype2-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[one-dtype2-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[one-dtype3-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[one-dtype3-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[one-dtype3-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[true-dtype0-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[true-dtype0-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[true-dtype0-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[true-dtype1-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[true-dtype1-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[true-dtype1-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[true-dtype2-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[true-dtype2-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[true-dtype2-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[true-dtype3-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[true-dtype3-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[true-dtype3-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[neginf-dtype0-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[neginf-dtype0-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[neginf-dtype0-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[neginf-dtype1-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[neginf-dtype1-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[neginf-dtype1-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[neginf-dtype2-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[neginf-dtype2-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[neginf-dtype2-shape2-slc2] PASSED
+test_fill.py::test_fill_scalar_sliced_view[neginf-dtype3-shape0-slc0] PASSED
+test_fill.py::test_fill_scalar_sliced_view[neginf-dtype3-shape1-slc1] PASSED
+test_fill.py::test_fill_scalar_sliced_view[neginf-dtype3-shape2-slc2] PASSED
+
+==================== 102 passed, 49849 deselected in 12.55s ====================

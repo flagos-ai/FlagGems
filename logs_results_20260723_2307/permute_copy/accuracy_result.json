@@ -1,0 +1,386 @@
+{
+  "tests/test_permute_copy.py::test_permute_copy[dtype0-shape_dims0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dims": [
+        [
+          4,
+          8
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype0-shape_dims1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dims": [
+        [
+          8,
+          16
+        ],
+        [
+          0,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype0-shape_dims2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dims": [
+        [
+          16,
+          32
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype0-shape_dims3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dims": [
+        [
+          32,
+          64,
+          128
+        ],
+        [
+          2,
+          0,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype0-shape_dims4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dims": [
+        [
+          4,
+          8,
+          16
+        ],
+        [
+          1,
+          2,
+          0
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype0-shape_dims5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape_dims": [
+        [
+          8,
+          16,
+          32,
+          64
+        ],
+        [
+          3,
+          1,
+          0,
+          2
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype1-shape_dims0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dims": [
+        [
+          4,
+          8
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype1-shape_dims1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dims": [
+        [
+          8,
+          16
+        ],
+        [
+          0,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype1-shape_dims2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dims": [
+        [
+          16,
+          32
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype1-shape_dims3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dims": [
+        [
+          32,
+          64,
+          128
+        ],
+        [
+          2,
+          0,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype1-shape_dims4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dims": [
+        [
+          4,
+          8,
+          16
+        ],
+        [
+          1,
+          2,
+          0
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype1-shape_dims5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape_dims": [
+        [
+          8,
+          16,
+          32,
+          64
+        ],
+        [
+          3,
+          1,
+          0,
+          2
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype2-shape_dims0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dims": [
+        [
+          4,
+          8
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype2-shape_dims1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dims": [
+        [
+          8,
+          16
+        ],
+        [
+          0,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype2-shape_dims2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dims": [
+        [
+          16,
+          32
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype2-shape_dims3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dims": [
+        [
+          32,
+          64,
+          128
+        ],
+        [
+          2,
+          0,
+          1
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype2-shape_dims4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dims": [
+        [
+          4,
+          8,
+          16
+        ],
+        [
+          1,
+          2,
+          0
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  },
+  "tests/test_permute_copy.py::test_permute_copy[dtype2-shape_dims5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape_dims": [
+        [
+          8,
+          16,
+          32,
+          64
+        ],
+        [
+          3,
+          1,
+          0,
+          2
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "permute_copy"
+    ],
+    "reason": null
+  }
+}

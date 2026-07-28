@@ -1,0 +1,75 @@
+{
+  "special_scaled_modified_bessel_k1": {
+    "details": [
+      {
+        "op_name": "special_scaled_modified_bessel_k1",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.14839999377727509,
+            "latency": 0.008945999667048454,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 16.588419327119936,
+            "accuracy": null,
+            "tflops": 0.0004578582777156966,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 85.00609588623047,
+            "latency": 12.771795272827148,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 6.655767186237838,
+            "accuracy": null,
+            "tflops": 0.001313614542169702,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 83.97278594970703,
+            "latency": 12.926140785217285,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 6.4963539655811875,
+            "accuracy": null,
+            "tflops": 0.0012979292333862645,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_special_scaled_modified_bessel_k1.py::test_special_scaled_modified_bessel_k1",
+    "reason": null
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert": {
+    "result": "skipped",
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89",
+    "test_case": "benchmark/test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.py::test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
+  }
+}

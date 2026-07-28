@@ -1,0 +1,7 @@
+{
+  "bitwise_or_scalar_tensor": {
+    "result": "failed",
+    "test_case": "benchmark/test_bitwise_or.py::test_bitwise_or_scalar_tensor",
+    "reason": "Failed: Check options.device().type() == XPUDeviceType failed, left operand=cpu, Expected all tensors to be on the same device. Expected XPU tensor, please check whether the ixput tensor device is correct."
+  }
+}

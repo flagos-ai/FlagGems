@@ -1,0 +1,113 @@
+{
+  "linalg_slogdet": {
+    "details": [
+      {
+        "op_name": "linalg_slogdet",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                2,
+                3,
+                3
+              ]
+            ],
+            "latency_base": 0.2107599973678589,
+            "latency": 0.7867149710655212,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.267898800861012,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4,
+                4
+              ]
+            ],
+            "latency_base": 0.20208300650119781,
+            "latency": 0.8300009965896606,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.24347320946784892,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                8,
+                8
+              ]
+            ],
+            "latency_base": 0.2109059989452362,
+            "latency": 4.381579875946045,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.04813469226090478,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                16,
+                16
+              ]
+            ],
+            "latency_base": 0.2156739979982376,
+            "latency": 14.777079582214355,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.014595170635598533,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                32,
+                32
+              ]
+            ],
+            "latency_base": 0.2340639978647232,
+            "latency": 19.72412872314453,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.011866886550485227,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_linalg_slogdet.py::test_linalg_slogdet",
+    "reason": null
+  }
+}

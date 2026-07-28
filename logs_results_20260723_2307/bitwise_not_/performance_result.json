@@ -1,0 +1,7 @@
+{
+  "bitwise_not_": {
+    "result": "failed",
+    "test_case": "benchmark/test_bitwise_not.py::test_bitwise_not_inplace",
+    "reason": "Failed: PassManager::run failed"
+  }
+}

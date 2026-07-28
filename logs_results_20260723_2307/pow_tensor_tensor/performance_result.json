@@ -1,0 +1,216 @@
+{
+  "pow_tensor_tensor": {
+    "details": [
+      {
+        "op_name": "pow_tensor_tensor",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              0.001,
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.006037000101059675,
+            "latency": 0.0074629997834563255,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.808924062203814,
+            "accuracy": null,
+            "tflops": 0.0005488409646051238,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              0.001,
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.22842200100421906,
+            "latency": 0.6037369966506958,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.3783468667174909,
+            "accuracy": null,
+            "tflops": 0.027788947990720528,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              0.001,
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.22891399264335632,
+            "latency": 0.6034809947013855,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.3793226210158077,
+            "accuracy": null,
+            "tflops": 0.027800736307034328,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "pow_tensor_tensor",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              0.001,
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.005967000033706427,
+            "latency": 0.005458000116050243,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0932575864480794,
+            "accuracy": null,
+            "tflops": 0.0007504580272827342,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              0.001,
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.19843700528144836,
+            "latency": 0.48809099197387695,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.4065574012725662,
+            "accuracy": null,
+            "tflops": 0.034373131805099835,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              0.001,
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.1983640044927597,
+            "latency": 0.4882020056247711,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.40631542313904584,
+            "accuracy": null,
+            "tflops": 0.034365315600310864,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "pow_tensor_tensor",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              0.001,
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.006155000068247318,
+            "latency": 0.007416999898850918,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.8298503643233006,
+            "accuracy": null,
+            "tflops": 0.0005522448504596278,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              0.001,
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 0.2660219967365265,
+            "latency": 0.6034610271453857,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.4408271367496886,
+            "accuracy": null,
+            "tflops": 0.02780165618874015,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              0.001,
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 0.26607999205589294,
+            "latency": 0.6032519936561584,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.44107602602893875,
+            "accuracy": null,
+            "tflops": 0.02781128977016307,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_pow.py::test_pow_tensor_tensor",
+    "reason": null
+  }
+}

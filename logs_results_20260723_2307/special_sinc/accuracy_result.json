@@ -1,0 +1,260 @@
+{
+  "tests/test_special_sinc.py::test_special_sinc[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": null
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": null
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 20 / 1048576 (0.0%)\nGreatest absolute difference: 0.08056640625 at index (846, 558) (up to 0.0001 allowed)\nGreatest relative difference: 0.08056640625 at index (846, 558) (up to 0.001 allowed)"
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 2 / 96000 (0.0%)\nGreatest absolute difference: 0.0048828125 at index (12, 28, 4) (up to 0.0001 allowed)\nGreatest relative difference: 0.0048828125 at index (12, 28, 4) (up to 0.001 allowed)"
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype0-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 158 / 7864320 (0.0%)\nGreatest absolute difference: 0.1826171875 at index (1, 119, 4, 54) (up to 0.0001 allowed)\nGreatest relative difference: 0.1826171875 at index (1, 119, 4, 54) (up to 0.001 allowed)"
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype0-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 108 / 5924352 (0.0%)\nGreatest absolute difference: 0.099609375 at index (5, 4, 10, 2, 0) (up to 0.0001 allowed)\nGreatest relative difference: 0.099609375 at index (5, 4, 10, 2, 0) (up to 0.001 allowed)"
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": null
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": null
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 262 / 1048576 (0.0%)\nGreatest absolute difference: 0.055272817611694336 at index (374, 839) (up to 0.0001 allowed)\nGreatest relative difference: 0.055272817611694336 at index (374, 839) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 32 / 96000 (0.0%)\nGreatest absolute difference: 0.001217186450958252 at index (12, 264, 4) (up to 0.0001 allowed)\nGreatest relative difference: 0.001217186450958252 at index (12, 264, 4) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype1-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 1920 / 7864320 (0.0%)\nGreatest absolute difference: 0.1680736541748047 at index (4, 13, 27, 44) (up to 0.0001 allowed)\nGreatest relative difference: 0.1680736541748047 at index (4, 13, 27, 44) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype1-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 1463 / 5924352 (0.0%)\nGreatest absolute difference: 0.05028331279754639 at index (13, 6, 14, 13, 19) (up to 0.0001 allowed)\nGreatest relative difference: 0.05028331279754639 at index (13, 6, 14, 13, 19) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": null
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": null
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 2 / 1048576 (0.0%)\nGreatest absolute difference: 0.0234375 at index (173, 803) (up to 0.0001 allowed)\nGreatest relative difference: 0.0234375 at index (173, 803) (up to 0.016 allowed)"
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": null
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype2-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 7 / 7864320 (0.0%)\nGreatest absolute difference: 0.0859375 at index (4, 7, 53, 15) (up to 0.0001 allowed)\nGreatest relative difference: 0.0859375 at index (4, 7, 53, 15) (up to 0.016 allowed)"
+  },
+  "tests/test_special_sinc.py::test_special_sinc[dtype2-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "special_sinc"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 6 / 5924352 (0.0%)\nGreatest absolute difference: 0.0859375 at index (0, 1, 21, 3, 14) (up to 0.0001 allowed)\nGreatest relative difference: 0.0859375 at index (0, 1, 21, 3, 14) (up to 0.016 allowed)"
+  }
+}

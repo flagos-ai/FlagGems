@@ -1,0 +1,3 @@
+[CMD] pytest -m "unpack_seq_triton" --level core --record json --output benchmark_unpack_seq_triton.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

@@ -1,0 +1,242 @@
+{
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[True-1x1024]": {
+    "params": {
+      "clean_logits": true,
+      "M": 1,
+      "N": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[True-1x2048]": {
+    "params": {
+      "clean_logits": true,
+      "M": 1,
+      "N": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[True-1x4096]": {
+    "params": {
+      "clean_logits": true,
+      "M": 1,
+      "N": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[True-4x2048]": {
+    "params": {
+      "clean_logits": true,
+      "M": 4,
+      "N": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[True-4x4096]": {
+    "params": {
+      "clean_logits": true,
+      "M": 4,
+      "N": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[True-64x4096]": {
+    "params": {
+      "clean_logits": true,
+      "M": 64,
+      "N": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[True-256x4096]": {
+    "params": {
+      "clean_logits": true,
+      "M": 256,
+      "N": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[True-1024x4096]": {
+    "params": {
+      "clean_logits": true,
+      "M": 1024,
+      "N": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[True-2048x4096]": {
+    "params": {
+      "clean_logits": true,
+      "M": 2048,
+      "N": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[True-1024x8192]": {
+    "params": {
+      "clean_logits": true,
+      "M": 1024,
+      "N": 8192
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[False-1x1024]": {
+    "params": {
+      "clean_logits": false,
+      "M": 1,
+      "N": 1024
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[False-1x2048]": {
+    "params": {
+      "clean_logits": false,
+      "M": 1,
+      "N": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[False-1x4096]": {
+    "params": {
+      "clean_logits": false,
+      "M": 1,
+      "N": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[False-4x2048]": {
+    "params": {
+      "clean_logits": false,
+      "M": 4,
+      "N": 2048
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[False-4x4096]": {
+    "params": {
+      "clean_logits": false,
+      "M": 4,
+      "N": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[False-64x4096]": {
+    "params": {
+      "clean_logits": false,
+      "M": 64,
+      "N": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[False-256x4096]": {
+    "params": {
+      "clean_logits": false,
+      "M": 256,
+      "N": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[False-1024x4096]": {
+    "params": {
+      "clean_logits": false,
+      "M": 1024,
+      "N": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[False-2048x4096]": {
+    "params": {
+      "clean_logits": false,
+      "M": 2048,
+      "N": 4096
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  },
+  "tests/test_fp8_fp4_mqa_logits.py::test_fp8_fp4_mqa_logits[False-1024x8192]": {
+    "params": {
+      "clean_logits": false,
+      "M": 1024,
+      "N": 8192
+    },
+    "result": "skipped",
+    "opname": [
+      "fp8_fp4_mqa_logits"
+    ],
+    "reason": "Skipped: requires vLLM with DeepGEMM and FP8 quantization support"
+  }
+}

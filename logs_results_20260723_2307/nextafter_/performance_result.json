@@ -1,0 +1,7 @@
+{
+  "nextafter_": {
+    "result": "failed",
+    "test_case": "benchmark/test_nextafter_.py::test_nextafter_",
+    "reason": "Failed: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpg3hccp4a/kernel.o', '/tmp/tmpg3hccp4a/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  }
+}

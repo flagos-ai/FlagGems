@@ -1,0 +1,7 @@
+{
+  "dgeglu": {
+    "result": "failed",
+    "test_case": "benchmark/test_dgeglu.py::test_dgeglu",
+    "reason": "Failed: gelu(): incompatible function arguments. The following argument types are supported:\n    1. (arg0: torch.Tensor, arg1: torch.Tensor, arg2: torch.Tensor, arg3: torch.Tensor, arg4: transformer_engine_torch.DType) -> torch.Tensor\n\nInvoked with: tensor([[ 2.3809,  0.3657, -0.2051,  ..., -0.0132,  1.1016,  0.2344],\n        [ 1.1416, -0.2507,  0.8384,  ..., -0.7202, -0.3340,  1.3418],\n        [-0.4280,  0.2277,  0.9736,  ...,  1.3525,  1.4785,  0.8408],\n        ...,\n        [ 0.1543, -0.8438, -1.2578,  ..., -0.0118,  0.1589, -0.5044],\n        [ 0.0693,  1.2119, -0.2778,  ...,  0.1023, -1.3350, -0.6089],\n        [-1.1826, -1.7510, -1.8018,  ...,  1.0938, -1.2021,  0.6953]],\n       device='cuda:0', dtype=torch.float16), tensor([]), tensor([]), tensor([]), None"
+  }
+}

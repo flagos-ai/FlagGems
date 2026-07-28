@@ -1,0 +1,7 @@
+{
+  "xlogy_tensor_scalar": {
+    "result": "failed",
+    "test_case": "benchmark/test_xlogy.py::test_xlogy_tensor_scalar",
+    "reason": "Failed: [INVALID PARAMETER]: error code= 1(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/build/python/torch_xmlir/csrc/aten_codegen/generated/CUDANativeFunctions.cpp:14649)"
+  }
+}

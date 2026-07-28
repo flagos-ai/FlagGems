@@ -1,0 +1,722 @@
+{
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape0-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape0-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape0-9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape1-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape1-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape1-9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape2-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape2-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape2-9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape3-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape3-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape3-9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape4-0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape4-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype0-shape4-9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape0-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape0-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape0-9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape1-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape1-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape1-9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape2-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape2-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape2-9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape3-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape3-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape3-9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape4-0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape4-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype1-shape4-9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape0-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape0-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape0-9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape1-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape1-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape1-9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1024,
+        1024
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape2-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape2-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape2-9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        20,
+        320,
+        15
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape3-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape3-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape3-9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        128,
+        64,
+        1280
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape4-0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 0
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape4-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 1
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  },
+  "tests/test_fill.py::test_fill_scalar[dtype2-shape4-9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ],
+      "value": 9
+    },
+    "result": "passed",
+    "opname": [
+      "fill_scalar"
+    ],
+    "reason": null
+  }
+}

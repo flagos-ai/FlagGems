@@ -1,0 +1,7 @@
+{
+  "w8a8_block_fp8_matmul": {
+    "result": "failed",
+    "test_case": "benchmark/test_w8a8_block_fp8_matmul.py::test_perf_w8a8_block_fp8_matmul",
+    "reason": "Failed: [NOT IMPLEMENTED]: error code= 4(at /home/agent/xpytorch/workspace/8ba19c15-fc11-4377-85f3-84daf8eaab09/XMLIR/python/torch_xmlir/csrc/aten_capture/eager_customized/copy_kernel.cpp:407)"
+  }
+}

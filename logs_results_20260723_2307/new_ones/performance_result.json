@@ -1,0 +1,246 @@
+{
+  "new_ones": {
+    "details": [
+      {
+        "op_name": "new_ones",
+        "dtype": "torch.float16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "tensor": [
+                64,
+                64
+              ],
+              "size": [
+                64,
+                64
+              ]
+            },
+            "latency_base": 0.00483699981123209,
+            "latency": 0.0046720001846551895,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0353166994981782,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "tensor": [
+                4096,
+                4096
+              ],
+              "size": [
+                4096,
+                4096
+              ]
+            },
+            "latency_base": 0.02013999968767166,
+            "latency": 0.031208999454975128,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6453266698513489,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "tensor": [
+                64,
+                512,
+                512
+              ],
+              "size": [
+                64,
+                512,
+                512
+              ]
+            },
+            "latency_base": 0.0201370008289814,
+            "latency": 0.03121899999678135,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6450238902930109,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "new_ones",
+        "dtype": "torch.float32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "tensor": [
+                64,
+                64
+              ],
+              "size": [
+                64,
+                64
+              ]
+            },
+            "latency_base": 0.00496299983933568,
+            "latency": 0.0046790000051259995,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.0606966945711795,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "tensor": [
+                4096,
+                4096
+              ],
+              "size": [
+                4096,
+                4096
+              ]
+            },
+            "latency_base": 0.03566399961709976,
+            "latency": 0.057363998144865036,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6217139803790375,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "tensor": [
+                64,
+                512,
+                512
+              ],
+              "size": [
+                64,
+                512,
+                512
+              ]
+            },
+            "latency_base": 0.035927001386880875,
+            "latency": 0.05740400031208992,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6258623300041034,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "new_ones",
+        "dtype": "torch.bfloat16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "tensor": [
+                64,
+                64
+              ],
+              "size": [
+                64,
+                64
+              ]
+            },
+            "latency_base": 0.004978000186383724,
+            "latency": 0.004629999864846468,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 1.075162058681571,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "tensor": [
+                4096,
+                4096
+              ],
+              "size": [
+                4096,
+                4096
+              ]
+            },
+            "latency_base": 0.01979999989271164,
+            "latency": 0.03138599917292595,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6308545343297984,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": {
+              "tensor": [
+                64,
+                512,
+                512
+              ],
+              "size": [
+                64,
+                512,
+                512
+              ]
+            },
+            "latency_base": 0.01985199935734272,
+            "latency": 0.03136099874973297,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 0.6330155335857011,
+            "accuracy": null,
+            "tflops": null,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_new_ones.py::test_new_ones",
+    "reason": null
+  }
+}

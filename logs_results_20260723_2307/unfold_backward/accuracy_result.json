@@ -1,0 +1,365 @@
+{
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype0-input_sizes0-1-16-16]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_sizes": [
+        32,
+        64
+      ],
+      "dim": 1,
+      "size": 16,
+      "step": 16
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype0-input_sizes1-0-5-2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_sizes": [
+        16,
+        33
+      ],
+      "dim": 0,
+      "size": 5,
+      "step": 2
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype0-input_sizes2--1-6-4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_sizes": [
+        4,
+        8,
+        12
+      ],
+      "dim": -1,
+      "size": 6,
+      "step": 4
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype0-input_sizes3-1-13-3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_sizes": [
+        7,
+        13
+      ],
+      "dim": 1,
+      "size": 13,
+      "step": 3
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype0-input_sizes4-1-7-4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_sizes": [
+        6,
+        20
+      ],
+      "dim": 1,
+      "size": 7,
+      "step": 4
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype0-input_sizes5--1-9-1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_sizes": [
+        2,
+        3,
+        17
+      ],
+      "dim": -1,
+      "size": 9,
+      "step": 1
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype0-input_sizes6-1-4-6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "input_sizes": [
+        2,
+        17
+      ],
+      "dim": 1,
+      "size": 4,
+      "step": 6
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype1-input_sizes0-1-16-16]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_sizes": [
+        32,
+        64
+      ],
+      "dim": 1,
+      "size": 16,
+      "step": 16
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype1-input_sizes1-0-5-2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_sizes": [
+        16,
+        33
+      ],
+      "dim": 0,
+      "size": 5,
+      "step": 2
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype1-input_sizes2--1-6-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_sizes": [
+        4,
+        8,
+        12
+      ],
+      "dim": -1,
+      "size": 6,
+      "step": 4
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype1-input_sizes3-1-13-3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_sizes": [
+        7,
+        13
+      ],
+      "dim": 1,
+      "size": 13,
+      "step": 3
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype1-input_sizes4-1-7-4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_sizes": [
+        6,
+        20
+      ],
+      "dim": 1,
+      "size": 7,
+      "step": 4
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype1-input_sizes5--1-9-1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_sizes": [
+        2,
+        3,
+        17
+      ],
+      "dim": -1,
+      "size": 9,
+      "step": 1
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype1-input_sizes6-1-4-6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "input_sizes": [
+        2,
+        17
+      ],
+      "dim": 1,
+      "size": 4,
+      "step": 6
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype2-input_sizes0-1-16-16]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_sizes": [
+        32,
+        64
+      ],
+      "dim": 1,
+      "size": 16,
+      "step": 16
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype2-input_sizes1-0-5-2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_sizes": [
+        16,
+        33
+      ],
+      "dim": 0,
+      "size": 5,
+      "step": 2
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype2-input_sizes2--1-6-4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_sizes": [
+        4,
+        8,
+        12
+      ],
+      "dim": -1,
+      "size": 6,
+      "step": 4
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype2-input_sizes3-1-13-3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_sizes": [
+        7,
+        13
+      ],
+      "dim": 1,
+      "size": 13,
+      "step": 3
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype2-input_sizes4-1-7-4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_sizes": [
+        6,
+        20
+      ],
+      "dim": 1,
+      "size": 7,
+      "step": 4
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype2-input_sizes5--1-9-1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_sizes": [
+        2,
+        3,
+        17
+      ],
+      "dim": -1,
+      "size": 9,
+      "step": 1
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  },
+  "tests/test_unfold_backward.py::test_unfold_backward[dtype2-input_sizes6-1-4-6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "input_sizes": [
+        2,
+        17
+      ],
+      "dim": 1,
+      "size": 4,
+      "step": 6
+    },
+    "result": "passed",
+    "opname": [
+      "unfold_backward"
+    ],
+    "reason": null
+  }
+}

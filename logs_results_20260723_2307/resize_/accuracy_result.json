@@ -1,0 +1,173 @@
+{
+  "tests/test_resize.py::test_resize_[dtype0-src_shape0-dst_shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "src_shape": [
+        1024,
+        1024
+      ],
+      "dst_shape": [
+        1048576
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_"
+    ],
+    "reason": null
+  },
+  "tests/test_resize.py::test_resize_[dtype0-src_shape1-dst_shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "src_shape": [
+        20,
+        320,
+        15
+      ],
+      "dst_shape": [
+        96000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_"
+    ],
+    "reason": null
+  },
+  "tests/test_resize.py::test_resize_[dtype0-src_shape2-dst_shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "src_shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "dst_shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_"
+    ],
+    "reason": null
+  },
+  "tests/test_resize.py::test_resize_[dtype1-src_shape0-dst_shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "src_shape": [
+        1024,
+        1024
+      ],
+      "dst_shape": [
+        1048576
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_"
+    ],
+    "reason": null
+  },
+  "tests/test_resize.py::test_resize_[dtype1-src_shape1-dst_shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "src_shape": [
+        20,
+        320,
+        15
+      ],
+      "dst_shape": [
+        96000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_"
+    ],
+    "reason": null
+  },
+  "tests/test_resize.py::test_resize_[dtype1-src_shape2-dst_shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "src_shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "dst_shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_"
+    ],
+    "reason": null
+  },
+  "tests/test_resize.py::test_resize_[dtype2-src_shape0-dst_shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "src_shape": [
+        1024,
+        1024
+      ],
+      "dst_shape": [
+        1048576
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_"
+    ],
+    "reason": null
+  },
+  "tests/test_resize.py::test_resize_[dtype2-src_shape1-dst_shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "src_shape": [
+        20,
+        320,
+        15
+      ],
+      "dst_shape": [
+        96000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_"
+    ],
+    "reason": null
+  },
+  "tests/test_resize.py::test_resize_[dtype2-src_shape2-dst_shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "src_shape": [
+        16,
+        128,
+        64,
+        60
+      ],
+      "dst_shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "resize_"
+    ],
+    "reason": null
+  }
+}

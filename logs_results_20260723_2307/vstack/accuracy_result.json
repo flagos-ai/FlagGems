@@ -1,0 +1,562 @@
+{
+  "tests/test_vstack.py::test_accuracy_vstack[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        [
+          3
+        ],
+        [
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        [
+          3,
+          33
+        ],
+        [
+          7,
+          33
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        [
+          13,
+          3,
+          333
+        ],
+        [
+          17,
+          3,
+          333
+        ],
+        [
+          7,
+          3,
+          333
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        [
+          13,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          16,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          7,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          4,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          1,
+          3,
+          64,
+          5,
+          2
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        [
+          3
+        ],
+        [
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        [
+          3,
+          33
+        ],
+        [
+          7,
+          33
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        [
+          13,
+          3,
+          333
+        ],
+        [
+          17,
+          3,
+          333
+        ],
+        [
+          7,
+          3,
+          333
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        [
+          13,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          16,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          7,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          4,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          1,
+          3,
+          64,
+          5,
+          2
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype2-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        [
+          3
+        ],
+        [
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype2-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        [
+          3,
+          33
+        ],
+        [
+          7,
+          33
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype2-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        [
+          13,
+          3,
+          333
+        ],
+        [
+          17,
+          3,
+          333
+        ],
+        [
+          7,
+          3,
+          333
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype2-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        [
+          13,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          16,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          7,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          4,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          1,
+          3,
+          64,
+          5,
+          2
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype3-shape0]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        [
+          3
+        ],
+        [
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype3-shape1]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        [
+          3,
+          33
+        ],
+        [
+          7,
+          33
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype3-shape2]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        [
+          13,
+          3,
+          333
+        ],
+        [
+          17,
+          3,
+          333
+        ],
+        [
+          7,
+          3,
+          333
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype3-shape3]": {
+    "params": {
+      "dtype": "torch.int16",
+      "shape": [
+        [
+          13,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          16,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          7,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          4,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          1,
+          3,
+          64,
+          5,
+          2
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype4-shape0]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        [
+          3
+        ],
+        [
+          3
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype4-shape1]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        [
+          3,
+          33
+        ],
+        [
+          7,
+          33
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype4-shape2]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        [
+          13,
+          3,
+          333
+        ],
+        [
+          17,
+          3,
+          333
+        ],
+        [
+          7,
+          3,
+          333
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  },
+  "tests/test_vstack.py::test_accuracy_vstack[dtype4-shape3]": {
+    "params": {
+      "dtype": "torch.int32",
+      "shape": [
+        [
+          13,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          16,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          7,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          4,
+          3,
+          64,
+          5,
+          2
+        ],
+        [
+          1,
+          3,
+          64,
+          5,
+          2
+        ]
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "vstack"
+    ],
+    "reason": null
+  }
+}

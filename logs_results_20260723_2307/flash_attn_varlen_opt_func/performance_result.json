@@ -1,0 +1,7 @@
+{
+  "flash_attn_varlen_opt_func": {
+    "result": "skipped",
+    "reason": "Skipped: #2887: Not working",
+    "test_case": "benchmark/test_flash_attn_varlen_opt_init_func.py::test_flash_attn_varlen_opt_func"
+  }
+}

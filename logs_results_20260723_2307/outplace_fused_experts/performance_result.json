@@ -1,0 +1,7 @@
+{
+  "outplace_fused_experts": {
+    "result": "failed",
+    "test_case": "benchmark/test_outplace_fused_experts.py::test_outplace_fused_experts_gems_vs_vllm",
+    "reason": "Failed"
+  }
+}

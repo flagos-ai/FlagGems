@@ -1,0 +1,120 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-24 01:14:16 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-24 01:14:18 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:14:18 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:14:18 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:14:18 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:14:18 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:14:18 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:14:18 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-24 01:14:18 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-24 01:14:18 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-24 01:14:19 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 49951 items / 49852 deselected / 99 selected
+
+test_nanmedian.py::test_nanmedian_dim[dtype0-False-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype0-False-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype0-False-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype0-False-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype0-False-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype0-True-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype0-True-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype0-True-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype0-True-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype0-True-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype1-False-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype1-False-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype1-False-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype1-False-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype1-False-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype1-True-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype1-True-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype1-True-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype1-True-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype1-True-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype2-False-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype2-False-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype2-False-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype2-False-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype2-False-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype2-True-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype2-True-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype2-True-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype2-True-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype2-True-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype3-False-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype3-False-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype3-False-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype3-False-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype3-False-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype3-True-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype3-True-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype3-True-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype3-True-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype3-True-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype4-False-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype4-False-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype4-False-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype4-False-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype4-False-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype4-True-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype4-True-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype4-True-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype4-True-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype4-True-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype5-False-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype5-False-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype5-False-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype5-False-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype5-False-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype5-True-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype5-True-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype5-True-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype5-True-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype5-True-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype6-False-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype6-False-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype6-False-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype6-False-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype6-False-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype6-True-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype6-True-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype6-True-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype6-True-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype6-True-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype7-False-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype7-False-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype7-False-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype7-False-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype7-False-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype7-True-shape0-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype7-True-shape1-0] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype7-True-shape2--1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype7-True-shape3-1] SKIPPED
+test_nanmedian.py::test_nanmedian_dim[dtype7-True-shape4--1] SKIPPED
+test_nanmedian.py::test_nanmedian_large_radix_path[dtype0] SKIPPED (...)
+test_nanmedian.py::test_nanmedian_large_radix_path[dtype1] SKIPPED (...)
+test_nanmedian.py::test_nanmedian_large_radix_path[dtype2] SKIPPED (...)
+test_nanmedian.py::test_nanmedian_large_radix_path[dtype3] SKIPPED (...)
+test_nanmedian.py::test_nanmedian_large_radix_path[dtype4] SKIPPED (...)
+test_nanmedian.py::test_nanmedian_all_nan_rows[dtype0] SKIPPED (Issu...)
+test_nanmedian.py::test_nanmedian_all_nan_rows[dtype1] SKIPPED (Issu...)
+test_nanmedian.py::test_nanmedian_all_nan_rows[dtype2] SKIPPED (Issu...)
+test_nanmedian.py::test_nanmedian_non_contiguous[dtype0] SKIPPED (Is...)
+test_nanmedian.py::test_nanmedian_non_contiguous[dtype1] SKIPPED (Is...)
+test_nanmedian.py::test_nanmedian_non_contiguous[dtype2] SKIPPED (Is...)
+test_nanmedian.py::test_nanmedian_non_contiguous[dtype3] SKIPPED (Is...)
+test_nanmedian.py::test_nanmedian_non_contiguous[dtype4] SKIPPED (Is...)
+test_nanmedian.py::test_nanmedian_non_contiguous[dtype5] SKIPPED (Is...)
+test_nanmedian.py::test_nanmedian_non_contiguous[dtype6] SKIPPED (Is...)
+test_nanmedian.py::test_nanmedian_non_contiguous[dtype7] SKIPPED (Is...)
+test_nanmedian.py::test_nanmedian_dim_empty[dtype0] SKIPPED (Issue #...)
+test_nanmedian.py::test_nanmedian_dim_empty[dtype1] SKIPPED (Issue #...)
+test_nanmedian.py::test_nanmedian_dim_empty[dtype2] SKIPPED (Issue #...)
+
+==================== 99 skipped, 49852 deselected in 10.65s ====================

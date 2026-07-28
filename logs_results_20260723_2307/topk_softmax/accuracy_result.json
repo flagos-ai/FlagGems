@@ -1,0 +1,2162 @@
+{
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-1-4-2-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-1-4-2-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-1-4-2-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-4-8-2-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-4-8-2-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-4-8-2-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-8-16-4-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-8-16-4-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-8-16-4-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-32-64-8-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-32-64-8-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-32-64-8-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-128-128-16-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-128-128-16-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-128-128-16-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-500-255-30-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-500-255-30-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-500-255-30-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-512-256-32-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-512-256-32-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-512-256-32-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-1024-512-32-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-1024-512-32-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype0-1024-512-32-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float32",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-1-4-2-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-1-4-2-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-1-4-2-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-4-8-2-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-4-8-2-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-4-8-2-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-8-16-4-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-8-16-4-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-8-16-4-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-32-64-8-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-32-64-8-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-32-64-8-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-128-128-16-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-128-128-16-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-128-128-16-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-500-255-30-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-500-255-30-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-500-255-30-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-512-256-32-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-512-256-32-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-512-256-32-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-1024-512-32-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-1024-512-32-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype1-1024-512-32-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.float16",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-1-4-2-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-1-4-2-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-1-4-2-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-4-8-2-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-4-8-2-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-4-8-2-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-8-16-4-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-8-16-4-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-8-16-4-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-32-64-8-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-32-64-8-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-32-64-8-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-128-128-16-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-128-128-16-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-128-128-16-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-500-255-30-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-500-255-30-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-500-255-30-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-512-256-32-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-512-256-32-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-512-256-32-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-1024-512-32-index_dtype0]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-1024-512-32-index_dtype1]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[False-input_dtype2-1024-512-32-index_dtype2]": {
+    "params": {
+      "renormalize": false,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-1-4-2-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-1-4-2-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-1-4-2-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-4-8-2-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-4-8-2-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-4-8-2-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-8-16-4-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-8-16-4-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-8-16-4-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-32-64-8-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-32-64-8-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-32-64-8-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-128-128-16-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-128-128-16-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-128-128-16-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-500-255-30-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-500-255-30-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-500-255-30-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-512-256-32-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-512-256-32-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-512-256-32-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-1024-512-32-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-1024-512-32-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype0-1024-512-32-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float32",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-1-4-2-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-1-4-2-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-1-4-2-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-4-8-2-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-4-8-2-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-4-8-2-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-8-16-4-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-8-16-4-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-8-16-4-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-32-64-8-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-32-64-8-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-32-64-8-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-128-128-16-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-128-128-16-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-128-128-16-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-500-255-30-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-500-255-30-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-500-255-30-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-512-256-32-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-512-256-32-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-512-256-32-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-1024-512-32-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-1024-512-32-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype1-1024-512-32-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.float16",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-1-4-2-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-1-4-2-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-1-4-2-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 1,
+      "num_experts": 4,
+      "topk": 2,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-4-8-2-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-4-8-2-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-4-8-2-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 4,
+      "num_experts": 8,
+      "topk": 2,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-8-16-4-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-8-16-4-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-8-16-4-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 8,
+      "num_experts": 16,
+      "topk": 4,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-32-64-8-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-32-64-8-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-32-64-8-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 32,
+      "num_experts": 64,
+      "topk": 8,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-128-128-16-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-128-128-16-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-128-128-16-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 128,
+      "num_experts": 128,
+      "topk": 16,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-500-255-30-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-500-255-30-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-500-255-30-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 500,
+      "num_experts": 255,
+      "topk": 30,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-512-256-32-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-512-256-32-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-512-256-32-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 512,
+      "num_experts": 256,
+      "topk": 32,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-1024-512-32-index_dtype0]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.int32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-1024-512-32-index_dtype1]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.int64"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  },
+  "tests/test_topk_softmax.py::test_topk_softmax[True-input_dtype2-1024-512-32-index_dtype2]": {
+    "params": {
+      "renormalize": true,
+      "input_dtype": "torch.bfloat16",
+      "num_tokens": 1024,
+      "num_experts": 512,
+      "topk": 32,
+      "index_dtype": "torch.uint32"
+    },
+    "result": "failed",
+    "opname": [
+      "topk_softmax"
+    ],
+    "reason": "AttributeError: '_OpNamespace' '_moe_C' object has no attribute 'topk_softmax'"
+  }
+}

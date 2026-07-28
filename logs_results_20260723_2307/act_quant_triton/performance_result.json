@@ -1,0 +1,7 @@
+{
+  "act_quant_triton": {
+    "result": "skipped",
+    "reason": "Skipped: Do not support fp8e4nv when capability < 89",
+    "test_case": "benchmark/test_act_quant.py::test_act_quant_perf[ue8m0-128]"
+  }
+}

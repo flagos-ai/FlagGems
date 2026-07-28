@@ -1,0 +1,78 @@
+XCCL /workspace/FlagGems/.venv/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: md-report-0.8.0
+XPU_EVENT_KL3_ENABLE=1
+collected 1 item
+
+benchmark/test_slice_scatter.py XPU_EVENT_KL3_ENABLE=1
+
+Operator: slice_scatter  Performance Test (dtype=torch.float16, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup          Size Detail
+-----------------------------------------------------------------------------------------------
+SUCCESS               0.011201            0.005514               2.031          [torch.Size([64, 64]), torch.Size([64, 32]), 1, 0, 64, 2]
+SUCCESS               0.009971            0.007991               1.248          [torch.Size([256, 256]), torch.Size([256, 128]), 1, 0, 256, 2]
+SUCCESS               0.013006            0.034862               0.373          [torch.Size([1024, 1024]), torch.Size([1024, 512]), 1, 0, 1024, 2]
+SUCCESS               0.081261            0.429165               0.189          [torch.Size([4096, 4096]), torch.Size([4096, 2048]), 1, 0, 4096, 2]
+SUCCESS               0.295918            1.676606               0.176          [torch.Size([1024, 65536]), torch.Size([1024, 32768]), 1, 0, 65536, 2]
+
+
+Operator: slice_scatter  Performance Test (dtype=torch.float32, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup          Size Detail
+-----------------------------------------------------------------------------------------------
+SUCCESS               0.009105            0.005930               1.535          [torch.Size([64, 64]), torch.Size([64, 32]), 1, 0, 64, 2]
+SUCCESS               0.009224            0.007252               1.272          [torch.Size([256, 256]), torch.Size([256, 128]), 1, 0, 256, 2]
+SUCCESS               0.017318            0.035373               0.490          [torch.Size([1024, 1024]), torch.Size([1024, 512]), 1, 0, 1024, 2]
+SUCCESS               0.151404            0.388067               0.390          [torch.Size([4096, 4096]), torch.Size([4096, 2048]), 1, 0, 4096, 2]
+SUCCESS               0.576733            1.472557               0.392          [torch.Size([1024, 65536]), torch.Size([1024, 32768]), 1, 0, 65536, 2]
+
+
+Operator: slice_scatter  Performance Test (dtype=torch.bfloat16, mode=kernel,level=core)
+Status       Torch Latency (ms)    Gems Latency (ms)         Gems Speedup          Size Detail
+-----------------------------------------------------------------------------------------------
+SUCCESS               0.011077            0.005785               1.915          [torch.Size([64, 64]), torch.Size([64, 32]), 1, 0, 64, 2]
+SUCCESS               0.009939            0.008243               1.206          [torch.Size([256, 256]), torch.Size([256, 128]), 1, 0, 256, 2]
+SUCCESS               0.012859            0.041044               0.313          [torch.Size([1024, 1024]), torch.Size([1024, 512]), 1, 0, 1024, 2]
+SUCCESS               0.080998            0.517087               0.157          [torch.Size([4096, 4096]), torch.Size([4096, 2048]), 1, 0, 4096, 2]
+SUCCESS               0.296175            2.023097               0.146          [torch.Size([1024, 65536]), torch.Size([1024, 32768]), 1, 0, 65536, 2]
+
+.
+
+============================== 1 passed in 18.01s ==============================
+[EXIT] 0
+XCCL /workspace/FlagGems/.venv/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+0 0.029010200500488283
+1 0.022554199397563934
+2 0.022195999324321748
+3 0.022018200159072875
+4 0.022074200212955475
+5 0.021587799489498138
+6 0.021949400007724763
+7 0.02109760046005249
+8 0.02217559963464737
+9 0.02201959937810898
+10 0.02122900038957596
+11 0.021780000627040864
+12 0.021595999598503113
+13 0.0218860000371933
+14 0.021331800520420073
+15 0.021815800666809083
+16 0.02103859931230545
+17 0.02255779951810837
+18 0.0231672003865242
+19 0.021379800140857698
+20 0.021685199439525606
+21 0.02150299996137619
+22 0.021441200375556947
+23 0.021160799264907836
+24 0.021895000338554384
+25 0.020945599675178526
+26 0.021853600442409516
+27 0.02133920043706894
+28 0.021481600403785706
+29 0.021197199821472168
+do_bench 0.01102100033313036

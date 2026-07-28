@@ -1,0 +1,830 @@
+{
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-None-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": null,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-None-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": null,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-None-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": null,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-None-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": null,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-None-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": null,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-None-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": null,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-max-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": "max",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-max-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": "max",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-max-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": "max",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-max-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": "max",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-max-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": "max",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-max-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": "max",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-min-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": "min",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-min-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": "min",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-min-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": "min",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-min-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": "min",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-min-shape4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": "min",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype0-min-shape5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "isnone": "min",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-None-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": null,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-None-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": null,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-None-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": null,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-None-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": null,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-None-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": null,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-None-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": null,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-max-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": "max",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-max-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": "max",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-max-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": "max",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-max-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": "max",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-max-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": "max",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-max-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": "max",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-min-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": "min",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-min-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": "min",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-min-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": "min",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-min-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": "min",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-min-shape4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": "min",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype1-min-shape5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "isnone": "min",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-None-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": null,
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-None-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": null,
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-None-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": null,
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-None-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": null,
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-None-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": null,
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-None-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": null,
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-max-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": "max",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-max-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": "max",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-max-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": "max",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-max-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": "max",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-max-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": "max",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-max-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": "max",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-min-shape0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": "min",
+      "shape": []
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-min-shape1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": "min",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-min-shape2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": "min",
+      "shape": [
+        1024,
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-min-shape3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": "min",
+      "shape": [
+        20,
+        320,
+        15
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-min-shape4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": "min",
+      "shape": [
+        16,
+        128,
+        64,
+        60
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  },
+  "tests/test_clamp_tensor.py::test_clamp_tensor[dtype2-min-shape5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "isnone": "min",
+      "shape": [
+        16,
+        7,
+        57,
+        32,
+        29
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "clamp_tensor"
+    ],
+    "reason": null
+  }
+}

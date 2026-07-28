@@ -1,0 +1,7 @@
+{
+  "special_gammaln_out": {
+    "result": "failed",
+    "test_case": "benchmark/test_special_gammaln.py::test_special_gammaln_out",
+    "reason": "Failed: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpcqhlnjvv/kernel.o', '/tmp/tmpcqhlnjvv/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  }
+}

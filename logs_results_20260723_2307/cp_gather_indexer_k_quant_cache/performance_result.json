@@ -1,0 +1,7 @@
+{
+  "cp_gather_indexer_k_quant_cache": {
+    "result": "skipped",
+    "test_case": "benchmark/test_cp_gather_indexer_k_quant_cache.py::test_cp_gather_indexer_k_quant_cache_benchmark",
+    "reason": "Skipped: cp_gather_indexer_k_quant_cache benchmark targets vLLM CUDA >= 0.20.2 and < 0.21.0"
+  }
+}

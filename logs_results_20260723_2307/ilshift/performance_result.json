@@ -1,0 +1,167 @@
+{
+  "ilshift": {
+    "details": [
+      {
+        "op_name": "ilshift",
+        "dtype": "torch.int16",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.0865280032157898,
+            "latency": 0.007801999803632498,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 11.09049030935679,
+            "accuracy": null,
+            "tflops": 0.0010499872092006365,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 45.14407730102539,
+            "latency": 4.574520111083984,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 9.868593033757149,
+            "accuracy": null,
+            "tflops": 0.007335071479672411,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 56.81016540527344,
+            "latency": 4.580233097076416,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 12.40333498343908,
+            "accuracy": null,
+            "tflops": 0.007325922346925519,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      },
+      {
+        "op_name": "ilshift",
+        "dtype": "torch.int32",
+        "mode": "kernel",
+        "level": "core",
+        "result": [
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                64
+              ],
+              [
+                64,
+                64
+              ]
+            ],
+            "latency_base": 0.0652799978852272,
+            "latency": 0.0056050000712275505,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 11.646743453284245,
+            "accuracy": null,
+            "tflops": 0.0014615521669754184,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                4096,
+                4096
+              ],
+              [
+                4096,
+                4096
+              ]
+            ],
+            "latency_base": 82.9862060546875,
+            "latency": 2.923811912536621,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 28.38288116238328,
+            "accuracy": null,
+            "tflops": 0.011476262154937687,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          },
+          {
+            "legacy_shape": null,
+            "shape_detail": [
+              [
+                64,
+                512,
+                512
+              ],
+              [
+                64,
+                512,
+                512
+              ]
+            ],
+            "latency_base": 87.57257843017578,
+            "latency": 2.9053289890289307,
+            "gbps_base": null,
+            "gbps": null,
+            "speedup": 30.142052332409282,
+            "accuracy": null,
+            "tflops": 0.011549271055604323,
+            "utilization": null,
+            "compared_speedup": null,
+            "error_msg": null
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "test_case": "benchmark/test_ilshift.py::test_ilshift",
+    "reason": null
+  }
+}

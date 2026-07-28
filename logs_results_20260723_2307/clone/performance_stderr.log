@@ -1,0 +1,3 @@
+[CMD] pytest -m "clone" --level core --record json --output benchmark_clone.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

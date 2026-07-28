@@ -1,0 +1,28 @@
+PR_ID=4816
+Running unit tests for tests/test_apply_repetition_penalties.py
+XCCL /workspace/FlagGems/.venv/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: md-report-0.8.0
+collected 126 items
+
+tests/test_apply_repetition_penalties.py ..............................................................................................................................
+
+============================= 126 passed in 4.12s ==============================
+Running quick-cpu mode unit tests for tests/test_apply_repetition_penalties.py
+XCCL /workspace/FlagGems/.venv/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
+[35mSYMBOL_REWRITE [0m[32mtorch success[0m
+============================= test session starts ==============================
+platform linux -- Python 3.10.20, pytest-9.0.3, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: md-report-0.8.0
+collected 4 items
+
+tests/test_apply_repetition_penalties.py ....
+
+============================== 4 passed in 2.23s ===============================
+exit_code=0

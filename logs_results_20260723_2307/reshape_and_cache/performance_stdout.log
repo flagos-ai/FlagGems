@@ -1,0 +1,130 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collected 951 items / 950 deselected / 1 selected
+
+test_reshape_and_cache.py F                                              [100%]
+
+=================================== FAILURES ===================================
+____________________________ test_reshape_and_cache ____________________________
+
+shape = (64, 64), dtype = torch.float16, device = 'cuda'
+
+    def input_kwargs(shape, dtype, device):
+>       (
+            num_tokens,
+            num_heads,
+            head_size,
+            block_size,
+            num_blocks,
+        ) = shape
+E       ValueError: not enough values to unpack (expected 5, got 2)
+
+test_reshape_and_cache.py:54: ValueError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.reshape_and_cache
+    def test_reshape_and_cache():
+        def input_kwargs(shape, dtype, device):
+            (
+                num_tokens,
+                num_heads,
+                head_size,
+                block_size,
+                num_blocks,
+            ) = shape
+            num_slots = block_size * num_blocks
+            slot_mapping_lst = random.sample(range(num_slots), num_tokens)
+            slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
+    
+            qkv = torch.randn(
+                num_tokens, 3, num_heads, head_size, dtype=dtype, device=device
+            )
+            _, key, value = qkv.unbind(dim=1)
+    
+            scale = head_size**-0.5
+            x = 16 // torch.tensor([], dtype=dtype).element_size()
+            key_cache_shape = (num_blocks, num_heads, head_size // x, block_size, x)
+            key_caches: list[torch.Tensor] = []
+            key_cache = torch.empty(size=key_cache_shape, dtype=dtype, device=device)
+            key_cache.uniform_(-scale, scale)
+            key_caches.append(key_cache)
+            value_cache_shape = (num_blocks, num_heads, head_size, block_size)
+            value_caches: list[torch.Tensor] = []
+            value_cache = torch.empty(size=value_cache_shape, dtype=dtype, device=device)
+            value_cache.uniform_(-scale, scale)
+            value_caches.append(value_cache)
+    
+            key_cache, value_cache = key_caches[0], value_caches[0]
+    
+            k_scale = (key.amax() / 64.0).to(torch.float32)
+            v_scale = (value.amax() / 64.0).to(torch.float32)
+    
+            yield (
+                key,
+                value,
+                key_cache,
+                value_cache,
+                slot_mapping,
+                {
+                    "kv_cache_dtype": "auto",
+                    "k_scale": k_scale,
+                    "v_scale": v_scale,
+                },
+            )
+    
+        bench = ReshapeAndCacheBenchmark(
+            op_name="reshape_and_cache",
+            input_fn=input_kwargs,
+            torch_op=torch_reshape_and_cache_ref,
+            gems_op=flag_gems.reshape_and_cache,
+            dtypes=consts.FLOAT_DTYPES,
+        )
+>       bench.run()
+
+test_reshape_and_cache.py:108: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <benchmark.test_reshape_and_cache.ReshapeAndCacheBenchmark object at 0x7f48a3692ef0>
+
+    def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            emit_record_logger(attri.to_dict())
+            return
+    
+        self.init_user_config()
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            input_iter = self.get_input_iter(dtype)
+    
+            done = False
+            while not done:
+                try:
+                    input = next(input_iter)
+                except StopIteration:
+                    done = True
+                    continue
+                except (RuntimeError, Exception) as e:
+                    print(
+                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
+                        "dtype={dtype} err=<<<{e}>>>"
+                    )
+>                   pytest.fail(str(e))
+E                   Failed: not enough values to unpack (expected 5, got 2)
+
+base.py:433: Failed
+----------------------------- Captured stdout call -----------------------------
+[31mFAILED[0m: Operator=reshape_and_cache dtype={dtype} err=<<<{e}>>>
+=========================== short test summary info ============================
+FAILED test_reshape_and_cache.py::test_reshape_and_cache - Failed: not enough...
+====================== 1 failed, 950 deselected in 8.26s =======================

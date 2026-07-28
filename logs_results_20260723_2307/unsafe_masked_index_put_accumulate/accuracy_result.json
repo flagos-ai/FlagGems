@@ -1,0 +1,218 @@
+{
+  "tests/test_unsafe_masked_index_put_accumulate.py::test_unsafe_masked_index_put_accumulate[dtype0-shape0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ],
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unsafe_masked_index_put_accumulate"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 7 / 16 (43.8%)\nGreatest absolute difference: 0.611328125 at index (5,) (up to 0.01 allowed)\nGreatest relative difference: 3.166015625 at index (5,) (up to 0.001 allowed)"
+  },
+  "tests/test_unsafe_masked_index_put_accumulate.py::test_unsafe_masked_index_put_accumulate[dtype0-shape1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        [
+          64
+        ],
+        [
+          64
+        ],
+        [
+          64
+        ],
+        [
+          64
+        ]
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unsafe_masked_index_put_accumulate"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 27 / 64 (42.2%)\nGreatest absolute difference: 3.5234375 at index (18,) (up to 0.01 allowed)\nGreatest relative difference: 11.140625 at index (62,) (up to 0.001 allowed)"
+  },
+  "tests/test_unsafe_masked_index_put_accumulate.py::test_unsafe_masked_index_put_accumulate[dtype0-shape2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        [
+          8,
+          32
+        ],
+        [
+          8,
+          32
+        ],
+        [
+          8,
+          32
+        ],
+        [
+          8,
+          32
+        ]
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unsafe_masked_index_put_accumulate"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 98 / 256 (38.3%)\nGreatest absolute difference: 3.7265625 at index (0, 22) (up to 0.01 allowed)\nGreatest relative difference: 178.0 at index (5, 10) (up to 0.001 allowed)"
+  },
+  "tests/test_unsafe_masked_index_put_accumulate.py::test_unsafe_masked_index_put_accumulate[dtype0-shape3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "shape": [
+        [
+          2,
+          16,
+          64
+        ],
+        [
+          2,
+          16,
+          64
+        ],
+        [
+          2,
+          16,
+          64
+        ],
+        [
+          2,
+          16,
+          64
+        ]
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unsafe_masked_index_put_accumulate"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 821 / 2048 (40.1%)\nGreatest absolute difference: 3.95703125 at index (0, 10, 13) (up to 0.01 allowed)\nGreatest relative difference: 472.5 at index (1, 14, 11) (up to 0.001 allowed)"
+  },
+  "tests/test_unsafe_masked_index_put_accumulate.py::test_unsafe_masked_index_put_accumulate[dtype1-shape0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        [
+          16
+        ],
+        [
+          16
+        ],
+        [
+          16
+        ],
+        [
+          16
+        ]
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unsafe_masked_index_put_accumulate"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 4 / 16 (25.0%)\nGreatest absolute difference: 1.347304105758667 at index (2,) (up to 0.005 allowed)\nGreatest relative difference: 9.928945541381836 at index (6,) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_unsafe_masked_index_put_accumulate.py::test_unsafe_masked_index_put_accumulate[dtype1-shape1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        [
+          64
+        ],
+        [
+          64
+        ],
+        [
+          64
+        ],
+        [
+          64
+        ]
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unsafe_masked_index_put_accumulate"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 27 / 64 (42.2%)\nGreatest absolute difference: 2.2942066192626953 at index (43,) (up to 0.005 allowed)\nGreatest relative difference: 7.959601879119873 at index (13,) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_unsafe_masked_index_put_accumulate.py::test_unsafe_masked_index_put_accumulate[dtype1-shape2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        [
+          8,
+          32
+        ],
+        [
+          8,
+          32
+        ],
+        [
+          8,
+          32
+        ],
+        [
+          8,
+          32
+        ]
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unsafe_masked_index_put_accumulate"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 112 / 256 (43.8%)\nGreatest absolute difference: 3.579622268676758 at index (5, 12) (up to 0.005 allowed)\nGreatest relative difference: 71.32527160644531 at index (4, 9) (up to 1.3e-06 allowed)"
+  },
+  "tests/test_unsafe_masked_index_put_accumulate.py::test_unsafe_masked_index_put_accumulate[dtype1-shape3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "shape": [
+        [
+          2,
+          16,
+          64
+        ],
+        [
+          2,
+          16,
+          64
+        ],
+        [
+          2,
+          16,
+          64
+        ],
+        [
+          2,
+          16,
+          64
+        ]
+      ]
+    },
+    "result": "failed",
+    "opname": [
+      "unsafe_masked_index_put_accumulate"
+    ],
+    "reason": "AssertionError: Tensor-likes are not close!\n\nMismatched elements: 806 / 2048 (39.4%)\nGreatest absolute difference: 4.3983540534973145 at index (1, 5, 4) (up to 0.005 allowed)\nGreatest relative difference: 1151.515625 at index (1, 15, 8) (up to 1.3e-06 allowed)"
+  }
+}

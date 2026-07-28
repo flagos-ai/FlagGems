@@ -1,0 +1,1148 @@
+{
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape0]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape1]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape2]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape3]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape4]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape5]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        33
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape6]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        81
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape7]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        273
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape8]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        1041
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape9]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape10]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape11]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape12]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape13]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape14]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape15]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape16]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        5,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape17]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape18]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape19]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype0-shape20]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape0]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape1]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape2]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape3]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        256
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape4]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        1024
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape5]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        33
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape6]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        81
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape7]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        273
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape8]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        1041
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape9]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape10]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape11]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape12]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape13]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape14]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape15]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape16]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        5,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape17]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape18]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape19]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement[1000-dtype1-shape20]": {
+    "params": {
+      "n_samples": 1000,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement_1[2048-dtype0-shape0]": {
+    "params": {
+      "n_samples": 2048,
+      "dtype": "torch.float16",
+      "shape": [
+        1024,
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_with_replacement_1[2048-dtype1-shape0]": {
+    "params": {
+      "n_samples": 2048,
+      "dtype": "torch.float32",
+      "shape": [
+        1024,
+        10
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype0-pool0]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool": [
+        1,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype0-pool1]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool": [
+        1,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype0-pool2]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool": [
+        1,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype0-pool3]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool": [
+        1,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype0-pool4]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool": [
+        5,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype0-pool5]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool": [
+        5,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype0-pool6]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool": [
+        5,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype0-pool7]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool": [
+        5,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype0-pool8]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool": [
+        1024,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype0-pool9]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool": [
+        1024,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype0-pool10]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool": [
+        1024,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype0-pool11]": {
+    "params": {
+      "dtype": "torch.float16",
+      "pool": [
+        1024,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype1-pool0]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool": [
+        1,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype1-pool1]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool": [
+        1,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype1-pool2]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool": [
+        1,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype1-pool3]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool": [
+        1,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype1-pool4]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool": [
+        5,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype1-pool5]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool": [
+        5,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype1-pool6]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool": [
+        5,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype1-pool7]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool": [
+        5,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype1-pool8]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool": [
+        1024,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype1-pool9]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool": [
+        1024,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype1-pool10]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool": [
+        1024,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype1-pool11]": {
+    "params": {
+      "dtype": "torch.float32",
+      "pool": [
+        1024,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype2-pool0]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool": [
+        1,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype2-pool1]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool": [
+        1,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype2-pool2]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool": [
+        1,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype2-pool3]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool": [
+        1,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype2-pool4]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool": [
+        5,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype2-pool5]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool": [
+        5,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype2-pool6]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool": [
+        5,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype2-pool7]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool": [
+        5,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype2-pool8]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool": [
+        1024,
+        1
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype2-pool9]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool": [
+        1024,
+        16
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype2-pool10]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool": [
+        1024,
+        64
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  },
+  "tests/test_multinomial.py::test_multinomial_without_replacement[dtype2-pool11]": {
+    "params": {
+      "dtype": "torch.bfloat16",
+      "pool": [
+        1024,
+        1000
+      ]
+    },
+    "result": "passed",
+    "opname": [
+      "multinomial"
+    ],
+    "reason": null
+  }
+}

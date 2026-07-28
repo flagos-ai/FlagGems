@@ -1,0 +1,7 @@
+{
+  "igammac_": {
+    "result": "failed",
+    "test_case": "benchmark/test_igammac_.py::test_igammac_",
+    "reason": "Failed: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmp5qtwz1mb/kernel.o', '/tmp/tmp5qtwz1mb/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
+  }
+}

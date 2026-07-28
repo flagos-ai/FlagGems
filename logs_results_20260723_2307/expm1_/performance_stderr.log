@@ -1,0 +1,3 @@
+[CMD] pytest -m "expm1_" --level core --record json --output benchmark_expm1_.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

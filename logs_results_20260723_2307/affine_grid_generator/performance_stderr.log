@@ -1,0 +1,3 @@
+[CMD] pytest -m "affine_grid_generator" --level core --record json --output benchmark_affine_grid_generator.json --continue-on-collection-errors
+[CWD] /workspace/FlagGems/benchmark
+

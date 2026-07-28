@@ -1,0 +1,7 @@
+{
+  "abs": {
+    "result": "failed",
+    "test_case": "benchmark/test_abs.py::test_abs",
+    "reason": "Failed: float division by zero"
+  }
+}

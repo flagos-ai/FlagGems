@@ -1,0 +1,4231 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.18, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda/envs/python310_torch29_cuda/bin/python3.10
+cachedir: .pytest_cache
+rootdir: /workspace/FlagGems
+configfile: pytest.ini
+plugins: anyio-4.9.0, typeguard-4.3.0
+collecting ... WARNING 07-23 23:49:56 [interface.py:226] Failed to import from vllm._C: ImportError('/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/vllm/_C.abi3.so: undefined symbol: _ZN3c104cuda29c10_cuda_check_implementationEiPKcS2_jb')
+WARNING 07-23 23:49:58 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:49:58 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:49:58 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:49:58 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:49:58 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:49:58 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:49:58 [interface.py:599] Current platform  does not have '__test__' attribute.
+WARNING 07-23 23:49:58 [interface.py:599] Current platform  does not have '__bases__' attribute.
+WARNING 07-23 23:49:58 [interface.py:599] Current platform  does not have '__test__' attribute.
+ERROR 07-23 23:49:59 [config.py:29] Failed to import Triton kernels. Please make sure your triton version is compatible. Error: No module named 'triton.language.target_info'
+collected 51673 items / 51593 deselected / 80 selected
+
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-2-4-512-512] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-1-2-1024-1024] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-1-2-128-256] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-2-4-384-384] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-1-1-64-64] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-2-4-512-512] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-1-2-1024-1024] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-1-2-128-256] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-2-4-384-384] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-1-1-64-64] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-2-4-512-512] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-1-2-1024-1024] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-1-2-128-256] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-2-4-384-384] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-1-1-64-64] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-2-4-512-512] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-1-2-1024-1024] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-1-2-128-256] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-2-4-384-384] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-1-1-64-64] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-64-2-4-512-512] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-64-1-2-1024-1024] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-64-1-2-128-256] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-64-2-4-384-384] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-64-1-1-64-64] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-128-2-4-512-512] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-128-1-2-1024-1024] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-128-1-2-128-256] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-128-2-4-384-384] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-0-False-128-1-1-64-64] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-64-2-4-512-512] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-64-1-2-1024-1024] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-64-1-2-128-256] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-64-2-4-384-384] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-64-1-1-64-64] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-128-2-4-512-512] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-128-1-2-1024-1024] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-128-1-2-128-256] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-128-2-4-384-384] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-True-False-1-True-128-1-1-64-64] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-2-4-512-512] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-1-2-1024-1024] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-1-2-128-256] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-2-4-384-384] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-1-1-64-64] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-2-4-512-512] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-1-2-1024-1024] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-1-2-128-256] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-2-4-384-384] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-1-1-64-64] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-2-4-512-512] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-1-2-1024-1024] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-1-2-128-256] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-2-4-384-384] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-1-1-64-64] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-2-4-512-512] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-1-2-1024-1024] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-1-2-128-256] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-2-4-384-384] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-1-1-64-64] FAILED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-64-2-4-512-512] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-64-1-2-1024-1024] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-64-1-2-128-256] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-64-2-4-384-384] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-64-1-1-64-64] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-128-2-4-512-512] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-128-1-2-1024-1024] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-128-1-2-128-256] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-128-2-4-384-384] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-0-False-128-1-1-64-64] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-64-2-4-512-512] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-64-1-2-1024-1024] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-64-1-2-128-256] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-64-2-4-384-384] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-64-1-1-64-64] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-128-2-4-512-512] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-128-1-2-1024-1024] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-128-1-2-128-256] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-128-2-4-384-384] SKIPPED
+test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-True-False-1-True-128-1-1-64-64] SKIPPED
+
+=================================== FAILURES ===================================
+_ test_efficient_attention_backward[dtype0-False-False-0-False-64-2-4-512-512] _
+
+batch = 2, num_head = 4, q_seq_len = 512, kv_seq_len = 512, head_size = 64
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ...,  0.0325, -0.0392, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...483, -0.0132,  ...,  0.0270, -0.0478, -0.0039]]]],
+       device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-0-False-64-1-2-1024-1024] _
+
+batch = 1, num_head = 2, q_seq_len = 1024, kv_seq_len = 1024, head_size = 64
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ...,  0.0325, -0.0392, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...045,  0.0031,  ...,  0.0378, -0.0399,  0.0122]]]],
+       device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-0-False-64-1-2-128-256] _
+
+batch = 1, num_head = 2, q_seq_len = 128, kv_seq_len = 256, head_size = 64
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ...,  0.0325, -0.0392, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...025, -0.0271,  ...,  0.0264, -0.0012, -0.0312]]]],
+       device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-0-False-64-2-4-384-384] _
+
+batch = 2, num_head = 4, q_seq_len = 384, kv_seq_len = 384, head_size = 64
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ...,  0.0325, -0.0392, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -....., -1.4702e-02,
+           -4.0497e-02, -3.6713e-02]]]], device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+__ test_efficient_attention_backward[dtype0-False-False-0-False-64-1-1-64-64] __
+
+batch = 1, num_head = 1, q_seq_len = 64, kv_seq_len = 64, head_size = 64
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ...,  0.0325, -0.0392, -0.0422]],
+
+         [[-0.0282, -0.0076, -0.0037,  ...,...493,  0.0430,  ..., -0.0149, -0.0352,  0.0472]]]],
+       device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-0-False-128-2-4-512-512] _
+
+batch = 2, num_head = 4, q_seq_len = 512, kv_seq_len = 512, head_size = 128
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ..., -0.0084,  0.0154, -0.0365],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ....., -5.9776e-03,
+           -6.2790e-03,  2.8412e-02]]]], device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-0-False-128-1-2-1024-1024] _
+
+batch = 1, num_head = 2, q_seq_len = 1024, kv_seq_len = 1024, head_size = 128
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ..., -0.0084,  0.0154, -0.0365],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ...196, -0.0341,  ...,  0.0270, -0.0478, -0.0039]]]],
+       device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-0-False-128-1-2-128-256] _
+
+batch = 1, num_head = 2, q_seq_len = 128, kv_seq_len = 256, head_size = 128
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ..., -0.0084,  0.0154, -0.0365],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ...032,  0.0383,  ...,  0.0022,  0.0071,  0.0157]]]],
+       device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-0-False-128-2-4-384-384] _
+
+batch = 2, num_head = 4, q_seq_len = 384, kv_seq_len = 384, head_size = 128
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ..., -0.0084,  0.0154, -0.0365],
+          [ 0.0148,  0.0021, -0.0007,  ...,  .....,  1.8417e-02,
+           -5.1804e-03, -3.4515e-02]]]], device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-0-False-128-1-1-64-64] __
+
+batch = 1, num_head = 1, q_seq_len = 64, kv_seq_len = 64, head_size = 128
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ..., -0.0084,  0.0154, -0.0365]],
+
+         [[ 0.0148,  0.0021, -0.0007,  ...,....., -7.6408e-03,
+           -3.1147e-03, -3.8849e-02]]]], device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-1-True-64-2-4-512-512] __
+
+batch = 2, num_head = 4, q_seq_len = 512, kv_seq_len = 512, head_size = 64
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ...,  0.0325, -0.0392, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...483, -0.0132,  ...,  0.0270, -0.0478, -0.0039]]]],
+       device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-1-True-64-1-2-1024-1024] _
+
+batch = 1, num_head = 2, q_seq_len = 1024, kv_seq_len = 1024, head_size = 64
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ...,  0.0325, -0.0392, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...045,  0.0031,  ...,  0.0378, -0.0399,  0.0122]]]],
+       device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-1-True-64-1-2-128-256] __
+
+batch = 1, num_head = 2, q_seq_len = 128, kv_seq_len = 256, head_size = 64
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ...,  0.0325, -0.0392, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...025, -0.0271,  ...,  0.0264, -0.0012, -0.0312]]]],
+       device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-1-True-64-2-4-384-384] __
+
+batch = 2, num_head = 4, q_seq_len = 384, kv_seq_len = 384, head_size = 64
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ...,  0.0325, -0.0392, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -....., -1.4702e-02,
+           -4.0497e-02, -3.6713e-02]]]], device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+__ test_efficient_attention_backward[dtype0-False-False-1-True-64-1-1-64-64] ___
+
+batch = 1, num_head = 1, q_seq_len = 64, kv_seq_len = 64, head_size = 64
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ...,  0.0325, -0.0392, -0.0422]],
+
+         [[-0.0282, -0.0076, -0.0037,  ...,...493,  0.0430,  ..., -0.0149, -0.0352,  0.0472]]]],
+       device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-1-True-128-2-4-512-512] _
+
+batch = 2, num_head = 4, q_seq_len = 512, kv_seq_len = 512, head_size = 128
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ..., -0.0084,  0.0154, -0.0365],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ....., -5.9776e-03,
+           -6.2790e-03,  2.8412e-02]]]], device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-1-True-128-1-2-1024-1024] _
+
+batch = 1, num_head = 2, q_seq_len = 1024, kv_seq_len = 1024, head_size = 128
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ..., -0.0084,  0.0154, -0.0365],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ...196, -0.0341,  ...,  0.0270, -0.0478, -0.0039]]]],
+       device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-1-True-128-1-2-128-256] _
+
+batch = 1, num_head = 2, q_seq_len = 128, kv_seq_len = 256, head_size = 128
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ..., -0.0084,  0.0154, -0.0365],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ...032,  0.0383,  ...,  0.0022,  0.0071,  0.0157]]]],
+       device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype0-False-False-1-True-128-2-4-384-384] _
+
+batch = 2, num_head = 4, q_seq_len = 384, kv_seq_len = 384, head_size = 128
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ..., -0.0084,  0.0154, -0.0365],
+          [ 0.0148,  0.0021, -0.0007,  ...,  .....,  1.8417e-02,
+           -5.1804e-03, -3.4515e-02]]]], device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+__ test_efficient_attention_backward[dtype0-False-False-1-True-128-1-1-64-64] __
+
+batch = 1, num_head = 1, q_seq_len = 64, kv_seq_len = 64, head_size = 128
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.float16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0329, -0.0244,  0.0333,  ..., -0.0084,  0.0154, -0.0365]],
+
+         [[ 0.0148,  0.0021, -0.0007,  ...,....., -7.6408e-03,
+           -3.1147e-03, -3.8849e-02]]]], device='cuda:0', dtype=torch.float16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-0-False-64-2-4-512-512] _
+
+batch = 2, num_head = 4, q_seq_len = 512, kv_seq_len = 512, head_size = 64
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ...,  0.0325, -0.0393, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...83, -0.0132,  ...,  0.0270, -0.0479, -0.0039]]]],
+       device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-0-False-64-1-2-1024-1024] _
+
+batch = 1, num_head = 2, q_seq_len = 1024, kv_seq_len = 1024, head_size = 64
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ...,  0.0325, -0.0393, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...45,  0.0031,  ...,  0.0378, -0.0400,  0.0122]]]],
+       device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-0-False-64-1-2-128-256] _
+
+batch = 1, num_head = 2, q_seq_len = 128, kv_seq_len = 256, head_size = 64
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ...,  0.0325, -0.0393, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...25, -0.0271,  ...,  0.0265, -0.0012, -0.0312]]]],
+       device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-0-False-64-2-4-384-384] _
+
+batch = 2, num_head = 4, q_seq_len = 384, kv_seq_len = 384, head_size = 64
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ...,  0.0325, -0.0393, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...., -1.4709e-02,
+           -4.0527e-02, -3.6865e-02]]]], device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+__ test_efficient_attention_backward[dtype1-False-False-0-False-64-1-1-64-64] __
+
+batch = 1, num_head = 1, q_seq_len = 64, kv_seq_len = 64, head_size = 64
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ...,  0.0325, -0.0393, -0.0422]],
+
+         [[-0.0282, -0.0076, -0.0037,  ...,...93,  0.0430,  ..., -0.0150, -0.0352,  0.0474]]]],
+       device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-0-False-128-2-4-512-512] _
+
+batch = 2, num_head = 4, q_seq_len = 512, kv_seq_len = 512, head_size = 128
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ..., -0.0084,  0.0154, -0.0366],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ...., -5.9814e-03,
+           -6.2866e-03,  2.8442e-02]]]], device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-0-False-128-1-2-1024-1024] _
+
+batch = 1, num_head = 2, q_seq_len = 1024, kv_seq_len = 1024, head_size = 128
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ..., -0.0084,  0.0154, -0.0366],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ...95, -0.0342,  ...,  0.0270, -0.0479, -0.0039]]]],
+       device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-0-False-128-1-2-128-256] _
+
+batch = 1, num_head = 2, q_seq_len = 128, kv_seq_len = 256, head_size = 128
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ..., -0.0084,  0.0154, -0.0366],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ...32,  0.0383,  ...,  0.0022,  0.0071,  0.0156]]]],
+       device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-0-False-128-2-4-384-384] _
+
+batch = 2, num_head = 4, q_seq_len = 384, kv_seq_len = 384, head_size = 128
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ..., -0.0084,  0.0154, -0.0366],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ....,  1.8433e-02,
+           -5.1880e-03, -3.4668e-02]]]], device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-0-False-128-1-1-64-64] __
+
+batch = 1, num_head = 1, q_seq_len = 64, kv_seq_len = 64, head_size = 128
+custom_mask_type = 0, expected_causal = False, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ..., -0.0084,  0.0154, -0.0366]],
+
+         [[ 0.0148,  0.0021, -0.0007,  ...,...., -7.6599e-03,
+           -3.1128e-03, -3.8818e-02]]]], device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 0, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-1-True-64-2-4-512-512] __
+
+batch = 2, num_head = 4, q_seq_len = 512, kv_seq_len = 512, head_size = 64
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ...,  0.0325, -0.0393, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...83, -0.0132,  ...,  0.0270, -0.0479, -0.0039]]]],
+       device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-1-True-64-1-2-1024-1024] _
+
+batch = 1, num_head = 2, q_seq_len = 1024, kv_seq_len = 1024, head_size = 64
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ...,  0.0325, -0.0393, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...45,  0.0031,  ...,  0.0378, -0.0400,  0.0122]]]],
+       device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-1-True-64-1-2-128-256] __
+
+batch = 1, num_head = 2, q_seq_len = 128, kv_seq_len = 256, head_size = 64
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ...,  0.0325, -0.0393, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...25, -0.0271,  ...,  0.0265, -0.0012, -0.0312]]]],
+       device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-1-True-64-2-4-384-384] __
+
+batch = 2, num_head = 4, q_seq_len = 384, kv_seq_len = 384, head_size = 64
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ...,  0.0325, -0.0393, -0.0422],
+          [-0.0282, -0.0076, -0.0037,  ..., -...., -1.4709e-02,
+           -4.0527e-02, -3.6865e-02]]]], device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+__ test_efficient_attention_backward[dtype1-False-False-1-True-64-1-1-64-64] ___
+
+batch = 1, num_head = 1, q_seq_len = 64, kv_seq_len = 64, head_size = 64
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ...,  0.0325, -0.0393, -0.0422]],
+
+         [[-0.0282, -0.0076, -0.0037,  ...,...93,  0.0430,  ..., -0.0150, -0.0352,  0.0474]]]],
+       device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.125}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-1-True-128-2-4-512-512] _
+
+batch = 2, num_head = 4, q_seq_len = 512, kv_seq_len = 512, head_size = 128
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ..., -0.0084,  0.0154, -0.0366],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ...., -5.9814e-03,
+           -6.2866e-03,  2.8442e-02]]]], device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-1-True-128-1-2-1024-1024] _
+
+batch = 1, num_head = 2, q_seq_len = 1024, kv_seq_len = 1024, head_size = 128
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ..., -0.0084,  0.0154, -0.0366],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ...95, -0.0342,  ...,  0.0270, -0.0479, -0.0039]]]],
+       device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-1-True-128-1-2-128-256] _
+
+batch = 1, num_head = 2, q_seq_len = 128, kv_seq_len = 256, head_size = 128
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ..., -0.0084,  0.0154, -0.0366],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ...32,  0.0383,  ...,  0.0022,  0.0071,  0.0156]]]],
+       device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+_ test_efficient_attention_backward[dtype1-False-False-1-True-128-2-4-384-384] _
+
+batch = 2, num_head = 4, q_seq_len = 384, kv_seq_len = 384, head_size = 128
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ..., -0.0084,  0.0154, -0.0366],
+          [ 0.0148,  0.0021, -0.0007,  ...,  ....,  1.8433e-02,
+           -5.1880e-03, -3.4668e-02]]]], device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+__ test_efficient_attention_backward[dtype1-False-False-1-True-128-1-1-64-64] __
+
+batch = 1, num_head = 1, q_seq_len = 64, kv_seq_len = 64, head_size = 128
+custom_mask_type = 1, expected_causal = True, has_bias = False
+bias_requires_grad = False, dtype = torch.bfloat16
+
+    @pytest.mark.efficient_attention_backward
+    @pytest.mark.parametrize(
+        "batch, num_head, q_seq_len, kv_seq_len",
+        [
+            (2, 4, 512, 512),
+            (1, 2, 1024, 1024),
+            (1, 2, 128, 256),
+            (2, 4, 384, 384),
+            (1, 1, 64, 64),
+        ],
+    )
+    @pytest.mark.parametrize("head_size", [64, 128])
+    @pytest.mark.parametrize(
+        "custom_mask_type, expected_causal",
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    @pytest.mark.parametrize("has_bias", [False])
+    @pytest.mark.parametrize("bias_requires_grad", [False, True])
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_efficient_attention_backward(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        custom_mask_type,
+        expected_causal,
+        has_bias,
+        bias_requires_grad,
+        dtype,
+    ):
+        if not has_bias and bias_requires_grad:
+            pytest.skip("bias_requires_grad=True requires has_bias=True")
+    
+        scale = float(1.0 / math.sqrt(head_size))
+    
+        Q, K, V = make_qkv(
+            batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+        )
+        dOut = torch.randn(
+            batch, q_seq_len, num_head, head_size, dtype=dtype, device=flag_gems.device
+        )
+    
+        bias = None
+        if has_bias:
+            bias = (
+                torch.randn(
+                    batch,
+                    num_head,
+                    q_seq_len,
+                    kv_seq_len,
+                    dtype=dtype,
+                    device=flag_gems.device,
+                )
+                * 0.1
+            )
+    
+>       out, lse_aligned, lse, philox_seed, philox_offset = efficient_attn_forward_native(
+            Q,
+            K,
+            V,
+            bias=bias,
+            is_causal=expected_causal,
+            softmax_scale=scale,
+        )
+
+test_flash_attention_backward.py:502: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_flash_attention_backward.py:132: in efficient_attn_forward_native
+    results = torch.ops.aten._efficient_attention_forward(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverloadPacket(op='aten._efficient_attention_forward')>
+args = (tensor([[[[-0.0330, -0.0244,  0.0332,  ..., -0.0084,  0.0154, -0.0366]],
+
+         [[ 0.0148,  0.0021, -0.0007,  ...,...., -7.6599e-03,
+           -3.1128e-03, -3.8818e-02]]]], device='cuda:0', dtype=torch.bfloat16), None, None, None, ...)
+kwargs = {'dropout_p': 0.0, 'custom_mask_type': 1, 'compute_log_sumexp': True, 'scale': 0.08838834764831843}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        # overloading __call__ to ensure torch.ops.foo.bar()
+        # is still callable from JIT
+        # We save the function ptr as the `op` attribute on
+        # OpOverloadPacket to access it here.
+    
+        # Directly calling OverloadPacket goes into C++, which will check
+        # the schema and cause an error for torchbind op when inputs consist of FakeScriptObject so we
+        # intercept it here and call TorchBindOpverload instead.
+        if self._has_torchbind_op_overload and _must_dispatch_in_python(args, kwargs):
+            return _call_overload_packet_from_python(self, *args, **kwargs)
+>       return self._op(*args, **kwargs)
+E       ValueError: Check failed, max_seqlen_q not supported yet
+
+/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch/_ops.py:1255: ValueError
+=========================== short test summary info ============================
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-2-4-512-512]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-1-2-1024-1024]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-1-2-128-256]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-2-4-384-384]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-64-1-1-64-64]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-2-4-512-512]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-1-2-1024-1024]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-1-2-128-256]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-2-4-384-384]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-0-False-128-1-1-64-64]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-2-4-512-512]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-1-2-1024-1024]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-1-2-128-256]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-2-4-384-384]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-64-1-1-64-64]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-2-4-512-512]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-1-2-1024-1024]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-1-2-128-256]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-2-4-384-384]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype0-False-False-1-True-128-1-1-64-64]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-2-4-512-512]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-1-2-1024-1024]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-1-2-128-256]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-2-4-384-384]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-64-1-1-64-64]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-2-4-512-512]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-1-2-1024-1024]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-1-2-128-256]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-2-4-384-384]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-0-False-128-1-1-64-64]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-2-4-512-512]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-1-2-1024-1024]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-1-2-128-256]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-2-4-384-384]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-64-1-1-64-64]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-2-4-512-512]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-1-2-1024-1024]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-1-2-128-256]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-2-4-384-384]
+FAILED test_flash_attention_backward.py::test_efficient_attention_backward[dtype1-False-False-1-True-128-1-1-64-64]
+============== 40 failed, 40 skipped, 51593 deselected in 12.64s ===============
