@@ -284,7 +284,7 @@ from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
 from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from .soft_margin_loss_backward import soft_margin_loss_backward
-from .softmax import softmax, softmax_backward
+from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
@@ -714,6 +714,8 @@ __all__ = [
     "slice_scatter",
     "softmax",
     "softmax_backward",
+    "softmax_backward_out",
+    "softmax_out",
     "softplus",
     "sort",
     "sort_stable",
