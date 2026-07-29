@@ -153,6 +153,7 @@ backends:
     flagtree: flagtree==0.5.1+xpu3.0
     env:
       PATH: /usr/local/xpu/bin:$PATH
+      XPU_EVENT_KL3_ENABLE: "1"
       LD_LIBRARY_PATH: /usr/local/xcudart/lib:/usr/local/xpu/lib:/usr/local/cuda/lib64
     deps:
       - apex==0.1
@@ -208,7 +209,7 @@ backends:
       PATH: $MUSA_HOME/bin:$PATH
       LD_LIBRARY_PATH: $VIRTUAL_ENV/lib:$MUSA_HOME/lib:$LD_LIBRARY_PATH
     deps:
-      - torch==2.9.0+musa5.2.0
+      - torch==2.9.1+musa5.2.0
       - torch_musa==2.9.1
       - mkl==2024.0.0
 
