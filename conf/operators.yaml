@@ -9873,22 +9873,6 @@ ops:
       - BLAS
     stages:
       - alpha: '5.3'
-  - id: wgrad_gemm_accum
-    description: |
-      Accumulate weight gradients in-place for training:
-      `main_grad += grad_output.T @ input`.
-      Includes fp32-accum (`wgrad_gemm_accum_fp32`) and same-dtype accum
-      (`wgrad_gemm_accum_fp16`) paths aligned with Apex semantics.
-    for:
-      - wgrad_gemm_accum_fp32
-      - wgrad_gemm_accum_fp16
-    labels:
-      - fused
-    kind:
-      - BLAS
-      - NeuralNetwork
-    stages:
-      - alpha: '5.4'
   - id: weight_norm
     description: |
       Reparameterizes a module's weight tensor by decoupling its magnitude (g)

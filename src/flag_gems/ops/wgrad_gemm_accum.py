@@ -35,11 +35,6 @@ Non-contiguous ``main_grad`` is correct but densifies then ``copy_``; a one-shot
 warning fires on first use.  Set
 ``FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1`` to reject NC ``main_grad``.
 
-Packaging / JIT: GemmEx sources ship as ``flag_gems/csrc/*`` (``package-data``).
-Without ``nvcc`` (common on Windows dev boxes / CPU CI) the path falls back to
-Torch — use ``FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1`` or inspect
-``wgrad_gemmex_diag()`` / ``wgrad_gemmex_load_error()``.
-
 TF32 note: like Apex, ``allow_tf32=False`` does not force full-fp32 GemmEx.
 Test-only CPU-fp64-matched checks use ``wgrad_gemm_accum_fp32_strict_cpu_ref``
 (not a kwarg on the training API).
@@ -52,9 +47,6 @@ from __future__ import annotations
 
 import logging
 import os
-import platform
-import shutil
-import sys
 import warnings
 from functools import lru_cache
 from pathlib import Path
@@ -74,9 +66,6 @@ _WGRAD_FALLBACK_WARNED = False
 _WGRAD_RUNTIME_FAIL_STREAK = 0
 _DEFAULT_GEMMEX_FAIL_LIMIT = 3
 _WGRAD_NC_MAIN_WARNED = False
-# Last extension-load failure detail (package-data / nvcc / JIT compile / …).
-_WGRAD_LOAD_ERROR: str | None = None
-_WGRAD_BACKEND: str | None = None  # "c_operators" | "torch.ops" | "jit" | None
 
 
 def _env_flag_true(name: str) -> bool:
@@ -220,61 +209,6 @@ def wgrad_fallback_reason() -> str | None:
     return _WGRAD_FALLBACK_REASON
 
 
-def wgrad_gemmex_load_error() -> str | None:
-    """Detail from the last failed extension load attempt, or ``None``."""
-    return _WGRAD_LOAD_ERROR
-
-
-def wgrad_gemmex_backend() -> str | None:
-    """``c_operators`` / ``torch.ops`` / ``jit`` after a successful load, else ``None``."""
-    return _WGRAD_BACKEND
-
-
-def wgrad_gemmex_diag() -> dict:
-    """Snapshot for packaging / JIT debugging (safe to print in logs)."""
-    cpp, hdr = _wgrad_csrc_paths()
-    return {
-        "backend": _WGRAD_BACKEND,
-        "load_error": _WGRAD_LOAD_ERROR,
-        "using_torch_fallback": _WGRAD_FALLBACK_ACTIVE,
-        "fallback_reason": _WGRAD_FALLBACK_REASON,
-        "csrc_cpp": str(cpp),
-        "csrc_cpp_present": cpp.is_file(),
-        "csrc_header_present": hdr.is_file(),
-        "nvcc": shutil.which("nvcc"),
-        "cuda_home": os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH"),
-        "platform": platform.platform(),
-        "torch_extensions_dir": os.environ.get("TORCH_EXTENSIONS_DIR"),
-    }
-
-
-def _wgrad_csrc_paths() -> tuple[Path, Path]:
-    """Return ``(wgrad_gemm_accum.cpp, wgrad_gemm_accum_kernel.h)`` under package data."""
-    csrc = Path(__file__).resolve().parent.parent / "csrc"
-    return csrc / "wgrad_gemm_accum.cpp", csrc / "wgrad_gemm_accum_kernel.h"
-
-
-def _jit_extra_ldflags() -> list[str]:
-    """Link flags for JIT. ``-ldl`` is Linux-only; Windows uses GetProcAddress."""
-    if sys.platform.startswith("linux"):
-        return ["-ldl"]
-    # macOS / Windows: no libdl; kernel resolves cublas via process modules.
-    return []
-
-
-def _note_load_failure(reason: str) -> None:
-    global _WGRAD_LOAD_ERROR, _WGRAD_BACKEND
-    _WGRAD_LOAD_ERROR = reason
-    _WGRAD_BACKEND = None
-    logger.warning("wgrad_gemm_accum_fp32: GemmEx extension load failed: %s", reason)
-
-
-def _note_load_success(backend: str) -> None:
-    global _WGRAD_LOAD_ERROR, _WGRAD_BACKEND
-    _WGRAD_LOAD_ERROR = None
-    _WGRAD_BACKEND = backend
-
-
 def _collapse_to_2d(input: torch.Tensor, grad_output: torch.Tensor):
     if input.dim() > 2:
         input_2d = input.reshape(-1, input.size(-1))
@@ -305,14 +239,21 @@ def _validate_device(*tensors: torch.Tensor) -> None:
         )
 
 
-def _try_prebuilt_gemmex_ext():
-    """Return ``c_operators`` / ``torch.ops.flag_gems`` if they expose GemmEx."""
+@lru_cache(None)
+def _load_wgrad_gemm_ext():
+    """Return a module exposing ``wgrad_gemm_accum_fp32``, or ``None``.
+
+    Prefer the official FlagGems C extension when installed; otherwise try to
+    JIT-compile ``flag_gems/csrc/wgrad_gemm_accum.cpp`` (kernel body is shared
+    with ``cpp/lib`` via ``wgrad_gemm_accum_kernel.h``).  Returns ``None`` if
+    neither path works (e.g. CI runners without nvcc) so callers can fall back
+    to a Torch addmm path for correctness tests.
+    """
     try:
         from flag_gems import c_operators
 
         if hasattr(c_operators, "wgrad_gemm_accum_fp32"):
             logger.debug("wgrad_gemm_accum_fp32: using flag_gems.c_operators")
-            _note_load_success("c_operators")
             return c_operators
     except ImportError:
         pass
@@ -322,88 +263,34 @@ def _try_prebuilt_gemmex_ext():
 
         if hasattr(flag_gems_ops, "wgrad_gemm_accum_fp32"):
             logger.debug("wgrad_gemm_accum_fp32: using torch.ops.flag_gems")
-            _note_load_success("torch.ops")
             return flag_gems_ops
     except (ImportError, AttributeError):
         pass
 
-    return None
+    from torch.utils.cpp_extension import load
 
-
-@lru_cache(None)
-def _load_wgrad_gemm_ext():
-    """Return a module exposing ``wgrad_gemm_accum_fp32``, or ``None``.
-
-    Prefer the official FlagGems C extension when installed; otherwise try to
-    JIT-compile ``flag_gems/csrc/wgrad_gemm_accum.cpp`` (kernel body is shared
-    with ``cpp/lib`` via ``wgrad_gemm_accum_kernel.h``).  Returns ``None`` if
-    neither path works (e.g. CI runners without nvcc, broken package-data, or
-    Windows without a CUDA toolchain) so callers can fall back to Torch.
-    """
-    prebuilt = _try_prebuilt_gemmex_ext()
-    if prebuilt is not None:
-        return prebuilt
-
-    src, hdr = _wgrad_csrc_paths()
+    src = Path(__file__).resolve().parent.parent / "csrc" / "wgrad_gemm_accum.cpp"
     if not src.is_file():
-        _note_load_failure(
-            f"missing GemmEx source at {src} "
-            "(wheel/install must ship flag_gems/csrc via package-data; "
-            "editable installs need the repo checkout)"
-        )
-        return None
-    if not hdr.is_file():
-        _note_load_failure(
-            f"missing GemmEx header at {hdr} "
-            "(package-data must include flag_gems/csrc/*.h)"
-        )
+        logger.debug("wgrad_gemm_accum_fp32: missing GemmEx source at %s", src)
         return None
 
-    if not torch.cuda.is_available():
-        _note_load_failure("CUDA unavailable; cannot JIT-compile GemmEx extension")
-        return None
-
-    from torch.utils.cpp_extension import CUDA_HOME, load
-
-    nvcc = shutil.which("nvcc")
-    cuda_home = CUDA_HOME or os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH")
-    if nvcc is None and not cuda_home:
-        _note_load_failure(
-            "no nvcc on PATH and CUDA_HOME/CUDA_PATH unset "
-            f"(platform={platform.system()}); install a CUDA toolkit or use "
-            "a FlagGems build with c_operators, else Torch fallback is used"
-        )
-        return None
-
-    # Do NOT link -lcublas. The extension must call the same libcublas that
-    # owns PyTorch's BLAS handle (dlsym / GetProcAddress); a second copy ->
-    # INVALID_VALUE.
-    ldflags = _jit_extra_ldflags()
+    # Do NOT link -lcublas here. The extension must call the same libcublas that
+    # owns PyTorch's BLAS handle (via dlsym); a second copy -> INVALID_VALUE.
     logger.info(
-        "wgrad_gemm_accum_fp32: JIT-compiling CUDA extension from %s "
-        "(first call only; ldflags=%s)",
+        "wgrad_gemm_accum_fp32: JIT-compiling CUDA extension from %s (first call only)",
         src,
-        ldflags,
     )
     try:
-        ext = load(
+        return load(
             name="flag_gems_wgrad_gemm_accum",
             sources=[str(src)],
-            extra_include_paths=[str(src.parent)],
-            extra_ldflags=ldflags,
+            extra_ldflags=["-ldl"],
             with_cuda=True,
             verbose=False,
         )
     except Exception as exc:  # noqa: BLE001 - caller decides fallback vs hard-fail
-        _note_load_failure(
-            f"JIT compile failed ({type(exc).__name__}: {exc}); "
-            "clear ~/.cache/torch_extensions/flag_gems_wgrad_gemm_accum and "
-            "ensure nvcc matches the Torch CUDA build"
-        )
+        logger.debug("wgrad_gemm_accum_fp32: JIT extension unavailable (%s)", exc)
         return None
-
-    _note_load_success("jit")
-    return ext
 
 
 def _torch_wgrad_gemm_accum_fp32(
@@ -481,8 +368,7 @@ def _cublas_wgrad_gemm_accum_fp32(
                 _torch_wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
                 return
         _activate_torch_fallback(
-            _WGRAD_LOAD_ERROR
-            or "compiled GemmEx extension unavailable (c_operators / JIT)"
+            "compiled GemmEx extension unavailable (c_operators / JIT)"
         )
 
     _torch_wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)

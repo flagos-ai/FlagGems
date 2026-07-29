@@ -47,9 +47,6 @@ export PYTHONPATH="$REPO_ROOT/src"
 # Optional: reject non-contiguous main_grad (avoids silent densify+copy cost).
 # export FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1
 
-CSRC_CPP="$REPO_ROOT/src/flag_gems/csrc/wgrad_gemm_accum.cpp"
-CSRC_HDR="$REPO_ROOT/src/flag_gems/csrc/wgrad_gemm_accum_kernel.h"
-
 if [[ $SKIP_CLEAR_CACHE -eq 0 ]]; then
   # Clear only wgrad-related Torch extension cache to avoid stale JIT binaries.
   if [[ -n "${TORCH_EXTENSIONS_DIR:-}" ]]; then
@@ -65,36 +62,8 @@ echo "[wgrad-preflight] PYTHONPATH=$PYTHONPATH"
 echo "[wgrad-preflight] FLAGGEMS_WGRAD_REQUIRE_GEMMEX=${FLAGGEMS_WGRAD_REQUIRE_GEMMEX:-0}"
 echo "[wgrad-preflight] FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT=${FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT:-3}"
 echo "[wgrad-preflight] FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=${FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD:-0}"
-echo "[wgrad-preflight] TORCH_EXTENSIONS_DIR=${TORCH_EXTENSIONS_DIR:-<default ~/.cache/torch_extensions>}"
-echo "[wgrad-preflight] CUDA_HOME=${CUDA_HOME:-${CUDA_PATH:-<unset>}}"
-if command -v nvcc >/dev/null 2>&1; then
-  echo "[wgrad-preflight] nvcc=$(command -v nvcc)"
-else
-  echo "[wgrad-preflight] nvcc=<not on PATH> (JIT GemmEx may fall back to Torch)"
-fi
-if [[ -f "$CSRC_CPP" && -f "$CSRC_HDR" ]]; then
-  echo "[wgrad-preflight] csrc OK: $CSRC_CPP"
-else
-  echo "[wgrad-preflight] WARN: missing package-data sources:"
-  echo "[wgrad-preflight]   cpp=$CSRC_CPP present=$([[ -f $CSRC_CPP ]] && echo yes || echo NO)"
-  echo "[wgrad-preflight]   hdr=$CSRC_HDR present=$([[ -f $CSRC_HDR ]] && echo yes || echo NO)"
-fi
 if [[ $SKIP_CLEAR_CACHE -eq 0 ]]; then
   echo "[wgrad-preflight] cleared wgrad JIT cache"
 else
   echo "[wgrad-preflight] skipped cache clear"
 fi
-
-# Optional one-liner diag (ignore failure if import path broken).
-python - <<'PY' 2>/dev/null || true
-from flag_gems.ops.wgrad_gemm_accum import wgrad_gemmex_diag
-d = wgrad_gemmex_diag()
-print(
-    "[wgrad-preflight] diag:",
-    f"csrc_cpp_present={d['csrc_cpp_present']}",
-    f"csrc_header_present={d['csrc_header_present']}",
-    f"nvcc={d['nvcc']}",
-    f"backend={d['backend']}",
-    f"load_error={d['load_error']}",
-)
-PY
