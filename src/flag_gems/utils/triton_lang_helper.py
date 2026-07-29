@@ -107,10 +107,7 @@ def _fallback_j1(x):
     # --- small-argument path (|x| <= 5) ---
     # Horner-form coefficients (float32 precision)
     z = x * x
-    p_small = (
-        -3.0455048e-09 * z
-        + 1.5716311e-06
-    )
+    p_small = -3.0455048e-09 * z + 1.5716311e-06
     p_small = p_small * z - 2.2751471e-04
     p_small = p_small * z + 1.4045601e-02
     p_small = p_small * z - 3.3333310e-01
