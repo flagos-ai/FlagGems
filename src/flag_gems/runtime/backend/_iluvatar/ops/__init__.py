@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .addmm import addmm, addmm_out
 from .arccosh_ import arccosh_
 from .conv_depthwise2d import _conv_depthwise2d
@@ -36,6 +37,7 @@ from .var import var, var_correction, var_dim
 
 __all__ = [
     "_conv_depthwise2d",
+    "_native_batch_norm_legit_functional",
     "addmm",
     "addmm_out",
     "arccosh_",
