@@ -849,6 +849,7 @@ _FULL_CONFIG = (
     ("trunc_", trunc_),
     ("unbind.int", unbind),
     ("unbind_copy", unbind_copy),
+    ("unflatten", unflatten),
     ("unfold_backward", unfold_backward),
     ("unfold_copy", unfold_copy),
     ("uniform_", uniform_),

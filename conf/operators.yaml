@@ -5093,6 +5093,17 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: unflatten
+    description: Expand a single dimension into multiple dimensions (inverse of flatten).
+    for:
+      - unflatten
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: xlogy
     description: Computes `input * log(other)` element-wise, returning zero where `input` is zero (following PyTorch's `xlogy` semantics).
     for:

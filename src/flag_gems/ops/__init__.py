@@ -631,6 +631,7 @@ from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.trunc_ import trunc, trunc_
 from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
+from flag_gems.ops.unflatten import unflatten
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
 from flag_gems.ops.uniform import uniform_
@@ -1090,6 +1091,7 @@ __all__ = [
     "logaddexp2_out",
     "logcumsumexp",
     "logcumsumexp_out",
+    "unflatten",
     "xlogy",
     "xlogy_out",
     "xlogy_tensor_scalar",
