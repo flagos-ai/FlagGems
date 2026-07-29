@@ -386,10 +386,16 @@ def _accum_wgrad(
     fp32_accum: bool,
     strict_cpu_ref: bool = False,
 ) -> None:
-    # Empty GEMM: K==0 or zero feature dims contribute nothing; leave main_grad.
-    # (Also handled inside the CUDA extension; keep here to avoid JIT on no-ops.)
-    if input_2d.size(0) == 0 or input_2d.size(1) == 0 or grad_output_2d.size(1) == 0:
+    # K==0: empty product, leave main_grad unchanged (same as a no-op GEMM).
+    if input_2d.size(0) == 0:
         return
+    # Zero M/N (out/in features): reject like Apex/cublasGemmEx.
+    if input_2d.size(1) == 0 or grad_output_2d.size(1) == 0:
+        raise RuntimeError(
+            "wgrad_gemm_accum: in_features and out_features must be > 0 "
+            f"(got in={input_2d.size(1)}, out={grad_output_2d.size(1)}); "
+            "Apex/cublasGemmEx also reject zero M/N"
+        )
 
     if fp32_accum:
         # Match Apex fused_weight_gradient path (half/bf16/fp32 -> fp32 C).

@@ -118,9 +118,16 @@ inline void wgrad_gemm_accum_fp32_cuda_impl(const at::Tensor &input_2d,
               weight.size(1),
               ")");
 
-  if (hidden_dim == 0 || in_dim == 0 || out_dim == 0) {
+  if (hidden_dim == 0) {
     return;
   }
+  TORCH_CHECK(in_dim > 0 && out_dim > 0,
+              "wgrad_gemm_accum_fp32: in_features and out_features must be > 0 "
+              "(got in=",
+              in_dim,
+              ", out=",
+              out_dim,
+              "); Apex/cublasGemmEx also reject zero M/N");
 
   const float alpha = 1.0f;
   const float beta = 1.0f;

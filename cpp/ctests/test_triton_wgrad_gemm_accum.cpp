@@ -71,6 +71,30 @@ TEST(WgradGemmAccumFp32Test, zero_k_is_noop) {
   EXPECT_TRUE(at::equal(main_grad, main_before));
 }
 
+TEST(WgradGemmAccumFp32Test, zero_in_features_raises) {
+  const torch::Device device = flag_gems::test::default_device();
+  const at::TensorOptions act_opt = at::TensorOptions().device(device).dtype(at::kHalf);
+  const at::TensorOptions fp32_opt = at::TensorOptions().device(device).dtype(at::kFloat);
+
+  const at::Tensor input = at::empty({8, 0}, act_opt);
+  const at::Tensor grad_output = at::randn({8, 32}, act_opt);
+  at::Tensor main_grad = at::empty({32, 0}, fp32_opt);
+
+  EXPECT_THROW(flag_gems::wgrad_gemm_accum_fp32(input, grad_output, main_grad), c10::Error);
+}
+
+TEST(WgradGemmAccumFp32Test, zero_out_features_raises) {
+  const torch::Device device = flag_gems::test::default_device();
+  const at::TensorOptions act_opt = at::TensorOptions().device(device).dtype(at::kHalf);
+  const at::TensorOptions fp32_opt = at::TensorOptions().device(device).dtype(at::kFloat);
+
+  const at::Tensor input = at::randn({8, 16}, act_opt);
+  const at::Tensor grad_output = at::empty({8, 0}, act_opt);
+  at::Tensor main_grad = at::empty({0, 16}, fp32_opt);
+
+  EXPECT_THROW(flag_gems::wgrad_gemm_accum_fp32(input, grad_output, main_grad), c10::Error);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     WgradShapes,
     WgradGemmAccumFp32Test,

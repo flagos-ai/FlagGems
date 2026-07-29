@@ -751,7 +751,7 @@ def test_wgrad_gemm_accum_fp16_empty_batch(dtype):
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.parametrize("dtype", FP32_ACCUM_CPU_REF_DTYPES)
 def test_wgrad_gemm_accum_fp32_zero_in_features(dtype):
-    """in_features==0: empty product, main_grad (out, 0) unchanged."""
+    """in_features==0: reject like Apex/cublasGemmEx (zero N)."""
     _with_seed(20260761)
     batch, in_features, out_features = 8, 0, 32
     input_tensor = torch.randn(
@@ -763,17 +763,15 @@ def test_wgrad_gemm_accum_fp32_zero_in_features(dtype):
     main_grad = torch.randn(
         (out_features, in_features), dtype=torch.float32, device=flag_gems.device
     )
-    seed = main_grad.clone()
 
-    wgrad_gemm_accum_fp32(input_tensor, grad_output, main_grad)
-    assert main_grad.shape == (out_features, 0)
-    assert torch.equal(main_grad, seed)
+    with pytest.raises(RuntimeError, match="in_features and out_features must be > 0"):
+        wgrad_gemm_accum_fp32(input_tensor, grad_output, main_grad)
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.parametrize("dtype", FP32_ACCUM_CPU_REF_DTYPES)
 def test_wgrad_gemm_accum_fp32_zero_out_features(dtype):
-    """out_features==0: empty product, main_grad (0, in) unchanged."""
+    """out_features==0: reject like Apex/cublasGemmEx (zero M)."""
     _with_seed(20260762)
     batch, in_features, out_features = 8, 16, 0
     input_tensor = torch.randn(
@@ -785,17 +783,15 @@ def test_wgrad_gemm_accum_fp32_zero_out_features(dtype):
     main_grad = torch.randn(
         (out_features, in_features), dtype=torch.float32, device=flag_gems.device
     )
-    seed = main_grad.clone()
 
-    wgrad_gemm_accum_fp32(input_tensor, grad_output, main_grad)
-    assert main_grad.shape == (0, in_features)
-    assert torch.equal(main_grad, seed)
+    with pytest.raises(RuntimeError, match="in_features and out_features must be > 0"):
+        wgrad_gemm_accum_fp32(input_tensor, grad_output, main_grad)
 
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
 def test_wgrad_gemm_accum_fp16_zero_in_features(dtype):
-    """fp16/bf16 accum: in_features==0 is a no-op."""
+    """fp16/bf16 accum: in_features==0 is rejected like Apex."""
     _with_seed(20260763)
     batch, in_features, out_features = 8, 0, 32
     input_tensor = torch.randn(
@@ -807,16 +803,15 @@ def test_wgrad_gemm_accum_fp16_zero_in_features(dtype):
     main_grad = torch.randn(
         (out_features, in_features), dtype=dtype, device=flag_gems.device
     )
-    seed = main_grad.clone()
 
-    wgrad_gemm_accum_fp16(input_tensor, grad_output, main_grad)
-    assert torch.equal(main_grad, seed)
+    with pytest.raises(RuntimeError, match="in_features and out_features must be > 0"):
+        wgrad_gemm_accum_fp16(input_tensor, grad_output, main_grad)
 
 
 @pytest.mark.wgrad_gemm_accum_fp16
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
 def test_wgrad_gemm_accum_fp16_zero_out_features(dtype):
-    """fp16/bf16 accum: out_features==0 is a no-op."""
+    """fp16/bf16 accum: out_features==0 is rejected like Apex."""
     _with_seed(20260764)
     batch, in_features, out_features = 8, 16, 0
     input_tensor = torch.randn(
@@ -828,10 +823,9 @@ def test_wgrad_gemm_accum_fp16_zero_out_features(dtype):
     main_grad = torch.randn(
         (out_features, in_features), dtype=dtype, device=flag_gems.device
     )
-    seed = main_grad.clone()
 
-    wgrad_gemm_accum_fp16(input_tensor, grad_output, main_grad)
-    assert torch.equal(main_grad, seed)
+    with pytest.raises(RuntimeError, match="in_features and out_features must be > 0"):
+        wgrad_gemm_accum_fp16(input_tensor, grad_output, main_grad)
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
@@ -842,7 +836,7 @@ def test_wgrad_gemm_accum_fp16_zero_out_features(dtype):
 @pytest.mark.parametrize("zero_dim", ["in", "out"])
 @pytest.mark.parametrize("dtype", FP32_ACCUM_INPUT_DTYPES)
 def test_wgrad_gemm_accum_fp32_vs_apex_zero_features(zero_dim, dtype):
-    """Apex/cublasGemmEx rejects zero M/N; gems treats empty product as no-op."""
+    """Zero M/N: both Apex and FlagGems raise RuntimeError."""
     _with_seed(20260765)
     batch = 8
     in_features = 0 if zero_dim == "in" else 16
@@ -862,8 +856,8 @@ def test_wgrad_gemm_accum_fp32_vs_apex_zero_features(zero_dim, dtype):
         apex_wgrad.wgrad_gemm_accum_fp32(input_tensor, grad_output, apex_main)
 
     gems_main = main_grad_seed.clone()
-    wgrad_gemm_accum_fp32(input_tensor, grad_output, gems_main)
-    assert torch.equal(gems_main, main_grad_seed)
+    with pytest.raises(RuntimeError, match="in_features and out_features must be > 0"):
+        wgrad_gemm_accum_fp32(input_tensor, grad_output, gems_main)
 
 
 @pytest.mark.wgrad_gemm_accum_fp16
@@ -874,7 +868,7 @@ def test_wgrad_gemm_accum_fp32_vs_apex_zero_features(zero_dim, dtype):
 @pytest.mark.parametrize("zero_dim", ["in", "out"])
 @pytest.mark.parametrize("dtype", FP16_ACCUM_INPUT_DTYPES)
 def test_wgrad_gemm_accum_fp16_vs_apex_zero_features(zero_dim, dtype):
-    """Same divergence on fp16/bf16 accum: Apex errors, gems no-op."""
+    """Zero M/N on fp16/bf16 accum: both Apex and FlagGems raise."""
     _with_seed(20260766)
     batch = 8
     in_features = 0 if zero_dim == "in" else 16
@@ -894,8 +888,8 @@ def test_wgrad_gemm_accum_fp16_vs_apex_zero_features(zero_dim, dtype):
         apex_wgrad.wgrad_gemm_accum_fp16(input_tensor, grad_output, apex_main)
 
     gems_main = main_grad_seed.clone()
-    wgrad_gemm_accum_fp16(input_tensor, grad_output, gems_main)
-    assert torch.equal(gems_main, main_grad_seed)
+    with pytest.raises(RuntimeError, match="in_features and out_features must be > 0"):
+        wgrad_gemm_accum_fp16(input_tensor, grad_output, gems_main)
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
