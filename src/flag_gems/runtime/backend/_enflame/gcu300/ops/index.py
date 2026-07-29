@@ -72,7 +72,9 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
         code.writeline("if stride == 0:")
         with code.indent():
             code.writeline("return 1024")
-        code.writeline("return max(1, 1 << ((budget // esz // stride + 1).bit_length() - 1))")
+        code.writeline(
+            "return max(1, 1 << ((budget // esz // stride + 1).bit_length() - 1))"
+        )
     code.newline()
     code.newline()
     return code
@@ -141,9 +143,7 @@ def generate_index_kernel(
             code.writeline(
                 f"_idx_ptr{i} = tl.where(indices{i}_empty != 0, indices{i}_safe_ptr, indices{i}_ptr)"
             )
-            code.writeline(
-                f"_idx_mask{i} = mask0 & (indices{i}_empty == 0)"
-            )
+            code.writeline(f"_idx_mask{i} = mask0 & (indices{i}_empty == 0)")
         for i in range(indices_len):
             comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
             code.writeline(
@@ -253,14 +253,10 @@ def generate_index_wrapper(
         # Compute the effective stride sum for non-indexed dims.
         code.writeline("_mmu_stride_sum = 0")
         for i in range(indices_len, inp_rank):
-            code.writeline(
-                f"_mmu_stride_sum += input_stride[{i}]"
-            )
+            code.writeline(f"_mmu_stride_sum += input_stride[{i}]")
         for i in range(inp_rank - indices_len):
             out_idx = index_rank + i
-            code.writeline(
-                f"_mmu_stride_sum += out_stride[{out_idx}]"
-            )
+            code.writeline(f"_mmu_stride_sum += out_stride[{out_idx}]")
         code.writeline(
             "BLOCK_SIZE1 = min(_gcu_max_block(_mmu_stride_sum, _GCU_MMU_SOFT, element_size), 1024)"
         )
@@ -282,7 +278,9 @@ def generate_index_wrapper(
         # grid_x <= _GCU_MAX_GRID (65535), grid_y <= _GCU_MAX_GRID_Y (255)
         code.writeline("_dim0_size = indices[0].shape[0]")
         code.writeline("_inner_size = M // _dim0_size if _dim0_size > 0 else 1")
-        code.writeline("_d0_chunk = _GCU_MAX_GRID // _inner_size if _inner_size > 0 else _GCU_MAX_GRID")
+        code.writeline(
+            "_d0_chunk = _GCU_MAX_GRID // _inner_size if _inner_size > 0 else _GCU_MAX_GRID"
+        )
         code.writeline("_d0_chunk = max(_d0_chunk, 1)")
         code.writeline("_n_d0chunks = (_dim0_size + _d0_chunk - 1) // _d0_chunk")
         code.writeline("_n_chunk = _GCU_MAX_GRID_Y * BLOCK_SIZE1")
@@ -316,7 +314,7 @@ def generate_index_wrapper(
                 code.writeline("_cN = _ne - _ns")
                 code.writeline("_gy = (_cN + BLOCK_SIZE1 - 1) // BLOCK_SIZE1")
                 code.writeline(
-                    'assert _gy <= _GCU_MAX_GRID_Y, '
+                    "assert _gy <= _GCU_MAX_GRID_Y, "
                     'f"grid_y={{_gy}} > {{_GCU_MAX_GRID_Y}}"'
                 )
                 code.newline()
@@ -334,7 +332,8 @@ def generate_index_wrapper(
                     for i in range(indices_len):
                         args += [f"indices{i}_stride[{j}]," for j in range(index_rank)]
                     args += [
-                        f"out_stride[{i}]," for i in range(index_rank + inp_rank - indices_len)
+                        f"out_stride[{i}],"
+                        for i in range(index_rank + inp_rank - indices_len)
                     ]
                     args += ["_cM,", "_cN,", "_m_offset,", "_ns,"]
                     code.writelines(args)

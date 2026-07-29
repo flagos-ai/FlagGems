@@ -248,9 +248,9 @@ def kron(A, B):
 
     output_dtype = torch.promote_types(A.dtype, B.dtype)
 
-    if (output_dtype == torch.int64):
+    if output_dtype == torch.int64:
         output_dtype = torch.int32
-    elif (output_dtype == torch.uint64):
+    elif output_dtype == torch.uint64:
         output_dtype = torch.uint32
 
     C = torch.empty(out_shape, device=A.device, dtype=output_dtype)

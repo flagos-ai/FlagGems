@@ -61,7 +61,9 @@ def _searchsorted_kernel(
         mid = low + (high - low) // 2
         sorted_offsets = row_offsets + mid
         if HAS_SORTER:
-            sorted_index = tl.load(sorter + sorted_offsets, mask=active, other=0).to(tl.int32)
+            sorted_index = tl.load(sorter + sorted_offsets, mask=active, other=0).to(
+                tl.int32
+            )
             sorted_offsets = row_offsets + sorted_index
 
         mid_values = tl.load(sorted_sequence + sorted_offsets, mask=active, other=0)
@@ -202,7 +204,7 @@ def _searchsorted_impl(
     if sorted_sequence.shape[-1] == 0:
         out.zero_()
         return out
-    
+
     if out is not None and out.dtype == torch.int64:
         out = out.to(torch.int32)
 

@@ -114,8 +114,9 @@ def cauchy_(self, median=0, sigma=1, *, generator=None):
         increment, generator=generator
     )
     with torch_device_fn.device(device):
-        cauchy_kernel[grid_fn](self, N, median, sigma, philox_seed, philox_offset,
-                               ENABLE_I64=True)
+        cauchy_kernel[grid_fn](
+            self, N, median, sigma, philox_seed, philox_offset, ENABLE_I64=True
+        )
     return self
 
 

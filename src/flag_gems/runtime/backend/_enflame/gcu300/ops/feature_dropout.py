@@ -197,8 +197,16 @@ def feature_dropout(input, p, train=True):
     with torch_device_fn.device(device):
         philox_seed, philox_offset = philox_backend_seed_offset(increment)
         generate_feature_mask_kernel[grid_mask](
-            mask, N, C, p, scale, philox_seed, philox_offset, BLOCK_N, BLOCK_C,
-            ENABLE_I64=True
+            mask,
+            N,
+            C,
+            p,
+            scale,
+            philox_seed,
+            philox_offset,
+            BLOCK_N,
+            BLOCK_C,
+            ENABLE_I64=True,
         )
 
     # Apply mask to input
@@ -209,8 +217,7 @@ def feature_dropout(input, p, train=True):
 
     with torch_device_fn.device(device):
         apply_feature_mask_kernel[grid_apply](
-            input, out, mask, numel, N, C, spatial_size, BLOCK,
-            ENABLE_I64=True
+            input, out, mask, numel, N, C, spatial_size, BLOCK, ENABLE_I64=True
         )
 
     return out

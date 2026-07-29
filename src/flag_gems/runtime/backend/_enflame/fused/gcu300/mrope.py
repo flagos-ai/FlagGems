@@ -282,7 +282,11 @@ def mrope(
     # loaded as data in the kernels, so downcast int64 to int32 first.
     if isinstance(positions, torch.Tensor) and positions.dtype == torch.int64:
         positions = positions.to(torch.int32)
-    if axis_arg is not None and isinstance(axis_arg, torch.Tensor) and axis_arg.dtype == torch.int64:
+    if (
+        axis_arg is not None
+        and isinstance(axis_arg, torch.Tensor)
+        and axis_arg.dtype == torch.int64
+    ):
         axis_arg = axis_arg.to(torch.int32)
 
     with torch_device_fn.device(query.device):
