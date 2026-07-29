@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 # the native CUDA implementation before FlagGems installs its registration so
 # the affected layouts can redispatch safely.
 _NATIVE_SOFTMAX = torch.library.get_kernel("aten::_softmax", "CUDA")
+_NATIVE_SOFTMAX_OUT = torch.library.get_kernel("aten::_softmax.out", "CUDA")
 _CUDA_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
 _SOFTMAX_NATIVE_MIN_N = 64
 
@@ -157,45 +158,48 @@ def softmax_backward_kernel_inner(
     in_grad_ptr,
     M,
     N,
+    K: tl.constexpr,
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    # One program per row (grid=(M,)), mirroring the forward. Pre-offset the base
-    # pointers so the inner `ptr + n_offsets` access is a scalar-base + stride-1
-    # arange that OffsetAnalysis proves contiguous (block DMA). The old impl used a
-    # fixed grid=(12,) with a [TILE_M, TILE_N] tile whose `m_offsets[:,None]*N +
-    # n_offsets` addressing blocked the analysis -> discrete scalar gather
-    # (~1-3 GB/s: [4096,4096] took ~38ms). It also computed in float64 (2x traffic,
-    # unnecessary). float32 accumulation matches the forward and the generic backend.
-    pid_m = ext.program_id(0)
-    out_ptr += pid_m * N
-    out_grad_ptr += pid_m * N
-    in_grad_ptr += pid_m * N
+    # One program owns one logical [N] row at (m, k). For K == 1 the reduction
+    # dimension is contiguous; for K > 1 the same one-dimensional tile walks N
+    # with stride K and avoids materializing [M, N, K] -> [M, K, N].
+    pid_mk = ext.program_id(0)
+    pid_m = pid_mk // K
+    pid_k = pid_mk % K
+    row_offset = pid_m * N * K + pid_k
+    out_ptr += row_offset
+    out_grad_ptr += row_offset
+    in_grad_ptr += row_offset
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
         mask = n_offsets < N
-        out_tile = tl.load(out_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
-        out_grad_tile = tl.load(out_grad_ptr + n_offsets, mask=mask, other=0.0).to(
+        offsets = n_offsets * K
+        out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
             tl.float32
         )
         scale = tl.sum(out_tile * out_grad_tile, 0)
         in_grad_tile = out_tile * (out_grad_tile - scale)
-        tl.store(in_grad_ptr + n_offsets, in_grad_tile, mask=mask)
+        tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
     else:
         # Pass 1: accumulate scale = sum(out * out_grad) over the row. Iterate
-        # ASCENDING so each load is a scalar-base + stride-1 arange (block DMA).
+        # in ascending N order.
         scale = tl.zeros([TILE_N], dtype=tl.float32)
         previous_multiple = prev_multiple_of(N, TILE_N)
         for start_n in range(0, previous_multiple, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)
-            out_tile = tl.load(out_ptr + n_offsets).to(tl.float32)
-            out_grad_tile = tl.load(out_grad_ptr + n_offsets).to(tl.float32)
+            offsets = n_offsets * K
+            out_tile = tl.load(out_ptr + offsets).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets).to(tl.float32)
             scale += out_tile * out_grad_tile
         for start_n in range(previous_multiple, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)
+            offsets = n_offsets * K
             mask = n_offsets < N
-            out_tile = tl.load(out_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
-            out_grad_tile = tl.load(out_grad_ptr + n_offsets, mask=mask, other=0.0).to(
+            out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
                 tl.float32
             )
             scale += out_tile * out_grad_tile
@@ -204,19 +208,21 @@ def softmax_backward_kernel_inner(
         # Pass 2: write in_grad = out * (out_grad - scale), ASCENDING.
         for start_n in range(0, previous_multiple, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)
-            out_tile = tl.load(out_ptr + n_offsets).to(tl.float32)
-            out_grad_tile = tl.load(out_grad_ptr + n_offsets).to(tl.float32)
+            offsets = n_offsets * K
+            out_tile = tl.load(out_ptr + offsets).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets).to(tl.float32)
             in_grad_tile = out_tile * (out_grad_tile - scale)
-            tl.store(in_grad_ptr + n_offsets, in_grad_tile)
+            tl.store(in_grad_ptr + offsets, in_grad_tile)
         for start_n in range(previous_multiple, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)
+            offsets = n_offsets * K
             mask = n_offsets < N
-            out_tile = tl.load(out_ptr + n_offsets, mask=mask, other=0.0).to(tl.float32)
-            out_grad_tile = tl.load(out_grad_ptr + n_offsets, mask=mask, other=0.0).to(
+            out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
                 tl.float32
             )
             in_grad_tile = out_tile * (out_grad_tile - scale)
-            tl.store(in_grad_ptr + n_offsets, in_grad_tile, mask=mask)
+            tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
 
 
 def softmax(self, dim, half_to_float=False):
@@ -260,11 +266,29 @@ def softmax(self, dim, half_to_float=False):
     return out
 
 
-def softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS_KUNLUNXIN SOFTMAX_VJP")
+def softmax_out(self, dim, half_to_float=False, *, out):
+    logger.debug("GEMS_KUNLUNXIN SOFTMAX_OUT")
+    return _NATIVE_SOFTMAX_OUT.call_boxed(
+        _CUDA_KEYSET, self, dim, half_to_float, out=out
+    )
+
+
+def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
+    logger.debug("GEMS_KUNLUNXIN SOFTMAX_BACKWARD_OUT")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
+    if tuple(grad_input.shape) != tuple(output.shape):
+        grad_input.resize_(output.shape)
+    if grad_input.dtype != input_dtype:
+        raise RuntimeError(
+            "_softmax_backward_data.out: expected grad_input dtype "
+            f"{input_dtype}, got {grad_input.dtype}"
+        )
+    if output.numel() == 0:
+        zero_(grad_input)
+        return grad_input
+
     M = 1
     N = output.shape[dim]
     for i in range(dim):
@@ -272,55 +296,32 @@ def softmax_backward(grad_output, output, dim, input_dtype):
 
     grad_output = grad_output.contiguous()
     output = output.contiguous()
-    in_grad = torch.empty_like(output, dtype=torch.float32)
     K = output.numel() // M // N
+    kernel_grad_input = grad_input
+    if not grad_input.is_contiguous():
+        kernel_grad_input = torch.empty(
+            output.shape, dtype=input_dtype, device=grad_input.device
+        )
 
-    with torch_device_fn.device(in_grad.device):
-        if K > 1:
-            # how to use softmax_backward_kernel_inner?
-            # some transpose and continuous
-            out_grad_view = grad_output.view(M, N, K).transpose(1, 2).contiguous()
-            out_view = output.view(M, N, K).transpose(1, 2).contiguous()
-            # # 合并 M 和 K 维为 M' = M * K
-            out_grad_reshaped = out_grad_view.view(M * K, N)
-            out_reshaped = out_view.view(M * K, N)
-            # 分配输入梯度的视图
-            in_grad_view = in_grad.view(M, N, K).transpose(1, 2).contiguous()
-            in_grad_reshaped = in_grad_view.view(M * K, N)
+    with torch_device_fn.device(kernel_grad_input.device):
+        grid = (M * K, 1, 1)
+        softmax_backward_kernel_inner[grid](
+            output,
+            grad_output,
+            kernel_grad_input,
+            M,
+            N,
+            K,
+            buffer_size_limit=2048,
+        )
+    if kernel_grad_input is not grad_input:
+        grad_input.copy_(kernel_grad_input)
+    return grad_input
 
-            grid = lambda meta: (M * K, 1, 1)  # noqa: E731
 
-            # 调用 Triton 反向内核
-            softmax_backward_kernel_inner[grid](
-                out_reshaped,
-                out_grad_reshaped,
-                in_grad_reshaped,
-                M * K,
-                N,
-                buffer_size_limit=2048,
-            )
-            # 将输入梯度恢复到原始布局
-            # in_grad_view.copy_(in_grad_reshaped.view(M, K, N).transpose(1, 2))
-            origin_dim = output.ndim
-            if output.ndim == 3:
-                m, n, k = output.shape
-            elif output.ndim == 2:
-                m, n = output.shape
-            if M == 1 and origin_dim == 2:
-                in_grad = in_grad_reshaped.view(K, N).transpose(0, 1)
-            elif M == 1 and origin_dim == 3:
-                in_grad = in_grad_reshaped.transpose(0, 1).view(m, n, k)
-            else:
-                in_grad = in_grad_reshaped.view(m, k, n).transpose(1, 2)
-        else:
-            grid = lambda meta: (M, 1, 1)  # noqa: E731
-
-            softmax_backward_kernel_inner[grid](
-                output,
-                grad_output,
-                in_grad,
-                M,
-                N,
-                buffer_size_limit=2048,
-            )
-    return in_grad.to(input_dtype)
+def softmax_backward(grad_output, output, dim, input_dtype):
+    logger.debug("GEMS_KUNLUNXIN SOFTMAX_VJP")
+    in_grad = torch.empty(output.shape, dtype=input_dtype, device=output.device)
+    return softmax_backward_out(
+        grad_output, output, dim, input_dtype, grad_input=in_grad
+    )
