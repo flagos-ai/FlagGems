@@ -188,11 +188,13 @@ jobs:
       - id: upload-results
         # uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         uses: actions/upload-artifact@v7.0.0
+        continue-on-error: true
         with:
           name: ${{ needs.preprocess.outputs.op }}-${{ env.BACKEND }}
           path: results/
 
       - id: attach-result-link
+        if: steps.upload-results.outcome == 'success'
         run: |
           echo -e "\n---\n" >> report.md
           echo -e "📎 Download the full log [here](${{ steps.upload-results.outputs.artifact-url }})" >> report.md
