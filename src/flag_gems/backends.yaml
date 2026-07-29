@@ -209,7 +209,7 @@ backends:
       PATH: $MUSA_HOME/bin:$PATH
       LD_LIBRARY_PATH: $VIRTUAL_ENV/lib:$MUSA_HOME/lib:$LD_LIBRARY_PATH
     deps:
-      - torch==2.9.0+musa5.2.0
+      - torch==2.9.1+musa5.2.0
       - torch_musa==2.9.1
       - mkl==2024.0.0
 

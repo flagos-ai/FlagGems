@@ -150,6 +150,12 @@ def _routed_tokens_per_expert(M: int, E: int, top_k: int) -> int:
     return max(M * max(top_k, 1) // max(E, 1), 1)
 
 
+def _block_m_padding_ratio(M: int, E: int, top_k: int, block_m: int) -> float:
+    """Padded rows issued (E * block_m, since every expert pads on its own) over
+    the rows actually routed."""
+    return E * block_m / max(M * max(top_k, 1), 1)
+
+
 def _select_block_m(
     M: int,
     E: int,
@@ -225,6 +231,14 @@ def _select_mxfp4_kernel_policy(
     routed_tokens_per_expert = _routed_tokens_per_expert(M, E, top_k)
     block_m = _select_block_m(M, E, top_k, 8 if swap_ab else 16)
     if is_reduced_hopper and M <= 128 and routed_tokens_per_expert < 8:
+        block_m = 8
+    elif (
+        is_reduced_hopper
+        and block_m == 16
+        # Halve the tile once padding costs more than the smaller tile's lower
+        # per-CTA efficiency; the crossover sits around 2.5x.
+        and _block_m_padding_ratio(M, E, top_k, block_m) >= 2.5
+    ):
         block_m = 8
 
     if is_reduced_hopper and M == 1:
@@ -560,32 +574,24 @@ def _dequant_fp4_bf16(b, s0, s1, s2, s3):
     x1, x2, x3, x4, x5, x6, x7, x8 = tl.inline_asm_elementwise(
         asm="""
         {
-        .reg .b32  r0, r1, r2, r3, q0, q1, q2, q3, t, bias;
+        .reg .b32  q0, q1, q2, q3, t, bias;
         .reg .b16  h0, h1, h2, h3, h4, h5, h6, h7, s;
-        mov.u32 r0, $8;
-        shr.u32 r1, r0, 4;
-        shr.u32 r2, r0, 8;
-        shr.u32 r3, r0, 12;
-        and.b32 q0, r0, 983055;
-        shl.b32 q0, q0, 12;
+        shl.b32 q0, $8, 12;
+        shl.b32 q1, $8, 8;
+        shl.b32 q2, $8, 4;
+        mov.b32 q3, $8;
         and.b32 t, q0, 2147516416;
         and.b32 q0, q0, 1879076864;
         shr.b32 q0, q0, 6;
         or.b32 q0, q0, t;
-        and.b32 q1, r1, 983055;
-        shl.b32 q1, q1, 12;
         and.b32 t, q1, 2147516416;
         and.b32 q1, q1, 1879076864;
         shr.b32 q1, q1, 6;
         or.b32 q1, q1, t;
-        and.b32 q2, r2, 983055;
-        shl.b32 q2, q2, 12;
         and.b32 t, q2, 2147516416;
         and.b32 q2, q2, 1879076864;
         shr.b32 q2, q2, 6;
         or.b32 q2, q2, t;
-        and.b32 q3, r3, 983055;
-        shl.b32 q3, q3, 12;
         and.b32 t, q3, 2147516416;
         and.b32 q3, q3, 1879076864;
         shr.b32 q3, q3, 6;
@@ -636,32 +642,28 @@ def _dequant_fp4_bf16_fold(b, cs0, cs1, cs2, cs3):
     x1, x2, x3, x4, x5, x6, x7, x8 = tl.inline_asm_elementwise(
         asm="""
         {
-        .reg .b32  r0, r1, r2, r3, q0, q1, q2, q3, em, sg;
+        .reg .b32  q0, q1, q2, q3, sg;
         .reg .b16  h0, h1, h2, h3, h4, h5, h6, h7;
-        mov.u32 r0, $8;
-        shr.u32 r1, r0, 4;
-        shr.u32 r2, r0, 8;
-        shr.u32 r3, r0, 12;
-        and.b32 em, r0, 458759;      // 0x00070007 exp+mantissa
-        shl.b32 em, em, 6;
-        and.b32 sg, r0, 524296;      // 0x00080008 sign
-        shl.b32 sg, sg, 12;
-        or.b32  q0, em, sg;
-        and.b32 em, r1, 458759;
-        shl.b32 em, em, 6;
-        and.b32 sg, r1, 524296;
-        shl.b32 sg, sg, 12;
-        or.b32  q1, em, sg;
-        and.b32 em, r2, 458759;
-        shl.b32 em, em, 6;
-        and.b32 sg, r2, 524296;
-        shl.b32 sg, sg, 12;
-        or.b32  q2, em, sg;
-        and.b32 em, r3, 458759;
-        shl.b32 em, em, 6;
-        and.b32 sg, r3, 524296;
-        shl.b32 sg, sg, 12;
-        or.b32  q3, em, sg;
+        shl.b32 q0, $8, 12;
+        shl.b32 q1, $8, 8;
+        shl.b32 q2, $8, 4;
+        mov.b32 q3, $8;
+        and.b32 sg, q0, 2147516416;  // 0x80008000 sign
+        and.b32 q0, q0, 1879076864;  // 0x70007000 exp+mantissa
+        shr.b32 q0, q0, 6;
+        or.b32  q0, q0, sg;
+        and.b32 sg, q1, 2147516416;
+        and.b32 q1, q1, 1879076864;
+        shr.b32 q1, q1, 6;
+        or.b32  q1, q1, sg;
+        and.b32 sg, q2, 2147516416;
+        and.b32 q2, q2, 1879076864;
+        shr.b32 q2, q2, 6;
+        or.b32  q2, q2, sg;
+        and.b32 sg, q3, 2147516416;
+        and.b32 q3, q3, 1879076864;
+        shr.b32 q3, q3, 6;
+        or.b32  q3, q3, sg;
         mul.rn.bf16x2 q0, q0, $9;
         mul.rn.bf16x2 q1, q1, $10;
         mul.rn.bf16x2 q2, q2, $11;
@@ -694,32 +696,24 @@ def _dequant_fp4_fp16(b, s0, s1, s2, s3):
     x1, x2, x3, x4, x5, x6, x7, x8 = tl.inline_asm_elementwise(
         asm="""
         {
-        .reg .b32  r0, r1, r2, r3, q0, q1, q2, q3, t, bias;
+        .reg .b32  q0, q1, q2, q3, t, bias;
         .reg .b16  h0, h1, h2, h3, h4, h5, h6, h7, s;
-        mov.u32 r0, $8;
-        shr.u32 r1, r0, 4;
-        shr.u32 r2, r0, 8;
-        shr.u32 r3, r0, 12;
-        and.b32 q0, r0, 983055;
-        shl.b32 q0, q0, 12;
+        shl.b32 q0, $8, 12;
+        shl.b32 q1, $8, 8;
+        shl.b32 q2, $8, 4;
+        mov.b32 q3, $8;
         and.b32 t, q0, 2147516416;
         and.b32 q0, q0, 1879076864;
         shr.b32 q0, q0, 3;
         or.b32 q0, q0, t;
-        and.b32 q1, r1, 983055;
-        shl.b32 q1, q1, 12;
         and.b32 t, q1, 2147516416;
         and.b32 q1, q1, 1879076864;
         shr.b32 q1, q1, 3;
         or.b32 q1, q1, t;
-        and.b32 q2, r2, 983055;
-        shl.b32 q2, q2, 12;
         and.b32 t, q2, 2147516416;
         and.b32 q2, q2, 1879076864;
         shr.b32 q2, q2, 3;
         or.b32 q2, q2, t;
-        and.b32 q3, r3, 983055;
-        shl.b32 q3, q3, 12;
         and.b32 t, q3, 2147516416;
         and.b32 q3, q3, 1879076864;
         shr.b32 q3, q3, 3;
