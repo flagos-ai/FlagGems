@@ -31,6 +31,10 @@ for that call and retries next time; permanent fallback needs consecutive
 failures (default 3, overridable via ``FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT``).
 Set ``FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1`` to raise instead.
 
+Non-contiguous ``main_grad`` is correct but densifies then ``copy_``; a one-shot
+warning fires on first use.  Set
+``FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1`` to reject NC ``main_grad``.
+
 TF32 note: like Apex, ``allow_tf32=False`` does not force full-fp32 GemmEx.
 Test-only CPU-fp64-matched checks use ``wgrad_gemm_accum_fp32_strict_cpu_ref``
 (not a kwarg on the training API).
@@ -61,6 +65,11 @@ _WGRAD_FALLBACK_WARNED = False
 # Consecutive GemmEx runtime failures; reset on the next successful call.
 _WGRAD_RUNTIME_FAIL_STREAK = 0
 _DEFAULT_GEMMEX_FAIL_LIMIT = 3
+_WGRAD_NC_MAIN_WARNED = False
+
+
+def _env_flag_true(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "on", "yes")
 
 
 def _require_gemmex() -> bool:
@@ -70,12 +79,44 @@ def _require_gemmex() -> bool:
     local strict runs so a missing GemmEx path cannot silently become a slow,
     non-Apex-aligned Torch matmul.
     """
-    return os.environ.get("FLAGGEMS_WGRAD_REQUIRE_GEMMEX", "").strip().lower() in (
-        "1",
-        "true",
-        "on",
-        "yes",
+    return _env_flag_true("FLAGGEMS_WGRAD_REQUIRE_GEMMEX")
+
+
+def _require_contiguous_main_grad() -> bool:
+    """Reject non-contiguous ``main_grad`` when env is set.
+
+    Non-contiguous ``main_grad`` is correct but densifies then ``copy_`` back,
+    so frequent NC use is slower than an Apex contiguous path.  Training jobs
+    that want fail-fast can set
+    ``FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1``.
+    """
+    return _env_flag_true("FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD")
+
+
+def _check_main_grad_contiguity(main_grad: torch.Tensor) -> None:
+    """Warn once (or raise) when ``main_grad`` needs densify+copy."""
+    global _WGRAD_NC_MAIN_WARNED
+
+    if main_grad.is_contiguous():
+        return
+    if _require_contiguous_main_grad():
+        raise RuntimeError(
+            "wgrad_gemm_accum: main_grad must be contiguous when "
+            "FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1 "
+            "(non-contiguous path densifies then copy_-s back; "
+            "prefer contiguous main_grad for Apex-like speed)"
+        )
+    if _WGRAD_NC_MAIN_WARNED:
+        return
+    _WGRAD_NC_MAIN_WARNED = True
+    msg = (
+        "wgrad_gemm_accum: non-contiguous main_grad triggers densify+copy; "
+        "correct but slower than a contiguous Apex-style path if this is "
+        "frequent. Prefer contiguous main_grad, or set "
+        "FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1 to fail hard."
     )
+    logger.warning(msg)
+    warnings.warn(msg, UserWarning, stacklevel=3)
 
 
 def _gemmex_fail_limit() -> int:
@@ -402,6 +443,8 @@ def _accum_wgrad(
             "Apex/cublasGemmEx also reject zero M/N"
         )
 
+    _check_main_grad_contiguity(main_grad)
+
     if fp32_accum:
         # Match Apex fused_weight_gradient path (half/bf16/fp32 -> fp32 C).
         _cublas_wgrad_gemm_accum_fp32(
@@ -424,6 +467,10 @@ def wgrad_gemm_accum_fp32(
     ``CUBLAS_GEMM_DEFAULT_TENSOR_OP``.  Setting
     ``torch.backends.cuda.matmul.allow_tf32 = False`` does **not** force a
     full-fp32 math path here (same footgun as Apex on Ampere+).
+
+    Non-contiguous ``main_grad`` is supported (densify then ``copy_``) but is
+    slower than contiguous storage if used every step; see the one-shot warning
+    / ``FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD``.
 
     For test-only CPU-fp64-matched checks under TF32-off, call
     ``wgrad_gemm_accum_fp32_strict_cpu_ref`` instead — do not use that helper
@@ -516,7 +563,11 @@ def wgrad_gemm_accum_fp16(
     grad_output: torch.Tensor,
     main_grad: torch.Tensor,
 ) -> None:
-    """Accumulate weight gradient into ``main_grad`` using fp16/bf16 storage."""
+    """Accumulate weight gradient into ``main_grad`` using fp16/bf16 storage.
+
+    Non-contiguous ``main_grad`` is supported via densify+``copy_`` with the
+    same performance caveat as the fp32 path.
+    """
     logger.debug("GEMS WGRAD_GEMM_ACCUM_FP16")
 
     _validate_device(input, grad_output, main_grad)
