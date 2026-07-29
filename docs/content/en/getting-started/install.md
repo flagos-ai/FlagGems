@@ -2,6 +2,23 @@
 title: Installation
 weight: 20
 ---
+
+<!--
+ Copyright 2026 FlagOS Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
 # Installing FlagGems
 
 ## 1. Prerequisites
@@ -31,10 +48,22 @@ pip install flag_gems
 > [!INFO]
 > **Info**
 >
-> This Python installation only installs the PyTorch operators implemented
-> in Python from *FlagGems*.
-> To install the C++-wrapped operators, you will have to
-> [build and install from source](#install-from-source).
+> This installs the pure-Python operators from *FlagGems*.
+>
+> To use the C++ wrapped operators (which reduce dispatch overhead for
+> performance-critical paths), you can install a prebuilt native extension
+> wheel via an extra:
+>
+> ```shell
+> pip install "flag-gems[cpp-cuda]"
+> ```
+>
+> This pulls in the matching `flag-gems-cpp-cuda` package from the flagOS
+> PyPI index. Replace `cpp-cuda` with the extension for your vendor:
+> `cpp-musa`, `cpp-npu`, `cpp-gcu`, or `cpp-ix`.
+>
+> If a prebuilt wheel is not available for your platform, see
+> [Build and install from source](#install-from-source).
 
 ## 3. Build and install from source {#install-from-source}
 
@@ -118,16 +147,53 @@ uv pip install --no-build-isolation -e .
 
 ### 3.4. C++ extensions (optional)
 
-To build with C++ wrapped operators, set `ENABLE_CPP=1`:
+FlagGems supports C++ wrapped operators for reduced dispatch overhead on
+performance-critical operations. The C++ extension is a **separate per-vendor
+package** (e.g., `flag-gems-cpp-cuda`) that installs compiled `.so` files into
+the `flag_gems/` namespace alongside the pure-Python operator implementations.
+
+There are two ways to get the C++ extensions:
+
+#### Option A: Build from source with `setup.sh`
 
 ```shell
 ENABLE_CPP=1 ./setup.sh nvidia-cuda128
 ```
 
-This sets the appropriate `CMAKE_ARGS` for your backend automatically.
-C++ extensions are still experimental — please assess before using in production.
+`setup.sh` automatically:
+- Injects the correct vendor name into `cpp/pyproject.toml` via
+  `tools/set_cpp_vendor.sh`
+- Sets the appropriate `CMAKE_ARGS` (`-DFLAGGEMS_BACKEND=...`)
+- Builds and installs the C++ extension from the `cpp/` subdirectory
+
+#### Option B: Manual build from the `cpp/` subdirectory
+
+The C++ extension uses `scikit-build-core` as its build-backend and requires
+CMake, a C++ toolchain, and your vendor's SDK. Build from the `cpp/`
+subdirectory:
+
+```shell
+# Set the vendor name (cuda, musa, npu, gcu, or ix)
+tools/set_cpp_vendor.sh cuda
+
+# Build and install
+CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA" \
+  uv pip install --no-build-isolation ./cpp
+```
 
 For manual control over CMake options, see the [CMake options reference](#cmake-options).
+
+#### Runtime: enable with `USE_C_EXTENSION`
+
+After installation, set the environment variable to activate C++ paths:
+
+```shell
+export USE_C_EXTENSION=1
+```
+
+Without this, only `torch.ops.flag_gems.*` and the `c_operators` pybind module
+are active; the ATen replacement and `flag_gems.enable()` C++ branches require
+it. See the [C++ usage guide](/FlagGems/usage/cpp/) for details.
 
 ## 4. References
 
@@ -175,6 +241,11 @@ pass them via the `CMAKE_ARGS` environment variable.
 | `FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP` | Build pointwise dynamic C++ module | `OFF` |
 
 ### 4.4 `scikit-build-core` options {#scikit-build-core-options}
+
+> [!NOTE]
+> The main `flag-gems` package uses `setuptools` as its build-backend.
+> The `scikit-build-core` tool is used **only for the C++ extension**
+> built from the `cpp/` subdirectory.
 
 The `scikit-build-core` tool is a build-backend that bridges CMake
 and the Python build system, making it easier to create Python modules with CMake.
