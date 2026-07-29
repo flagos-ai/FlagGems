@@ -1174,11 +1174,15 @@ class ModuleGenerator:
                 continue
             root = value.value
             if isinstance(root, ast.Name) and root.id in imported_name_module:
-                alias_sources.append("".join(source_lines[node.lineno - 1 : node.end_lineno]))
+                alias_sources.append(
+                    "".join(source_lines[node.lineno - 1 : node.end_lineno])
+                )
                 # The alias's base name (e.g. ``tl_extra_shim``) must be
                 # imported in the generated file even if it came from a module
                 # that is normally elided (e.g. ``flag_gems.utils``).
-                extra_imports.setdefault(imported_name_module[root.id], set()).add(root.id)
+                extra_imports.setdefault(imported_name_module[root.id], set()).add(
+                    root.id
+                )
 
         # Collect local @triton.jit functions (without @pointwise_dynamic)
         def _has_decorator(func_node, name):

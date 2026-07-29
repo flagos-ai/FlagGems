@@ -22,10 +22,7 @@ at::Tensor gelu(const at::Tensor &self, c10::string_view approximate) {
   if (approximate == "tanh") {
     return pointwise_dynamic::gelu_tanh(self);
   }
-  TORCH_CHECK(approximate == "none",
-              "gelu: approximate must be 'none' or 'tanh', got '",
-              approximate,
-              "'");
+  TORCH_CHECK(approximate == "none", "gelu: approximate must be 'none' or 'tanh', got '", approximate, "'");
   return pointwise_dynamic::gelu_none(self);
 }
 
