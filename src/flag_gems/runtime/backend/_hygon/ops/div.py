@@ -187,7 +187,7 @@ def trunc_divide_(A, B):
 
 
 @triton.jit
-def _hygon_int_floordiv(x, y):
+def _int_floordiv(x, y):
     # TODO: request Triton to add an integer remainder builtin
     # The semantic of Triton floordiv differs from Pytorch/Numpy
     # Triton floordiv equates to
@@ -209,17 +209,6 @@ def _hygon_int_floordiv(x, y):
     quotient = tl.where(c1 & c2, x // safe_y - 1, x // safe_y)
     zero_quotient = tl.where(x < 0, x - 2, tl.where(x == 0, 2, x + 1))
     return tl.where(is_zero, zero_quotient, quotient)
-
-
-@triton.jit
-def _hygon_int16_floordiv(x, y):
-    x = x.to(tl.int32)
-    y = y.to(tl.int32)
-    quotient = _hygon_int_floordiv(x, y)
-    # torch.int16 floor_divide on Hygon has dtype-specific division-by-zero
-    # behavior.  Preserve it while widening normal arithmetic to int32.
-    zero_quotient = tl.where(x < 0, x - 2, tl.where(x == 0, 2, x + 1))
-    return tl.where(y == 0, zero_quotient, quotient)
 
 
 # TO be consistent with python, numpy and torch, we have to implement it in the
@@ -266,11 +255,11 @@ def _float_floordiv(x, y):
 def floor_div_func(x, y):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
         if x.type.scalar.is_int16():
-            return _hygon_int16_floordiv(x, y)
+            return _int_floordiv(x.to(tl.int32), y.to(tl.int32))
         elif x.type.scalar.is_uint16():
-            return _hygon_int_floordiv(x.to(tl.uint32), y.to(tl.uint32))
+            return _int_floordiv(x.to(tl.uint32), y.to(tl.uint32))
         else:
-            return _hygon_int_floordiv(x, y)
+            return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
 
@@ -280,11 +269,11 @@ def floor_div_func(x, y):
 def floor_div_func_tensor_scalar(x, y):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
         if x.type.scalar.is_int16():
-            return _hygon_int16_floordiv(x, y)
+            return _int_floordiv(x.to(tl.int32), y.to(tl.int32))
         elif x.type.scalar.is_uint16():
-            return _hygon_int_floordiv(x.to(tl.uint32), y.to(tl.uint32))
+            return _int_floordiv(x.to(tl.uint32), y.to(tl.uint32))
         else:
-            return _hygon_int_floordiv(x, y)
+            return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
 
@@ -294,11 +283,11 @@ def floor_div_func_tensor_scalar(x, y):
 def floor_div_func_scalar_tensor(x, y):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
         if x.type.scalar.is_int16():
-            return _hygon_int16_floordiv(x, y)
+            return _int_floordiv(x.to(tl.int32), y.to(tl.int32))
         elif x.type.scalar.is_uint16():
-            return _hygon_int_floordiv(x.to(tl.uint32), y.to(tl.uint32))
+            return _int_floordiv(x.to(tl.uint32), y.to(tl.uint32))
         else:
-            return _hygon_int_floordiv(x, y)
+            return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
 
