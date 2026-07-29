@@ -52,10 +52,76 @@ NO_QUICK_CPU_TESTS=(
   "tests/test_conv_depthwise2d.py"
 )
 
+# Map ops / JIT csrc edits to the matching unit test (and bench if present).
+# Without this, changing only src/flag_gems/ops/*.py or csrc/*.cpp leaves
+# CHANGED_FILES without tests/*.py and python-op would exit 0 after the job
+# starts (or never start if only ops/aten label is set).
+if [[ "$CHANGED_FILES" != "__ALL__" ]]; then
+  MAPPED_FILES=()
+  for item in $CHANGED_FILES; do
+    base=""
+    case $item in
+      src/flag_gems/ops/*.py)
+        base=$(basename "$item" .py)
+        ;;
+      src/flag_gems/csrc/*.cpp)
+        base=$(basename "$item" .cpp)
+        ;;
+    esac
+    if [[ -n "$base" ]]; then
+      # Match experimental convention: leading underscore is dropped in test id.
+      base="${base#_}"
+      unit_test="tests/test_${base}.py"
+      if [[ -f "$unit_test" ]]; then
+        MAPPED_FILES+=("$unit_test")
+      fi
+      bench_test="benchmark/test_${base}.py"
+      if [[ -f "$bench_test" ]]; then
+        MAPPED_FILES+=("$bench_test")
+      fi
+    fi
+  done
+  if [[ ${#MAPPED_FILES[@]} -gt 0 ]]; then
+    echo "Mapped ops/csrc changes to: ${MAPPED_FILES[*]}"
+    CHANGED_FILES="$CHANGED_FILES ${MAPPED_FILES[*]}"
+  fi
+fi
+
 # Extract test cases from CHANGED_FILES
 TEST_CASES=()
 PERF_TEST_CASES=()
 TEST_CASES_CPU=()
+# Deduplicate while preserving order (ops map may re-add an already-listed test).
+declare -A SEEN_TEST_CASES=()
+declare -A SEEN_PERF_CASES=()
+declare -A SEEN_CPU_CASES=()
+
+append_unique() {
+  # $1 = nameref-like array name via eval; keep it simple with explicit cases.
+  local kind=$1
+  local path=$2
+  case $kind in
+    test)
+      if [[ -z "${SEEN_TEST_CASES[$path]+x}" ]]; then
+        SEEN_TEST_CASES[$path]=1
+        TEST_CASES+=("$path")
+      fi
+      ;;
+    perf)
+      if [[ -z "${SEEN_PERF_CASES[$path]+x}" ]]; then
+        SEEN_PERF_CASES[$path]=1
+        PERF_TEST_CASES+=("$path")
+      fi
+      ;;
+    cpu)
+      if [[ -z "${SEEN_CPU_CASES[$path]+x}" ]]; then
+        SEEN_CPU_CASES[$path]=1
+        TEST_CASES_CPU+=("$path")
+      fi
+      ;;
+  esac
+}
+
 for item in $CHANGED_FILES; do
   file_name=$(basename "$item")
   case $item in
@@ -64,11 +130,11 @@ for item in $CHANGED_FILES; do
       ;;
     tests/*.py)
       if [[ "$file_name" == test*.py ]]; then
-        TEST_CASES+=($item)
+        append_unique test "$item"
       fi
       ;;
     benchmark/test*)
-      PERF_TEST_CASES+=($item)
+      append_unique perf "$item"
       ;;
   esac
 
@@ -84,7 +150,7 @@ for item in $CHANGED_FILES; do
     case $item in
       tests/*.py)
         if [[ "$file_name" == test*.py ]]; then
-          TEST_CASES_CPU+=($item)
+          append_unique cpu "$item"
         fi
         ;;
     esac
