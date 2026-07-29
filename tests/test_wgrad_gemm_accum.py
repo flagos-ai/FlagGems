@@ -17,9 +17,11 @@ import torch
 
 import flag_gems
 from flag_gems.ops.wgrad_gemm_accum import (
+    wgrad_fallback_reason,
     wgrad_gemm_accum_fp16,
     wgrad_gemm_accum_fp32,
     wgrad_gemmex_available,
+    wgrad_using_torch_fallback,
 )
 
 from . import accuracy_utils as utils
@@ -502,6 +504,45 @@ def test_wgrad_gemm_accum_fp32_invalid_main_grad_dtype():
     main_grad = torch.zeros(32, 16, dtype=torch.float16, device=flag_gems.device)
 
     with pytest.raises(RuntimeError, match="main_grad must be float32"):
+        wgrad_gemm_accum_fp32(input_tensor, grad_output, main_grad)
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+@pytest.mark.skipif(
+    not HAS_WGRAD_GEMMEX,
+    reason="GemmEx extension unavailable on this runner",
+)
+def test_wgrad_gemm_accum_fp32_gemmex_path_not_silent_fallback():
+    """With a working GemmEx build, a normal call must not drop to Torch fallback."""
+    input_tensor = torch.randn(8, 32, dtype=torch.float16, device=flag_gems.device)
+    grad_output = torch.randn(8, 64, dtype=torch.float16, device=flag_gems.device)
+    main_grad = torch.zeros(64, 32, dtype=torch.float32, device=flag_gems.device)
+
+    wgrad_gemm_accum_fp32(input_tensor, grad_output, main_grad)
+
+    assert not wgrad_using_torch_fallback(), (
+        "GemmEx was reported available but fp32 path fell back to Torch: "
+        f"{wgrad_fallback_reason()}"
+    )
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+def test_wgrad_gemm_accum_fp32_require_gemmex_env_hard_fail(monkeypatch):
+    """FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1 must raise when GemmEx cannot be used."""
+    import flag_gems.ops.wgrad_gemm_accum as wgrad_mod
+
+    monkeypatch.setenv("FLAGGEMS_WGRAD_REQUIRE_GEMMEX", "1")
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_EXT_RUNTIME_OK", True)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_ACTIVE", False)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_REASON", None)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_WARNED", False)
+    monkeypatch.setattr(wgrad_mod, "_load_wgrad_gemm_ext", lambda: None)
+
+    input_tensor = torch.randn(4, 16, dtype=torch.float16, device=flag_gems.device)
+    grad_output = torch.randn(4, 32, dtype=torch.float16, device=flag_gems.device)
+    main_grad = torch.zeros(32, 16, dtype=torch.float32, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError, match="GemmEx required"):
         wgrad_gemm_accum_fp32(input_tensor, grad_output, main_grad)
 
 

@@ -40,6 +40,8 @@ cd "$REPO_ROOT"
 export CUDA_VISIBLE_DEVICES=4
 # Only add FlagGems src path; do not inject full dist-packages.
 export PYTHONPATH="$REPO_ROOT/src"
+# Optional strict mode: refuse silent Torch fallback (recommended for bench).
+# export FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1
 
 if [[ $SKIP_CLEAR_CACHE -eq 0 ]]; then
   # Clear only wgrad-related Torch extension cache to avoid stale JIT binaries.
@@ -53,6 +55,7 @@ fi
 echo "[wgrad-preflight] cwd=$PWD"
 echo "[wgrad-preflight] CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 echo "[wgrad-preflight] PYTHONPATH=$PYTHONPATH"
+echo "[wgrad-preflight] FLAGGEMS_WGRAD_REQUIRE_GEMMEX=${FLAGGEMS_WGRAD_REQUIRE_GEMMEX:-0}"
 if [[ $SKIP_CLEAR_CACHE -eq 0 ]]; then
   echo "[wgrad-preflight] cleared wgrad JIT cache"
 else

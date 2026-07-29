@@ -24,13 +24,18 @@ leading dimensions).
 ``wgrad_gemm_accum_fp32`` (including half/bf16 activations into fp32
 ``main_grad``) calls ``cublasGemmEx`` with the same layout / dtype / algo as
 Apex, via a compiled CUDA extension (FlagGems ``c_operators`` when present,
-otherwise ``torch.utils.cpp_extension`` JIT).  ``wgrad_gemm_accum_fp16`` uses
-``torch.addmm`` (cuBLAS) for same-dtype accumulation.
+otherwise ``torch.utils.cpp_extension`` JIT).  If that path is unavailable,
+Torch fp32 matmul is used as a **loud** fallback (``logger.error`` +
+``warnings.warn`` once); set ``FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1`` to raise
+instead.  ``wgrad_gemm_accum_fp16`` uses ``torch.addmm`` (cuBLAS) for
+same-dtype accumulation.
 """
 
 from __future__ import annotations
 
 import logging
+import os
+import warnings
 from functools import lru_cache
 from pathlib import Path
 
@@ -39,6 +44,66 @@ import torch
 import flag_gems
 
 logger = logging.getLogger(__name__)
+
+# Set False after a runtime GemmEx failure so we do not keep raising.
+_WGRAD_EXT_RUNTIME_OK = True
+_WGRAD_FALLBACK_ACTIVE = False
+_WGRAD_FALLBACK_REASON: str | None = None
+_WGRAD_FALLBACK_WARNED = False
+
+
+def _require_gemmex() -> bool:
+    """Hard-fail instead of Torch fallback when env is set.
+
+    ``FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1|true|on|yes`` is for training / bench /
+    local strict runs so a missing GemmEx path cannot silently become a slow,
+    non-Apex-aligned Torch matmul.
+    """
+    return os.environ.get("FLAGGEMS_WGRAD_REQUIRE_GEMMEX", "").strip().lower() in (
+        "1",
+        "true",
+        "on",
+        "yes",
+    )
+
+
+def _activate_torch_fallback(reason: str) -> None:
+    """Record fallback state; optionally raise; always make the first drop loud."""
+    global _WGRAD_EXT_RUNTIME_OK, _WGRAD_FALLBACK_ACTIVE
+    global _WGRAD_FALLBACK_REASON, _WGRAD_FALLBACK_WARNED
+
+    _WGRAD_EXT_RUNTIME_OK = False
+    _WGRAD_FALLBACK_ACTIVE = True
+    if _WGRAD_FALLBACK_REASON is None:
+        _WGRAD_FALLBACK_REASON = reason
+
+    if _require_gemmex():
+        raise RuntimeError(
+            "wgrad_gemm_accum_fp32: GemmEx required "
+            f"(FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1) but unavailable: {reason}"
+        )
+
+    if _WGRAD_FALLBACK_WARNED:
+        return
+    _WGRAD_FALLBACK_WARNED = True
+    msg = (
+        "wgrad_gemm_accum_fp32: GemmEx path unavailable; using Torch fp32 "
+        f"matmul fallback. Reason: {reason}. This path is NOT Apex-aligned "
+        "for performance/numerics. Set FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1 to "
+        "fail hard instead of falling back."
+    )
+    logger.error(msg)
+    warnings.warn(msg, UserWarning, stacklevel=3)
+
+
+def wgrad_using_torch_fallback() -> bool:
+    """True after fp32 path has dropped to Torch matmul (not GemmEx)."""
+    return _WGRAD_FALLBACK_ACTIVE
+
+
+def wgrad_fallback_reason() -> str | None:
+    """First reason that activated Torch fallback, or ``None`` if unused."""
+    return _WGRAD_FALLBACK_REASON
 
 
 def _collapse_to_2d(input: torch.Tensor, grad_output: torch.Tensor):
@@ -102,10 +167,7 @@ def _load_wgrad_gemm_ext():
 
     src = Path(__file__).resolve().parent.parent / "csrc" / "wgrad_gemm_accum.cpp"
     if not src.is_file():
-        logger.warning(
-            "wgrad_gemm_accum_fp32: missing GemmEx source at %s; using Torch fallback",
-            src,
-        )
+        logger.debug("wgrad_gemm_accum_fp32: missing GemmEx source at %s", src)
         return None
 
     # Do NOT link -lcublas here. The extension must call the same libcublas that
@@ -122,12 +184,8 @@ def _load_wgrad_gemm_ext():
             with_cuda=True,
             verbose=False,
         )
-    except Exception as exc:  # noqa: BLE001 - any JIT failure -> Torch fallback
-        logger.warning(
-            "wgrad_gemm_accum_fp32: JIT extension unavailable (%s); "
-            "using Torch fallback",
-            exc,
-        )
+    except Exception as exc:  # noqa: BLE001 - caller decides fallback vs hard-fail
+        logger.debug("wgrad_gemm_accum_fp32: JIT extension unavailable (%s)", exc)
         return None
 
 
@@ -178,8 +236,6 @@ def _cublas_wgrad_gemm_accum_fp32(
     strict_cpu_ref: bool = False,
 ) -> None:
     """Apex ``wgrad_gemm_accum_fp32_cuda`` layout via compiled ``cublasGemmEx``."""
-    global _WGRAD_EXT_RUNTIME_OK
-
     if main_grad.dtype != torch.float32:
         raise RuntimeError("main_grad must be float32 for GemmEx fp32-accum path")
     if input_2d.dtype != grad_output_2d.dtype:
@@ -194,8 +250,7 @@ def _cublas_wgrad_gemm_accum_fp32(
         _wgrad_fp32_strict_accum(grad_output_2d, input_2d, main_grad)
         return
 
-    # Prefer GemmEx; if JIT/c_operators loads but runtime GemmEx is broken (common
-    # on some CI images), fall back once and stay on the Torch path.
+    # Prefer GemmEx; if load/runtime fails, activate a loud (or hard-fail) fallback.
     if _WGRAD_EXT_RUNTIME_OK:
         ext = _load_wgrad_gemm_ext()
         if ext is not None:
@@ -203,23 +258,20 @@ def _cublas_wgrad_gemm_accum_fp32(
                 ext.wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
                 return
             except Exception as exc:  # noqa: BLE001
-                _WGRAD_EXT_RUNTIME_OK = False
-                logger.warning(
-                    "wgrad_gemm_accum_fp32: GemmEx runtime failed (%s); "
-                    "using Torch fallback for subsequent calls",
-                    exc,
-                )
+                _activate_torch_fallback(f"GemmEx runtime failed: {exc}")
+        else:
+            _activate_torch_fallback(
+                "compiled GemmEx extension unavailable (c_operators / JIT)"
+            )
 
     _torch_wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
-
-
-# Set False after a runtime GemmEx failure so we do not keep raising.
-_WGRAD_EXT_RUNTIME_OK = True
 
 
 def wgrad_gemmex_available() -> bool:
     """True if the compiled GemmEx path loads and runs a tiny smoke call."""
     if not torch.cuda.is_available():
+        return False
+    if _WGRAD_FALLBACK_ACTIVE:
         return False
     ext = _load_wgrad_gemm_ext()
     if ext is None:
