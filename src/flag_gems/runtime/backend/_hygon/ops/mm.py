@@ -18,9 +18,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
@@ -33,12 +32,7 @@ def prev_multiple_of(a, b):
 
 
 @libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("mm"),
-    key=["M", "N", "K"],
-    strategy=["log", "log", "log"],
-)
-@triton.jit
+@triton.jit(do_not_specialize=["M", "N", "K"])
 def mm_kernel(
     a_ptr,
     b_ptr,
@@ -197,7 +191,13 @@ def mm(a, b):
             b.stride(1),
             c.stride(0),
             c.stride(1),
+            BLOCK_M=64,
+            BLOCK_N=64,
+            BLOCK_K=32,
             GROUP_M=8,
+            num_stages=1,
+            num_warps=4,
+            num_ldmatrixes=0,
         )
     return c
 
@@ -233,6 +233,12 @@ def mm_out(a, b, *, out):
             b.stride(1),
             c.stride(0),
             c.stride(1),
+            BLOCK_M=64,
+            BLOCK_N=64,
+            BLOCK_K=32,
             GROUP_M=8,
+            num_stages=1,
+            num_warps=4,
+            num_ldmatrixes=0,
         )
     return c

@@ -27,7 +27,12 @@ config_ = CodeGenConfig(
     32,
     True,
     prefer_1d_tile=True,
-    isCloseMemoryAsync=False,
+    # isCloseMemoryAsync must stay at its default (True = async copy closed).
+    # Enabling async copy (=False) together with unroll_num=8 makes the LLVM
+    # lowering materialize a ~478-pointer local-buffer struct that is re-printed
+    # on every insertvalue, blowing the compiled IR up to ~9GB (see
+    # benchmark/ir_dump/ir-bitwise_and_tensor-dev5.log). unroll_num/autoGrid are
+    # kept for the #1277 speedup; only the async pipeline is dropped.
     kunlunAutoGrid=True,
     unroll_num=8,
 )

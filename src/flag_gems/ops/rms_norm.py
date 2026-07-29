@@ -66,7 +66,10 @@ def rms_norm_kernel(
     rrms = 1 / tl.sqrt(var + eps)
 
     w = tl.load(w_ptr + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
-    y = (x * rrms * w).to(cdtype)
+    # Cast x_normed back to input dtype before multiplying with weight
+    # to align with vLLM native: x.to(weight.dtype) * weight
+    x_normed = (x * rrms).to(in_ptr.dtype.element_ty)
+    y = x_normed * w
     tl.store(out_ptr + cols * y_stride_c, y, mask=mask)
     tl.store(INV_RMS + pid, rrms)
 
@@ -130,7 +133,9 @@ def rms_norm_loop_kernel(
             eviction_policy="evict_first",
         ).to(cdtype)
         w = tl.load(w_ptr + n_offsets, mask=mask, other=0.0)
-        y = (x * rrms * w).to(cdtype)
+        # Cast x_normed back to input dtype before multiplying with weight
+        x_normed = (x * rrms).to(in_ptr.dtype.element_ty)
+        y = x_normed * w
         tl.store(out_ptr + pid * N + n_offsets, y, mask=mask)
 
     for start_n in range(TILE_N, N, TILE_N):
@@ -140,7 +145,9 @@ def rms_norm_loop_kernel(
             eviction_policy="evict_first",
         ).to(cdtype)
         w = tl.load(w_ptr + n_offsets)
-        y = (x * rrms * w).to(cdtype)
+        # Cast x_normed back to input dtype before multiplying with weight
+        x_normed = (x * rrms).to(in_ptr.dtype.element_ty)
+        y = x_normed * w
         tl.store(out_ptr + pid * N + n_offsets, y)
 
 

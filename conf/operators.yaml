@@ -145,6 +145,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: add_relu
+    description: Triton kernel implementation for _add_relu.
+    for:
+      - _add_relu.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: add_rms_norm
     description: |
       Add two inputs element-wise and apply Root Mean Square Layer Normalization.
@@ -1094,6 +1105,18 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: binary_cross_entropy_with_logits
+    description: Compute the binary cross entropy loss with logits.
+    for:
+      - binary_cross_entropy_with_logits
+    labels:
+      - nn.functional
+      - KernelGen
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: bincount
     description: Count the frequency of each value in an array of non-negative integers.
     for:
@@ -1538,6 +1561,17 @@ ops:
       - KernelGen
     kind:
       - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: chunk_cat
+    description: Triton kernel implementation for _chunk_cat.
+    for:
+      - _chunk_cat
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
     stages:
       - alpha: '5.4'
   - id: chunk_gated_delta_rule_fwd
@@ -2060,6 +2094,17 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cudnn_batch_norm_backward
+    description: Triton kernel implementation for cudnn_batch_norm_backward.
+    for:
+      - cudnn_batch_norm_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cudnn_convolution
     description: |
       A wrapper for cuDNN convolution backend.
@@ -2632,6 +2677,18 @@ ops:
       Computes the gradient for the backward pass of embedding_bag in dense mode.
     for:
       - _embedding_bag_dense_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: embedding_bag_per_sample_weights_backward
+    description: |
+      Triton kernel implementation for _embedding_bag_per_sample_weights_backward.
+    for:
+      - _embedding_bag_per_sample_weights_backward
     labels:
       - aten
       - KernelGen
@@ -4716,6 +4773,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_ldl_solve
+    description: Triton kernel implementation for linalg_ldl_solve.
+    for:
+      - linalg_ldl_solve
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_cholesky
     description: |-
       Computes the Cholesky decomposition of a symmetric positive-definite matrix A
@@ -8309,6 +8377,17 @@ ops:
       - KernelGen
     kind:
       - BLAS
+  - id: special_bessel_j1
+    description: |
+      Computes the Bessel function of the first kind of order 1 for each element of input.
+    for:
+      - special_bessel_j1
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
     stages:
       - alpha: '5.4'
   - id: special_airy_ai
@@ -8465,6 +8544,28 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_gammaln
+    description: Computes the logarithm of the absolute value of the Gamma function on input.
+    for:
+      - special.gammaln
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_gammaln_out
+    description: Out-of-place variant of special_gammaln that writes the result to the out tensor.
+    for:
+      - special.gammaln.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_hermite_polynomial_h
     description: |
       Computes the physicist's Hermite polynomial H_n(x) of degree n at input.
@@ -8599,6 +8700,31 @@ ops:
     description: A variant of `special_modified_bessel_k1` that allows the output to be assigned to another tensor.
     for:
       - special_modified_bessel_k1.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_round
+    description: |
+      Rounds a tensor to the nearest integer, with ties rounding to the nearest
+      even value (banker's rounding).
+    for:
+      - special.round
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_round_out
+    description: |
+      A variant of `special_round()` with output saved to provided `out`.
+    for:
+      - special.round.out
     labels:
       - aten
       - KernelGen
@@ -8995,6 +9121,33 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: te_rmsnorm_bwd
+    description: |
+      RMSNorm backward pass aligned with TransformerEngine's rmsnorm_bwd signature.
+      Computes gradients dx (w.r.t. input) and dgamma (w.r.t. weight).
+    for:
+      - te_rmsnorm_bwd
+    labels:
+      - fused
+      - Normalization
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: te_rmsnorm_fwd
+    description: |
+      RMSNorm forward pass aligned with TransformerEngine's rmsnorm_fwd signature.
+      Supports zero_centered_gamma, pre-allocated output tensor, and output dtype conversion.
+      Returns (output, None, rsigma).
+    for:
+      - te_rmsnorm_fwd
+    labels:
+      - fused
+      - Normalization
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: tensor_split
     description: |
       Splits a tensor into multiple sub-tensors along a given dimension,
@@ -9583,6 +9736,16 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: upsample_nearest_exact2d
+    description: Triton kernel implementation for _upsample_nearest_exact2d.
+    for:
+      - _upsample_nearest_exact2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
       - stable: '5.3'
   - id: upsample_nearest_exact2d_backward
     description: A backward case for `_upsample_nearest_exact2d()`.

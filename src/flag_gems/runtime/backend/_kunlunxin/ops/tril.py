@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -157,26 +158,43 @@ def _tril_exact_diag0_tile_kernel(
     tl.store(out_ptr + offs_n, x)
 
 
+@libentry()
 @triton.jit
-def _tril_inplace_zero_tile_kernel(
+def _tril_flat_inplace_kernel(
     ptr,
-    diag: tl.constexpr,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    active_total,
+    MN,
+    diag,
+    N,
+    BLOCK_SIZE: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
-    pid_b = tl.program_id(2)
+    # In-place tril_ over a contiguous top-row prefix of one matrix.
+    #
+    # The old 2D-tile kernel (`offs_m * N + offs_n` addressing) is NOT proven
+    # contiguous by XPU OffsetAnalysis and degrades to discrete access
+    # (~1-3 GB/s, e.g. [4096,4096] took ~14ms, [10000,65536] ~543ms). The 1D-flat
+    # form (scalar-base + stride-1 arange) is provably contiguous -> block DMA.
+    # Same win as the triu.py rewrite (~10x on large shapes).
+    #
+    # pid_b pre-offsets the base pointer by pid_b * MN (a scalar), so each matrix
+    # in a batch is handled by its own grid column while the inner offsets stay a
+    # stride-1 arange. Only the first `active_total = active_rows * N` elements of
+    # each matrix are visited: rows at/below the diagonal are fully kept and never
+    # touched (true in-place). Offsets stay within [0, MN) so `off // N` is exact
+    # even for the batched case (no `% MN` needed).
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    base = pid_b * MN
 
-    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
-    mask = (offs_m < M) & (offs_n < N)
-    ptr += pid_b * (M * N) + offs_m * N
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < active_total
+    rows = offsets // N
+    cols = offsets - rows * N
+    keep = cols <= rows + diag
 
-    zero = offs_n > offs_m + diag
-    tl.store(ptr + offs_n, 0.0, mask=mask & zero)
+    x = tl.load(ptr + base + offsets, mask=mask, other=0.0)
+    y = tl.where(keep, x, 0.0)
+    tl.store(ptr + base + offsets, y, mask=mask)
 
 
 @triton.jit
@@ -239,27 +257,28 @@ def _tril_inplace_zero_strided_tile_kernel(
     tl.store(ptr + offs_n * STRIDE_N, 0.0, mask=mask & zero)
 
 
+@libentry()
 @triton.jit
 def _tril_strided_out_tile_kernel(
     in_ptr,
     out_ptr,
     diag,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    B0: tl.constexpr,
-    B1: tl.constexpr,
-    B2: tl.constexpr,
-    B3: tl.constexpr,
-    B4: tl.constexpr,
-    B5: tl.constexpr,
-    S0: tl.constexpr,
-    S1: tl.constexpr,
-    S2: tl.constexpr,
-    S3: tl.constexpr,
-    S4: tl.constexpr,
-    S5: tl.constexpr,
-    STRIDE_M: tl.constexpr,
-    STRIDE_N: tl.constexpr,
+    M,
+    N,
+    B0,
+    B1,
+    B2,
+    B3,
+    B4,
+    B5,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    STRIDE_M,
+    STRIDE_N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -527,32 +546,40 @@ def _launch_exact_diag0_tile(
     return out
 
 
+_INPLACE_FLAT_BLOCK = 8192
+
+
 def _launch_tril_inplace_contiguous(
     input: torch.Tensor,
     diagonal: int,
-    block_m: int = 16,
-    block_n: int = 64,
-    num_warps: int = 4,
+    block_size: int = _INPLACE_FLAT_BLOCK,
+    num_warps: int = 8,
     num_stages: int = 2,
 ):
     M, N = input.shape[-2:]
     if input.numel() == 0:
         return input
 
+    # Rows [active_rows, M) sit entirely at/below the diagonal -> fully kept,
+    # nothing to zero. Only the first `active_rows` rows of each matrix contain
+    # strict-upper elements that must be zeroed.
     active_rows = min(M, max(0, N - 1 - diagonal))
     if active_rows == 0:
         return input
 
-    batch = input.numel() // (M * N)
-    grid = (triton.cdiv(active_rows, block_m), triton.cdiv(N, block_n), batch)
+    MN = M * N
+    active_total = active_rows * N
+    batch = input.numel() // MN
+
+    grid = (triton.cdiv(active_total, block_size), batch)
     with torch_device_fn.device(input.device):
-        _tril_inplace_zero_tile_kernel[grid](
+        _tril_flat_inplace_kernel[grid](
             input,
+            active_total,
+            MN,
             int(diagonal),
-            M,
             N,
-            BLOCK_M=block_m,
-            BLOCK_N=block_n,
+            BLOCK_SIZE=block_size,
             num_warps=num_warps,
             num_stages=num_stages,
         )
