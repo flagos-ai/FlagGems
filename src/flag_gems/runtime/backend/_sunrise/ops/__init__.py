@@ -13,12 +13,16 @@
 # limitations under the License.
 
 from .. import _install_typed_ptr_device_patch
+from ._linalg_eigvals import _linalg_eigvals
 from ._safe_softmax import _safe_softmax
+from ._sparse_semi_structured_mm import _sparse_semi_structured_mm
 from ._upsample_nearest_exact1d import _upsample_nearest_exact1d
 from .abs import abs, abs_
 from .add import add, add_
 from .addmm import addmm, addmm_out
-from .aminmax import amax, amax_out, amin, amin_out, aminmax, aminmax_out
+from .amax import amax, amax_out
+from .amin import amin, amin_out
+from .aminmax import aminmax, aminmax_out
 from .angle import angle
 from .arcsinh import arcsinh, arcsinh_out
 from .attention import (
@@ -29,6 +33,7 @@ from .attention import (
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
 )
+from .avg_pool3d import avg_pool3d, avg_pool3d_backward
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_,
@@ -46,6 +51,7 @@ from .bitwise_right_shift import (
     bitwise_right_shift_,
     bitwise_right_shift_out,
 )
+from .cat import cat, cat_out
 from .clamp import (
     clamp,
     clamp_,
@@ -55,12 +61,14 @@ from .clamp import (
     clamp_tensor,
     clamp_tensor_,
 )
+from .concatenate import concatenate
 from .conj_physical import conj_physical
 from .conv2d import conv2d
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .ctc_loss import ctc_loss
 from .cumsum import cumsum, cumsum_out, normed_cumsum
+from .diag_embed import diag_embed
 from .div import (
     div_mode,
     div_mode_,
@@ -74,9 +82,10 @@ from .div import (
 )
 from .dropout import dropout, dropout_backward
 from .embedding import embedding, embedding_backward
+from .empty import empty
 from .eq import eq, eq_scalar, equal
 from .exponential_ import exponential_
-from .fft import fft
+from .fft import fft, fft_c2c
 from .fill import (
     fill_scalar,
     fill_scalar_,
@@ -85,14 +94,24 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
+from .fix import fix, fix_out
+from .flash_attention_backward import (
+    efficient_attention_backward,
+    flash_attention_backward,
+    scaled_dot_product_cudnn_attention_backward,
+    scaled_dot_product_efficient_attention_backward,
+    scaled_dot_product_flash_attention_backward,
+)
 from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
+from .group_gemm import group_mm
 from .hypot import hypot, hypot_out
 from .i0 import i0, i0_out
 from .i0_ import i0_
 from .index_add import index_add, index_add_
 from .index_put import index_put, index_put_
+from .index_reduce import index_reduce_
 from .index_select import index_select
 from .isin import isin
 from .isnan import isnan
@@ -105,9 +124,12 @@ from .logical_and import logical_and
 from .logical_or import logical_or, logical_or_
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_select import masked_select
+from .max_pool3d_with_indices import max_pool3d_backward, max_pool3d_with_indices
 from .mean import mean, mean_dim
+from .median import median, median_dim, median_dim_values, median_out
 from .mul import mul, mul_
 from .multinomial import multinomial
+from .multiply_ import multiply_
 from .mv import mv
 from .neg import neg, neg_
 from .nonzero import nonzero
@@ -125,6 +147,8 @@ from .prelu import prelu
 from .quantile import quantile
 from .randperm import randperm
 from .reflection_pad2d import reflection_pad2d
+from .reflection_pad3d_backward import reflection_pad3d_backward
+from .renorm_ import renorm_
 from .repeat import repeat
 from .repeat_interleave import (
     repeat_interleave_self_int,
@@ -133,15 +157,28 @@ from .repeat_interleave import (
 )
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
+from .scaled_grouped_mm import scaled_grouped_mm
 from .scatter import scatter, scatter_
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .select_backward import select_backward
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
+from .sinc import sinc, sinc_
 from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from .softmax import softmax, softmax_backward
 from .sort import sort, sort_stable
+from .special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
+from .special_chebyshev_polynomial_w import (
+    special_chebyshev_polynomial_w,
+    special_chebyshev_polynomial_w_out,
+)
+from .special_gammainc import special_gammainc
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out
+from .special_shifted_chebyshev_polynomial_u import (
+    special_shifted_chebyshev_polynomial_u,
+    special_shifted_chebyshev_polynomial_u_,
+    special_shifted_chebyshev_polynomial_u_out,
+)
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .svd import svd
@@ -165,7 +202,9 @@ _install_typed_ptr_device_patch()
 
 
 __all__ = [
+    "_linalg_eigvals",
     "_safe_softmax",
+    "_sparse_semi_structured_mm",
     "_upsample_nearest_exact1d",
     "abs",
     "abs_",
@@ -182,6 +221,8 @@ __all__ = [
     "angle",
     "arcsinh",
     "arcsinh_out",
+    "avg_pool3d",
+    "avg_pool3d_backward",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
     "bitwise_and_scalar_tensor",
@@ -193,6 +234,8 @@ __all__ = [
     "bitwise_right_shift",
     "bitwise_right_shift_",
     "bitwise_right_shift_out",
+    "cat",
+    "cat_out",
     "clamp",
     "clamp_",
     "clamp_tensor",
@@ -203,16 +246,19 @@ __all__ = [
     "conv2d",
     "cos",
     "cos_",
+    "concatenate",
     "count_nonzero",
     "conj_physical",
     "ctc_loss",
     "cumsum",
     "cumsum_out",
     "normed_cumsum",
+    "diag_embed",
     "div_mode",
     "div_mode_",
     "embedding",
     "embedding_backward",
+    "empty",
     "floor_divide",
     "floor_divide_",
     "remainder",
@@ -222,6 +268,7 @@ __all__ = [
     "true_divide_out",
     "dropout",
     "dropout_backward",
+    "efficient_attention_backward",
     "eq",
     "eq_scalar",
     "equal",
@@ -232,9 +279,13 @@ __all__ = [
     "fill_tensor",
     "fill_tensor_",
     "fill_tensor_out",
+    "fix",
+    "fix_out",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "fft",
+    "fft_c2c",
+    "flash_attention_backward",
     "gather",
     "gather_backward",
     "ge",
@@ -242,6 +293,7 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "group_mm",
     "hypot",
     "hypot_out",
     "i0",
@@ -251,6 +303,7 @@ __all__ = [
     "index_add_",
     "index_put",
     "index_put_",
+    "index_reduce_",
     "index_select",
     "isin",
     "isnan",
@@ -268,10 +321,17 @@ __all__ = [
     "logical_or_",
     "margin_ranking_loss",
     "masked_select",
+    "max_pool3d_backward",
+    "max_pool3d_with_indices",
     "mean",
     "mean_dim",
+    "median",
+    "median_dim",
+    "median_dim_values",
+    "median_out",
     "mul",
     "mul_",
+    "multiply_",
     "multinomial",
     "mv",
     "neg",
@@ -290,6 +350,8 @@ __all__ = [
     "quantile",
     "randperm",
     "reflection_pad2d",
+    "reflection_pad3d_backward",
+    "renorm_",
     "repeat",
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
@@ -298,9 +360,13 @@ __all__ = [
     "rms_norm",
     "rms_norm_forward",
     "rms_norm_backward",
+    "scaled_grouped_mm",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "scaled_dot_product_cudnn_attention_backward",
+    "scaled_dot_product_efficient_attention_backward",
+    "scaled_dot_product_flash_attention_backward",
     "scatter",
     "scatter_",
     "scatter_reduce",
@@ -310,16 +376,25 @@ __all__ = [
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
+    "sinc",
+    "sinc_",
     "soft_margin_loss",
     "soft_margin_loss_out",
     "softmax",
     "softmax_backward",
     "sort",
     "sort_stable",
+    "special_chebyshev_polynomial_v",
+    "special_chebyshev_polynomial_w",
+    "special_chebyshev_polynomial_w_out",
+    "special_gammainc",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
     "special_i1_out",
+    "special_shifted_chebyshev_polynomial_u",
+    "special_shifted_chebyshev_polynomial_u_",
+    "special_shifted_chebyshev_polynomial_u_out",
     "sub",
     "sub_",
     "svd",
