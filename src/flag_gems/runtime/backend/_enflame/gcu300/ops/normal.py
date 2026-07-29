@@ -106,5 +106,5 @@ def normal_(self, mean=0, std=1, *, generator=None):
     device = self.device
     out = normal_distribution(shape, device, generator=generator)
     self.copy_(out)
-    result = transform_func_float_float(self, std, mean, out0=self)
+    transform_func_float_float(self, std, mean, out0=self)
     return self

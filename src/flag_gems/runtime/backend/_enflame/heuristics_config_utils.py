@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import triton
 import torch
+import triton
 
 
 def argmax_heur_block_m(args):
@@ -225,6 +225,7 @@ def simple_elementwise_blocksize_heur(args):
         return 1024
     else:
         return 16384
+
 
 def argmax_heur_tile_k(args):
     MAX_TILE_K = 512

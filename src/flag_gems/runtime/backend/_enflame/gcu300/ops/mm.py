@@ -161,6 +161,7 @@ def mm(a, b):
         )
     return c
 
+
 def router_gemm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
     """bf16 x bf16 -> fp32 GEMM for MoE router gate. weight shape: (N, K)."""
     logger.debug("GEMS_ENFLAME ROUTER_GEMM")

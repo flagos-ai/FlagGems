@@ -17,6 +17,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+
 from flag_gems.utils.shape_utils import restride_dim
 
 logger = logging.getLogger(

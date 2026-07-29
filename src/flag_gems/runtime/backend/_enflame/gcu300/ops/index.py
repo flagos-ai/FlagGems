@@ -171,7 +171,7 @@ def generate_index_kernel(
         ]
         code.writeline(f"input_offset = {' + '.join(comp)}")
         # indices_idx{i} is relative to M-chunk; add m_offset for absolute position
-        comp = [f"(indices_idx0 + m_offset) * out_stride0"]
+        comp = ["(indices_idx0 + m_offset) * out_stride0"]
         comp += [f"indices_idx{i} * out_stride{i}" for i in range(1, index_rank)]
         comp += [
             f"input_idx{indices_len + i} * out_stride{index_rank + i}"
@@ -280,8 +280,8 @@ def generate_index_wrapper(
         # Chunk along indices dim0 (not flat M) to keep flat-to-multidim
         # decomposition consistent within each chunk.
         # grid_x <= _GCU_MAX_GRID (65535), grid_y <= _GCU_MAX_GRID_Y (255)
-        code.writeline(f"_dim0_size = indices[0].shape[0]")
-        code.writeline(f"_inner_size = M // _dim0_size if _dim0_size > 0 else 1")
+        code.writeline("_dim0_size = indices[0].shape[0]")
+        code.writeline("_inner_size = M // _dim0_size if _dim0_size > 0 else 1")
         code.writeline("_d0_chunk = _GCU_MAX_GRID // _inner_size if _inner_size > 0 else _GCU_MAX_GRID")
         code.writeline("_d0_chunk = max(_d0_chunk, 1)")
         code.writeline("_n_d0chunks = (_dim0_size + _d0_chunk - 1) // _d0_chunk")
