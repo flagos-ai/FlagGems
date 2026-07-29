@@ -24,6 +24,8 @@ from flag_gems.ops.wgrad_gemm_accum import (
     wgrad_gemm_accum_fp32,
     wgrad_gemm_accum_fp32_strict_cpu_ref,
     wgrad_gemmex_available,
+    wgrad_gemmex_diag,
+    wgrad_gemmex_load_error,
     wgrad_using_torch_fallback,
 )
 
@@ -663,6 +665,94 @@ def test_wgrad_gemm_accum_fp32_runtime_fail_permanent_after_limit(monkeypatch):
         wgrad_gemm_accum_fp32(input_tensor, grad_output, main_b)
         assert wgrad_using_torch_fallback()
         assert "consecutive failures" in (wgrad_fallback_reason() or "")
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+def test_wgrad_csrc_shipped_for_jit_package_data():
+    """Wheel/editable install must ship csrc cpp+header (package-data)."""
+    from pathlib import Path
+
+    import flag_gems.ops.wgrad_gemm_accum as wgrad_mod
+
+    cpp, hdr = wgrad_mod._wgrad_csrc_paths()
+    assert cpp.is_file(), f"missing {cpp} (check pyproject package-data csrc/*.cpp)"
+    assert hdr.is_file(), f"missing {hdr} (check pyproject package-data csrc/*.h)"
+    # Sanity: paths live under the installed/editable flag_gems package.
+    pkg_root = Path(flag_gems.__file__).resolve().parent
+    assert pkg_root in cpp.parents
+    diag = wgrad_gemmex_diag()
+    assert diag["csrc_cpp_present"] is True
+    assert diag["csrc_header_present"] is True
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+def test_wgrad_jit_extra_ldflags_linux_only(monkeypatch):
+    """``-ldl`` is Linux-only; Windows/macOS must not request libdl."""
+    import flag_gems.ops.wgrad_gemm_accum as wgrad_mod
+
+    monkeypatch.setattr(wgrad_mod.sys, "platform", "linux")
+    assert wgrad_mod._jit_extra_ldflags() == ["-ldl"]
+    monkeypatch.setattr(wgrad_mod.sys, "platform", "win32")
+    assert wgrad_mod._jit_extra_ldflags() == []
+    monkeypatch.setattr(wgrad_mod.sys, "platform", "darwin")
+    assert wgrad_mod._jit_extra_ldflags() == []
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+def test_wgrad_fallback_reason_uses_load_error(monkeypatch):
+    """Missing extension fallback must surface the detailed load error."""
+    import flag_gems.ops.wgrad_gemm_accum as wgrad_mod
+
+    monkeypatch.delenv("FLAGGEMS_WGRAD_REQUIRE_GEMMEX", raising=False)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_EXT_RUNTIME_OK", True)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_ACTIVE", False)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_REASON", None)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_WARNED", False)
+    monkeypatch.setattr(
+        wgrad_mod,
+        "_WGRAD_LOAD_ERROR",
+        "missing GemmEx source at /x (wheel/install must ship flag_gems/csrc via package-data)",
+    )
+    monkeypatch.setattr(wgrad_mod, "_load_wgrad_gemm_ext", lambda: None)
+
+    input_tensor = torch.randn(4, 16, dtype=torch.float16, device=flag_gems.device)
+    grad_output = torch.randn(4, 32, dtype=torch.float16, device=flag_gems.device)
+    main_grad = torch.zeros(32, 16, dtype=torch.float32, device=flag_gems.device)
+
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        wgrad_gemm_accum_fp32(input_tensor, grad_output, main_grad)
+
+    assert wgrad_using_torch_fallback()
+    reason = wgrad_fallback_reason() or ""
+    assert "package-data" in reason
+    assert "package-data" in (wgrad_gemmex_load_error() or "")
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+def test_wgrad_load_records_missing_csrc(monkeypatch, tmp_path):
+    """JIT loader must record a clear error when package-data sources are absent."""
+    import flag_gems.ops.wgrad_gemm_accum as wgrad_mod
+
+    missing_cpp = tmp_path / "wgrad_gemm_accum.cpp"
+    missing_hdr = tmp_path / "wgrad_gemm_accum_kernel.h"
+    wgrad_mod._load_wgrad_gemm_ext.cache_clear()
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_LOAD_ERROR", None)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_BACKEND", None)
+    monkeypatch.setattr(wgrad_mod, "_try_prebuilt_gemmex_ext", lambda: None)
+    monkeypatch.setattr(
+        wgrad_mod, "_wgrad_csrc_paths", lambda: (missing_cpp, missing_hdr)
+    )
+
+    try:
+        assert wgrad_mod._load_wgrad_gemm_ext() is None
+        err = wgrad_gemmex_load_error() or ""
+        assert "missing GemmEx source" in err
+        assert "package-data" in err
+        assert wgrad_gemmex_diag()["backend"] is None
+    finally:
+        # Do not leave a cached None that would poison later GemmEx tests.
+        wgrad_mod._load_wgrad_gemm_ext.cache_clear()
 
 
 @pytest.mark.wgrad_gemm_accum_fp32

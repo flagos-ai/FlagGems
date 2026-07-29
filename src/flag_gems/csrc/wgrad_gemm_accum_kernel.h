@@ -17,9 +17,10 @@
 //   - src/flag_gems/csrc/wgrad_gemm_accum.cpp  (Torch JIT extension + pybind)
 //   - cpp/lib/wgrad_gemm_accum.cpp             (official c_operators build)
 //
-// IMPORTANT: resolve cublasGemmEx via dlsym(RTLD_DEFAULT) so we call the same
-// libcublas that created PyTorch's BLAS handle. Linking a second -lcublas and
-// mixing handles causes CUBLAS_STATUS_INVALID_VALUE.
+// IMPORTANT: resolve cublasGemmEx from the *already-loaded* libcublas that
+// owns PyTorch's BLAS handle (Unix: dlsym(RTLD_DEFAULT); Windows: walk
+// process modules with GetProcAddress). Linking a second -lcublas and mixing
+// handles causes CUBLAS_STATUS_INVALID_VALUE.
 //
 // Do NOT override cublas math mode here: rely on PyTorch's handle (respects
 // torch.backends.cuda.matmul.allow_tf32).
@@ -29,8 +30,18 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <cublas_v2.h>
-#include <dlfcn.h>
 #include <torch/torch.h>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <psapi.h>
+#pragma comment(lib, "psapi.lib")
+#else
+#include <dlfcn.h>
+#endif
 
 namespace flag_gems_wgrad_detail {
 namespace {
@@ -70,12 +81,36 @@ using cublasGemmExFn = cublasStatus_t (*)(cublasHandle_t,
                                           cudaDataType,
                                           cublasGemmAlgo_t);
 
+inline void *resolve_cublas_symbol(const char *name) {
+#if defined(_WIN32)
+  // Enumerate modules already mapped into this process (Torch's cublas*.dll
+  // must be among them after any CUDA BLAS use). Avoid LoadLibrary of a
+  // second copy — same INVALID_VALUE footgun as linking -lcublas on Linux.
+  HMODULE modules[1024];
+  DWORD bytes_needed = 0;
+  if (!EnumProcessModules(
+          GetCurrentProcess(), modules, sizeof(modules), &bytes_needed)) {
+    return nullptr;
+  }
+  const size_t count = bytes_needed / sizeof(HMODULE);
+  for (size_t i = 0; i < count; ++i) {
+    FARPROC sym = GetProcAddress(modules[i], name);
+    if (sym != nullptr) {
+      return reinterpret_cast<void *>(sym);
+    }
+  }
+  return nullptr;
+#else
+  return dlsym(RTLD_DEFAULT, name);
+#endif
+}
+
 inline cublasGemmExFn resolve_gemm_ex() {
   static cublasGemmExFn fn = nullptr;
   if (fn == nullptr) {
-    fn = reinterpret_cast<cublasGemmExFn>(dlsym(RTLD_DEFAULT, "cublasGemmEx"));
+    fn = reinterpret_cast<cublasGemmExFn>(resolve_cublas_symbol("cublasGemmEx"));
     TORCH_CHECK(fn != nullptr,
-                "dlsym(cublasGemmEx) failed; is Torch CUDA / libcublas loaded?");
+                "resolve cublasGemmEx failed; is Torch CUDA / libcublas loaded?");
   }
   return fn;
 }
