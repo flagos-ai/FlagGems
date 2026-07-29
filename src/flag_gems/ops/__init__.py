@@ -633,6 +633,7 @@ from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
+from flag_gems.ops.unsafe_chunk import unsafe_chunk
 from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
@@ -1084,6 +1085,7 @@ __all__ = [
     "logaddexp2_out",
     "logcumsumexp",
     "logcumsumexp_out",
+    "unsafe_chunk",
     "xlogy",
     "xlogy_out",
     "xlogy_tensor_scalar",
