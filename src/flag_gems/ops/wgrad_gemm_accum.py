@@ -30,6 +30,11 @@ Torch fp32 matmul is used as a **loud** fallback (``logger.error`` +
 for that call and retries next time; permanent fallback needs consecutive
 failures (default 3, overridable via ``FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT``).
 Set ``FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1`` to raise instead.
+
+TF32 note: like Apex, ``allow_tf32=False`` does not force full-fp32 GemmEx.
+Test-only CPU-fp64-matched checks use ``wgrad_gemm_accum_fp32_strict_cpu_ref``
+(not a kwarg on the training API).
+
 ``wgrad_gemm_accum_fp16`` uses ``torch.addmm`` (cuBLAS) for same-dtype
 accumulation.
 """
@@ -412,13 +417,17 @@ def wgrad_gemm_accum_fp32(
     input: torch.Tensor,
     grad_output: torch.Tensor,
     main_grad: torch.Tensor,
-    *,
-    strict_cpu_ref: bool = False,
 ) -> None:
     """Accumulate weight gradient into ``main_grad`` using fp32 storage.
 
-    ``strict_cpu_ref`` is for tests only: fp64 GEMM matching CPU reference when
-    TF32 is disabled.  Production / bench paths leave it False (GemmEx, ~1× Apex).
+    Production / training path mirrors Apex: ``cublasGemmEx`` with
+    ``CUBLAS_GEMM_DEFAULT_TENSOR_OP``.  Setting
+    ``torch.backends.cuda.matmul.allow_tf32 = False`` does **not** force a
+    full-fp32 math path here (same footgun as Apex on Ampere+).
+
+    For test-only CPU-fp64-matched checks under TF32-off, call
+    ``wgrad_gemm_accum_fp32_strict_cpu_ref`` instead — do not use that helper
+    in training or benchmarks (slower and not Apex-aligned).
     """
     logger.debug("GEMS WGRAD_GEMM_ACCUM_FP32")
 
@@ -453,7 +462,52 @@ def wgrad_gemm_accum_fp32(
         input_2d,
         main_grad,
         fp32_accum=True,
-        strict_cpu_ref=strict_cpu_ref,
+        strict_cpu_ref=False,
+    )
+
+
+def wgrad_gemm_accum_fp32_strict_cpu_ref(
+    input: torch.Tensor,
+    grad_output: torch.Tensor,
+    main_grad: torch.Tensor,
+) -> None:
+    """TEST-ONLY: fp32 activations via fp64 GEMM then fp32 add into ``main_grad``.
+
+    Use this for TF32-off math checks against a CPU fp64 reference.  It is
+    intentionally **not** on the public training API so production code cannot
+    accidentally pass ``strict_cpu_ref=True`` and silently lose Apex alignment
+    / speed.  Only ``torch.float32`` activations are supported.
+    """
+    logger.debug("GEMS WGRAD_GEMM_ACCUM_FP32_STRICT_CPU_REF (test-only)")
+
+    _validate_device(input, grad_output, main_grad)
+
+    if main_grad.dtype != torch.float32:
+        raise RuntimeError(
+            "main_grad must be float32 for wgrad_gemm_accum_fp32_strict_cpu_ref, "
+            f"but got {main_grad.dtype}"
+        )
+    if input.dtype != torch.float32 or grad_output.dtype != torch.float32:
+        raise RuntimeError(
+            "wgrad_gemm_accum_fp32_strict_cpu_ref requires float32 activations, "
+            f"got input={input.dtype}, grad_output={grad_output.dtype}"
+        )
+
+    input_2d, grad_output_2d = _collapse_to_2d(input, grad_output)
+    out_dim = grad_output_2d.size(-1)
+    in_dim = input_2d.size(-1)
+    if main_grad.shape != (out_dim, in_dim):
+        raise RuntimeError(
+            "main_grad shape mismatch: expected "
+            f"({out_dim}, {in_dim}), got {tuple(main_grad.shape)}"
+        )
+
+    _accum_wgrad(
+        grad_output_2d,
+        input_2d,
+        main_grad,
+        fp32_accum=True,
+        strict_cpu_ref=True,
     )
 
 

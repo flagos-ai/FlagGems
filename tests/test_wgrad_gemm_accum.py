@@ -22,6 +22,7 @@ from flag_gems.ops.wgrad_gemm_accum import (
     wgrad_fallback_reason,
     wgrad_gemm_accum_fp16,
     wgrad_gemm_accum_fp32,
+    wgrad_gemm_accum_fp32_strict_cpu_ref,
     wgrad_gemmex_available,
     wgrad_using_torch_fallback,
 )
@@ -486,6 +487,31 @@ def test_wgrad_gemm_accum_fp16_from_zero_main_grad(dtype):
     wgrad_gemm_accum_fp16(input_tensor, grad_output, res_main)
 
     _assert_vs_cpu_ref(res_main, ref_main, dtype, reduce_dim=batch)
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+def test_wgrad_gemm_accum_fp32_public_api_hides_strict_cpu_ref():
+    """Production API must not expose the test-only strict_cpu_ref knob."""
+    import inspect
+
+    params = inspect.signature(wgrad_gemm_accum_fp32).parameters
+    assert "strict_cpu_ref" not in params
+    with pytest.raises(TypeError):
+        wgrad_gemm_accum_fp32(
+            torch.randn(4, 16, device=flag_gems.device),
+            torch.randn(4, 32, device=flag_gems.device),
+            torch.zeros(32, 16, device=flag_gems.device),
+            strict_cpu_ref=True,
+        )
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+def test_wgrad_gemm_accum_fp32_strict_cpu_ref_rejects_half_activations():
+    input_tensor = torch.randn(4, 16, dtype=torch.float16, device=flag_gems.device)
+    grad_output = torch.randn(4, 32, dtype=torch.float16, device=flag_gems.device)
+    main_grad = torch.zeros(32, 16, dtype=torch.float32, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="requires float32 activations"):
+        wgrad_gemm_accum_fp32_strict_cpu_ref(input_tensor, grad_output, main_grad)
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
@@ -1513,8 +1539,8 @@ def test_wgrad_gemm_accum_fp32_cpu_ref_strict_with_tf32_off(
 
     res_main_grad = main_grad.clone()
     _run_with_tf32_disabled(
-        lambda: wgrad_gemm_accum_fp32(
-            input_tensor, grad_output, res_main_grad, strict_cpu_ref=True
+        lambda: wgrad_gemm_accum_fp32_strict_cpu_ref(
+            input_tensor, grad_output, res_main_grad
         )
     )
 
@@ -1941,8 +1967,8 @@ def test_wgrad_gemm_accum_fp32_numeric_boundaries_fp32_input_tf32_off(case):
 
     res_main = main_grad.clone()
     _run_with_tf32_disabled(
-        lambda: wgrad_gemm_accum_fp32(
-            input_tensor, grad_output, res_main, strict_cpu_ref=True
+        lambda: wgrad_gemm_accum_fp32_strict_cpu_ref(
+            input_tensor, grad_output, res_main
         )
     )
 
