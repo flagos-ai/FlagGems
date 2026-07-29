@@ -198,7 +198,8 @@ def _load_wgrad_gemm_ext():
     """Return a module exposing ``wgrad_gemm_accum_fp32``, or ``None``.
 
     Prefer the official FlagGems C extension when installed; otherwise try to
-    JIT-compile ``flag_gems/csrc/wgrad_gemm_accum.cpp``.  Returns ``None`` if
+    JIT-compile ``flag_gems/csrc/wgrad_gemm_accum.cpp`` (kernel body is shared
+    with ``cpp/lib`` via ``wgrad_gemm_accum_kernel.h``).  Returns ``None`` if
     neither path works (e.g. CI runners without nvcc) so callers can fall back
     to a Torch addmm path for correctness tests.
     """

@@ -53,7 +53,10 @@ endif()
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>)
+    $<INSTALL_INTERFACE:include>
+  PRIVATE
+    # Shared wgrad GemmEx header lives next to the JIT sources.
+    ${PROJECT_SOURCE_DIR}/../src/flag_gems/csrc)
 
 # Backend conditional linking
 if(FLAGGEMS_BACKEND STREQUAL "CUDA" OR FLAGGEMS_BACKEND STREQUAL "IX")

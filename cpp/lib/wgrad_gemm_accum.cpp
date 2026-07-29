@@ -16,128 +16,16 @@
 
 #if defined(FLAGGEMS_USE_CUDA) || defined(FLAGGEMS_USE_IX)
 
-#include <ATen/cuda/CUDAContext.h>
-#include <c10/cuda/CUDAGuard.h>
-#include <cublas_v2.h>
-#include <dlfcn.h>
+// Shared GemmEx body with the Torch JIT extension
+// (src/flag_gems/csrc/wgrad_gemm_accum_kernel.h). Keep a single edit point.
+#include "wgrad_gemm_accum_kernel.h"
 
 namespace flag_gems {
-namespace {
-
-  cudaDataType dtype_to_cuda_data_type(at::ScalarType dtype) {
-    switch (dtype) {
-      case at::kFloat:
-        return CUDA_R_32F;
-      case at::kHalf:
-        return CUDA_R_16F;
-      case at::kBFloat16:
-        return CUDA_R_16BF;
-      default:
-        TORCH_CHECK(false, "Unsupported dtype for wgrad_gemm_accum_fp32 GemmEx: ", dtype);
-    }
-  }
-
-  using cublasGemmExFn = cublasStatus_t (*)(cublasHandle_t,
-                                            cublasOperation_t,
-                                            cublasOperation_t,
-                                            int,
-                                            int,
-                                            int,
-                                            const void *,
-                                            const void *,
-                                            cudaDataType,
-                                            int,
-                                            const void *,
-                                            cudaDataType,
-                                            int,
-                                            const void *,
-                                            void *,
-                                            cudaDataType,
-                                            int,
-                                            cudaDataType,
-                                            cublasGemmAlgo_t);
-
-  cublasGemmExFn resolve_gemm_ex() {
-    static cublasGemmExFn fn = nullptr;
-    if (fn == nullptr) {
-      fn = reinterpret_cast<cublasGemmExFn>(dlsym(RTLD_DEFAULT, "cublasGemmEx"));
-      TORCH_CHECK(fn != nullptr, "dlsym(cublasGemmEx) failed");
-    }
-    return fn;
-  }
-
-}  // namespace
 
 void wgrad_gemm_accum_fp32(const at::Tensor &input_2d,
                            const at::Tensor &grad_output_2d,
                            at::Tensor &main_grad) {
-  TORCH_CHECK(input_2d.is_cuda() && grad_output_2d.is_cuda() && main_grad.is_cuda(),
-              "wgrad_gemm_accum_fp32: tensors must be CUDA");
-  TORCH_CHECK(main_grad.scalar_type() == at::kFloat, "main_grad must be float32 for GemmEx fp32-accum path");
-  TORCH_CHECK(input_2d.scalar_type() == grad_output_2d.scalar_type(),
-              "input and grad_output dtype must match, got ",
-              input_2d.scalar_type(),
-              " vs ",
-              grad_output_2d.scalar_type());
-  TORCH_CHECK(input_2d.dim() == 2 && grad_output_2d.dim() == 2 && main_grad.dim() == 2,
-              "expected 2D tensors after collapse");
-
-  at::Tensor input = input_2d.contiguous();
-  at::Tensor grad_output = grad_output_2d.contiguous();
-  const bool weight_is_main = main_grad.is_contiguous();
-  at::Tensor weight = weight_is_main ? main_grad : main_grad.contiguous();
-
-  const int64_t hidden_dim = input.size(0);
-  const int64_t in_dim = input.size(1);
-  const int64_t out_dim = grad_output.size(1);
-  TORCH_CHECK(grad_output.size(0) == hidden_dim, "input/grad_output row mismatch after collapse");
-  TORCH_CHECK(weight.size(0) == out_dim && weight.size(1) == in_dim,
-              "main_grad shape mismatch: expected (",
-              out_dim,
-              ", ",
-              in_dim,
-              "), got (",
-              weight.size(0),
-              ", ",
-              weight.size(1),
-              ")");
-
-  if (hidden_dim == 0 || in_dim == 0 || out_dim == 0) {
-    return;
-  }
-
-  const float alpha = 1.0f;
-  const float beta = 1.0f;
-  const cudaDataType a_type = dtype_to_cuda_data_type(input.scalar_type());
-
-  at::cuda::CUDAGuard device_guard(input.device());
-  cublasHandle_t handle = at::cuda::getCurrentCUDABlasHandle();
-
-  cublasStatus_t status = resolve_gemm_ex()(handle,
-                                            CUBLAS_OP_N,
-                                            CUBLAS_OP_T,
-                                            static_cast<int>(in_dim),
-                                            static_cast<int>(out_dim),
-                                            static_cast<int>(hidden_dim),
-                                            &alpha,
-                                            input.data_ptr(),
-                                            a_type,
-                                            static_cast<int>(in_dim),
-                                            grad_output.data_ptr(),
-                                            a_type,
-                                            static_cast<int>(out_dim),
-                                            &beta,
-                                            weight.data_ptr(),
-                                            CUDA_R_32F,
-                                            static_cast<int>(in_dim),
-                                            CUDA_R_32F,
-                                            CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-
-  TORCH_CHECK(status == CUBLAS_STATUS_SUCCESS, "cublasGemmEx failed with status ", static_cast<int>(status));
-
-  if (!weight_is_main) {
-    main_grad.copy_(weight);
-  }
+  flag_gems_wgrad_detail::wgrad_gemm_accum_fp32_cuda_impl(input_2d, grad_output_2d, main_grad);
 }
 
 }  // namespace flag_gems

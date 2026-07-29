@@ -64,8 +64,11 @@ if [[ "$CHANGED_FILES" != "__ALL__" ]]; then
       src/flag_gems/ops/*.py)
         base=$(basename "$item" .py)
         ;;
-      src/flag_gems/csrc/*.cpp)
-        base=$(basename "$item" .cpp)
+      src/flag_gems/csrc/*.cpp|src/flag_gems/csrc/*.h|src/flag_gems/csrc/*.hpp)
+        base=$(basename "$item")
+        base="${base%.*}"
+        # Shared kernel header: wgrad_gemm_accum_kernel.h -> wgrad_gemm_accum
+        base="${base%_kernel}"
         ;;
     esac
     if [[ -n "$base" ]]; then
