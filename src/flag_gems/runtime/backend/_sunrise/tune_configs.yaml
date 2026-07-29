@@ -998,15 +998,12 @@ kron:
       BLOCK_N: block_n
     num_warps: warps
   block_m:
-  - 1
   - 2
   - 4
-  - 8
   block_n:
-  - 1024
-  - 2048
+  - 256
+  - 512
   warps:
-  - 4
   - 8
   - 16
 
@@ -1042,3 +1039,22 @@ index:
   warps:
   - 8
   - 16
+mm_self_transpose:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_K: block_k
+    num_warps: warps
+    num_stages: num_stages
+  block_m:
+  - 32
+  - 64
+  block_k:
+  - 32
+  - 64
+  warps:
+  - 8
+  - 16
+  num_stages:
+  - 3

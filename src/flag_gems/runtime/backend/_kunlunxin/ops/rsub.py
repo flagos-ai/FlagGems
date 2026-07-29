@@ -55,3 +55,13 @@ def rsub(A, B, *, alpha=1):
     else:
         # Both scalar
         return B - A * alpha
+
+
+def rsub_tensor(A, B, *, alpha=1):
+    logger.debug("GEMS_KUNLUNXIN RSUB_TENSOR")
+    return rsub_func(A, B, alpha)
+
+
+def rsub_scalar(A, B, alpha=1):
+    logger.debug("GEMS_KUNLUNXIN RSUB_SCALAR")
+    return rsub_func_tensor_scalar(A, B, alpha)
