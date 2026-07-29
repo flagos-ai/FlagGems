@@ -25,6 +25,10 @@ from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger(__name__)
 
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
+
 
 def mul_get_configs():
     return [
@@ -573,7 +577,9 @@ def mul_broadcast_func(a, b, out=None):
 
     device = _select_device(a, b)
     if device.type != "cuda":
-        return torch.mul(a, b, out=out) if out is not None else torch.mul(a, b)
+        if out is not None:
+            return torch.ops.aten.mul.out.redispatch(_FALLBACK_KEYSET, a, b, out=out)
+        return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)
 
     dtype = _result_dtype(a, b)
 
@@ -716,7 +722,9 @@ def _launch_complex_generic(
 def mul_complex_broadcast_func(a, b, out=None):
     device = _select_device(a, b)
     if device.type != "cuda":
-        return torch.mul(a, b, out=out) if out is not None else torch.mul(a, b)
+        if out is not None:
+            return torch.ops.aten.mul.out.redispatch(_FALLBACK_KEYSET, a, b, out=out)
+        return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)
 
     dtype = _result_dtype(a, b)
     ar, ai = _complex_parts(a, device=device, complex_dtype=dtype)
