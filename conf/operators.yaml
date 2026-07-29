@@ -359,6 +359,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
+  - id: alias
+    description: Return a view tensor sharing the same storage (zero-copy alias).
+    for:
+      - alias
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: alias_copy
     description: |
       Creates a new tensor that shares the same storage data as the original tensor,
