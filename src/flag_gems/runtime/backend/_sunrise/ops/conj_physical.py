@@ -24,6 +24,15 @@ from flag_gems.utils import libentry, libtuner, tensor_wrapper
 logger = logging.getLogger(__name__)
 
 
+def _complex_real_view_buffer(tensor: torch.Tensor):
+    real_dtype = tensor.dtype.to_real()
+    shape = tuple(tensor.shape) + (2,)
+    strides = tuple(stride * 2 for stride in tensor.stride()) + (1,)
+    return tensor_wrapper.StridedBuffer(
+        tensor, shape=shape, strides=strides, dtype=real_dtype
+    )
+
+
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("conj_physical"),
@@ -51,10 +60,8 @@ def conj_physical(input: torch.Tensor) -> torch.Tensor:
     n_elements = input.numel()
     src = input if input.is_contiguous() else input.contiguous()
     output = torch.empty_like(src)
-    in_real_ptr = tensor_wrapper.TypedPtr.reinterpret_tensor(src, src.dtype.to_real())
-    out_real_ptr = tensor_wrapper.TypedPtr.reinterpret_tensor(
-        output, output.dtype.to_real()
-    )
+    in_real_ptr = _complex_real_view_buffer(src)
+    out_real_ptr = _complex_real_view_buffer(output)
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
 

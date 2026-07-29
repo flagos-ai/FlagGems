@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from .addmm import addmm, addmm_out
+from .arccosh_ import arccosh_
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .div import div_mode, div_mode_
@@ -37,9 +38,10 @@ from .var import var, var_correction, var_dim
 
 __all__ = [
     "_conv_depthwise2d",
-    "conv_transpose1d",
     "addmm",
     "addmm_out",
+    "arccosh_",
+    "conv_transpose1d",
     "div_mode",
     "div_mode_",
     "hadamard_transform",
@@ -47,6 +49,12 @@ __all__ = [
     "linear",
     "matmul_bf16",
     "matmul_int8",
+    "mm",
+    "mm_out",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "repeat",
     "scatter_add_",
     "special_modified_bessel_k1",
@@ -56,10 +64,4 @@ __all__ = [
     "var",
     "var_correction",
     "var_dim",
-    "mm",
-    "mm_out",
-    "nanmedian",
-    "nanmedian_dim",
-    "nanmedian_dim_values",
-    "nanmedian_out",
 ]

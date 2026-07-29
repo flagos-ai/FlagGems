@@ -97,6 +97,7 @@ from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.arccos import arccos, arccos_
+from flag_gems.ops.arccosh_ import arccosh_
 from flag_gems.ops.arcsin import arcsin, arcsin_, arcsin_out
 from flag_gems.ops.arcsinh import arcsinh, arcsinh_out
 from flag_gems.ops.arcsinh_ import arcsinh_
@@ -253,6 +254,12 @@ from flag_gems.ops.flash_attention_backward import (
     scaled_dot_product_flash_attention_backward,
 )
 from flag_gems.ops.flip import flip
+from flag_gems.ops.float_power_ import (
+    float_power_tensor_scalar,
+    float_power_tensor_scalar_,
+    float_power_tensor_tensor,
+    float_power_tensor_tensor_,
+)
 from flag_gems.ops.floor import floor, floor_out
 from flag_gems.ops.floor_ import floor_
 from flag_gems.ops.fmax import fmax, fmax_out
@@ -381,6 +388,7 @@ from flag_gems.ops.max_pool3d_with_indices import (
     max_pool3d_with_indices,
 )
 from flag_gems.ops.max_unpool2d import max_unpool2d
+from flag_gems.ops.max_unpool3d import max_unpool3d
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
@@ -758,6 +766,7 @@ __all__ = [
     "arange_start",
     "arccos",
     "arccos_",
+    "arccosh_",
     "arcsin",
     "arcsin_",
     "arcsin_out",
@@ -932,6 +941,10 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",
+    "float_power_tensor_scalar",
+    "float_power_tensor_scalar_",
+    "float_power_tensor_tensor",
+    "float_power_tensor_tensor_",
     "floor",
     "floor_",
     "floor_divide",
@@ -1109,6 +1122,7 @@ __all__ = [
     "max_pool3d_backward",
     "max_pool3d_with_indices",
     "max_unpool2d",
+    "max_unpool3d",
     "maximum",
     "mean",
     "mean_dim",
