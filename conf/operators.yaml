@@ -2130,6 +2130,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: cudnn_is_acceptable
+    description: Check if a tensor is acceptable for cuDNN operations (query-only, no data movement).
+    for:
+      - cudnn_is_acceptable
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cummax
     description: |
       Returns a named tuple `(values, indices)` where `values` is the cumulative maximum of elements
