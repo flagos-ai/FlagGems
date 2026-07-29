@@ -26,9 +26,12 @@ leading dimensions).
 Apex, via a compiled CUDA extension (FlagGems ``c_operators`` when present,
 otherwise ``torch.utils.cpp_extension`` JIT).  If that path is unavailable,
 Torch fp32 matmul is used as a **loud** fallback (``logger.error`` +
-``warnings.warn`` once); set ``FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1`` to raise
-instead.  ``wgrad_gemm_accum_fp16`` uses ``torch.addmm`` (cuBLAS) for
-same-dtype accumulation.
+``warnings.warn`` once).  A single GemmEx *runtime* failure only falls back
+for that call and retries next time; permanent fallback needs consecutive
+failures (default 3, overridable via ``FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT``).
+Set ``FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1`` to raise instead.
+``wgrad_gemm_accum_fp16`` uses ``torch.addmm`` (cuBLAS) for same-dtype
+accumulation.
 """
 
 from __future__ import annotations
@@ -45,11 +48,14 @@ import flag_gems
 
 logger = logging.getLogger(__name__)
 
-# Set False after a runtime GemmEx failure so we do not keep raising.
+# Permanent GemmEx disable (missing ext, or too many consecutive runtime fails).
 _WGRAD_EXT_RUNTIME_OK = True
 _WGRAD_FALLBACK_ACTIVE = False
 _WGRAD_FALLBACK_REASON: str | None = None
 _WGRAD_FALLBACK_WARNED = False
+# Consecutive GemmEx runtime failures; reset on the next successful call.
+_WGRAD_RUNTIME_FAIL_STREAK = 0
+_DEFAULT_GEMMEX_FAIL_LIMIT = 3
 
 
 def _require_gemmex() -> bool:
@@ -67,8 +73,24 @@ def _require_gemmex() -> bool:
     )
 
 
+def _gemmex_fail_limit() -> int:
+    """How many consecutive GemmEx runtime failures before permanent fallback."""
+    raw = os.environ.get("FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT", "").strip()
+    if not raw:
+        return _DEFAULT_GEMMEX_FAIL_LIMIT
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return _DEFAULT_GEMMEX_FAIL_LIMIT
+
+
+def _note_gemmex_success() -> None:
+    global _WGRAD_RUNTIME_FAIL_STREAK
+    _WGRAD_RUNTIME_FAIL_STREAK = 0
+
+
 def _activate_torch_fallback(reason: str) -> None:
-    """Record fallback state; optionally raise; always make the first drop loud."""
+    """Record permanent fallback; optionally raise; always make the first drop loud."""
     global _WGRAD_EXT_RUNTIME_OK, _WGRAD_FALLBACK_ACTIVE
     global _WGRAD_FALLBACK_REASON, _WGRAD_FALLBACK_WARNED
 
@@ -96,13 +118,48 @@ def _activate_torch_fallback(reason: str) -> None:
     warnings.warn(msg, UserWarning, stacklevel=3)
 
 
+def _handle_gemmex_runtime_failure(exc: BaseException) -> bool:
+    """Handle a GemmEx call failure.
+
+    Returns True if permanent fallback was activated (caller should use Torch and
+    stay on Torch). Returns False if this was treated as transient: caller should
+    use Torch for **this call only**, then retry GemmEx on the next call.
+    """
+    global _WGRAD_RUNTIME_FAIL_STREAK
+
+    reason = f"GemmEx runtime failed: {exc}"
+    if _require_gemmex():
+        raise RuntimeError(
+            "wgrad_gemm_accum_fp32: GemmEx required "
+            f"(FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1) but unavailable: {reason}"
+        ) from exc
+
+    _WGRAD_RUNTIME_FAIL_STREAK += 1
+    limit = _gemmex_fail_limit()
+    if _WGRAD_RUNTIME_FAIL_STREAK >= limit:
+        _activate_torch_fallback(
+            f"{reason} (permanent after {_WGRAD_RUNTIME_FAIL_STREAK} "
+            "consecutive failures)"
+        )
+        return True
+
+    logger.warning(
+        "wgrad_gemm_accum_fp32: %s; using Torch for this call only "
+        "(%d/%d consecutive). Will retry GemmEx on the next call.",
+        reason,
+        _WGRAD_RUNTIME_FAIL_STREAK,
+        limit,
+    )
+    return False
+
+
 def wgrad_using_torch_fallback() -> bool:
-    """True after fp32 path has dropped to Torch matmul (not GemmEx)."""
+    """True after fp32 path has permanently dropped to Torch matmul (not GemmEx)."""
     return _WGRAD_FALLBACK_ACTIVE
 
 
 def wgrad_fallback_reason() -> str | None:
-    """First reason that activated Torch fallback, or ``None`` if unused."""
+    """First reason that activated permanent Torch fallback, or ``None``."""
     return _WGRAD_FALLBACK_REASON
 
 
@@ -250,19 +307,22 @@ def _cublas_wgrad_gemm_accum_fp32(
         _wgrad_fp32_strict_accum(grad_output_2d, input_2d, main_grad)
         return
 
-    # Prefer GemmEx; if load/runtime fails, activate a loud (or hard-fail) fallback.
+    # Prefer GemmEx. Missing extension -> permanent loud fallback.
+    # Runtime failure -> Torch for this call only until consecutive-fail limit.
     if _WGRAD_EXT_RUNTIME_OK:
         ext = _load_wgrad_gemm_ext()
         if ext is not None:
             try:
                 ext.wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
+                _note_gemmex_success()
                 return
             except Exception as exc:  # noqa: BLE001
-                _activate_torch_fallback(f"GemmEx runtime failed: {exc}")
-        else:
-            _activate_torch_fallback(
-                "compiled GemmEx extension unavailable (c_operators / JIT)"
-            )
+                _handle_gemmex_runtime_failure(exc)
+                _torch_wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
+                return
+        _activate_torch_fallback(
+            "compiled GemmEx extension unavailable (c_operators / JIT)"
+        )
 
     _torch_wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
 

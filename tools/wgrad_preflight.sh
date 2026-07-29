@@ -42,6 +42,8 @@ export CUDA_VISIBLE_DEVICES=4
 export PYTHONPATH="$REPO_ROOT/src"
 # Optional strict mode: refuse silent Torch fallback (recommended for bench).
 # export FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1
+# Optional: consecutive GemmEx runtime failures before permanent fallback.
+# export FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT=3
 
 if [[ $SKIP_CLEAR_CACHE -eq 0 ]]; then
   # Clear only wgrad-related Torch extension cache to avoid stale JIT binaries.
@@ -56,6 +58,7 @@ echo "[wgrad-preflight] cwd=$PWD"
 echo "[wgrad-preflight] CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 echo "[wgrad-preflight] PYTHONPATH=$PYTHONPATH"
 echo "[wgrad-preflight] FLAGGEMS_WGRAD_REQUIRE_GEMMEX=${FLAGGEMS_WGRAD_REQUIRE_GEMMEX:-0}"
+echo "[wgrad-preflight] FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT=${FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT:-3}"
 if [[ $SKIP_CLEAR_CACHE -eq 0 ]]; then
   echo "[wgrad-preflight] cleared wgrad JIT cache"
 else

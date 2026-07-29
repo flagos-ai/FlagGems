@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
+
 import pytest
 import torch
 
@@ -536,6 +538,7 @@ def test_wgrad_gemm_accum_fp32_require_gemmex_env_hard_fail(monkeypatch):
     monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_ACTIVE", False)
     monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_REASON", None)
     monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_WARNED", False)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_RUNTIME_FAIL_STREAK", 0)
     monkeypatch.setattr(wgrad_mod, "_load_wgrad_gemm_ext", lambda: None)
 
     input_tensor = torch.randn(4, 16, dtype=torch.float16, device=flag_gems.device)
@@ -544,6 +547,78 @@ def test_wgrad_gemm_accum_fp32_require_gemmex_env_hard_fail(monkeypatch):
 
     with pytest.raises(RuntimeError, match="GemmEx required"):
         wgrad_gemm_accum_fp32(input_tensor, grad_output, main_grad)
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+def test_wgrad_gemm_accum_fp32_runtime_fail_recovers_after_success(monkeypatch):
+    """A single GemmEx runtime failure must not permanently disable the path."""
+    import flag_gems.ops.wgrad_gemm_accum as wgrad_mod
+
+    class _FlakyExt:
+        def __init__(self):
+            self.calls = 0
+
+        def wgrad_gemm_accum_fp32(self, input_2d, grad_output_2d, main_grad):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("transient GemmEx glitch")
+            # Mimic a successful in-place accum with Torch math.
+            wgrad_mod._torch_wgrad_gemm_accum_fp32(input_2d, grad_output_2d, main_grad)
+
+    flaky = _FlakyExt()
+    monkeypatch.delenv("FLAGGEMS_WGRAD_REQUIRE_GEMMEX", raising=False)
+    monkeypatch.setenv("FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT", "3")
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_EXT_RUNTIME_OK", True)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_ACTIVE", False)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_REASON", None)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_WARNED", False)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_RUNTIME_FAIL_STREAK", 0)
+    monkeypatch.setattr(wgrad_mod, "_load_wgrad_gemm_ext", lambda: flaky)
+
+    input_tensor = torch.randn(4, 16, dtype=torch.float16, device=flag_gems.device)
+    grad_output = torch.randn(4, 32, dtype=torch.float16, device=flag_gems.device)
+    main_grad = torch.zeros(32, 16, dtype=torch.float32, device=flag_gems.device)
+
+    wgrad_gemm_accum_fp32(input_tensor, grad_output, main_grad.clone())
+    assert not wgrad_using_torch_fallback()
+    assert wgrad_mod._WGRAD_RUNTIME_FAIL_STREAK == 1
+
+    wgrad_gemm_accum_fp32(input_tensor, grad_output, main_grad)
+    assert not wgrad_using_torch_fallback()
+    assert wgrad_mod._WGRAD_RUNTIME_FAIL_STREAK == 0
+    assert flaky.calls == 2
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+def test_wgrad_gemm_accum_fp32_runtime_fail_permanent_after_limit(monkeypatch):
+    """Consecutive GemmEx runtime failures eventually activate permanent fallback."""
+    import flag_gems.ops.wgrad_gemm_accum as wgrad_mod
+
+    class _AlwaysFailExt:
+        def wgrad_gemm_accum_fp32(self, *args, **kwargs):
+            raise RuntimeError("persistent GemmEx failure")
+
+    monkeypatch.delenv("FLAGGEMS_WGRAD_REQUIRE_GEMMEX", raising=False)
+    monkeypatch.setenv("FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT", "2")
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_EXT_RUNTIME_OK", True)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_ACTIVE", False)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_REASON", None)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_FALLBACK_WARNED", False)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_RUNTIME_FAIL_STREAK", 0)
+    monkeypatch.setattr(wgrad_mod, "_load_wgrad_gemm_ext", lambda: _AlwaysFailExt())
+
+    input_tensor = torch.randn(4, 16, dtype=torch.float16, device=flag_gems.device)
+    grad_output = torch.randn(4, 32, dtype=torch.float16, device=flag_gems.device)
+    main_a = torch.zeros(32, 16, dtype=torch.float32, device=flag_gems.device)
+    main_b = torch.zeros(32, 16, dtype=torch.float32, device=flag_gems.device)
+
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        wgrad_gemm_accum_fp32(input_tensor, grad_output, main_a)
+        assert not wgrad_using_torch_fallback()
+        wgrad_gemm_accum_fp32(input_tensor, grad_output, main_b)
+        assert wgrad_using_torch_fallback()
+        assert "consecutive failures" in (wgrad_fallback_reason() or "")
 
 
 @pytest.mark.wgrad_gemm_accum_fp32
