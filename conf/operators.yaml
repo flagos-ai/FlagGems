@@ -7471,6 +7471,21 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: rshift__
+    description: Applies a bitwise right shift to an integer tensor with a tensor or scalar shift value.
+    for:
+      - __rshift__.Scalar
+      - __rshift__.Scalar_out
+      - __rshift__.Tensor
+      - __rshift__.Tensor_out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: rsqrt
     description: Returns a new tensor with the reciprocal of the square-root of each of the elements of `input`.
     for:

@@ -17,8 +17,6 @@ from typing import Generator
 import pytest
 import torch
 
-from flag_gems.experimental_ops.__rshift__ import rshift_tensor
-
 from . import base, consts
 
 
@@ -35,12 +33,11 @@ class RshiftBenchmark(base.Benchmark):
             yield value, shift
 
 
-@pytest.mark.rshift
-def test_rshift():
+@pytest.mark.rshift__
+def test_rshift__():
     bench = RshiftBenchmark(
-        op_name="rshift",
-        torch_op=torch.bitwise_right_shift,
+        op_name="rshift__",
+        torch_op=torch.ops.aten.__rshift__.Tensor,
         dtypes=consts.INT_DTYPES + consts.EXTRA_INT_DTYPES,
     )
-    bench.set_gems(rshift_tensor)
     bench.run()
