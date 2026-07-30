@@ -98,9 +98,41 @@ add_library(FlagGems::operators ALIAS operators)
 option(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP "Build pointwise_dynamic C++ support" OFF)
 if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
   add_subdirectory(pointwise_dynamic_cpp)
-  target_sources(operators PRIVATE add.cpp div.cpp fill.cpp)
+  # Hand-written bodies: add/div/fill/remainder families (complex dispatch,
+  # rounding modes, Scalar->double, 0-dim branching). The passthrough/selector
+  # bodies (unary + gelu) are auto-generated into pointwise_ops_glue.cc by
+  # prebuild_kernels.py from op_specs.py.
+  target_sources(operators PRIVATE add.cpp div.cpp fill.cpp
+    "${POINTWISE_GENERATED_DIR}/pointwise_ops_glue.cc")
+  set_source_files_properties(
+    "${POINTWISE_GENERATED_DIR}/pointwise_ops_glue.cc"
+    PROPERTIES GENERATED TRUE)
   target_link_libraries(operators PRIVATE pointwise_dynamic)
+  add_dependencies(operators pointwise_generate_kernels)
+  # Expose the generated include dir PUBLICly (BUILD_INTERFACE only -- nothing to
+  # install beyond the headers already handled by pointwise_dynamic_cpp) so that
+  # pointwise_ops_glue.h, included transitively by operators.h, resolves for
+  # consumers (c_operators, ctests). The pointwise_dynamic INTERFACE lib itself
+  # stays PRIVATE to keep it out of the operators export set.
+  target_include_directories(operators PUBLIC
+    $<BUILD_INTERFACE:${POINTWISE_GENERATED_DIR}>)
   target_compile_definitions(operators PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
+
+  if(FLAGGEMS_POINTWISE_DYNAMIC_BOXED)
+    # The boxed adapter's DEFINITION (pointwise_boxed.cc, which #defines
+    # FLAGGEMS_POINTWISE_BOXED_IMPL) is compiled into `operators` -- the only
+    # target with the CUDA / triton_jit include paths that
+    # pointwise_prepare_args.h transitively needs.
+    target_sources(operators PRIVATE
+      pointwise_dynamic_cpp/pointwise_boxed.cc)
+    # cstub.cpp includes the DECLARATION-only pointwise_boxed.h (no CUDA deps),
+    # so the source dir must be on the PUBLIC include path.
+    target_include_directories(operators PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/pointwise_dynamic_cpp>)
+    # The registration switch must reach both operators and its consumer
+    # (c_operators) so the generated boxed m.impl lines are compiled in.
+    target_compile_definitions(operators PUBLIC FLAGGEMS_POINTWISE_DYNAMIC_BOXED)
+  endif()
 endif()
 
 if (FLAGGEMS_INSTALL)

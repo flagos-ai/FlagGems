@@ -1100,6 +1100,9 @@ class ModuleGenerator:
         Parses the source module where scalar_fn is defined using AST.
         Returns a tuple of:
           - extra_imports: dict of module_path -> set of names
+          - alias_sources: list of source strings for module-level alias
+            assignments referencing an imported name (e.g.
+            ``_tanh = tl_extra_shim.tanh``)
           - local_sources: list of source strings for local @triton.jit
             functions (those NOT decorated with @pointwise_dynamic)
         """
@@ -1109,19 +1112,19 @@ class ModuleGenerator:
         py_fn = getattr(scalar_fn, "fn", scalar_fn)
         module_name = getattr(py_fn, "__module__", None)
         if not module_name:
-            return {}, []
+            return {}, [], []
         try:
             mod = importlib.import_module(module_name)
             source_file = inspect.getfile(mod)
         except (ImportError, TypeError, OSError):
-            return {}, []
+            return {}, [], []
         try:
             with open(source_file) as f:
                 module_source = f.read()
             source_lines = module_source.splitlines(keepends=True)
             tree = ast.parse(module_source)
         except (OSError, SyntaxError):
-            return {}, []
+            return {}, [], []
 
         # Collect non-standard import-from lines
         ALREADY_IMPORTED = {
@@ -1138,12 +1141,48 @@ class ModuleGenerator:
             "flag_gems.utils.pointwise_dynamic",
         }
         extra_imports = {}
+        # Map each imported name -> the module it came from (via
+        # `from X import a, b` or `from X import a as b`), used below to keep
+        # the module-level aliases that depend on such an import and to make
+        # sure their base names are imported in the generated file.
+        imported_name_module = {}
         for node in ast.iter_child_nodes(tree):
             if isinstance(node, ast.ImportFrom) and node.module:
+                for alias in node.names:
+                    imported_name_module[alias.asname or alias.name] = node.module
                 if node.module in ALREADY_IMPORTED:
                     continue
                 names = {alias.name for alias in node.names}
                 extra_imports.setdefault(node.module, set()).update(names)
+
+        # Collect module-level alias assignments whose value is an attribute
+        # access on an imported name, e.g. ``_tanh = tl_extra_shim.tanh``.
+        # The scalar function's inlined source references these aliases, but
+        # they are neither imports nor @triton.jit helpers, so without this
+        # they are undefined when the generated kernel file is compiled in a
+        # fresh namespace (the standalone C++ TritonJIT path). The in-process
+        # Python path happens to survive because triton captures the original
+        # module globals; the generated file must be self-contained.
+        alias_sources = []
+        for node in ast.iter_child_nodes(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+                continue
+            value = node.value
+            if not isinstance(value, ast.Attribute):
+                continue
+            root = value.value
+            if isinstance(root, ast.Name) and root.id in imported_name_module:
+                alias_sources.append(
+                    "".join(source_lines[node.lineno - 1 : node.end_lineno])
+                )
+                # The alias's base name (e.g. ``tl_extra_shim``) must be
+                # imported in the generated file even if it came from a module
+                # that is normally elided (e.g. ``flag_gems.utils``).
+                extra_imports.setdefault(imported_name_module[root.id], set()).add(
+                    root.id
+                )
 
         # Collect local @triton.jit functions (without @pointwise_dynamic)
         def _has_decorator(func_node, name):
@@ -1172,7 +1211,7 @@ class ModuleGenerator:
                 continue
             local_sources.append(_extract_source(node))
 
-        return extra_imports, local_sources
+        return extra_imports, alias_sources, local_sources
 
     def generate_imports(self, code: IndentedBuffer) -> IndentedBuffer:
         code.writeline("import math")
@@ -1192,12 +1231,21 @@ class ModuleGenerator:
         code.writeline("from flag_gems.runtime import torch_device_fn")
 
         # Generate extra imports and local JIT deps of the scalar function
-        jit_dep_imports, local_jit_sources = self._collect_jit_deps(self.scalar_fn)
+        jit_dep_imports, alias_sources, local_jit_sources = self._collect_jit_deps(
+            self.scalar_fn
+        )
         for module_path, names in sorted(jit_dep_imports.items()):
             sorted_names = ", ".join(sorted(names))
             code.writeline(f"from {module_path} import {sorted_names}")
 
         code.newline()
+
+        # Emit module-level alias assignments (e.g. `_tanh = tl_extra_shim.tanh`)
+        # that the inlined scalar function references.
+        for source in alias_sources:
+            for line in source.splitlines():
+                code.writeline(line)
+
         code.newline()
 
         # Emit local @triton.jit helper functions
