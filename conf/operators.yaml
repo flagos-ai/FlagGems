@@ -6623,6 +6623,17 @@ ops:
     stages:
       - alpha: '4.2'
       - beta: '5.3'
+  - id: pdist_forward
+    description: Computes the pairwise distance between rows of a matrix.
+    for:
+      - _pdist_forward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: permute_copy
     description: Creates and returns a copy of x with permuted dimensions.
     for:
