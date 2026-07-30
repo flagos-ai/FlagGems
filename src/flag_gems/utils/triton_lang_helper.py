@@ -176,6 +176,13 @@ def _fallback_nextafter(input, other):
     return result_int.to(input.dtype, bitcast=True)
 
 
+@triton.jit
+def _fallback_sinpi(x):
+    # sinpi(x) == sin(pi * x); used when a backend's libdevice lacks a native
+    # sinpi (e.g. the sunrise tang fork, which does provide sin).
+    return tl.sin(3.141592653589793 * x)
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "tanh": _fallback_tanh,
@@ -183,6 +190,7 @@ _FALLBACK_SYMBOLS = {
     "floor": _fallback_floor,
     "j1": _fallback_j1,
     "nextafter": _fallback_nextafter,
+    "sinpi": _fallback_sinpi,
 }
 
 
@@ -239,6 +247,7 @@ tl_extra_shim = _patch_missing_symbols(
         "rint",
         "rsqrt",
         "silu",
+        "sinpi",
         "tan",
         "tanh",
         "trunc",
