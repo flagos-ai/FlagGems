@@ -19,14 +19,18 @@ import flag_gems
 
 from . import base, utils
 
+vendor_name = flag_gems.vendor_name
+
 try:
-    from vllm._custom_ops import grouped_topk as vllm_grouped_topk
+    if vendor_name == "metax":
+        from vllm_metax._custom_ops import grouped_topk as vllm_grouped_topk
+    else:
+        from vllm._custom_ops import grouped_topk as vllm_grouped_topk
 
     HAS_VLLM = True
 except (ImportError, AttributeError):
     HAS_VLLM = False
-
-vendor_name = flag_gems.vendor_name
+    vllm_grouped_topk = None
 
 
 class GroupedTopKBenchmark(base.Benchmark):
@@ -46,20 +50,13 @@ class GroupedTopKBenchmark(base.Benchmark):
 
     def set_shapes(self, shape_file_path=None):
         grouped_topk_configs = [
-            (1, 64, 8, 2, 8),
-            (8, 64, 8, 2, 8),
-            (32, 64, 8, 2, 8),
-            (64, 64, 8, 2, 8),
-            (128, 64, 8, 2, 8),
-            (256, 64, 8, 2, 8),
-            (32, 128, 8, 2, 8),
-            (64, 128, 8, 2, 8),
-            (128, 128, 8, 2, 8),
-            (64, 64, 4, 2, 4),
-            (64, 128, 16, 2, 8),
-            (512, 64, 8, 2, 8),
-            (1024, 64, 8, 2, 8),
-            (2048, 64, 8, 2, 8),
+            # Deepseek-3.2
+            (num_tokens, num_experts, n_group, topk_group, topk)
+            for num_tokens in [1, 8, 32, 64, 128, 256, 496, 512, 16384]
+            for num_experts in [256]
+            for n_group in [8]
+            for topk_group in [4]
+            for topk in [8]
         ]
         self.shapes = grouped_topk_configs
 
@@ -71,7 +68,7 @@ class GroupedTopKBenchmark(base.Benchmark):
         num_tokens, num_experts, n_group, topk_group, topk = config
 
         scores = torch.randn(num_tokens, num_experts, device=device, dtype=dtype)
-        bias = torch.randn(num_experts, device=device, dtype=dtype)
+        bias = torch.randn(num_experts, device=device, dtype=torch.float32)
 
         yield (
             scores,
@@ -95,7 +92,6 @@ class GroupedTopKBenchmark(base.Benchmark):
     utils.SkipVersion("torch", "<2.7"),
     reason="The version prior to 2.7 is not compatible with VLLM.",
 )
-@pytest.mark.skipif(vendor_name == "metax", reason="#2891: Not working")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="#2891: Not working")
 @pytest.mark.skipif(vendor_name == "iluvatar", reason="#2891: Not working")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="#2891: Not working")
@@ -105,7 +101,7 @@ def test_grouped_topk_no_renorm():
     bench = GroupedTopKBenchmark(
         op_name="grouped_topk",
         torch_op=vllm_grouped_topk,
-        dtypes=[torch.float32, torch.bfloat16],
+        dtypes=[torch.bfloat16],
         renormalize=False,
         scoring_func=0,
     )
@@ -124,7 +120,6 @@ def test_grouped_topk_no_renorm():
     utils.SkipVersion("torch", "<2.7"),
     reason="The version prior to 2.7 is not compatible with VLLM.",
 )
-@pytest.mark.skipif(vendor_name == "metax", reason="#2891: Not working")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="#2891: Not working ")
 @pytest.mark.skipif(vendor_name == "iluvatar", reason="#2891: Not working")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="#2891: Not working")
@@ -134,7 +129,7 @@ def test_grouped_topk_score_0():
     bench = GroupedTopKBenchmark(
         op_name="grouped_topk",
         torch_op=vllm_grouped_topk,
-        dtypes=[torch.float32, torch.bfloat16],
+        dtypes=[torch.bfloat16],
         renormalize=True,
         scoring_func=0,
     )
@@ -153,7 +148,6 @@ def test_grouped_topk_score_0():
     utils.SkipVersion("torch", "<2.7"),
     reason="The version prior to 2.7 is not compatible with VLLM.",
 )
-@pytest.mark.skipif(vendor_name == "metax", reason="#2891: Not working")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="#2891: Not working")
 @pytest.mark.skipif(vendor_name == "iluvatar", reason="#2891: Not working")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="#2891: Not working")
@@ -163,7 +157,7 @@ def test_grouped_topk_score_1():
     bench = GroupedTopKBenchmark(
         op_name="grouped_topk",
         torch_op=vllm_grouped_topk,
-        dtypes=[torch.float32, torch.bfloat16],
+        dtypes=[torch.bfloat16],
         renormalize=True,
         scoring_func=1,
     )
