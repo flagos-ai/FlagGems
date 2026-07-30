@@ -47,8 +47,12 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._masked_scale import _masked_scale
+from flag_gems.ops._native_batch_norm_legit_functional import (
+    _native_batch_norm_legit_functional,
+)
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._pdist_backward import _pdist_backward
+from flag_gems.ops._pdist_forward import _pdist_forward
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._resize_output import _resize_output
@@ -97,9 +101,11 @@ from flag_gems.ops.angle import angle
 from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.arccos import arccos, arccos_
+from flag_gems.ops.arccosh_ import arccosh_
 from flag_gems.ops.arcsin import arcsin, arcsin_, arcsin_out
 from flag_gems.ops.arcsinh import arcsinh, arcsinh_out
 from flag_gems.ops.arcsinh_ import arcsinh_
+from flag_gems.ops.arctan2 import arctan2, arctan2_
 from flag_gems.ops.arctan_ import arctan, arctan_
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
@@ -253,6 +259,12 @@ from flag_gems.ops.flash_attention_backward import (
     scaled_dot_product_flash_attention_backward,
 )
 from flag_gems.ops.flip import flip
+from flag_gems.ops.float_power_ import (
+    float_power_tensor_scalar,
+    float_power_tensor_scalar_,
+    float_power_tensor_tensor,
+    float_power_tensor_tensor_,
+)
 from flag_gems.ops.floor import floor, floor_out
 from flag_gems.ops.floor_ import floor_
 from flag_gems.ops.fmax import fmax, fmax_out
@@ -347,6 +359,7 @@ from flag_gems.ops.log2 import log2, log2_
 from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_normal_ import log_normal_
 from flag_gems.ops.log_sigmoid import log_sigmoid
+from flag_gems.ops.log_sigmoid_forward import log_sigmoid_forward
 from flag_gems.ops.log_softmax import (
     log_softmax,
     log_softmax_backward,
@@ -381,6 +394,7 @@ from flag_gems.ops.max_pool3d_with_indices import (
     max_pool3d_with_indices,
 )
 from flag_gems.ops.max_unpool2d import max_unpool2d
+from flag_gems.ops.max_unpool3d import max_unpool3d
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
@@ -554,6 +568,7 @@ from flag_gems.ops.special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w_out,
 )
 from flag_gems.ops.special_digamma import special_digamma
+from flag_gems.ops.special_erfc import erfc, erfc_, special_erfc
 from flag_gems.ops.special_erfinv import (
     special_erfinv,
     special_erfinv_,
@@ -564,6 +579,7 @@ from flag_gems.ops.special_gammaln import special_gammaln, special_gammaln_out
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
+from flag_gems.ops.special_legendre_polynomial_p import special_legendre_polynomial_p
 from flag_gems.ops.special_log1p import special_log1p, special_log1p_out
 from flag_gems.ops.special_log_softmax import special_log_softmax
 from flag_gems.ops.special_logsumexp import special_logsumexp
@@ -691,8 +707,10 @@ __all__ = [
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
     "_masked_scale",
+    "_native_batch_norm_legit_functional",
     "_nested_view_from_buffer_copy",
     "_pdist_backward",
+    "_pdist_forward",
     "_prelu_kernel",
     "_prelu_kernel_backward",
     "_resize_output",
@@ -758,6 +776,7 @@ __all__ = [
     "arange_start",
     "arccos",
     "arccos_",
+    "arccosh_",
     "arcsin",
     "arcsin_",
     "arcsin_out",
@@ -765,6 +784,8 @@ __all__ = [
     "arcsinh_",
     "arcsinh_out",
     "arctan",
+    "arctan2",
+    "arctan2_",
     "arctan_",
     "arctanh_",
     "argmax",
@@ -902,6 +923,8 @@ __all__ = [
     "equal",
     "erf",
     "erf_",
+    "erfc",
+    "erfc_",
     "erfinv",
     "erfinv_",
     "exp",
@@ -932,6 +955,10 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",
+    "float_power_tensor_scalar",
+    "float_power_tensor_scalar_",
+    "float_power_tensor_tensor",
+    "float_power_tensor_tensor_",
     "floor",
     "floor_",
     "floor_divide",
@@ -1063,6 +1090,7 @@ __all__ = [
     "log2_",
     "log_normal_",
     "log_sigmoid",
+    "log_sigmoid_forward",
     "log_softmax",
     "log_softmax_backward",
     "log_softmax_backward_out",
@@ -1109,6 +1137,7 @@ __all__ = [
     "max_pool3d_backward",
     "max_pool3d_with_indices",
     "max_unpool2d",
+    "max_unpool3d",
     "maximum",
     "mean",
     "mean_dim",
@@ -1314,6 +1343,7 @@ __all__ = [
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
     "special_digamma",
+    "special_erfc",
     "special_erfinv",
     "special_erfinv_",
     "special_erfinv_out",
@@ -1325,6 +1355,7 @@ __all__ = [
     "special_i0e_out",
     "special_i1",
     "special_i1_out",
+    "special_legendre_polynomial_p",
     "special_log_softmax",
     "special_log1p",
     "special_log1p_out",

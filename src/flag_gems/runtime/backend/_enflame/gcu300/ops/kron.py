@@ -22,6 +22,8 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 
+from ..utils.config_utils import MAX_GRID_DIM
+
 logger = logging.getLogger(__name__)
 
 
@@ -83,13 +85,13 @@ def kron_stride_constant_kernel(
     b_ptr,
     c_ptr,
     map_ptr,
-    batch_size: tl.int32,
-    M: tl.int32,
-    N: tl.int32,
-    M1: tl.int32,
-    M2: tl.int32,
-    N1: tl.int32,
-    N2: tl.int32,
+    batch_size: tl.int64,
+    M: tl.int64,
+    N: tl.int64,
+    M1: tl.int64,
+    M2: tl.int64,
+    N1: tl.int64,
+    N2: tl.int64,
     a_stride_0: tl.constexpr,
     a_stride_1: tl.constexpr,
     b_stride_0: tl.constexpr,
@@ -101,45 +103,52 @@ def kron_stride_constant_kernel(
     c_batch_stride: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    ENABLE_I64: tl.constexpr,
 ):
     pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
     num_blocks_n = tl.cdiv(N, BLOCK_N)
     num_blocks_m = tl.cdiv(M, BLOCK_M)
     num_blocks_per_batch = num_blocks_m * num_blocks_n
+    total_tiles = batch_size * num_blocks_per_batch
 
-    batch_id = pid // num_blocks_per_batch
-    local_pid = pid % num_blocks_per_batch
-    block_m = local_pid // num_blocks_n
-    block_n = local_pid % num_blocks_n
+    # Persistent grid: GCU300 caps grid.x at 65535, so the launch grid is
+    # min(total_tiles, MAX_GRID_DIM); each CTA iterates over its share of
+    # tiles. See enflame-gcu-grid-x-limit.
+    for tile_id in tl.range(pid, total_tiles, num_programs):
+        batch_id = tile_id // num_blocks_per_batch
+        local_pid = tile_id % num_blocks_per_batch
+        block_m = local_pid // num_blocks_n
+        block_n = local_pid % num_blocks_n
 
-    offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N) & (batch_id < batch_size)
+        mask = (offs_m[:, None] < M) & (offs_n[None, :] < N) & (batch_id < batch_size)
 
-    offset = batch_id * 2
-    is_valid = batch_id < batch_size
-    a_batch_idx = tl.load(map_ptr + offset, mask=is_valid)
-    b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid)
+        offset = batch_id * 2
+        is_valid = batch_id < batch_size
+        a_batch_idx = tl.load(map_ptr + offset, mask=is_valid)
+        b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid)
 
-    a_row = offs_m[:, None] // M2
-    a_col = offs_n[None, :] // N2
-    b_row = offs_m[:, None] % M2
-    b_col = offs_n[None, :] % N2
+        a_row = offs_m[:, None] // M2
+        a_col = offs_n[None, :] // N2
+        b_row = offs_m[:, None] % M2
+        b_col = offs_n[None, :] % N2
 
-    a_idx = a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
-    b_idx = b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
+        a_idx = a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
+        b_idx = b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
 
-    a = tl.load(a_ptr + a_idx, mask=mask)
-    b = tl.load(b_ptr + b_idx, mask=mask)
-    c = a * b
+        a = tl.load(a_ptr + a_idx, mask=mask)
+        b = tl.load(b_ptr + b_idx, mask=mask)
+        c = a * b
 
-    c_idx = (
-        batch_id * c_batch_stride
-        + offs_m[:, None] * c_stride_0
-        + offs_n[None, :] * c_stride_1
-    )
-    tl.store(c_ptr + c_idx, c, mask=mask)
+        c_idx = (
+            batch_id * c_batch_stride
+            + offs_m[:, None] * c_stride_0
+            + offs_n[None, :] * c_stride_1
+        )
+        tl.store(c_ptr + c_idx, c, mask=mask)
 
 
 @triton.autotune(configs=runtime.get_tuned_config("kron"), key=["M", "N"])
@@ -149,63 +158,70 @@ def kron_kernel(
     b_ptr,
     c_ptr,
     map_ptr,
-    batch_size: tl.int32,
-    M: tl.int32,
-    N: tl.int32,
-    M1: tl.int32,
-    M2: tl.int32,
-    N1: tl.int32,
-    N2: tl.int32,
-    a_stride_0: tl.int32,
-    a_stride_1: tl.int32,
-    b_stride_0: tl.int32,
-    b_stride_1: tl.int32,
-    c_stride_0: tl.int32,
-    c_stride_1: tl.int32,
-    a_batch_stride: tl.int32,
-    b_batch_stride: tl.int32,
+    batch_size: tl.int64,
+    M: tl.int64,
+    N: tl.int64,
+    M1: tl.int64,
+    M2: tl.int64,
+    N1: tl.int64,
+    N2: tl.int64,
+    a_stride_0: tl.int64,
+    a_stride_1: tl.int64,
+    b_stride_0: tl.int64,
+    b_stride_1: tl.int64,
+    c_stride_0: tl.int64,
+    c_stride_1: tl.int64,
+    a_batch_stride: tl.int64,
+    b_batch_stride: tl.int64,
     c_batch_stride: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    ENABLE_I64: tl.constexpr,
 ):
     pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
     num_blocks_n = tl.cdiv(N, BLOCK_N)
     num_blocks_m = tl.cdiv(M, BLOCK_M)
     num_blocks_per_batch = num_blocks_m * num_blocks_n
+    total_tiles = batch_size * num_blocks_per_batch
 
-    batch_id = pid // num_blocks_per_batch
-    local_pid = pid % num_blocks_per_batch
-    block_m = local_pid // num_blocks_n
-    block_n = local_pid % num_blocks_n
+    # Persistent grid: GCU300 caps grid.x at 65535, so the launch grid is
+    # min(total_tiles, MAX_GRID_DIM); each CTA iterates over its share of
+    # tiles. See enflame-gcu-grid-x-limit.
+    for tile_id in tl.range(pid, total_tiles, num_programs):
+        batch_id = tile_id // num_blocks_per_batch
+        local_pid = tile_id % num_blocks_per_batch
+        block_m = local_pid // num_blocks_n
+        block_n = local_pid % num_blocks_n
 
-    offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N) & (batch_id < batch_size)
+        mask = (offs_m[:, None] < M) & (offs_n[None, :] < N) & (batch_id < batch_size)
 
-    offset = batch_id * 2
-    is_valid = batch_id < batch_size
-    a_batch_idx = tl.load(map_ptr + offset, mask=is_valid)
-    b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid)
+        offset = batch_id * 2
+        is_valid = batch_id < batch_size
+        a_batch_idx = tl.load(map_ptr + offset, mask=is_valid)
+        b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid)
 
-    a_row = offs_m[:, None] // M2
-    a_col = offs_n[None, :] // N2
-    b_row = offs_m[:, None] % M2
-    b_col = offs_n[None, :] % N2
+        a_row = offs_m[:, None] // M2
+        a_col = offs_n[None, :] // N2
+        b_row = offs_m[:, None] % M2
+        b_col = offs_n[None, :] % N2
 
-    a_idx = a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
-    b_idx = b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
+        a_idx = a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
+        b_idx = b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
 
-    a = tl.load(a_ptr + a_idx, mask=mask)
-    b = tl.load(b_ptr + b_idx, mask=mask)
-    c = a * b
+        a = tl.load(a_ptr + a_idx, mask=mask)
+        b = tl.load(b_ptr + b_idx, mask=mask)
+        c = a * b
 
-    c_idx = (
-        batch_id * c_batch_stride
-        + offs_m[:, None] * c_stride_0
-        + offs_n[None, :] * c_stride_1
-    )
-    tl.store(c_ptr + c_idx, c, mask=mask)
+        c_idx = (
+            batch_id * c_batch_stride
+            + offs_m[:, None] * c_stride_0
+            + offs_n[None, :] * c_stride_1
+        )
+        tl.store(c_ptr + c_idx, c, mask=mask)
 
 
 def kron(A, B):
@@ -231,6 +247,12 @@ def kron(A, B):
     batch_size = math.prod(out_shape[:-2]) if out_shape[:-2] else 1
 
     output_dtype = torch.promote_types(A.dtype, B.dtype)
+
+    if output_dtype == torch.int64:
+        output_dtype = torch.int32
+    elif output_dtype == torch.uint64:
+        output_dtype = torch.uint32
+
     C = torch.empty(out_shape, device=A.device, dtype=output_dtype)
 
     C_reshaped = C.view(-1, M, N)
@@ -280,11 +302,14 @@ def kron(A, B):
         )
     )([x for x in C_reshaped.stride() if x != 0])
     with torch_device_fn.device(A.device):
-        grid = lambda meta: (
-            batch_size
-            * triton.cdiv(M, meta["BLOCK_M"])
-            * triton.cdiv(N, meta["BLOCK_N"]),
-        )
+        # Persistent grid: GCU300 caps grid.x at 65535. Launch at most
+        # MAX_GRID_DIM CTAs; each CTA loops over its share of tiles inside the
+        # kernel (total_tiles is recomputed there with the real BLOCK_M/BLOCK_N).
+        # The host estimate uses the smallest tuned block sizes (8 x 1024) as an
+        # upper bound on the tile count so we don't over-launch CTAs.
+        total_tiles = batch_size * triton.cdiv(M, 8) * triton.cdiv(N, 1024)
+        num_ctas = min(total_tiles, MAX_GRID_DIM)
+        grid = (num_ctas,)
         if FlagOfNotUseDMA:
             kron_stride_constant_kernel[grid](
                 A_view,
@@ -307,6 +332,7 @@ def kron(A, B):
                 a_batch_stride,
                 b_batch_stride,
                 c_batch_stride,
+                ENABLE_I64=True,
             )
         else:
             kron_kernel[grid](
@@ -330,6 +356,7 @@ def kron(A, B):
                 a_batch_stride,
                 b_batch_stride,
                 c_batch_stride,
+                ENABLE_I64=True,
             )
 
     if A.dim() <= 1 and B.dim() <= 1:

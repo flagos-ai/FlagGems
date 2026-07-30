@@ -654,6 +654,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: arccosh_
+    description: |
+      Computes the element-wise inverse hyperbolic cosine of a given input tensor.
+      This is an in-place version.
+    for:
+      - arccosh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arcsin
     description: Returns a new tensor with the arcsine of the elements of input.
     for:
@@ -729,6 +742,31 @@ ops:
       Returns a new tensor with the element-wise inverse tangent (arctangent) of the input tensor.
     for:
       - arctan
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: arctan2
+    description: Computes the element-wise arctangent of `input` / `other`. Alias for `atan2`.
+    for:
+      - arctan2
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: arctan2_
+    description: |
+      The in-place version of `arctan2()`.
+      Computes the element-wise arc tangent of `input/other(y/x)`,
+      returning angles in radians between `-PI` and `PI` and stores the result in `input`.
+    for:
+      - arctan2_
     labels:
       - aten
       - KernelGen
@@ -2774,6 +2812,30 @@ ops:
       - Science
     stages:
       - stable: '2.2'
+  - id: erfc
+    description: Computes the complementary error function.
+    for:
+      - erfc
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: erfc_
+    description: In-place version of `erfc`.
+    for:
+      - erfc_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: erfinv
     description: Computes the inverse error function of `input`.
     for:
@@ -3144,6 +3206,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: float_power_
+    description: Triton kernel implementation for float_power_.
+    for:
+      - float_power_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: floor
     description: |
       Performs an element-wise floor operation, rounding each element of a tensor
@@ -4996,6 +5069,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: log_sigmoid_forward
+    description: >
+      Computes the output and buffer for the log-sigmoid function, used in autograd backward pass.
+    for:
+      - log_sigmoid_forward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: log_softmax
     description: An internal IR for applying a softmax followed by a logarithm.
     for:
@@ -5609,6 +5694,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: max_unpool3d
+    description: Triton kernel implementation for max_unpool3d.
+    for:
+      - max_unpool3d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: maximum
     description: Computes the element-wise maximum of `input` and `other`.
     for:
@@ -6032,6 +6128,19 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: native_batch_norm_legit_functional
+    description: >
+      Functional version of batch normalization that returns the saved mean and
+      inverse standard deviation, along with updated running estimates.
+    for:
+      - _native_batch_norm_legit_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
     stages:
       - alpha: '5.4'
   - id: ne
@@ -6526,6 +6635,17 @@ ops:
     stages:
       - alpha: '4.2'
       - beta: '5.3'
+  - id: pdist_forward
+    description: Computes the pairwise distance between rows of a matrix.
+    for:
+      - _pdist_forward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: permute_copy
     description: Creates and returns a copy of x with permuted dimensions.
     for:
@@ -8510,6 +8630,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_erfc
+    description: Computes the complementary error function.
+    for:
+      - special_erfc
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_erfinv_out
     description: A variant of `special_erfinv()` that assigns the output to the `out` tensor.
     for:
@@ -8624,6 +8756,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_legendre_polynomial_p
+    description: |
+      Computes the Legendre polynomial P_n(x) of degree n for each element in the input tensor,
+      designed for special mathematical functions.
+    for:
+      - special.legendre_polynomial_p
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_log_softmax
     description: |
       Applies the log of the softmax function along a given dimension.
