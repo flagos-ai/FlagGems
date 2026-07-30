@@ -667,6 +667,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: arccosh_
+    description: |
+      Computes the element-wise inverse hyperbolic cosine of a given input tensor.
+      This is an in-place version.
+    for:
+      - arccosh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arcsin
     description: Returns a new tensor with the arcsine of the elements of input.
     for:
@@ -3157,6 +3170,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: float_power_
+    description: Triton kernel implementation for float_power_.
+    for:
+      - float_power_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: floor
     description: |
       Performs an element-wise floor operation, rounding each element of a tensor
@@ -5622,6 +5646,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: max_unpool3d
+    description: Triton kernel implementation for max_unpool3d.
+    for:
+      - max_unpool3d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: maximum
     description: Computes the element-wise maximum of `input` and `other`.
     for:
@@ -6045,6 +6080,19 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: native_batch_norm_legit_functional
+    description: >
+      Functional version of batch normalization that returns the saved mean and
+      inverse standard deviation, along with updated running estimates.
+    for:
+      - _native_batch_norm_legit_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
     stages:
       - alpha: '5.4'
   - id: ne

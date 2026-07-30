@@ -32,13 +32,26 @@ if has_triton_tle(3, 6, 0):
     try:
         import triton.experimental.tle.language as tle
 
-        HAS_TLE = True
+        HAS_TLE = hasattr(tle.gpu, "alloc_barriers")
     except ImportError:
         tle = None
         HAS_TLE = False
 else:
     tle = None
     HAS_TLE = False
+
+if HAS_TLE:
+    try:
+        from flag_gems.fused.flash_mla_with_kvcache_model1 import (
+            can_use_model1_tle,
+            sparse_decode_model1_tle,
+        )
+
+        HAS_TLE_MODEL1 = True
+    except ImportError:
+        HAS_TLE_MODEL1 = False
+else:
+    HAS_TLE_MODEL1 = False
 
 
 # TLE constants for decode
@@ -1139,6 +1152,26 @@ def _sparse_decode_dispatch(
     skv = kv.shape[0] * page_block_size
 
     if head_dim_k == 512:
+        # Warp-specialized MODEL1 fast path (FlagTree TLE, sm90). Falls back
+        # to the portable kernel below when the layout is unsupported.
+        if HAS_TLE_MODEL1 and can_use_model1_tle(
+            q, kv, indices, out, lse, extra_kv, extra_indices
+        ):
+            sparse_decode_model1_tle(
+                q,
+                kv,
+                indices,
+                attn_sink=attn_sink,
+                topk_length=topk_length,
+                extra_kv=extra_kv,
+                extra_indices=extra_indices,
+                extra_topk_length=extra_topk_length,
+                out=out,
+                lse=lse,
+                sm_scale=softmax_scale,
+            )
+            return
+
         _sparse_decode_model1_kernel[grid](
             q,
             kv,
