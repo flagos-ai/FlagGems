@@ -29,6 +29,12 @@ from .polar import polar
 from .prod import prod, prod_dim
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
+from .segment_reduce import (
+    _segment_reduce_backward,
+    _segment_reduce_backward_out,
+    segment_reduce,
+    segment_reduce_out,
+)
 from .sigmoid import sigmoid
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
@@ -41,6 +47,8 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_nested_view_from_buffer_copy",
+    "_segment_reduce_backward",
+    "_segment_reduce_backward_out",
     "_unique2",
     "addmm",
     "amax",
@@ -81,6 +89,8 @@ __all__ = [
     "prod_dim",
     "repeat_interleave_self_tensor",
     "resolve_conj",
+    "segment_reduce",
+    "segment_reduce_out",
     "sigmoid",
     "special_shifted_chebyshev_polynomial_w",
     "tanh",
