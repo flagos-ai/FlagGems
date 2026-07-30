@@ -349,7 +349,7 @@ def weight_bias_backward_kernel(
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
-    print("GEMS LAYERNORM FORWARD")
+    logger.debug("GEMS LAYERNORM FORWARD")
 
     MAX_GRID_X = 65535
 
@@ -427,7 +427,7 @@ def layer_norm_backward(
     bias=None,
     output_mask=None,
 ):
-    print("GEMS LAYERNORM BACKWARD")
+    logger.debug("GEMS LAYERNORM BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()
