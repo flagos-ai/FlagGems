@@ -19,6 +19,7 @@ from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .div import div_mode, div_mode_
 from .hadamard_transform import hadamard_transform
+from .index_reduce import index_reduce_
 from .linear import linear
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
@@ -45,6 +46,7 @@ __all__ = [
     "div_mode",
     "div_mode_",
     "hadamard_transform",
+    "index_reduce_",
     "linear",
     "matmul_bf16",
     "matmul_int8",
