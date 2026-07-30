@@ -19,6 +19,7 @@ import torch
 
 import flag_gems
 from flag_gems.ops.wgrad_gemm_accum import (
+    ensure_contiguous_main_grad,
     wgrad_fallback_reason,
     wgrad_gemm_accum_fp16,
     wgrad_gemm_accum_fp32,
@@ -279,6 +280,7 @@ def _quiet_nc_main_grad_warn(request):
         (
             "test_wgrad_gemm_accum_fp32_nc_main_grad_warns",
             "test_wgrad_gemm_accum_fp32_require_contiguous",
+            "test_ensure_contiguous_main_grad_rebinding",
         )
     ):
         yield
@@ -938,6 +940,56 @@ def test_wgrad_gemm_accum_fp16_vs_apex_zero_features(zero_dim, dtype):
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.wgrad_main_grad_non_contig
+def test_ensure_contiguous_main_grad_rebinding_avoids_nc_path():
+    """Training-side: rebind once via helper, then stay on contiguous fast path."""
+    import flag_gems.ops.wgrad_gemm_accum as wgrad_mod
+
+    # Reset so an accidental NC call would still warn (fixture may have silenced).
+    wgrad_mod._WGRAD_NC_MAIN_WARNED = False
+
+    batch, in_features, out_features = 8, 32, 64
+    input_tensor = torch.randn(
+        (batch, in_features), dtype=torch.float16, device=flag_gems.device
+    )
+    grad_output = torch.randn(
+        (batch, out_features), dtype=torch.float16, device=flag_gems.device
+    )
+    main_seed = torch.randn(
+        (out_features, in_features), dtype=torch.float32, device=flag_gems.device
+    )
+    main_nc = _as_non_contiguous_main_grad(main_seed)
+    assert not main_nc.is_contiguous()
+
+    # Training pattern: allocate/bind contiguous buffer once.
+    main_grad = ensure_contiguous_main_grad(main_nc)
+    assert main_grad.is_contiguous()
+    torch.testing.assert_close(main_grad, main_seed)
+
+    ref = main_grad.clone()
+    _ref_wgrad_gemm_accum_fp32_cpu(input_tensor, grad_output, ref)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        wgrad_gemm_accum_fp32(input_tensor, grad_output, main_grad)
+        densify_warns = [
+            w
+            for w in caught
+            if issubclass(w.category, UserWarning) and "densify+copy" in str(w.message)
+        ]
+    assert densify_warns == []
+    _assert_vs_cpu_ref(main_grad, ref, torch.float32, reduce_dim=batch)
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+@pytest.mark.wgrad_main_grad_non_contig
+def test_ensure_contiguous_main_grad_identity_when_already_contig():
+    main = torch.zeros(32, 16, dtype=torch.float32, device=flag_gems.device)
+    out = ensure_contiguous_main_grad(main)
+    assert out is main
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+@pytest.mark.wgrad_main_grad_non_contig
 def test_wgrad_gemm_accum_fp32_nc_main_grad_warns_once(monkeypatch):
     """First non-contiguous main_grad should warn about densify+copy cost."""
     import flag_gems.ops.wgrad_gemm_accum as wgrad_mod
@@ -961,11 +1013,10 @@ def test_wgrad_gemm_accum_fp32_nc_main_grad_warns_once(monkeypatch):
     densify_warns = [
         w
         for w in caught
-        if issubclass(w.category, UserWarning)
-        and "densify+copy" in str(w.message)
+        if issubclass(w.category, UserWarning) and "densify+copy" in str(w.message)
     ]
     assert len(densify_warns) == 1
-
+    assert "ensure_contiguous_main_grad" in str(densify_warns[0].message)
 
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.wgrad_main_grad_non_contig

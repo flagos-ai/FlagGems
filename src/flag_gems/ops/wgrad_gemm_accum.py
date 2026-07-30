@@ -34,6 +34,8 @@ Set ``FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1`` to raise instead.
 Non-contiguous ``main_grad`` is correct but densifies then ``copy_``; a one-shot
 warning fires on first use.  Set
 ``FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1`` to reject NC ``main_grad``.
+Training callers should prefer ``ensure_contiguous_main_grad`` once when
+allocating / binding ``main_grad``, then reuse the contiguous buffer every step.
 
 TF32 note: like Apex, ``allow_tf32=False`` does not force full-fp32 GemmEx.
 Test-only CPU-fp64-matched checks use ``wgrad_gemm_accum_fp32_strict_cpu_ref``
@@ -93,6 +95,24 @@ def _require_contiguous_main_grad() -> bool:
     return _env_flag_true("FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD")
 
 
+def ensure_contiguous_main_grad(main_grad: torch.Tensor) -> torch.Tensor:
+    """Return a contiguous ``main_grad`` for Apex-like wgrad speed.
+
+    Training-side helper: if ``main_grad`` is already contiguous, return it
+    unchanged; otherwise return ``main_grad.contiguous()`` (a dense copy with
+    the same values).  Callers that own the buffer (e.g. Megatron
+    ``weight.main_grad``) should rebind to the returned tensor once and reuse
+    it on later steps so each ``wgrad_gemm_accum_*`` call stays on the fast
+    contiguous path instead of densify+``copy_`` every step.
+
+    This does not mutate a non-contiguous view in place; rebinding is required
+    for the speedup to stick.
+    """
+    if main_grad.is_contiguous():
+        return main_grad
+    return main_grad.contiguous()
+
+
 def _check_main_grad_contiguity(main_grad: torch.Tensor) -> None:
     """Warn once (or raise) when ``main_grad`` needs densify+copy."""
     global _WGRAD_NC_MAIN_WARNED
@@ -104,7 +124,8 @@ def _check_main_grad_contiguity(main_grad: torch.Tensor) -> None:
             "wgrad_gemm_accum: main_grad must be contiguous when "
             "FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1 "
             "(non-contiguous path densifies then copy_-s back; "
-            "prefer contiguous main_grad for Apex-like speed)"
+            "prefer ensure_contiguous_main_grad / contiguous main_grad "
+            "for Apex-like speed)"
         )
     if _WGRAD_NC_MAIN_WARNED:
         return
@@ -112,8 +133,9 @@ def _check_main_grad_contiguity(main_grad: torch.Tensor) -> None:
     msg = (
         "wgrad_gemm_accum: non-contiguous main_grad triggers densify+copy; "
         "correct but slower than a contiguous Apex-style path if this is "
-        "frequent. Prefer contiguous main_grad, or set "
-        "FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1 to fail hard."
+        "frequent. Prefer ensure_contiguous_main_grad(main_grad) when binding "
+        "the buffer, or set FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1 "
+        "to fail hard."
     )
     logger.warning(msg)
     warnings.warn(msg, UserWarning, stacklevel=3)
@@ -469,8 +491,9 @@ def wgrad_gemm_accum_fp32(
     full-fp32 math path here (same footgun as Apex on Ampere+).
 
     Non-contiguous ``main_grad`` is supported (densify then ``copy_``) but is
-    slower than contiguous storage if used every step; see the one-shot warning
-    / ``FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD``.
+    slower than contiguous storage if used every step.  Prefer
+    ``ensure_contiguous_main_grad`` when allocating / binding the buffer, or
+    set ``FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1`` to fail hard.
 
     For test-only CPU-fp64-matched checks under TF32-off, call
     ``wgrad_gemm_accum_fp32_strict_cpu_ref`` instead — do not use that helper
