@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import triton
 import triton.language as tl
 
@@ -361,6 +375,7 @@ def flash_fwd_kernel(
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
+    k_page_stride: tl.constexpr,
     # kernel params
     IS_EVEN_MN: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
@@ -822,6 +837,7 @@ def flash_fwd_splitkv_kernel(
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
+    k_page_stride: tl.constexpr,
     # kernel params
     IS_EVEN_MN: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
@@ -1155,11 +1171,13 @@ def flash_fwd_splitkv_combine_kernel(
 
 
 @triton.jit
-def virtual_to_cache(
+def virtual_to_cache_offset(
     virtual_index,
     max_virtual_index,
     page_table_ptr,
     block_size,
+    k_row_stride,
+    k_page_stride,
     boundary_check: tl.constexpr = False,
 ):
     # virtual_index is the kv sequence index in the current batch element
@@ -1172,10 +1190,10 @@ def virtual_to_cache(
             page_table_ptr + virtual_page_index,
             mask=virtual_index < max_virtual_index,
             other=0,
-        ).to(tl.int32)
+        ).to(tl.int64)
     else:
-        page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
-    return page_block_index * block_size + page_offset
+        page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int64)
+    return page_block_index * k_page_stride + page_offset * k_row_stride
 
 
 @triton.jit
@@ -1189,13 +1207,20 @@ def load_from_kvcache(
     d: tl.constexpr,
     k_row_stride,
     BLOCK_K: tl.constexpr,
+    k_page_stride=0,
     boundary_check: tl.constexpr = False,
 ):
-    kvcache_idx = virtual_to_cache(
-        virtual_index, max_virtual_index, page_table_ptr, block_size, boundary_check
+    cache_offset = virtual_to_cache_offset(
+        virtual_index,
+        max_virtual_index,
+        page_table_ptr,
+        block_size,
+        k_row_stride,
+        k_page_stride,
+        boundary_check,
     )
-    k_offset = tl.arange(0, BLOCK_K)[:, None] + kvcache_idx[None, :] * k_row_stride
-    v_offset = tl.arange(0, BLOCK_K)[None, :] + kvcache_idx[:, None] * k_row_stride
+    k_offset = tl.arange(0, BLOCK_K)[:, None] + cache_offset[None, :]
+    v_offset = tl.arange(0, BLOCK_K)[None, :] + cache_offset[:, None]
     if d == BLOCK_K:
         bK_mask = virtual_index[None, :] < max_virtual_index[None, :]
         bV_mask = virtual_index[:, None] < max_virtual_index[:, None]
@@ -1294,6 +1319,7 @@ def flash_varlen_fwd_kernel(
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
+    k_page_stride,
     # kernel params
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -1417,6 +1443,7 @@ def flash_varlen_fwd_kernel(
                 d,
                 k_row_stride,
                 BLOCK_K=BLOCK_K,
+                k_page_stride=k_page_stride,
                 boundary_check=True,
             )
         else:
@@ -1513,6 +1540,7 @@ def flash_varlen_fwd_kernel(
                 d,
                 k_row_stride,
                 BLOCK_K=BLOCK_K,
+                k_page_stride=k_page_stride,
             )
         else:
             start_n = n_block * BLOCK_N

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import math
@@ -129,19 +143,15 @@ class CatKernelGenerator(IndentedBuffer):
             self.writeline("configs=[")
             with self.indent():
                 if self.MODE == 0:
-                    self.writeline(
-                        """
+                    self.writeline("""
         triton.Config({'BLOCK_LOW': 2 ** i}, num_stages=1, num_warps=1) for i in range(7, 12)
-                        """
-                    )
+                        """)
                 elif self.MODE == 1:
-                    self.writeline(
-                        """
+                    self.writeline("""
         triton.Config({'BLOCK_HIGH': i, 'BLOCK_LOW': 2 ** j}, num_stages=1, num_warps=1)
         for i in [6, 11, 22]
         for j in range(8, 12)
-                        """
-                    )
+                        """)
                 self.writeline("],")
             self.writeline("key=['high_num', 'out_cat_num'],")
             self.writeline("strategy=['log', 'log'],")
