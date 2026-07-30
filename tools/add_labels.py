@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # -*- coding: utf-8 -*-
 """
 Standalone script to add operator labels from operators.yaml into summary.json.
@@ -11,6 +26,7 @@ summary.json. The script reads conf/operators.yaml relative to the project root,
 builds a mapping of op_id -> labels, and injects the "labels" field into each
 operator entry in summary.json.
 """
+
 import argparse
 import json
 import sys
