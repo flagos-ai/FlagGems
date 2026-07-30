@@ -32,7 +32,7 @@ if has_triton_tle(3, 6, 0):
     try:
         import triton.experimental.tle.language as tle
 
-        HAS_TLE = True
+        HAS_TLE = hasattr(tle.gpu, "alloc_barriers")
     except ImportError:
         tle = None
         HAS_TLE = False
