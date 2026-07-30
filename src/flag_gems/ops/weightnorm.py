@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -122,7 +136,8 @@ def weight_norm_bwd_kernel_last(
 
     g_value = tl.load(g + col_offset, mask=col_mask).to(tl.float32)
     norm_value = tl.load(norm + col_offset, mask=col_mask).to(tl.float32)
-    norm_1 = 1 / (norm_value + eps)
+    # norm_value is already sqrt(sum(v^2) + eps) from forward, guaranteed > 0
+    norm_1 = 1 / norm_value
     norm_3 = tl_extra_shim.pow(norm_1, 3)
 
     ty = tl.arange(0, BLOCK_ROW_SIZE)[None, :]
@@ -144,7 +159,7 @@ def weight_norm_bwd_kernel_last(
         v_grad_value = g_value * (w_value * norm_1 - v_value * norm_3 * vw_sum)
         tl.store(v_grad + row_offset * N + col_offset, v_grad_value, mask=mask)
 
-    g_grad_value = vw_sum / (norm_value + eps)
+    g_grad_value = vw_sum * norm_1
     tl.store(g_grad + col_offset, g_grad_value, mask=col_mask)
 
 
@@ -173,7 +188,8 @@ def weight_norm_bwd_kernel_first(
 
     g_value = tl.load(g + row_offset, mask=row_mask).to(tl.float32)
     norm_value = tl.load(norm + row_offset, mask=row_mask).to(tl.float32)
-    norm_1 = 1 / (norm_value + eps)
+    # norm_value is already sqrt(sum(v^2) + eps) from forward, guaranteed > 0
+    norm_1 = 1 / norm_value
     norm_3 = tl_extra_shim.pow(norm_1, 3)
 
     tx = tl.arange(0, BLOCK_COL_SIZE)[None, :]
@@ -195,7 +211,7 @@ def weight_norm_bwd_kernel_first(
         v_grad_value = g_value * (w_value * norm_1 - v_value * norm_3 * vw_sum)
         tl.store(v_grad + row_offset * N + col_offset, v_grad_value, mask=mask)
 
-    g_grad_value = vw_sum / (norm_value + eps)
+    g_grad_value = vw_sum * norm_1
     tl.store(g_grad + row_offset, g_grad_value, mask=row_mask)
 
 

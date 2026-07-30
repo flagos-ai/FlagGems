@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # SPDX-License-Identifier: Apache-2.0
 """
 Fused Marlin MoE for FlagGems.
@@ -21,6 +35,7 @@ MVP scope:
   - FP8 input:  NOT supported
   - LoRA, clamp_limit, expert_map: NOT supported
 """
+
 import functools
 from enum import IntEnum
 from typing import Any, Callable, NamedTuple, Optional, Tuple
@@ -135,6 +150,12 @@ def _routed_tokens_per_expert(M: int, E: int, top_k: int) -> int:
     return max(M * max(top_k, 1) // max(E, 1), 1)
 
 
+def _block_m_padding_ratio(M: int, E: int, top_k: int, block_m: int) -> float:
+    """Padded rows issued (E * block_m, since every expert pads on its own) over
+    the rows actually routed."""
+    return E * block_m / max(M * max(top_k, 1), 1)
+
+
 def _select_block_m(
     M: int,
     E: int,
@@ -211,6 +232,14 @@ def _select_mxfp4_kernel_policy(
     block_m = _select_block_m(M, E, top_k, 8 if swap_ab else 16)
     if is_reduced_hopper and M <= 128 and routed_tokens_per_expert < 8:
         block_m = 8
+    elif (
+        is_reduced_hopper
+        and block_m == 16
+        # Halve the tile once padding costs more than the smaller tile's lower
+        # per-CTA efficiency; the crossover sits around 2.5x.
+        and _block_m_padding_ratio(M, E, top_k, block_m) >= 2.5
+    ):
+        block_m = 8
 
     if is_reduced_hopper and M == 1:
         align_mode = _MXFP4AlignMode.singleton
@@ -252,6 +281,8 @@ def _align_mxfp4_tokens(
 _W_PACK_CACHE: WeakTensorKeyDictionary = WeakTensorKeyDictionary()
 _SCALE_PACK_CACHE: WeakTensorKeyDictionary = WeakTensorKeyDictionary()
 _SCALE_PACK_CACHE_E8M0: WeakTensorKeyDictionary = WeakTensorKeyDictionary()
+# Separate cache for the folded (int32) scale, keyed like the plain E8M0 cache.
+_SCALE_PACK_CACHE_E8M0_FOLD: WeakTensorKeyDictionary = WeakTensorKeyDictionary()
 
 
 def _pack_w_interleave(w: torch.Tensor, block_size_k: int) -> torch.Tensor:
@@ -356,14 +387,73 @@ def _cached_pack_scale_e8m0(s, compute_dtype, cached: bool) -> torch.Tensor:
     return packed
 
 
+# FP4 dequant bias applied before the scale (bf16 2^126, fp16 2^14; see _dequant_fp4_*).
+_FP4_BIAS_EXP = {torch.bfloat16: 126, torch.float16: 14}
+
+
+def _pack_scale_e8m0_fold(s: torch.Tensor, compute_dtype: torch.dtype) -> torch.Tensor:
+    # E8M0 with the dequant bias folded in (combined = 2^(byte-127+bias_exp)), packed
+    # (cs,cs) int32 so the kernel scales with one mul.bf16x2/group. Exact only while
+    # combined is finite in compute_dtype -- callers must gate on _e8m0_fold_safe().
+    bias_exp = _FP4_BIAS_EXP[compute_dtype]
+    s_u8 = s.view(torch.uint8) if s.dtype != torch.uint8 else s
+    exp = s_u8.to(torch.int32) - 127 + bias_exp
+    combined = torch.exp2(exp.to(torch.float32)).to(compute_dtype)
+    combined = combined.transpose(-2, -1).contiguous()
+    bits = combined.view(torch.int16).to(torch.int32) & 0xFFFF
+    return ((bits << 16) | bits).contiguous()
+
+
+# Largest finite binary exponent per compute dtype (bf16 2^127, fp16 2^15).
+_COMPUTE_DTYPE_MAX_EXP = {torch.bfloat16: 127, torch.float16: 15}
+
+
+def _e8m0_fold_max_byte(compute_dtype: torch.dtype) -> int:
+    # byte - 127 + bias_exp <= max_exp  ->  byte <= max_exp + 127 - bias_exp
+    return _COMPUTE_DTYPE_MAX_EXP[compute_dtype] + 127 - _FP4_BIAS_EXP[compute_dtype]
+
+
+_E8M0_FOLD_SAFE_CACHE: WeakTensorKeyDictionary = WeakTensorKeyDictionary()
+
+
+def _e8m0_fold_safe(s: torch.Tensor, compute_dtype: torch.dtype) -> bool:
+    # True iff every E8M0 byte folds without overflowing compute_dtype (NaN byte 255 fails).
+    verdict = _E8M0_FOLD_SAFE_CACHE.get(s)
+    if verdict is None:
+        s_u8 = s.view(torch.uint8) if s.dtype != torch.uint8 else s
+        max_byte = int(s_u8.max().item())
+        verdict = max_byte <= _e8m0_fold_max_byte(compute_dtype)
+        _E8M0_FOLD_SAFE_CACHE[s] = verdict
+    return verdict
+
+
+def _cached_pack_scale_e8m0_fold(s, compute_dtype, cached: bool) -> torch.Tensor:
+    if not cached:
+        return _pack_scale_e8m0_fold(s, compute_dtype)
+    packed = _SCALE_PACK_CACHE_E8M0_FOLD.get(s)
+    if packed is None:
+        packed = _pack_scale_e8m0_fold(s, compute_dtype)
+        _SCALE_PACK_CACHE_E8M0_FOLD[s] = packed
+    return packed
+
+
 def mxfp4_pack(
-    w1, w2, w1_scale, w2_scale, compute_dtype, *, cached=True, block_size_k=128
+    w1,
+    w2,
+    w1_scale,
+    w2_scale,
+    compute_dtype,
+    *,
+    cached=True,
+    block_size_k=128,
+    fold_scale=False,
 ):
+    scale_pack = _cached_pack_scale_e8m0_fold if fold_scale else _cached_pack_scale_e8m0
     return (
         _cached_pack_w(w1, block_size_k, cached=cached),
         _cached_pack_w(w2, block_size_k, cached=cached),
-        _cached_pack_scale_e8m0(w1_scale, compute_dtype, cached=cached),
-        _cached_pack_scale_e8m0(w2_scale, compute_dtype, cached=cached),
+        scale_pack(w1_scale, compute_dtype, cached=cached),
+        scale_pack(w2_scale, compute_dtype, cached=cached),
     )
 
 
@@ -484,32 +574,24 @@ def _dequant_fp4_bf16(b, s0, s1, s2, s3):
     x1, x2, x3, x4, x5, x6, x7, x8 = tl.inline_asm_elementwise(
         asm="""
         {
-        .reg .b32  r0, r1, r2, r3, q0, q1, q2, q3, t, bias;
+        .reg .b32  q0, q1, q2, q3, t, bias;
         .reg .b16  h0, h1, h2, h3, h4, h5, h6, h7, s;
-        mov.u32 r0, $8;
-        shr.u32 r1, r0, 4;
-        shr.u32 r2, r0, 8;
-        shr.u32 r3, r0, 12;
-        and.b32 q0, r0, 983055;
-        shl.b32 q0, q0, 12;
+        shl.b32 q0, $8, 12;
+        shl.b32 q1, $8, 8;
+        shl.b32 q2, $8, 4;
+        mov.b32 q3, $8;
         and.b32 t, q0, 2147516416;
         and.b32 q0, q0, 1879076864;
         shr.b32 q0, q0, 6;
         or.b32 q0, q0, t;
-        and.b32 q1, r1, 983055;
-        shl.b32 q1, q1, 12;
         and.b32 t, q1, 2147516416;
         and.b32 q1, q1, 1879076864;
         shr.b32 q1, q1, 6;
         or.b32 q1, q1, t;
-        and.b32 q2, r2, 983055;
-        shl.b32 q2, q2, 12;
         and.b32 t, q2, 2147516416;
         and.b32 q2, q2, 1879076864;
         shr.b32 q2, q2, 6;
         or.b32 q2, q2, t;
-        and.b32 q3, r3, 983055;
-        shl.b32 q3, q3, 12;
         and.b32 t, q3, 2147516416;
         and.b32 q3, q3, 1879076864;
         shr.b32 q3, q3, 6;
@@ -555,36 +637,83 @@ def _dequant_fp4_bf16(b, s0, s1, s2, s3):
 
 
 @triton.jit
+def _dequant_fp4_bf16_fold(b, cs0, cs1, cs2, cs3):
+    # FP4 (E2M1) -> bf16 with bias folded into scale; cs0..cs3 are (cs,cs) int32.
+    x1, x2, x3, x4, x5, x6, x7, x8 = tl.inline_asm_elementwise(
+        asm="""
+        {
+        .reg .b32  q0, q1, q2, q3, sg;
+        .reg .b16  h0, h1, h2, h3, h4, h5, h6, h7;
+        shl.b32 q0, $8, 12;
+        shl.b32 q1, $8, 8;
+        shl.b32 q2, $8, 4;
+        mov.b32 q3, $8;
+        and.b32 sg, q0, 2147516416;  // 0x80008000 sign
+        and.b32 q0, q0, 1879076864;  // 0x70007000 exp+mantissa
+        shr.b32 q0, q0, 6;
+        or.b32  q0, q0, sg;
+        and.b32 sg, q1, 2147516416;
+        and.b32 q1, q1, 1879076864;
+        shr.b32 q1, q1, 6;
+        or.b32  q1, q1, sg;
+        and.b32 sg, q2, 2147516416;
+        and.b32 q2, q2, 1879076864;
+        shr.b32 q2, q2, 6;
+        or.b32  q2, q2, sg;
+        and.b32 sg, q3, 2147516416;
+        and.b32 q3, q3, 1879076864;
+        shr.b32 q3, q3, 6;
+        or.b32  q3, q3, sg;
+        mul.rn.bf16x2 q0, q0, $9;
+        mul.rn.bf16x2 q1, q1, $10;
+        mul.rn.bf16x2 q2, q2, $11;
+        mul.rn.bf16x2 q3, q3, $12;
+        mov.b32 {h0, h1}, q0;
+        mov.b32 {h2, h3}, q1;
+        mov.b32 {h4, h5}, q2;
+        mov.b32 {h6, h7}, q3;
+        mov.b16 $0, h0;
+        mov.b16 $1, h1;
+        mov.b16 $2, h2;
+        mov.b16 $3, h3;
+        mov.b16 $4, h4;
+        mov.b16 $5, h5;
+        mov.b16 $6, h6;
+        mov.b16 $7, h7;
+        }
+        """,
+        constraints="=h,=h,=h,=h,=h,=h,=h,=h,r,r,r,r,r",
+        args=[b, cs0, cs1, cs2, cs3],
+        dtype=(tl.bfloat16,) * 8,
+        is_pure=True,
+        pack=1,
+    )
+    return x1, x2, x3, x4, x5, x6, x7, x8
+
+
+@triton.jit
 def _dequant_fp4_fp16(b, s0, s1, s2, s3):
     x1, x2, x3, x4, x5, x6, x7, x8 = tl.inline_asm_elementwise(
         asm="""
         {
-        .reg .b32  r0, r1, r2, r3, q0, q1, q2, q3, t, bias;
+        .reg .b32  q0, q1, q2, q3, t, bias;
         .reg .b16  h0, h1, h2, h3, h4, h5, h6, h7, s;
-        mov.u32 r0, $8;
-        shr.u32 r1, r0, 4;
-        shr.u32 r2, r0, 8;
-        shr.u32 r3, r0, 12;
-        and.b32 q0, r0, 983055;
-        shl.b32 q0, q0, 12;
+        shl.b32 q0, $8, 12;
+        shl.b32 q1, $8, 8;
+        shl.b32 q2, $8, 4;
+        mov.b32 q3, $8;
         and.b32 t, q0, 2147516416;
         and.b32 q0, q0, 1879076864;
         shr.b32 q0, q0, 3;
         or.b32 q0, q0, t;
-        and.b32 q1, r1, 983055;
-        shl.b32 q1, q1, 12;
         and.b32 t, q1, 2147516416;
         and.b32 q1, q1, 1879076864;
         shr.b32 q1, q1, 3;
         or.b32 q1, q1, t;
-        and.b32 q2, r2, 983055;
-        shl.b32 q2, q2, 12;
         and.b32 t, q2, 2147516416;
         and.b32 q2, q2, 1879076864;
         shr.b32 q2, q2, 3;
         or.b32 q2, q2, t;
-        and.b32 q3, r3, 983055;
-        shl.b32 q3, q3, 12;
         and.b32 t, q3, 2147516416;
         and.b32 q3, q3, 1879076864;
         shr.b32 q3, q3, 3;
@@ -1391,6 +1520,7 @@ def _mxfp4_moe_gemm_kernel(
     compute_type: tl.constexpr,
     SWAP_AB: tl.constexpr,
     EM_BUCKET: tl.constexpr,
+    FOLD_SCALE: tl.constexpr = False,
 ):
     BLOCK_SIZE_K_PACK: tl.constexpr = BLOCK_SIZE_K // 8
 
@@ -1467,7 +1597,9 @@ def _mxfp4_moe_gemm_kernel(
         else:
             s0, s1, s2, s3 = sc0[None, :], sc1[None, :], sc2[None, :], sc3[None, :]
 
-        if compute_type == tl.float16:
+        if FOLD_SCALE:
+            bs = _dequant_fp4_bf16_fold(b_packed, s0, s1, s2, s3)
+        elif compute_type == tl.float16:
             bs = _dequant_fp4_fp16(b_packed, s0, s1, s2, s3)
         else:
             bs = _dequant_fp4_bf16(b_packed, s0, s1, s2, s3)
@@ -1545,6 +1677,7 @@ def _mxfp4_moe_gemm_silu_kernel(
     top_k: tl.constexpr,
     compute_type: tl.constexpr,
     SWAP_AB: tl.constexpr,
+    FOLD_SCALE: tl.constexpr = False,
 ):
     BLOCK_SIZE_K_PACK: tl.constexpr = BLOCK_SIZE_K // 8
 
@@ -1664,7 +1797,10 @@ def _mxfp4_moe_gemm_silu_kernel(
 
         b_packed_gate = tl.load(b_ptrs_gate)
         b_packed_up = tl.load(b_ptrs_up)
-        if compute_type == tl.float16:
+        if FOLD_SCALE:
+            bs_gate = _dequant_fp4_bf16_fold(b_packed_gate, sg0, sg1, sg2, sg3)
+            bs_up = _dequant_fp4_bf16_fold(b_packed_up, su0, su1, su2, su3)
+        elif compute_type == tl.float16:
             bs_gate = _dequant_fp4_fp16(b_packed_gate, sg0, sg1, sg2, sg3)
             bs_up = _dequant_fp4_fp16(b_packed_up, su0, su1, su2, su3)
         else:
@@ -1723,6 +1859,7 @@ def _invoke_mxfp4_moe_gemm(
     group_size: int,
     compute_type,
     swap_ab: bool = False,
+    fold_scale: bool = False,
 ):
     M_a = A.size(0)
     K = A.size(1)
@@ -1774,6 +1911,7 @@ def _invoke_mxfp4_moe_gemm(
         compute_type=compute_type,
         SWAP_AB=swap_ab,
         EM_BUCKET=em_bucket,
+        FOLD_SCALE=fold_scale,
     )
 
 
@@ -1794,6 +1932,7 @@ def _invoke_mxfp4_moe_gemm_silu(
     group_size: int,
     compute_type,
     swap_ab: bool = False,
+    fold_scale: bool = False,
 ):
     M_a = A.size(0)
     K = A.size(1)
@@ -1836,6 +1975,7 @@ def _invoke_mxfp4_moe_gemm_silu(
         top_k=top_k,
         compute_type=compute_type,
         SWAP_AB=swap_ab,
+        FOLD_SCALE=fold_scale,
     )
 
 
@@ -1881,6 +2021,13 @@ def fused_moe_mxfp4(
 
     compute_type = tl.float16 if hidden_states.dtype == torch.float16 else tl.bfloat16
 
+    # Fold FP4 bias into scale (bf16 only); gated on _e8m0_fold_safe (safe domain).
+    fold_scale = (
+        hidden_states.dtype == torch.bfloat16
+        and _e8m0_fold_safe(w1_scale, hidden_states.dtype)
+        and _e8m0_fold_safe(w2_scale, hidden_states.dtype)
+    )
+
     w1_packed, w2_packed, w1_scale_packed, w2_scale_packed = mxfp4_pack(
         w1,
         w2,
@@ -1889,6 +2036,7 @@ def fused_moe_mxfp4(
         hidden_states.dtype,
         block_size_k=block_size_k,
         cached=True,
+        fold_scale=fold_scale,
     )
 
     policy = _select_mxfp4_kernel_policy(
@@ -1942,6 +2090,7 @@ def fused_moe_mxfp4(
             group_size=group_size,
             compute_type=compute_type,
             swap_ab=swap_ab,
+            fold_scale=fold_scale,
         )
     else:
         assert intermediate_cache1 is not None
@@ -1961,6 +2110,7 @@ def fused_moe_mxfp4(
             group_size=group_size,
             compute_type=compute_type,
             swap_ab=swap_ab,
+            fold_scale=fold_scale,
         )
 
         gate = intermediate_cache1[:, :intermediate_size]
@@ -1983,6 +2133,7 @@ def fused_moe_mxfp4(
         group_size=group_size,
         compute_type=compute_type,
         swap_ab=swap_ab,
+        fold_scale=fold_scale,
     )
 
     out_hidden_states = hidden_states if inplace else torch.empty_like(hidden_states)
