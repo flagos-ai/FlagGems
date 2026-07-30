@@ -1050,18 +1050,10 @@ weight_norm_kernel_last:
     num_warps: warps
   warps:
   - 4
-  - 8
-  - 16
   block_m:
-  - 512
-  - 1024
-  - 2048
+  - 256
   block_n:
   - 1
-  - 2
-  - 4
-  - 8
-  - 32
 weight_norm_kernel_first:
 - gen: true
   param_map:
@@ -1071,18 +1063,10 @@ weight_norm_kernel_first:
     num_warps: warps
   warps:
   - 4
-  - 8
-  - 16
   block_m:
   - 1
-  - 2
-  - 4
-  - 8
-  - 32
   block_n:
-  - 512
-  - 1024
-  - 2048
+  - 256
 weight_norm_kernel:
 - gen: true
   param_map:
@@ -1092,19 +1076,10 @@ weight_norm_kernel:
     num_warps: warps
   warps:
   - 4
-  - 8
-  - 16
   block_m:
   - 1
-  - 2
-  - 4
-  - 8
-  - 32
   block_n:
   - 256
-  - 512
-  - 1024
-  - 2048
 vector_norm:
 - gen: true
   param_map:
