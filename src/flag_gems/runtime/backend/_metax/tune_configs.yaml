@@ -142,6 +142,25 @@ bmm:
     pipeline: "cpasync"
   num_warps: 4
   num_stages: 4
+scaled_grouped_mm:
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 32
+    BLOCK_K: 32
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 32
+    BLOCK_K: 32
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_warps: 4
+  num_stages: 2
 argmax:
 - META:
     BLOCK_M: 8
