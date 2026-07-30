@@ -83,7 +83,6 @@ _FULL_CONFIG = (
     ("_batch_norm_no_update", _batch_norm_no_update),
     ("_cdist_backward", _cdist_backward),
     ("_cholesky_solve_helper", _cholesky_solve_helper),
-    ("_cholesky_solve_helper.out", _cholesky_solve_helper_out),
     ("_chunk_cat", _chunk_cat),
     ("_conj", _conj),
     ("_conv_depthwise2d", _conv_depthwise2d),
