@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.shape_utils import volume
@@ -576,7 +577,7 @@ def mul_broadcast_func(a, b, out=None):
         raise TypeError("mul expects tensor or scalar inputs")
 
     device = _select_device(a, b)
-    if device.type != "cuda":
+    if device.type != flag_gems.device:
         if out is not None:
             return torch.ops.aten.mul.out.redispatch(_FALLBACK_KEYSET, a, b, out=out)
         return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)
@@ -721,7 +722,7 @@ def _launch_complex_generic(
 
 def mul_complex_broadcast_func(a, b, out=None):
     device = _select_device(a, b)
-    if device.type != "cuda":
+    if device.type != flag_gems.device:
         if out is not None:
             return torch.ops.aten.mul.out.redispatch(_FALLBACK_KEYSET, a, b, out=out)
         return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)
