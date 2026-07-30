@@ -6112,6 +6112,18 @@ ops:
     description: |-
       Out-of-place variant of linalg_solve_triangular: solves a triangular system
       of linear equations and writes the result into the provided out tensor.
+  - id: linalg_diagonal
+    description: Extracts the diagonal elements of a tensor along specified dimensions.
+    for:
+      - linalg_diagonal
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_eigvals
+    description: Computes the eigenvalues of a square matrix.
     for:
       - linalg_solve_triangular.out
     labels:
