@@ -178,6 +178,8 @@ _FULL_CONFIG = (
     ("acosh", acosh),
     ("acosh_", acosh_),
     ("adaptive_max_pool3d_backward", adaptive_max_pool3d_backward),
+    ("adaptive_max_pool2d", adaptive_max_pool2d),
+    ("adaptive_max_pool2d.out", adaptive_max_pool2d_out),
     ("add.Tensor", add),
     ("add_.Tensor", add_),
     ("add_rms_norm", add_rms_norm),
