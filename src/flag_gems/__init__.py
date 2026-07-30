@@ -229,6 +229,8 @@ _FULL_CONFIG = (
     ("argmin", argmin),
     ("argsort", argsort),
     ("as_strided_copy", as_strided_copy),
+    ("as_strided_scatter", as_strided_scatter),
+    ("as_strided_scatter.out", as_strided_scatter_out),
     ("as_strided_copy.out", as_strided_copy_out),
     ("asin", asin),
     ("asin_", asin_),
