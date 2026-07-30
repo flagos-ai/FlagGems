@@ -102,8 +102,13 @@ def test_take_out_of_bounds(bad):
     inp = _make_input((4, 4), torch.float32)
     index = torch.tensor([0, bad], device=flag_gems.device, dtype=torch.int64)
 
+    # PyTorch flags out-of-bounds take as IndexError (TORCH_CHECK_INDEX). On CUDA
+    # this surfaces as an async device-side assert that cannot be caught at the
+    # call site and would poison the CUDA context for the rest of the process, so
+    # we check the reference on CPU where it raises synchronously. Our gems kernel
+    # raises IndexError synchronously on-device via a min/max bounds check.
     with pytest.raises(IndexError):
-        torch.take(utils.to_reference(inp), utils.to_reference(index))
+        torch.take(inp.cpu(), index.cpu())
     with flag_gems.use_gems(), pytest.raises(IndexError):
         torch.take(inp, index)
 
