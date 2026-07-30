@@ -28,7 +28,11 @@ else:
 
 
 def _cuda_fp8_available():
-    if flag_gems.device != "cuda" or not torch.cuda.is_available():
+    if (
+        flag_gems.vendor_name != "nvidia"
+        or flag_gems.device != "cuda"
+        or not torch.cuda.is_available()
+    ):
         return False
     if not hasattr(torch, "float8_e4m3fn"):
         return False
