@@ -8,7 +8,7 @@ def get_available_device():
     if torch.cuda.is_available():
         return "cuda"
     try:
-        import torch_npu  # noqa: F401
+        import torch_npu  # noqa: F841
 
         if torch.npu.is_available():
             return "npu:0"
@@ -20,6 +20,7 @@ def get_available_device():
 DEVICE = get_available_device()
 
 
+@pytest.mark.meshgrid
 @pytest.mark.correctness
 @pytest.mark.parametrize("indexing", ["ij", "xy"])
 def test_meshgrid_basic(indexing):
@@ -33,6 +34,7 @@ def test_meshgrid_basic(indexing):
         assert torch.allclose(our, ref, rtol=1e-5, atol=1e-5)
 
 
+@pytest.mark.meshgrid
 @pytest.mark.correctness
 @pytest.mark.parametrize("indexing", ["ij", "xy"])
 def test_meshgrid_different_sizes(indexing):
@@ -46,6 +48,7 @@ def test_meshgrid_different_sizes(indexing):
         assert torch.allclose(our, ref, rtol=1e-5, atol=1e-5)
 
 
+@pytest.mark.meshgrid
 @pytest.mark.dimensional
 @pytest.mark.parametrize("ndim", [2, 3, 4])
 @pytest.mark.parametrize("indexing", ["ij", "xy"])
@@ -59,6 +62,7 @@ def test_meshgrid_multidimensional(ndim, indexing):
         assert torch.allclose(our, ref, rtol=1e-5, atol=1e-5)
 
 
+@pytest.mark.meshgrid
 @pytest.mark.dtype
 @pytest.mark.parametrize(
     "dtype", [torch.float32, torch.float64, torch.int32, torch.int64]

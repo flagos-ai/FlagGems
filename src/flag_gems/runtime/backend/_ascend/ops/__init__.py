@@ -62,6 +62,7 @@ from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .max import max, max_dim
 from .mean import mean, mean_dim
+from .meshgrid import meshgrid
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .multinomial import multinomial
@@ -215,4 +216,5 @@ __all__ = [
     "where_self_out",
     "zeros",
     "zeros_like",
+    "meshgrid",
 ]
