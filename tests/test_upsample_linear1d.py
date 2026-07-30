@@ -20,6 +20,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from .accuracy_utils import (
     FLOAT_DTYPES,
     UPSAMPLE_SHAPES_1D,
@@ -179,6 +180,10 @@ def upsample_linear1d_backward_call(grad, input_size, align_corners):
 @pytest.mark.parametrize("edge_case", [False, True])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads" and not utils.TO_CPU,
+    reason="MThreads native upsample_linear1d_backward reference is incorrect; run with --ref cpu.",
 )
 def test_upsample_linear1d_backward(
     shape, dtype, scale_factor, align_corners, layout, edge_case
