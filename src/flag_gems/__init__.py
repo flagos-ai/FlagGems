@@ -584,6 +584,7 @@ _FULL_CONFIG = (
     ("lt.Tensor", lt),
     ("lt_.Scalar", lt_scalar_),
     ("lt_.Tensor", lt_),
+    ("lu_unpack", lu_unpack),
     ("margin_ranking_loss", margin_ranking_loss),
     ("masked_fill.Scalar", masked_fill),
     ("masked_fill.Tensor", masked_fill),
