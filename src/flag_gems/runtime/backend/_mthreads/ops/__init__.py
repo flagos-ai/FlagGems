@@ -38,6 +38,7 @@ from .log_softmax import (
 from .max import max, max_dim
 from .min import min, min_dim
 from .mode import mode
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .normal import normal_
 from .one_hot import one_hot
 from .ones import ones
@@ -101,6 +102,10 @@ __all__ = [
     "min",
     "min_dim",
     "mode",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "normal_",
     "one_hot",
     "ones",
