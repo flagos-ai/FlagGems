@@ -99,23 +99,21 @@ inline void wgrad_gemm_accum_fp32_cuda_impl(const at::Tensor &input_2d,
 
   at::Tensor input = input_2d.contiguous();
   at::Tensor grad_output = grad_output_2d.contiguous();
-  const bool weight_is_main = main_grad.is_contiguous();
-  at::Tensor weight = weight_is_main ? main_grad : main_grad.contiguous();
 
   const int64_t hidden_dim = input.size(0);
   const int64_t in_dim = input.size(1);
   const int64_t out_dim = grad_output.size(1);
   TORCH_CHECK(grad_output.size(0) == hidden_dim,
               "input/grad_output row mismatch after collapse");
-  TORCH_CHECK(weight.size(0) == out_dim && weight.size(1) == in_dim,
+  TORCH_CHECK(main_grad.size(0) == out_dim && main_grad.size(1) == in_dim,
               "main_grad shape mismatch: expected (",
               out_dim,
               ", ",
               in_dim,
               "), got (",
-              weight.size(0),
+              main_grad.size(0),
               ", ",
-              weight.size(1),
+              main_grad.size(1),
               ")");
 
   if (hidden_dim == 0) {
@@ -136,8 +134,66 @@ inline void wgrad_gemm_accum_fp32_cuda_impl(const at::Tensor &input_2d,
   at::cuda::CUDAGuard device_guard(input.device());
   cublasHandle_t handle = at::cuda::getCurrentCUDABlasHandle();
 
-  // layout: main_grad += grad_output.T @ input
+  // Fast path 1: contiguous main_grad.
+  // layout: main_grad(out,in) += grad_output.T @ input
   // C = alpha * OP_N(A=input) * OP_T(B=grad_output) + beta * C
+  if (main_grad.is_contiguous()) {
+    cublasStatus_t status = resolve_gemm_ex()(handle,
+                                              CUBLAS_OP_N,
+                                              CUBLAS_OP_T,
+                                              static_cast<int>(in_dim),
+                                              static_cast<int>(out_dim),
+                                              static_cast<int>(hidden_dim),
+                                              &alpha,
+                                              input.data_ptr(),
+                                              a_type,
+                                              static_cast<int>(in_dim),
+                                              grad_output.data_ptr(),
+                                              a_type,
+                                              static_cast<int>(out_dim),
+                                              &beta,
+                                              main_grad.data_ptr(),
+                                              CUDA_R_32F,
+                                              static_cast<int>(in_dim),
+                                              CUDA_R_32F,
+                                              CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+    TORCH_CHECK(status == CUBLAS_STATUS_SUCCESS,
+                "cublasGemmEx failed with status ",
+                static_cast<int>(status));
+    return;
+  }
+
+  // Fast path 2: main_grad is a transpose view of a contiguous (in,out) buffer.
+  // Equiv: main_grad.T(in,out) += input.T @ grad_output  (write through, no densify).
+  at::Tensor main_t = main_grad.transpose(0, 1);
+  if (main_t.is_contiguous()) {
+    cublasStatus_t status = resolve_gemm_ex()(handle,
+                                              CUBLAS_OP_N,
+                                              CUBLAS_OP_T,
+                                              static_cast<int>(out_dim),
+                                              static_cast<int>(in_dim),
+                                              static_cast<int>(hidden_dim),
+                                              &alpha,
+                                              grad_output.data_ptr(),
+                                              a_type,
+                                              static_cast<int>(out_dim),
+                                              input.data_ptr(),
+                                              a_type,
+                                              static_cast<int>(in_dim),
+                                              &beta,
+                                              main_t.data_ptr(),
+                                              CUDA_R_32F,
+                                              static_cast<int>(out_dim),
+                                              CUDA_R_32F,
+                                              CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+    TORCH_CHECK(status == CUBLAS_STATUS_SUCCESS,
+                "cublasGemmEx (transpose-contig main_grad) failed with status ",
+                static_cast<int>(status));
+    return;
+  }
+
+  // Slow path: general non-contiguous — densify, GemmEx, copy_ back.
+  at::Tensor weight = main_grad.contiguous();
   cublasStatus_t status = resolve_gemm_ex()(handle,
                                             CUBLAS_OP_N,
                                             CUBLAS_OP_T,
@@ -157,14 +213,10 @@ inline void wgrad_gemm_accum_fp32_cuda_impl(const at::Tensor &input_2d,
                                             static_cast<int>(in_dim),
                                             CUDA_R_32F,
                                             CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-
   TORCH_CHECK(status == CUBLAS_STATUS_SUCCESS,
               "cublasGemmEx failed with status ",
               static_cast<int>(status));
-
-  if (!weight_is_main) {
-    main_grad.copy_(weight);
-  }
+  main_grad.copy_(weight);
 }
 
 }  // namespace flag_gems_wgrad_detail

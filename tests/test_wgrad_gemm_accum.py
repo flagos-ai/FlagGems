@@ -268,8 +268,32 @@ def _as_non_contiguous_2d(contiguous_2d: torch.Tensor) -> torch.Tensor:
 
 
 def _as_non_contiguous_main_grad(contiguous_2d: torch.Tensor) -> torch.Tensor:
-    """Build a non-contiguous (out, in) main_grad with identical values."""
+    """Build a non-contiguous (out, in) main_grad with identical values.
+
+    This is a transpose view of a contiguous buffer (``main.T`` contiguous),
+    which exercises the transpose-contig fast path (no densify+copy).
+    """
     return _as_non_contiguous_2d(contiguous_2d)
+
+
+def _as_general_non_contiguous_main_grad(contiguous_2d: torch.Tensor) -> torch.Tensor:
+    """Build a general NC main_grad that is not transpose-contiguous.
+
+    Forces the densify+``copy_`` slow path (column-strided slice).
+    """
+    out_f, in_f = contiguous_2d.shape
+    padded = torch.empty(
+        out_f,
+        in_f * 2,
+        dtype=contiguous_2d.dtype,
+        device=contiguous_2d.device,
+    )
+    nc = padded[:, :in_f]
+    nc.copy_(contiguous_2d)
+    assert not nc.is_contiguous()
+    assert not nc.transpose(0, 1).is_contiguous()
+    assert nc.shape == contiguous_2d.shape
+    return nc
 
 
 @pytest.fixture(autouse=True)
@@ -281,6 +305,7 @@ def _quiet_nc_main_grad_warn(request):
             "test_wgrad_gemm_accum_fp32_nc_main_grad_warns",
             "test_wgrad_gemm_accum_fp32_require_contiguous",
             "test_ensure_contiguous_main_grad_rebinding",
+            "test_wgrad_gemm_accum_fp32_transpose_contig_main_grad_no_warn",
         )
     ):
         yield
@@ -991,7 +1016,7 @@ def test_ensure_contiguous_main_grad_identity_when_already_contig():
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.wgrad_main_grad_non_contig
 def test_wgrad_gemm_accum_fp32_nc_main_grad_warns_once(monkeypatch):
-    """First non-contiguous main_grad should warn about densify+copy cost."""
+    """First *general* NC main_grad should warn about densify+copy cost."""
     import flag_gems.ops.wgrad_gemm_accum as wgrad_mod
 
     monkeypatch.delenv("FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD", raising=False)
@@ -1004,10 +1029,10 @@ def test_wgrad_gemm_accum_fp32_nc_main_grad_warns_once(monkeypatch):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         wgrad_gemm_accum_fp32(
-            input_tensor, grad_output, _as_non_contiguous_main_grad(main_c)
+            input_tensor, grad_output, _as_general_non_contiguous_main_grad(main_c)
         )
         wgrad_gemm_accum_fp32(
-            input_tensor, grad_output, _as_non_contiguous_main_grad(main_c)
+            input_tensor, grad_output, _as_general_non_contiguous_main_grad(main_c)
         )
 
     densify_warns = [
@@ -1018,10 +1043,73 @@ def test_wgrad_gemm_accum_fp32_nc_main_grad_warns_once(monkeypatch):
     assert len(densify_warns) == 1
     assert "ensure_contiguous_main_grad" in str(densify_warns[0].message)
 
+
+@pytest.mark.wgrad_gemm_accum_fp32
+@pytest.mark.wgrad_main_grad_non_contig
+def test_wgrad_gemm_accum_fp32_transpose_contig_main_grad_no_warn(monkeypatch):
+    """Transpose-contiguous main_grad is a fast path: no densify warning."""
+    import flag_gems.ops.wgrad_gemm_accum as wgrad_mod
+
+    monkeypatch.delenv("FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD", raising=False)
+    monkeypatch.setattr(wgrad_mod, "_WGRAD_NC_MAIN_WARNED", False)
+
+    batch, in_features, out_features = 8, 32, 64
+    input_tensor = torch.randn(
+        (batch, in_features), dtype=torch.float16, device=flag_gems.device
+    )
+    grad_output = torch.randn(
+        (batch, out_features), dtype=torch.float16, device=flag_gems.device
+    )
+    main_c = torch.randn(
+        (out_features, in_features), dtype=torch.float32, device=flag_gems.device
+    )
+    main_nc = _as_non_contiguous_main_grad(main_c)
+    assert not main_nc.is_contiguous()
+    assert main_nc.transpose(0, 1).is_contiguous()
+
+    ref = main_c.clone()
+    _ref_wgrad_gemm_accum_fp32_cpu(input_tensor, grad_output, ref)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        wgrad_gemm_accum_fp32(input_tensor, grad_output, main_nc)
+        densify_warns = [
+            w
+            for w in caught
+            if issubclass(w.category, UserWarning) and "densify+copy" in str(w.message)
+        ]
+    assert densify_warns == []
+    _assert_vs_cpu_ref(main_nc, ref, torch.float32, reduce_dim=batch)
+
+
+@pytest.mark.wgrad_gemm_accum_fp32
+@pytest.mark.wgrad_main_grad_non_contig
+@pytest.mark.parametrize("dtype", FP32_ACCUM_CPU_REF_DTYPES)
+def test_wgrad_gemm_accum_fp32_general_nc_main_grad(dtype):
+    """General (non-transpose) NC main_grad still matches via densify+copy."""
+    _with_seed(20260755)
+    batch, in_features, out_features = 8, 32, 64
+    input_tensor = torch.randn(
+        (batch, in_features), dtype=dtype, device=flag_gems.device
+    )
+    grad_output = torch.randn(
+        (batch, out_features), dtype=dtype, device=flag_gems.device
+    )
+    main_c = torch.randn(
+        (out_features, in_features), dtype=torch.float32, device=flag_gems.device
+    )
+    ref = main_c.clone()
+    _ref_wgrad_gemm_accum_fp32_cpu(input_tensor, grad_output, ref)
+
+    res_nc = _as_general_non_contiguous_main_grad(main_c)
+    wgrad_gemm_accum_fp32(input_tensor, grad_output, res_nc)
+    _assert_vs_cpu_ref(res_nc, ref, torch.float32, reduce_dim=batch)
+
+
 @pytest.mark.wgrad_gemm_accum_fp32
 @pytest.mark.wgrad_main_grad_non_contig
 def test_wgrad_gemm_accum_fp32_require_contiguous_main_grad(monkeypatch):
-    """FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1 rejects NC main_grad."""
+    """FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1 rejects any NC main_grad."""
     import flag_gems.ops.wgrad_gemm_accum as wgrad_mod
 
     monkeypatch.setenv("FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD", "1")
@@ -1030,10 +1118,16 @@ def test_wgrad_gemm_accum_fp32_require_contiguous_main_grad(monkeypatch):
     input_tensor = torch.randn(4, 16, dtype=torch.float16, device=flag_gems.device)
     grad_output = torch.randn(4, 32, dtype=torch.float16, device=flag_gems.device)
     main_c = torch.zeros(32, 16, dtype=torch.float32, device=flag_gems.device)
-    main_nc = _as_non_contiguous_main_grad(main_c)
 
+    # Transpose view and general NC must both fail under REQUIRE=1.
     with pytest.raises(RuntimeError, match="must be contiguous"):
-        wgrad_gemm_accum_fp32(input_tensor, grad_output, main_nc)
+        wgrad_gemm_accum_fp32(
+            input_tensor, grad_output, _as_non_contiguous_main_grad(main_c)
+        )
+    with pytest.raises(RuntimeError, match="must be contiguous"):
+        wgrad_gemm_accum_fp32(
+            input_tensor, grad_output, _as_general_non_contiguous_main_grad(main_c)
+        )
 
     # Contiguous main_grad still works under the same env.
     wgrad_gemm_accum_fp32(input_tensor, grad_output, main_c.clone())

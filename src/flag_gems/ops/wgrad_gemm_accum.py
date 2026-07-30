@@ -31,11 +31,12 @@ for that call and retries next time; permanent fallback needs consecutive
 failures (default 3, overridable via ``FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT``).
 Set ``FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1`` to raise instead.
 
-Non-contiguous ``main_grad`` is correct but densifies then ``copy_``; a one-shot
-warning fires on first use.  Set
-``FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1`` to reject NC ``main_grad``.
-Training callers should prefer ``ensure_contiguous_main_grad`` once when
-allocating / binding ``main_grad``, then reuse the contiguous buffer every step.
+Non-contiguous ``main_grad``: a transpose view of a contiguous buffer is a
+fast path (no densify).  General NC still densifies then ``copy_`` and warns
+once.  Set ``FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1`` to reject any
+non-``is_contiguous()`` ``main_grad``.  Training callers should prefer
+``ensure_contiguous_main_grad`` once when allocating / binding ``main_grad``,
+then reuse the contiguous buffer every step.
 
 TF32 note: like Apex, ``allow_tf32=False`` does not force full-fp32 GemmEx.
 Test-only CPU-fp64-matched checks use ``wgrad_gemm_accum_fp32_strict_cpu_ref``
@@ -85,11 +86,10 @@ def _require_gemmex() -> bool:
 
 
 def _require_contiguous_main_grad() -> bool:
-    """Reject non-contiguous ``main_grad`` when env is set.
+    """Reject any non-``is_contiguous()`` ``main_grad`` when env is set.
 
-    Non-contiguous ``main_grad`` is correct but densifies then ``copy_`` back,
-    so frequent NC use is slower than an Apex contiguous path.  Training jobs
-    that want fail-fast can set
+    Fail-fast for training jobs that want Apex-style contiguous buffers only
+    (including rejecting transpose views).  Set
     ``FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1``.
     """
     return _env_flag_true("FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD")
@@ -113,8 +113,22 @@ def ensure_contiguous_main_grad(main_grad: torch.Tensor) -> torch.Tensor:
     return main_grad.contiguous()
 
 
+def _is_transpose_contiguous_2d(t: torch.Tensor) -> bool:
+    """True if ``t`` is a 2D transpose view whose ``t.T`` is contiguous."""
+    return (
+        t.dim() == 2
+        and (not t.is_contiguous())
+        and t.transpose(0, 1).is_contiguous()
+    )
+
+
 def _check_main_grad_contiguity(main_grad: torch.Tensor) -> None:
-    """Warn once (or raise) when ``main_grad`` needs densify+copy."""
+    """Raise or warn when ``main_grad`` layout is not strict-contiguous.
+
+    ``REQUIRE_CONTIGUOUS=1`` rejects every non-``is_contiguous()`` tensor
+    (including transpose views).  Otherwise only the slow general-NC densify
+    path warns; contiguous and transpose-contiguous are silent.
+    """
     global _WGRAD_NC_MAIN_WARNED
 
     if main_grad.is_contiguous():
@@ -123,19 +137,20 @@ def _check_main_grad_contiguity(main_grad: torch.Tensor) -> None:
         raise RuntimeError(
             "wgrad_gemm_accum: main_grad must be contiguous when "
             "FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1 "
-            "(non-contiguous path densifies then copy_-s back; "
-            "prefer ensure_contiguous_main_grad / contiguous main_grad "
+            "(prefer ensure_contiguous_main_grad / contiguous main_grad "
             "for Apex-like speed)"
         )
+    if _is_transpose_contiguous_2d(main_grad):
+        return
     if _WGRAD_NC_MAIN_WARNED:
         return
     _WGRAD_NC_MAIN_WARNED = True
     msg = (
-        "wgrad_gemm_accum: non-contiguous main_grad triggers densify+copy; "
-        "correct but slower than a contiguous Apex-style path if this is "
-        "frequent. Prefer ensure_contiguous_main_grad(main_grad) when binding "
-        "the buffer, or set FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1 "
-        "to fail hard."
+        "wgrad_gemm_accum: general non-contiguous main_grad triggers "
+        "densify+copy; correct but slower. Transpose views of a contiguous "
+        "buffer are already optimized. Prefer "
+        "ensure_contiguous_main_grad(main_grad) when binding the buffer, or "
+        "set FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1 to fail hard."
     )
     logger.warning(msg)
     warnings.warn(msg, UserWarning, stacklevel=3)
@@ -323,12 +338,16 @@ def _torch_wgrad_gemm_accum_fp32(
     """Torch fallback: ``main_grad += grad_output.T @ input`` in fp32 math."""
     input_c = input_2d.contiguous().float()
     grad_c = grad_output_2d.contiguous().float()
-    wgrad = grad_c.t() @ input_c
     if main_grad.is_contiguous():
-        main_grad.add_(wgrad)
+        main_grad.add_(grad_c.t() @ input_c)
+        return
+    # Transpose-contiguous: write W.T += X.T @ G directly (no densify+copy).
+    if _is_transpose_contiguous_2d(main_grad):
+        main_t = main_grad.transpose(0, 1)
+        main_t.add_(input_c.t() @ grad_c)
         return
     weight = main_grad.contiguous()
-    weight.add_(wgrad)
+    weight.add_(grad_c.t() @ input_c)
     main_grad.copy_(weight)
 
 
@@ -345,10 +364,16 @@ def _wgrad_fp32_strict_accum(
     """
     input_c = input_2d.contiguous()
     grad_c = grad_output_2d.contiguous()
-    wgrad_fp32 = (grad_c.t().contiguous().double() @ input_c.double()).float()
     if main_grad.is_contiguous():
+        wgrad_fp32 = (grad_c.t().contiguous().double() @ input_c.double()).float()
         main_grad.add_(wgrad_fp32)
         return
+    if _is_transpose_contiguous_2d(main_grad):
+        main_t = main_grad.transpose(0, 1)
+        wgrad_t = (input_c.double().t().contiguous() @ grad_c.double()).float()
+        main_t.add_(wgrad_t)
+        return
+    wgrad_fp32 = (grad_c.t().contiguous().double() @ input_c.double()).float()
     weight = main_grad.contiguous()
     weight.add_(wgrad_fp32)
     main_grad.copy_(weight)
@@ -436,11 +461,21 @@ def _fused_addmm_cublas(
     mat1: torch.Tensor,
     mat2: torch.Tensor,
 ) -> None:
-    """Same-dtype fused ``main_grad += mat1 @ mat2`` via PyTorch cuBLAS addmm."""
+    """Same-dtype fused ``main_grad += mat1 @ mat2`` via PyTorch cuBLAS addmm.
+
+    ``mat1``/``mat2`` are ``(grad_output.T, input)``.  For transpose-contiguous
+    ``main_grad``, rewrite as ``main_grad.T += input.T @ grad_output``.
+    """
     if main_grad.is_contiguous():
         torch.addmm(main_grad, mat1, mat2, beta=1, alpha=1, out=main_grad)
         return
-    # Non-contiguous out: compute into a dense buffer then copy back.
+    if _is_transpose_contiguous_2d(main_grad):
+        # mat1 = grad.T, mat2 = input  =>  W += grad.T @ input
+        # W.T += input.T @ grad  with grad = mat1.T, input = mat2
+        main_t = main_grad.transpose(0, 1)
+        torch.addmm(main_t, mat2.t(), mat1.t(), beta=1, alpha=1, out=main_t)
+        return
+    # General non-contiguous out: densify, compute, copy back.
     weight = main_grad.contiguous()
     torch.addmm(weight, mat1, mat2, beta=1, alpha=1, out=weight)
     main_grad.copy_(weight)
@@ -490,9 +525,9 @@ def wgrad_gemm_accum_fp32(
     ``torch.backends.cuda.matmul.allow_tf32 = False`` does **not** force a
     full-fp32 math path here (same footgun as Apex on Ampere+).
 
-    Non-contiguous ``main_grad`` is supported (densify then ``copy_``) but is
-    slower than contiguous storage if used every step.  Prefer
-    ``ensure_contiguous_main_grad`` when allocating / binding the buffer, or
+    Non-contiguous ``main_grad``: a transpose view of a contiguous buffer is
+    handled without densify+``copy_`` (write through ``main_grad.T``).  General
+    NC still densifies; prefer ``ensure_contiguous_main_grad`` when binding, or
     set ``FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1`` to fail hard.
 
     For test-only CPU-fp64-matched checks under TF32-off, call
@@ -588,8 +623,8 @@ def wgrad_gemm_accum_fp16(
 ) -> None:
     """Accumulate weight gradient into ``main_grad`` using fp16/bf16 storage.
 
-    Non-contiguous ``main_grad`` is supported via densify+``copy_`` with the
-    same performance caveat as the fp32 path.
+    Non-contiguous ``main_grad``: transpose-contiguous is a fast path; general
+    NC densifies then ``copy_`` (same caveat as the fp32 path).
     """
     logger.debug("GEMS WGRAD_GEMM_ACCUM_FP16")
 

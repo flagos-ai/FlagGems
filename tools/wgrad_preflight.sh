@@ -44,7 +44,8 @@ export PYTHONPATH="$REPO_ROOT/src"
 # export FLAGGEMS_WGRAD_REQUIRE_GEMMEX=1
 # Optional: consecutive GemmEx runtime failures before permanent fallback.
 # export FLAGGEMS_WGRAD_GEMMEX_FAIL_LIMIT=3
-# Optional: reject non-contiguous main_grad (avoids silent densify+copy cost).
+# Optional: reject any non-is_contiguous() main_grad (incl. transpose views).
+# General NC still densifies; transpose-contig is already a fast path.
 # export FLAGGEMS_WGRAD_REQUIRE_CONTIGUOUS_MAIN_GRAD=1
 # Training tip: bind once with ensure_contiguous_main_grad(main_grad) then reuse.
 if [[ $SKIP_CLEAR_CACHE -eq 0 ]]; then
