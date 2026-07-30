@@ -108,6 +108,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: adaptive_max_pool2d
+    description: |
+      Applies two-dimensional adaptive max pooling and returns both pooled values
+      and the selected input indices.
+    for:
+      - adaptive_max_pool2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: adaptive_max_pool3d_backward
     description: |
       Computes the gradient for adaptive max pooling 3D.

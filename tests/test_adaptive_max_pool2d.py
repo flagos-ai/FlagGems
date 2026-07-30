@@ -1,39 +1,61 @@
 # Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import pytest
 import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 
+
+@pytest.mark.adaptive_max_pool2d
+# Includes unbatched input and a pooling window larger than the old 32x32 limit.
 @pytest.mark.parametrize(
-    "shape, output_size",
-    [((2, 3, 7, 9), (3, 4)), ((1, 2, 8, 8), (1, 1)), ((3, 5, 6), (2, 4))],
+    "shape,output_size",
+    [
+        ((2, 3, 7, 9), (3, 4)),
+        ((1, 2, 8, 8), (1, 1)),
+        ((3, 5, 6), (2, 4)),
+        ((1, 2, 70, 65), (1, 1)),
+    ],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_adaptive_max_pool2d(shape, output_size, dtype):
-    inp = torch.randn(shape, device="cuda", dtype=dtype)
-    expected, expected_indices = torch.ops.aten.adaptive_max_pool2d(inp, output_size)
+    inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    expected, expected_indices = torch.ops.aten.adaptive_max_pool2d(
+        utils.to_reference(inp, True), output_size
+    )
 
-    with flag_gems.use_gems(include=["adaptive_max_pool2d"]):
+    with flag_gems.use_gems():
         actual, actual_indices = torch.ops.aten.adaptive_max_pool2d(inp, output_size)
 
-    torch.testing.assert_close(actual, expected)
-    torch.testing.assert_close(actual_indices, expected_indices)
+    utils.gems_assert_close(actual, expected, dtype)
+    utils.gems_assert_equal(actual_indices, expected_indices)
 
 
-def test_adaptive_max_pool2d_out():
-    inp = torch.randn((2, 3, 7, 9), device="cuda")
-    expected, expected_indices = torch.ops.aten.adaptive_max_pool2d(inp, (3, 4))
-    actual = torch.empty(0, device="cuda")
-    actual_indices = torch.empty(0, device="cuda", dtype=torch.int64)
-
-    with flag_gems.use_gems(include=["adaptive_max_pool2d_out"]):
-        result, result_indices = torch.ops.aten.adaptive_max_pool2d.out(
-            inp, (3, 4), out=actual, indices=actual_indices
-        )
-
-    assert result is actual
-    assert result_indices is actual_indices
-    torch.testing.assert_close(actual, expected)
-    torch.testing.assert_close(actual_indices, expected_indices)
+@pytest.mark.adaptive_max_pool2d
+def test_adaptive_max_pool2d_nan_and_tie_indices():
+    inp = torch.tensor(
+        [[[[float("nan"), float("nan"), 3.0, 3.0]]]],
+        device=flag_gems.device,
+        dtype=torch.float32,
+    )
+    expected, expected_indices = torch.ops.aten.adaptive_max_pool2d(
+        utils.to_reference(inp), (1, 1)
+    )
+    with flag_gems.use_gems():
+        actual, actual_indices = torch.ops.aten.adaptive_max_pool2d(inp, (1, 1))
+    utils.gems_assert_close(actual, expected, torch.float32, equal_nan=True)
+    utils.gems_assert_equal(actual_indices, expected_indices)
