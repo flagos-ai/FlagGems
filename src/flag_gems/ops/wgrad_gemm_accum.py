@@ -122,24 +122,7 @@ def _is_transpose_contiguous_2d(t: torch.Tensor) -> bool:
     )
 
 
-def _is_row_major_padded_2d(t: torch.Tensor) -> bool:
-    """True if ``t`` is row-major with padded leading stride.
-
-    Accepts layouts like ``pad[:, :cols]`` where ``stride(-1)==1`` and
-    ``stride(0)>=cols``. This is a regular strided 2D layout that can be used
-    as ``torch.addmm(..., out=t)`` without a densify+copy roundtrip.
-    """
-    return (
-        t.dim() == 2
-        and (not t.is_contiguous())
-        and t.stride(1) == 1
-        and t.stride(0) >= t.size(1)
-    )
-
-
-def _check_main_grad_contiguity(
-    main_grad: torch.Tensor, *, allow_row_major_padded_fastpath: bool = False
-) -> None:
+def _check_main_grad_contiguity(main_grad: torch.Tensor) -> None:
     """Raise or warn when ``main_grad`` layout is not strict-contiguous.
 
     ``REQUIRE_CONTIGUOUS=1`` rejects every non-``is_contiguous()`` tensor
@@ -158,8 +141,6 @@ def _check_main_grad_contiguity(
             "for Apex-like speed)"
         )
     if _is_transpose_contiguous_2d(main_grad):
-        return
-    if allow_row_major_padded_fastpath and _is_row_major_padded_2d(main_grad):
         return
     if _WGRAD_NC_MAIN_WARNED:
         return
@@ -494,11 +475,6 @@ def _fused_addmm_cublas(
         main_t = main_grad.transpose(0, 1)
         torch.addmm(main_t, mat2.t(), mat1.t(), beta=1, alpha=1, out=main_t)
         return
-    if _is_row_major_padded_2d(main_grad):
-        # PoC fast path for regular padded row-major NC (e.g. pad[:, :in]):
-        # write directly into strided out, skip densify+copy.
-        torch.addmm(main_grad, mat1, mat2, beta=1, alpha=1, out=main_grad)
-        return
     # General non-contiguous out: densify, compute, copy back.
     weight = main_grad.contiguous()
     torch.addmm(weight, mat1, mat2, beta=1, alpha=1, out=weight)
@@ -524,9 +500,7 @@ def _accum_wgrad(
             "Apex/cublasGemmEx also reject zero M/N"
         )
 
-    _check_main_grad_contiguity(
-        main_grad, allow_row_major_padded_fastpath=(not fp32_accum)
-    )
+    _check_main_grad_contiguity(main_grad)
 
     if fp32_accum:
         # Match Apex fused_weight_gradient path (half/bf16/fp32 -> fp32 C).
@@ -649,9 +623,8 @@ def wgrad_gemm_accum_fp16(
 ) -> None:
     """Accumulate weight gradient into ``main_grad`` using fp16/bf16 storage.
 
-    Non-contiguous ``main_grad``: transpose-contiguous is a fast path. Regular
-    row-major padded 2D layouts (``stride(-1)==1``) also have a direct out path.
-    Other general NC layouts densify then ``copy_`` (same caveat as fp32 path).
+    Non-contiguous ``main_grad``: transpose-contiguous is a fast path; general
+    NC densifies then ``copy_`` (same caveat as the fp32 path).
     """
     logger.debug("GEMS WGRAD_GEMM_ACCUM_FP16")
 
