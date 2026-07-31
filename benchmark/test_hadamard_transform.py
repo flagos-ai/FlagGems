@@ -12,14 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
+import torch.nn.functional as F
 import triton
 from packaging.version import Version
 
 import flag_gems
 
 from . import base, consts
+
+try:
+    from scipy.linalg import hadamard as scipy_hadamard
+except ImportError:  # pragma: no cover
+    scipy_hadamard = None
 
 _TRITON_VERSION = Version(triton.__version__.split("+")[0])
 _SKIP_JOIN_BUG = _TRITON_VERSION < Version("3.5.0")
@@ -37,8 +45,8 @@ _FHT_SHAPES = [
     (1024, 512),
     (1024, 1024),
     (1024, 4096),
-    (1024, 16384),
-    (1024, 32768),
+    # (1024, 16384),  # scipy full matrix too slow; temporarily commented
+    # (1024, 32768),
     (8192, 256),
     (8192, 512),
     (8192, 1024),
@@ -56,20 +64,32 @@ def ht_input_fn(shape, dtype, device):
     yield (torch.randn(batch, dim, dtype=dtype, device=device),)
 
 
-def _hadamard_matrix(n: int, device) -> torch.Tensor:
-    H = torch.tensor([[1.0]], device=device)
-    while H.shape[0] < n:
-        H = torch.cat([torch.cat([H, H], dim=1), torch.cat([H, -H], dim=1)], dim=0)
-    return H
+def _hadamard_transform_ref(x, scale=1.0):
+    """Reference matching tests/test_hadamard_transform.py (Dao scipy matrix multiply)."""
+    if scipy_hadamard is None:
+        raise ImportError("Please install scipy")
+    x_shape = x.shape
+    dim = x.shape[-1]
+    x = x.reshape(-1, dim)
+    log_dim = math.ceil(math.log2(dim)) if dim > 0 else 0
+    dim_padded = 1 << log_dim if dim > 0 else 1
+    if dim != dim_padded:
+        x = F.pad(x, (0, dim_padded - dim))
+    out = F.linear(
+        x,
+        torch.tensor(
+            scipy_hadamard(dim_padded, dtype=float),
+            dtype=x.dtype,
+            device=x.device,
+        ),
+    )
+    out = out * scale
+    return out[..., :dim].reshape(*x_shape)
 
 
 def torch_ht(x):
-    """Reference: Hadamard matrix multiply in fp32."""
-    dim = x.shape[-1]
-    padded = 1 << (dim - 1).bit_length() if dim > 1 else 1
-    H = _hadamard_matrix(padded, x.device).to(x.dtype)
-    x_padded = torch.nn.functional.pad(x, (0, padded - dim))
-    return (x_padded @ H.T)[..., :dim]
+    """Benchmark baseline: same scipy Hadamard ref as correctness tests."""
+    return _hadamard_transform_ref(x)
 
 
 class HadamardBenchmark(base.GenericBenchmark2DOnly):
@@ -78,6 +98,10 @@ class HadamardBenchmark(base.GenericBenchmark2DOnly):
 
     def set_more_shapes(self):
         return []
+
+    def set_shapes(self, *args, **kwargs):
+        # Force _FHT_SHAPES; do not fall back to GenericBenchmark2DOnly in core_shapes.yaml
+        self.shapes = self.DEFAULT_SHAPES
 
 
 @pytest.mark.hadamard_transform
@@ -145,11 +169,11 @@ def ht_mn_input_fn(shape, dtype, device):
 
 
 def torch_ht_mn(x):
-    """Reference: pad to next power of 2 and run standard FHT."""
+    """Benchmark baseline: pad to next power of 2, then same scipy ref (not gems)."""
     dim = x.shape[-1]
     padded = 1 << (dim - 1).bit_length()
-    x_padded = torch.nn.functional.pad(x, (0, padded - dim))
-    return flag_gems.hadamard_transform(x_padded)[..., :dim]
+    x_padded = F.pad(x, (0, padded - dim))
+    return _hadamard_transform_ref(x_padded)[..., :dim]
 
 
 def gems_ht_mn(x):

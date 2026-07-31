@@ -19,16 +19,59 @@ import os
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
 
+from ..utils.pointwise_dynamic import pointwise_dynamic
 from .all import reduce_all
 from .any import reduce_any
 from .unique import _unique2
 
 logger = logging.getLogger(__name__)
+
+
+# Scalar fast path: isin(elements, test_elements) with a SINGLE scalar
+# test_element reduces to an elementwise compare (elements == scalar), which is
+# far cheaper than the generic binary-search / comparison kernels. The original
+# override always routed the (tensor, scalar) variant into isin_by_search with
+# N=1 -> full binary-search machinery for a trivial equality -> gems speedup
+# only ~0.1-0.5 (harness/perf_ir_3/ir-isin_tensor_scalar-dev6.log). Reuse the
+# tuned kunlunxin compare config (same as eq/ne) on a pointwise_dynamic kernel.
+# Integer-exact compare (no float32 cast) to preserve isin's exact-match
+# semantics.
+_scalar_config = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    isCloseMemoryAsync=False,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "ALWAYS_BOOL")],
+    config=_scalar_config,
+)
+@triton.jit
+def isin_scalar_eq_func(x, y):
+    return x == y
+
+
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "ALWAYS_BOOL")],
+    config=_scalar_config,
+)
+@triton.jit
+def isin_scalar_ne_func(x, y):
+    return x != y
 
 
 def launch_arg(BLOCK_M, BLOCK_N, N, num_warps):
@@ -297,6 +340,13 @@ def isin(
         in1 = torch.tensor(in1, device=in0.device)
     if in0.numel() == 0 or in1.numel() == 0:
         return torch.zeros_like(in0, dtype=torch.bool)
+    elif in1.numel() == 1:
+        # (tensor, scalar) fast path: isin == elementwise compare with the
+        # single test element. Output shape follows in0.
+        scalar_val = in1.ravel()[0].item()
+        if invert:
+            return isin_scalar_ne_func(in0, scalar_val)
+        return isin_scalar_eq_func(in0, scalar_val)
     elif in0.numel() <= 2048 and in1.numel() <= 2048:
         # Use comparison only for very small sizes where kernel launch overhead dominates
         return isin_by_comparation(in0, in1, invert)

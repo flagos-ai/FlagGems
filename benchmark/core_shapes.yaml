@@ -133,6 +133,15 @@ log10_out:
     - [1024, 65536]
   shape_desc: "(B), M, N"
 
+float_power_:
+  shapes:
+    - [1048576]
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
 gcd:
   shapes:
     - [65536]
@@ -660,6 +669,15 @@ ReshapeAndCacheFlashBenchmark:
     - [21, 4, 80, 16, 10000]
     - [42, 8, 64, 8, 1024]
     - [42, 8, 80, 16, 10000]
+
+FractionalMaxPool2dBenchmark:
+  shapes:
+    - [4, 3, 224, 224]
+    - [16, 64, 56, 56]
+    - [32, 128, 28, 28]
+    - [64, 256, 14, 14]
+    - [128, 512, 7, 7]
+  shape_desc: "N, C, H, W"
 
 pixel_shuffle:
   shapes:

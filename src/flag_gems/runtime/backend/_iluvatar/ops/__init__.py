@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .addmm import addmm, addmm_out
+from .arccosh_ import arccosh_
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .div import div_mode, div_mode_
@@ -23,6 +25,10 @@ from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
 from .repeat import repeat
 from .scatter_add import scatter_add_
+from .special_modified_bessel_k1 import (
+    special_modified_bessel_k1,
+    special_modified_bessel_k1_out,
+)
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
@@ -31,22 +37,26 @@ from .var import var, var_correction, var_dim
 
 __all__ = [
     "_conv_depthwise2d",
-    "conv_transpose1d",
+    "_native_batch_norm_legit_functional",
     "addmm",
     "addmm_out",
+    "arccosh_",
+    "conv_transpose1d",
     "div_mode",
     "div_mode_",
     "hadamard_transform",
     "linear",
     "matmul_bf16",
     "matmul_int8",
+    "mm",
+    "mm_out",
     "repeat",
     "scatter_add_",
+    "special_modified_bessel_k1",
+    "special_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_w",
     "tile",
     "var",
     "var_correction",
     "var_dim",
-    "mm",
-    "mm_out",
 ]
