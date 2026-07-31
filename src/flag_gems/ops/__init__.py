@@ -47,6 +47,12 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._masked_scale import _masked_scale
+from flag_gems.ops._native_batch_norm_legit import (
+    _native_batch_norm_legit,
+    _native_batch_norm_legit_no_stats,
+    _native_batch_norm_legit_no_stats_out,
+    _native_batch_norm_legit_out,
+)
 from flag_gems.ops._native_batch_norm_legit_functional import (
     _native_batch_norm_legit_functional,
 )
@@ -708,7 +714,11 @@ __all__ = [
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
     "_masked_scale",
+    "_native_batch_norm_legit",
     "_native_batch_norm_legit_functional",
+    "_native_batch_norm_legit_no_stats",
+    "_native_batch_norm_legit_no_stats_out",
+    "_native_batch_norm_legit_out",
     "_nested_view_from_buffer_copy",
     "_pdist_backward",
     "_pdist_forward",
