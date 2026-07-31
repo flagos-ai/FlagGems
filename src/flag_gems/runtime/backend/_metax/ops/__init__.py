@@ -1,3 +1,4 @@
+from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
@@ -13,6 +14,8 @@ from .index_put import index_put, index_put_
 from .index_select import index_select
 from .isin import isin
 from .layernorm import layer_norm, layer_norm_backward
+from .linalg_svdvals import linalg_svdvals
+from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import log_softmax, log_softmax_backward
 from .masked_fill import masked_fill, masked_fill_
 from .matmul_bf16 import matmul_bf16
@@ -28,6 +31,9 @@ from .prod import prod, prod_dim
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
 from .sigmoid import sigmoid
+from .special_shifted_chebyshev_polynomial_w import (
+    special_shifted_chebyshev_polynomial_w,
+)
 from .tanh import tanh
 from .unique import _unique2
 from .upsample_nearest2d import upsample_nearest2d
@@ -35,6 +41,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_nested_view_from_buffer_copy",
     "_unique2",
     "addmm",
     "amax",
@@ -55,6 +62,8 @@ __all__ = [
     "isin",
     "layer_norm",
     "layer_norm_backward",
+    "linalg_svdvals",
+    "log_sigmoid_forward",
     "log_softmax",
     "log_softmax_backward",
     "matmul_bf16",
@@ -75,6 +84,7 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "resolve_conj",
     "sigmoid",
+    "special_shifted_chebyshev_polynomial_w",
     "tanh",
     "upsample_nearest2d",
     "zeros",

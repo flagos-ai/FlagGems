@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -178,9 +192,9 @@ def torch_quantize_and_insert_k_cache(
     encoded_scale = exponent + 127.0
     encoded_scale = torch.clamp(encoded_scale, min=0.0, max=255.0).to(torch.uint8)
     scale_range = torch.arange(NUM_QUANT_BLOCKS, dtype=torch.int64, device=k.device)
-    k_cache[
-        block_id[:, None], scale_off[:, None] + scale_range[None, :]
-    ] = encoded_scale
+    k_cache[block_id[:, None], scale_off[:, None] + scale_range[None, :]] = (
+        encoded_scale
+    )
     k_cache[block_id, scale_pad_off] = 0
 
 

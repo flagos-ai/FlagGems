@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 from numbers import Number
 
@@ -10,6 +24,10 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger(__name__)
+
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
 
 
 def mul_get_configs():
@@ -559,7 +577,9 @@ def mul_broadcast_func(a, b, out=None):
 
     device = _select_device(a, b)
     if device.type != "cuda":
-        return torch.mul(a, b, out=out) if out is not None else torch.mul(a, b)
+        if out is not None:
+            return torch.ops.aten.mul.out.redispatch(_FALLBACK_KEYSET, a, b, out=out)
+        return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)
 
     dtype = _result_dtype(a, b)
 
@@ -702,7 +722,9 @@ def _launch_complex_generic(
 def mul_complex_broadcast_func(a, b, out=None):
     device = _select_device(a, b)
     if device.type != "cuda":
-        return torch.mul(a, b, out=out) if out is not None else torch.mul(a, b)
+        if out is not None:
+            return torch.ops.aten.mul.out.redispatch(_FALLBACK_KEYSET, a, b, out=out)
+        return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)
 
     dtype = _result_dtype(a, b)
     ar, ai = _complex_parts(a, device=device, complex_dtype=dtype)
