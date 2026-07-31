@@ -3991,6 +3991,37 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: hardtanh
+    description: |
+      An activation function that clips input values to lie within a fixed range
+      [min_val, max_val], leaving values inside the range unchanged.
+    for:
+      - hardtanh
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
+  - id: hardtanh_out
+    description: |
+      A variant of `hardtanh` that supports an output tensor to receive the result.
+    for:
+      - hardtanh.out
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.0'
   - id: hc_head_fused_kernel
     description: |
       The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).
