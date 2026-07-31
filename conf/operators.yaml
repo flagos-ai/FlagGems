@@ -4006,7 +4006,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      - beta: '5.0'
+      - alpha: '5.4'
   - id: hardtanh_out
     description: |
       A variant of `hardtanh` that supports an output tensor to receive the result.
@@ -4021,7 +4021,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      - beta: '5.0'
+      - alpha: '5.4'
   - id: hc_head_fused_kernel
     description: |
       The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).
