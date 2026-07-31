@@ -15,15 +15,10 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
 @pytest.mark.hardtanh
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
 def test_hardtanh():
     bench = base.UnaryPointwiseBenchmark(
         op_name="hardtanh",
@@ -34,9 +29,6 @@ def test_hardtanh():
 
 
 @pytest.mark.hardtanh_out
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
 def test_hardtanh_out():
     bench = base.UnaryPointwiseOutBenchmark(
         op_name="hardtanh_out",
