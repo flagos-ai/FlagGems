@@ -33,8 +33,6 @@ from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-from .ops.meshgrid import meshgrid
-
 try:
     from flag_gems._version import version as __version__
 except ImportError:
@@ -562,6 +560,7 @@ _FULL_CONFIG = (
     ("mm", mm),
     ("mm.out", mm_out),
     ("mode", mode),
+    ("meshgrid", meshgrid),
     ("mse_loss", mse_loss),
     ("mse_loss_backward", mse_loss_backward),
     ("mul.Tensor", mul),
@@ -1033,5 +1032,4 @@ __all__ = [
     "flagtune",
     "only_enable",
     "use_gems",
-    "meshgrid",
 ]

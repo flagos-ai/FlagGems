@@ -367,6 +367,7 @@ from flag_gems.ops.max_unpool2d import max_unpool2d
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
+from flag_gems.ops.meshgrid import meshgrid
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mish import mish, mish_
@@ -635,8 +636,6 @@ from flag_gems.ops.xlogy import (
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
-
-from .meshgrid import meshgrid
 
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
@@ -1093,6 +1092,7 @@ __all__ = [
     "multiply_",
     "mv",
     "mvlgamma_",
+    "meshgrid",
     "nan_to_num",
     "nanmedian",
     "nanmedian_dim",
@@ -1374,5 +1374,4 @@ __all__ = [
     "zero_out",
     "zeros",
     "zeros_like",
-    "meshgrid",
 ]
