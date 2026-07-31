@@ -1,7 +1,14 @@
 [
   {
     "backend": "ascend-cann850",
-    "runner_label": "ascend",
+    "runner_label": "cann850",
+    "label": "vendor/Ascend",
+    "gpu_check": "tools/gpu_check_ascend.sh",
+    "enabled": true
+  },
+  {
+    "backend": "ascend-cann900",
+    "runner_label": "cann9",
     "label": "vendor/Ascend",
     "gpu_check": "tools/gpu_check_ascend.sh",
     "enabled": true
