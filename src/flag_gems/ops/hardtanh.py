@@ -34,9 +34,13 @@ def hardtanh_kernel(
     mask = offsets < n_elements
 
     x = tl.load(x_ptr + offsets, mask=mask)
-    xf = x.to(tl.float32)
-    y = tl.minimum(tl.maximum(xf, min_val), max_val)
-    y = y.to(x.dtype)
+    # hardtanh is a pure clamp with no precision-losing arithmetic, so operate in
+    # the input dtype directly; upcasting fp16/bf16 to float32 only wastes
+    # registers/bandwidth (cf. relu, which also stays native).
+    y = tl.minimum(tl.maximum(x, min_val), max_val)
+    # tl.minimum/tl.maximum drop NaN (IEEE minNum/maxNum), but PyTorch hardtanh
+    # propagates NaN. Restore that: x != x is True only for NaN.
+    y = tl.where(x != x, x, y)
 
     tl.store(out_ptr + offsets, y, mask=mask)
 
