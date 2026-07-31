@@ -21,14 +21,14 @@ from flag_gems.utils.device_info import get_device_capability
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-# try:
-#     from transformer_engine.pytorch.cpp_extensions.gemm import (
-#         general_gemm as te_general_gemm,
-#     )
+try:
+    from transformer_engine.pytorch.cpp_extensions.gemm import (
+        general_gemm as te_general_gemm,
+    )
 
-#     TE_AVAILABLE = True
-# except ImportError:
-TE_AVAILABLE = False
+    TE_AVAILABLE = True
+except ImportError:
+    TE_AVAILABLE = False
 
 if QUICK_MODE:
     SHAPES = [
