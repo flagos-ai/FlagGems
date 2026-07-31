@@ -12,7 +12,7 @@ pytestmark = pytest.mark.filterwarnings(
 LINALG_SVD_SHAPES = [(8, 8), (16, 16), (32, 32), (64, 64)]
 
 
-class UnderscoreLinalgSvdBenchmark(base.Benchmark):
+class LinalgSvdPrivateBenchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "(*B), M, N"
 
     def set_shapes(self, shape_file_path=None):
@@ -25,9 +25,9 @@ class UnderscoreLinalgSvdBenchmark(base.Benchmark):
 
 
 @pytest.mark.underscore_linalg_svd
-def test_underscore_linalg_svd():
-    bench = UnderscoreLinalgSvdBenchmark(
-        op_name="underscore_linalg_svd",
+def test__linalg_svd():
+    bench = LinalgSvdPrivateBenchmark(
+        op_name="_linalg_svd",
         # torch.linalg.svd decomposes into aten::_linalg_svd internally.
         torch_op=torch.linalg.svd,
         # The Triton SVD kernels only support float32 CUDA matrices.

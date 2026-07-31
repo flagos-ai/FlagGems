@@ -46,6 +46,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
+from flag_gems.ops._linalg_svd import _linalg_svd
 from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._native_batch_norm_legit_functional import (
     _native_batch_norm_legit_functional,
@@ -631,7 +632,6 @@ from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.trunc_ import trunc, trunc_
 from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
-from flag_gems.ops.underscore_linalg_svd import underscore_linalg_svd
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
 from flag_gems.ops.uniform import uniform_
@@ -702,6 +702,7 @@ __all__ = [
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
+    "_linalg_svd",
     "_masked_scale",
     "_native_batch_norm_legit_functional",
     "_nested_view_from_buffer_copy",
@@ -1408,7 +1409,6 @@ __all__ = [
     "trunc_",
     "unbind",
     "unbind_copy",
-    "underscore_linalg_svd",
     "unfold_backward",
     "unfold_copy",
     "uniform_",
