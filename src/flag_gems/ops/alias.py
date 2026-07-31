@@ -18,6 +18,6 @@ def alias(self: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: A new tensor view sharing storage with ``self``.
     """
-    logger.debug("GEMS alias")
+    logger.debug("GEMS ALIAS")
     # as_strided with same shape/strides/offset creates an alias view
     return self.as_strided(self.shape, self.stride(), self.storage_offset())
