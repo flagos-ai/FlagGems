@@ -50,6 +50,7 @@ from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._native_batch_norm_legit_functional import (
     _native_batch_norm_legit_functional,
 )
+from flag_gems.ops._nested_view_from_buffer import _nested_view_from_buffer
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
@@ -709,6 +710,7 @@ __all__ = [
     "_linalg_eigvals",
     "_masked_scale",
     "_native_batch_norm_legit_functional",
+    "_nested_view_from_buffer",
     "_nested_view_from_buffer_copy",
     "_pdist_backward",
     "_pdist_forward",
