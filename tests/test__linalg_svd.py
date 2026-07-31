@@ -69,7 +69,7 @@ LINALG_SVD_ORTHONORMAL_SHAPES = [(8, 8), (16, 16), (5, 3), (3, 5), (2, 8, 8)]
 @pytest.mark.underscore_linalg_svd
 @pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
 @pytest.mark.parametrize("shape", LINALG_SVD_SHAPES)
-def test_underscore_linalg_svd_full_matrices(shape, dtype):
+def test__linalg_svd_full_matrices(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
 
@@ -93,7 +93,7 @@ def test_underscore_linalg_svd_full_matrices(shape, dtype):
 @pytest.mark.underscore_linalg_svd
 @pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
 @pytest.mark.parametrize("shape", LINALG_SVD_SHAPES)
-def test_underscore_linalg_svd_reduced(shape, dtype):
+def test__linalg_svd_reduced(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
 
@@ -113,7 +113,7 @@ def test_underscore_linalg_svd_reduced(shape, dtype):
 @pytest.mark.underscore_linalg_svd
 @pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
 @pytest.mark.parametrize("shape", LINALG_SVD_BATCH_SHAPES)
-def test_underscore_linalg_svd_batched(shape, dtype):
+def test__linalg_svd_batched(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
 
@@ -133,7 +133,7 @@ def test_underscore_linalg_svd_batched(shape, dtype):
 @pytest.mark.underscore_linalg_svd
 @pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
 @pytest.mark.parametrize("shape", LINALG_SVD_SHAPES)
-def test_underscore_linalg_svd_compute_uv_false(shape, dtype):
+def test__linalg_svd_compute_uv_false(shape, dtype):
     # torch.linalg.svdvals routes through aten::_linalg_svd with compute_uv
     # False, which materializes only the singular values (U/Vh are empty).
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -150,7 +150,7 @@ def test_underscore_linalg_svd_compute_uv_false(shape, dtype):
 @pytest.mark.underscore_linalg_svd
 @pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
 @pytest.mark.parametrize("shape", LINALG_SVD_ORTHONORMAL_SHAPES)
-def test_underscore_linalg_svd_orthonormal(shape, dtype):
+def test__linalg_svd_orthonormal(shape, dtype):
     # Drive the orthonormality check with a controlled, well-separated spectrum
     # (mirrors the ill-conditioned spectrum test in tests/test_svd.py) so the
     # singular vectors are uniquely determined.

@@ -22,7 +22,7 @@ from flag_gems.ops.svd import svd
 logger = logging.getLogger(__name__)
 
 
-def underscore_linalg_svd(A, full_matrices=False, compute_uv=True, *, driver=None):
+def _linalg_svd(A, full_matrices=False, compute_uv=True, *, driver=None):
     """Triton implementation of ``aten::_linalg_svd``.
 
     Delegates to the hand-written Triton SVD kernels in ``svd.py``.
