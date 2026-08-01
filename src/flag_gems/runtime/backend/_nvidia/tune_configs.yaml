@@ -1799,6 +1799,36 @@ argmin_split_k:
         - 16
         - 32
 
+glu:
+  - META:
+      BLOCK_SIZE: 128
+    num_warps: 2
+    num_stages: 1
+  - META:
+      BLOCK_SIZE: 128
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 2
+    num_stages: 1
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+    num_stages: 1
+
 gated_activation:
   - gen: true
     param_map:
