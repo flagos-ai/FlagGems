@@ -195,3 +195,75 @@ def test_div_complex_int_scalar(shape, complex_dtype):
         res_out = torch.div(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
+
+
+# divide.out with true_divide_out
+# aten::divide.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+@pytest.mark.true_divide_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_divide_out(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = torch.divide(ref_inp1, ref_inp2, out=torch.empty_like(ref_inp1))
+    out = torch.empty_like(inp1)
+    with flag_gems.use_gems():
+        res_out = torch.divide(inp1, inp2, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+# divide.out_mode with div_mode_out, rounding_mode=None reuses true division and
+# supports all float dtypes.
+# aten::divide.out_mode(Tensor self, Tensor other, *, str? rounding_mode,
+#                       Tensor(a!) out) -> Tensor(a!)
+@pytest.mark.div_mode_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_divide_out_mode_none(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = torch.divide(
+        ref_inp1, ref_inp2, rounding_mode=None, out=torch.empty_like(ref_inp1)
+    )
+    out = torch.empty_like(inp1)
+    with flag_gems.use_gems():
+        res_out = torch.divide(inp1, inp2, rounding_mode=None, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+# divide.out_mode with div_mode_out, trunc/floor reuse tl.math.div_rz which only
+# supports float32 (see test_trunc_divide.py); casting would diff from torch.
+# Upcast the reference to float64 as in test_trunc_divide.py so that the CPU
+# reference and the float32 div_rz kernel agree at integer boundaries.
+@pytest.mark.div_mode_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
+def test_divide_out_mode_rounding(shape, dtype, rounding_mode):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1, True)
+    ref_inp2 = utils.to_reference(inp2, True)
+
+    ref_out = torch.divide(
+        ref_inp1,
+        ref_inp2,
+        rounding_mode=rounding_mode,
+        out=torch.empty_like(ref_inp1),
+    )
+    out = torch.empty_like(inp1)
+    with flag_gems.use_gems():
+        res_out = torch.divide(inp1, inp2, rounding_mode=rounding_mode, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

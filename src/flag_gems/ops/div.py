@@ -7,8 +7,18 @@ import triton.language as tl
 from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.pointwise_dynamic import ComplexMode
 from flag_gems.utils.triton_lang_extension import div_rn, div_rz, fmod, trunc
+from flag_gems.utils.codegen_config_utils import CodeGenConfig
 
 logger = logging.getLogger(__name__)
+
+# Optimized config for division: larger tile size for better memory coalescing
+_DIV_CONFIG = CodeGenConfig(
+    max_tile_size=1024,
+    max_grid_size=(65536, 65536, 65536),
+    max_num_warps_per_cta=32,
+    prefer_block_pointer=True,
+    prefer_1d_tile=int(triton.__version__[0]) < 3,
+)
 
 
 @pointwise_dynamic(
@@ -43,19 +53,19 @@ def div_complex_kernel(ar, ai, br, bi):
     return real, imag
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
+@pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")], config=_DIV_CONFIG)
 @triton.jit
 def true_div_func(x, y):
     return x / y
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")], config=_DIV_CONFIG)
 @triton.jit
 def true_div_func_tensor_scalar(x, y):
     return x / y
 
 
-@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
+@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "INT_TO_FLOAT")], config=_DIV_CONFIG)
 @triton.jit
 def true_div_func_scalar_tensor(x, y):
     return x / y
@@ -161,6 +171,27 @@ def trunc_divide(A, B):
     else:
         # Both scalar
         return torch.tensor(A / B)
+
+
+def trunc_divide_out(A, B, out):
+    logger.debug("GEMS TRUNC_DIVIDE OUT")
+    # Integer types: use dedicated int kernels (Triton // is C-style truncation)
+    if isinstance(A, torch.Tensor) and not A.is_floating_point():
+        if isinstance(B, torch.Tensor):
+            return trunc_div_int_func(A, B, out0=out)
+        else:
+            return trunc_div_int_func_tensor_scalar(A, B, out0=out)
+    if isinstance(B, torch.Tensor) and not B.is_floating_point():
+        return trunc_div_int_func_scalar_tensor(A, B, out0=out)
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        return trunc_div_func(A, B, out0=out)
+    elif isinstance(A, torch.Tensor):
+        return trunc_div_func_tensor_scalar(A, B, out0=out)
+    elif isinstance(B, torch.Tensor):
+        return trunc_div_func_scalar_tensor(A, B, out0=out)
+    else:
+        # Both scalar
+        return torch.tensor(A / B) if out is None else out.fill_(A / B)
 
 
 def trunc_divide_(A, B):
@@ -270,6 +301,19 @@ def floor_divide(A, B):
         return torch.tensor(A // B)
 
 
+def floor_divide_out(A, B, out):
+    logger.debug("GEMS FLOOR_DIVIDE OUT")
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        return floor_div_func(A, B, out0=out)
+    elif isinstance(A, torch.Tensor):
+        return floor_div_func_tensor_scalar(A, B, out0=out)
+    elif isinstance(B, torch.Tensor):
+        return floor_div_func_scalar_tensor(A, B, out0=out)
+    else:
+        # Both scalar
+        return torch.tensor(A // B) if out is None else out.fill_(A // B)
+
+
 def floor_divide_(A, B):
     logger.debug("GEMS FLOOR_DIVIDE_")
     if isinstance(B, torch.Tensor):
@@ -299,6 +343,19 @@ def div_mode_(A, B, rounding_mode=None):
         return trunc_divide_(A, B)
     elif rounding_mode == "floor":
         return floor_divide_(A, B)
+    else:
+        msg = f"div expected rounding_mode to be one of None, 'trunc', or 'floor' but found {rounding_mode}."
+        raise ValueError(msg)
+
+
+def div_mode_out(A, B, rounding_mode=None, out=None):
+    logger.debug("GEMS DIV_MODE OUT")
+    if rounding_mode is None:
+        return true_divide_out(A, B, out)
+    elif rounding_mode == "trunc":
+        return trunc_divide_out(A, B, out)
+    elif rounding_mode == "floor":
+        return floor_divide_out(A, B, out)
     else:
         msg = f"div expected rounding_mode to be one of None, 'trunc', or 'floor' but found {rounding_mode}."
         raise ValueError(msg)

@@ -94,6 +94,7 @@ from flag_gems.ops.digamma_ import digamma_
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
+    div_mode_out,
     floor_divide,
     floor_divide_,
     remainder,
@@ -443,6 +444,7 @@ __all__ = [
     "digamma_",
     "div_mode",
     "div_mode_",
+    "div_mode_out",
     "dot",
     "dropout",
     "dropout_backward",

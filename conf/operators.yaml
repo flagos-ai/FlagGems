@@ -1457,6 +1457,19 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - name: div_mode_out
+    description: |
+      A variant of `div_mode()` with an optional `rounding_mode` and an `out` argument.
+    for:
+      - divide.out_mode
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - stable: '2.2'
   - name: dot
     description: Computes the dot product of two 1D tensors.
     for:
@@ -5104,8 +5117,11 @@ ops:
     description: This is an variant of `true_divide()` with an `out` argument.
     for:
       - div.out
+      - divide.out
     labels:
       - aten
+      - pointwise
+      - KernelGen
     kind:
       - Math
     stages:

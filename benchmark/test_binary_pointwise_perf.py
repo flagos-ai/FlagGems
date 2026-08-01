@@ -147,3 +147,38 @@ def test_pow(op_name, torch_op, dtypes):
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
+
+
+class BinaryPointwiseOutBenchmark(BinaryPointwiseBenchmark):
+    """
+    Benchmark for binary pointwise operations with a preallocated ``out`` tensor.
+    """
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp1 = generate_tensor_input(shape, cur_dtype, self.device)
+            inp2 = generate_tensor_input(shape, cur_dtype, self.device)
+            out = torch.empty(shape, dtype=cur_dtype, device=self.device)
+            yield inp1, inp2, {"out": out}
+
+
+# divide.out with true_divide_out
+@pytest.mark.true_divide_out
+def test_divide_out():
+    bench = BinaryPointwiseOutBenchmark(
+        op_name="true_divide_out",
+        torch_op=lambda a, b, out: torch.divide(a, b, out=out),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+# divide.out_mode with div_mode_out
+@pytest.mark.div_mode_out
+def test_divide_out_mode():
+    bench = BinaryPointwiseOutBenchmark(
+        op_name="div_mode_out",
+        torch_op=lambda a, b, out: torch.divide(a, b, rounding_mode=None, out=out),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
