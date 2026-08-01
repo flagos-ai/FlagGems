@@ -38,6 +38,7 @@ from flag_gems.ops.attention import (
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
+    scaled_dot_product_flash_attention,
 )
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.baddbmm import baddbmm
@@ -658,6 +659,7 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "scaled_dot_product_flash_attention",
     "scaled_softmax_backward",
     "scaled_softmax_forward",
     "scatter",

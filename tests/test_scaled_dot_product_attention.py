@@ -347,3 +347,35 @@ def test_scaled_dot_product_attention_nonsquare_qk(
         gems_result = torch_sdpa(q, k, v, scale, is_causal)
 
     utils.gems_assert_close(gems_result, torch_result, dtype)
+
+
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.scaled_dot_product_flash_attention
+@pytest.mark.parametrize(
+    ["batch", "num_head", "q_seq_len", "kv_seq_len"],
+    [(1, 1, 128, 2048), (4, 8, 1024, 128), (4, 8, 17, 1030)],
+)
+@pytest.mark.parametrize("head_size", [64, 128, 256])
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_scaled_dot_product_flash_attention(
+    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
+):
+    device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
+    )
+    scale = float(1.0 / np.sqrt(head_size))
+
+    # reference: the native ATen flash-attention op (outside the gems context).
+    ref_out, ref_lse, *_ = torch.ops.aten._scaled_dot_product_flash_attention(
+        q, k, v, 0.0, is_causal, False, scale=scale
+    )
+
+    with flag_gems.use_gems():
+        gems_out, gems_lse, *_ = torch.ops.aten._scaled_dot_product_flash_attention(
+            q, k, v, 0.0, is_causal, False, scale=scale
+        )
+
+    utils.gems_assert_close(gems_out, ref_out, dtype)
+    utils.gems_assert_close(gems_lse, ref_lse, torch.float)

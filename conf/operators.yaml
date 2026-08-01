@@ -4193,6 +4193,21 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - name: scaled_dot_product_flash_attention
+    description: |
+      The flash-attention forward implementation backing
+      `scaled_dot_product_attention`. Returns the attention output together
+      with the log-sum-exp and the sequence-length / RNG metadata.
+    for:
+      - _scaled_dot_product_flash_attention
+    labels:
+      - aten
+      - Attention
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '2.2'
   - name: scaled_softmax_backward
     description: |
       The backward pass for a scaled softmax function, commonly used in Scaled Dot-Product Attention (SDPA)

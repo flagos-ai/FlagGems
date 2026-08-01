@@ -1174,6 +1174,57 @@ def flash_attention_forward(
     return (out, lse, philox_seed, philox_offset, p)
 
 
+def scaled_dot_product_flash_attention(
+    query,
+    key,
+    value,
+    dropout_p=0.0,
+    is_causal=False,
+    return_debug_mask=False,
+    *,
+    scale=None,
+):
+    logger.debug("GEMS SCALED_DOT_PRODUCT_FLASH_ATTENTION")
+    # query/key/value are (batch, num_head, seq_len, head_dim); the underlying
+    # flash-attention kernel expects (batch, seq_len, num_head, head_dim), so
+    # transpose in and transpose the output back.
+    max_q = query.shape[-2]
+    max_k = key.shape[-2]
+
+    q = query.transpose(1, 2)
+    k = key.transpose(1, 2)
+    v = value.transpose(1, 2)
+
+    out, logsumexp, rng_state, unused, debug_attn_mask = flash_attention_forward(
+        q,
+        k,
+        v,
+        None,
+        None,
+        max_q,
+        max_k,
+        dropout_p,
+        is_causal,
+        return_debug_mask,
+        scale=scale,
+    )
+    out = out.transpose(1, 2)
+
+    # cum_seq_q / cum_seq_k are only populated for the varlen path, which this
+    # (dense) overload does not use, so they are None to match the reference.
+    return (
+        out,
+        logsumexp,
+        None,
+        None,
+        max_q,
+        max_k,
+        rng_state,
+        unused,
+        debug_attn_mask,
+    )
+
+
 # Adapted from https://github.com/vllm-project/flash-attention/blob/main/vllm_flash_attn/flash_attn_interface.py
 def maybe_contiguous(x):
     return x.contiguous() if x is not None and x.stride(-1) != 1 else x

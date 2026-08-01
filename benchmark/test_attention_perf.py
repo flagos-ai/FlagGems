@@ -339,6 +339,42 @@ def test_perf_flash_attention_forward():
     bench.run()
 
 
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="Low Pytorch Version.",
+)
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(flag_gems.device == "cpu", reason="Unsupported in CPU mode")
+@pytest.mark.scaled_dot_product_flash_attention
+@pytest.mark.parametrize("is_causal", [True, False])
+def test_perf_scaled_dot_product_flash_attention(is_causal):
+    # query/key/value are (batch, num_head, seq_len, head_size).
+    def sdpfa_input_fn(shape, dtype, device):
+        query = torch.randn(shape, device=device, dtype=dtype)
+        key = torch.randn(shape, device=device, dtype=dtype)
+        value = torch.randn(shape, device=device, dtype=dtype)
+        yield query, key, value
+
+    def torch_sdpfa(query, key, value):
+        return torch.ops.aten._scaled_dot_product_flash_attention(
+            query, key, value, 0.0, is_causal, False
+        )
+
+    def gems_sdpfa(query, key, value):
+        return flag_gems.ops.scaled_dot_product_flash_attention(
+            query, key, value, 0.0, is_causal, False
+        )
+
+    bench = AttentionBenchmark(
+        op_name="scaled_dot_product_flash_attention",
+        input_fn=sdpfa_input_fn,
+        torch_op=torch_sdpfa,
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.set_gems(gems_sdpfa)
+    bench.run()
+
+
 # @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 # @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scaled_dot_product_attention
