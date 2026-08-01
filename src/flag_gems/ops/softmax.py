@@ -281,30 +281,14 @@ def softmax_backward_kernel_inner(
             offsets += TILE_N
 
 
-def softmax(self, dim, half_to_float=False):
-    logger.debug("GEMS SOFTMAX")
-
-    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
-
-    # special handling for dim = 0 and empty tensor
-    if self.numel() == 0:
-        # empty tensor, return the same shape with 1's
-        out_shape = list(self.shape)
-        out = torch.empty(out_shape, dtype=self.dtype, device=self.device)
-        zero_(out)
-        return out
-
+def _softmax_forward(self, dim, half_to_float, out):
     dim = dim % self.ndim
     M = 1
     N = self.shape[dim]
     for i in range(dim):
         M *= self.shape[i]  # pre_dim
     self = self.contiguous()
-    if half_to_float:
-        dtype = torch.float32
-    else:
-        dtype = self.dtype
-    out = torch.empty_like(self, dtype=dtype)
+    out = out.contiguous()
     K = self.numel() // M // N  # post_dim
 
     with torch_device_fn.device(self.device):
@@ -325,6 +309,47 @@ def softmax(self, dim, half_to_float=False):
                 M,
                 N,
             )
+    return out
+
+
+def softmax(self, dim, half_to_float=False):
+    logger.debug("GEMS SOFTMAX")
+
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+
+    # special handling for dim = 0 and empty tensor
+    if self.numel() == 0:
+        # empty tensor, return the same shape with 1's
+        out_shape = list(self.shape)
+        out = torch.empty(out_shape, dtype=self.dtype, device=self.device)
+        zero_(out)
+        return out
+
+    if half_to_float:
+        dtype = torch.float32
+    else:
+        dtype = self.dtype
+    out = torch.empty_like(self, dtype=dtype)
+    return _softmax_forward(self, dim, half_to_float, out)
+
+
+def softmax_out(self, dim, half_to_float=False, *, out):
+    logger.debug("GEMS SOFTMAX OUT")
+
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+
+    # special handling for empty tensor
+    if self.numel() == 0:
+        zero_(out)
+        return out
+
+    # kernel writes contiguously; copy back if the user's out is non-contiguous
+    if out.is_contiguous():
+        _softmax_forward(self, dim, half_to_float, out)
+    else:
+        buf = torch.empty_like(out, memory_format=torch.contiguous_format)
+        _softmax_forward(self, dim, half_to_float, buf)
+        out.copy_(buf)
     return out
 
 

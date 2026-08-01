@@ -42,6 +42,28 @@ def test_softmax(shape, dtype, dim, neg_inf):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.softmax_out
+@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("neg_inf", [True, False])
+def test_softmax_out(shape, dtype, dim, neg_inf):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if neg_inf:
+        inp = torch.where(inp < 0.0, float("-inf"), inp)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.ops.aten._softmax.out(ref_inp, dim, False, out=ref_out)
+
+    out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._softmax.out(inp, dim, False, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
 @pytest.mark.softmax
 @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

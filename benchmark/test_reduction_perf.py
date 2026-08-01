@@ -134,6 +134,27 @@ def test_softmax_backward():
     bench.run()
 
 
+class SoftmaxOutBenchmark(UnaryReductionBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            out = torch.empty(shape, dtype=cur_dtype, device=self.device)
+            dim = 1 if inp.ndim > 1 else 0
+            yield inp, dim, False, {"out": out}
+
+
+@pytest.mark.softmax_out
+def test_softmax_out():
+    bench = SoftmaxOutBenchmark(
+        op_name="softmax_out",
+        torch_op=lambda inp, dim, half_to_float, out: torch.ops.aten._softmax.out(
+            inp, dim, half_to_float, out=out
+        ),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 def aminmax_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     # Test dim=None (whole tensor reduction)

@@ -4579,6 +4579,18 @@ ops:
       - Reduction
     stages:
       - stable: '3.0'
+  - name: softmax_out
+    description: A variant of `softmax()` that writes the result into an `out` tensor.
+    for:
+      - _softmax.out
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '1.0'
   - name: softplus
     description: Applies element-wise, the function Softplus.
     for:
