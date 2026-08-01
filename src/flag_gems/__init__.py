@@ -35,6 +35,7 @@ _FULL_CONFIG = (
     ("_assert_async", _assert_async),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_flash_attention_forward", flash_attention_forward),
+    ("_flash_attention_forward.quantized", flash_attention_forward_quantized),
     (
         "_functional_sym_constrain_range_for_size",
         _functional_sym_constrain_range_for_size,

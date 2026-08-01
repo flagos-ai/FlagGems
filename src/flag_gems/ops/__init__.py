@@ -33,6 +33,7 @@ from flag_gems.ops.atan2 import atan2, atan2_out
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
+    flash_attention_forward_quantized,
     flash_attn_varlen_func,
     flash_attn_varlen_opt_func,
     scaled_dot_product_attention,
@@ -475,6 +476,7 @@ __all__ = [
     "fill_tensor_",
     "fill_tensor_out",
     "flash_attention_forward",
+    "flash_attention_forward_quantized",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",

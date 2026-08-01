@@ -217,6 +217,76 @@ def test_flash_attention_foward_nonsquare_qk(
     utils.gems_assert_close(gems_lse, torch_lse, torch.float)
 
 
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(not hasattr(torch, "float8_e4m3fn"), reason="FP8 dtype unavailable")
+@pytest.mark.flash_attention_forward_quantized
+@pytest.mark.parametrize(
+    ["batch", "num_head", "q_seq_len", "kv_seq_len"],
+    [(1, 1, 128, 2048), (4, 8, 1024, 128), (4, 8, 17, 1030)],
+)
+@pytest.mark.parametrize("head_size", [64, 128, 256])
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("fp8_dtype", [torch.float8_e4m3fn, torch.float8_e5m2])
+def test_flash_attention_forward_quantized(
+    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, fp8_dtype
+):
+    device = torch_device_fn.current_device()
+    # small magnitude keeps the FP8 quantization well inside the representable
+    # range so the dequantized tensors are a faithful reference.
+    q, k, v = make_input(
+        batch,
+        num_head,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        torch.float16,
+        device,
+    )
+    q_descale = 0.5
+    k_descale = 0.7
+    v_descale = 0.3
+    q_fp8 = (q / q_descale).to(fp8_dtype)
+    k_fp8 = (k / k_descale).to(fp8_dtype)
+    v_fp8 = (v / v_descale).to(fp8_dtype)
+
+    # reference: dequantize with the same descale factors and run the standard
+    # (already-verified) flash-attention kernel, matching the quantized path's math.
+    ref_q = q_fp8.to(torch.float16) * q_descale
+    ref_k = k_fp8.to(torch.float16) * k_descale
+    ref_v = v_fp8.to(torch.float16) * v_descale
+    scale = float(1.0 / np.sqrt(head_size))
+
+    torch_out, torch_lse, _, _, _ = torch_flash_fwd(
+        ref_q, ref_k, ref_v, scale, is_causal
+    )
+
+    td_q = torch.tensor(q_descale, device=device)
+    td_k = torch.tensor(k_descale, device=device)
+    td_v = torch.tensor(v_descale, device=device)
+    gems_out, gems_lse, _, _, _ = flag_gems.ops.flash_attention_forward_quantized(
+        q_fp8.transpose(1, 2),
+        k_fp8.transpose(1, 2),
+        v_fp8.transpose(1, 2),
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        0.0,
+        is_causal,
+        False,
+        td_q,
+        td_k,
+        td_v,
+        scale=scale,
+    )
+
+    utils.gems_assert_close(gems_out, torch_out, torch.float16)
+    if vendor_name == "iluvatar":
+        return
+    utils.gems_assert_close(gems_lse, torch_lse, torch.float)
+
+
 # Adapted from https://github.com/Dao-AILab/flash-attention/blob/main/tests/test_flash_attn.py
 def construct_local_mask(
     seqlen_q,

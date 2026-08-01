@@ -1839,6 +1839,20 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - name: flash_attention_forward_quantized
+    description: |
+      A low-precision (FP8) variant of `flash_attention_forward()` that
+      accepts quantized query/key/value tensors together with their descale
+      factors.
+    for:
+      - _flash_attention_forward.quantized
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
   - name: flash_attn_varlen_func
     description: |
       Compute attention for sequences of variable lengths within a single batch.

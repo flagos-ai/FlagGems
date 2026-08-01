@@ -1174,6 +1174,76 @@ def flash_attention_forward(
     return (out, lse, philox_seed, philox_offset, p)
 
 
+def flash_attention_forward_quantized(
+    query,
+    key,
+    value,
+    cumulative_sequence_length_q,
+    cumulative_sequence_length_k,
+    max_q,
+    max_k,
+    dropout_p,
+    is_causal,
+    return_debug_mask,
+    q_descale=None,
+    k_descale=None,
+    v_descale=None,
+    *,
+    scale=None,
+    softcap=0.0,
+    window_size_left=None,
+    window_size_right=None,
+    seqused_k=None,
+    alibi_slopes=None,
+    disable_splitkv=False,
+):
+    logger.debug("GEMS FLASH_ATTENTION_FORWARD QUANTIZED")
+    # The low-precision (FP8) inputs are dequantized to a compute dtype and then
+    # forwarded to the standard flash-attention kernel. Dequantization is linear
+    # (q = q_fp8 * q_descale), so applying it before the QK^T / PV matmuls yields
+    # the same result as scaling inside the kernel.
+    compute_dtype = torch.float16
+
+    def dequantize(t, descale):
+        if t is None:
+            return t
+        if t.dtype in (
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+            torch.float8_e4m3fnuz,
+            torch.float8_e5m2fnuz,
+        ):
+            t = t.to(compute_dtype)
+            if descale is not None:
+                t = t * descale.to(compute_dtype)
+            return t
+        return t.to(compute_dtype)
+
+    query = dequantize(query, q_descale)
+    key = dequantize(key, k_descale)
+    value = dequantize(value, v_descale)
+
+    return flash_attention_forward(
+        query,
+        key,
+        value,
+        cumulative_sequence_length_q,
+        cumulative_sequence_length_k,
+        max_q,
+        max_k,
+        dropout_p,
+        is_causal,
+        return_debug_mask,
+        scale=scale,
+        softcap=softcap,
+        window_size_left=window_size_left,
+        window_size_right=window_size_right,
+        seqused_k=seqused_k,
+        alibi_slopes=alibi_slopes,
+        disable_splitkv=disable_splitkv,
+    )
+
+
 # Adapted from https://github.com/vllm-project/flash-attention/blob/main/vllm_flash_attn/flash_attn_interface.py
 def maybe_contiguous(x):
     return x.contiguous() if x is not None and x.stride(-1) != 1 else x

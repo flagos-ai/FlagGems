@@ -339,6 +339,112 @@ def test_perf_flash_attention_forward():
     bench.run()
 
 
+def flash_attention_forward_quantized_input_fn(config, dtype, device):
+    (
+        batch,
+        num_head,
+        num_head_k,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        is_causal,
+        dropout_p,
+        return_debug_mask,
+        window_size_left,
+        window_size_right,
+        use_alibi,
+    ) = config
+
+    q = torch.empty(
+        (batch, q_seq_len, num_head, head_size), device=device, dtype=torch.float16
+    ).uniform_(-0.05, 0.05)
+    k = torch.empty(
+        (batch, kv_seq_len, num_head_k, head_size), device=device, dtype=torch.float16
+    ).uniform_(-0.05, 0.05)
+    v = torch.empty(
+        (batch, kv_seq_len, num_head_k, head_size), device=device, dtype=torch.float16
+    ).uniform_(-0.05, 0.05)
+    q_fp8 = q.to(dtype)
+    k_fp8 = k.to(dtype)
+    v_fp8 = v.to(dtype)
+    q_descale = torch.tensor(1.0, device=device)
+    scale = float(1.0 / math.sqrt(head_size))
+
+    yield (
+        q_fp8,
+        k_fp8,
+        v_fp8,
+        q_descale,
+        scale,
+        is_causal,
+        dropout_p,
+        return_debug_mask,
+    )
+
+
+def gems_flash_attention_forward_quantized(
+    q, k, v, descale, scale, is_causal, dropout_p=0.0, return_debug_mask=False
+):
+    return flag_gems.ops.flash_attention_forward_quantized(
+        q,
+        k,
+        v,
+        None,
+        None,
+        q.shape[-3],
+        k.shape[-3],
+        dropout_p,
+        is_causal,
+        return_debug_mask,
+        descale,
+        descale,
+        descale,
+        scale=scale,
+    )
+
+
+def torch_flash_attention_forward_quantized(
+    q, k, v, descale, scale, is_causal, dropout_p=0.0, return_debug_mask=False
+):
+    # Reference speed baseline: dequantize to fp16 then run the standard kernel.
+    d = descale.to(torch.float16)
+    q = q.to(torch.float16) * d
+    k = k.to(torch.float16) * d
+    v = v.to(torch.float16) * d
+    return torch.ops.aten._flash_attention_forward(
+        q,
+        k,
+        v,
+        None,
+        None,
+        q.shape[-3],
+        k.shape[-3],
+        dropout_p,
+        is_causal,
+        return_debug_mask,
+        scale=scale,
+    )
+
+
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="Low Pytorch Version.",
+)
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(flag_gems.device == "cpu", reason="Unsupported in CPU mode")
+@pytest.mark.skipif(not hasattr(torch, "float8_e4m3fn"), reason="FP8 dtype unavailable")
+@pytest.mark.flash_attention_forward_quantized
+def test_perf_flash_attention_forward_quantized():
+    bench = FlashAttentionForwardBenchmark(
+        op_name="flash_attention_forward_quantized",
+        input_fn=flash_attention_forward_quantized_input_fn,
+        torch_op=torch_flash_attention_forward_quantized,
+        dtypes=[torch.float8_e4m3fn, torch.float8_e5m2],
+    )
+    bench.set_gems(gems_flash_attention_forward_quantized)
+    bench.run()
+
+
 # @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 # @pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scaled_dot_product_attention
