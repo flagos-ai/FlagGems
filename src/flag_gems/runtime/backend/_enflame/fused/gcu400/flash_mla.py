@@ -183,7 +183,6 @@ def flash_mla(
     dv,
     causal,
 ):
-    print(f"GEMS FLASH MLA on {device}")
     logger.debug("GEMS_ENFLAME FLASH_MLA")
     assert causal, "causal False not supported"
     assert d > dv, "mla with rope dim should be larger than no rope dim"
