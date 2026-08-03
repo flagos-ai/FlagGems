@@ -316,6 +316,7 @@ from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
+from flag_gems.ops.igamma_ import igamma_
 from flag_gems.ops.igammac_ import igammac_
 from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
@@ -347,6 +348,7 @@ from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_ldl_solve import linalg_ldl_solve
+from flag_gems.ops.linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linalg_svdvals import linalg_svdvals
 from flag_gems.ops.linear import linear
@@ -378,6 +380,7 @@ from flag_gems.ops.logit import logit, logit_out
 from flag_gems.ops.logit_ import logit_
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.logsumexp import logsumexp
+from flag_gems.ops.lstm import lstm
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.lt_ import lt_, lt_scalar_
 from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
@@ -400,7 +403,9 @@ from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
+from flag_gems.ops.miopen_batch_norm_backward import miopen_batch_norm_backward
 from flag_gems.ops.mish import mish, mish_
+from flag_gems.ops.mish_backward import mish_backward
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
@@ -534,8 +539,10 @@ from flag_gems.ops.select_backward import select_backward
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
+from flag_gems.ops.sgn import sgn, sgn_out
 from flag_gems.ops.sgn_ import sgn_
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
+from flag_gems.ops.sign import sign, sign_out
 from flag_gems.ops.signbit import signbit, signbit_out
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
@@ -616,7 +623,7 @@ from flag_gems.ops.squeeze_copy import squeeze_copy
 from flag_gems.ops.stack import stack
 from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
-from flag_gems.ops.subtract_ import subtract_
+from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.svd import svd
 from flag_gems.ops.sym_stride import sym_stride
@@ -1028,6 +1035,7 @@ __all__ = [
     "i0",
     "i0_",
     "i0_out",
+    "igamma_",
     "igammac_",
     "im2col",
     "index",
@@ -1075,6 +1083,8 @@ __all__ = [
     "lift_out",
     "linalg_cholesky",
     "linalg_ldl_solve",
+    "linalg_lu_factor",
+    "linalg_lu_factor_out",
     "linalg_slogdet",
     "linalg_svdvals",
     "linear",
@@ -1121,6 +1131,7 @@ __all__ = [
     "logit_out",
     "logspace",
     "logsumexp",
+    "lstm",
     "lt",
     "lt_",
     "lt_scalar",
@@ -1149,8 +1160,10 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "miopen_batch_norm_backward",
     "mish",
     "mish_",
+    "mish_backward",
     "mm",
     "mm_out",
     "mode",
@@ -1302,10 +1315,14 @@ __all__ = [
     "select_scatter",
     "selu",
     "selu_",
+    "sgn",
     "sgn_",
+    "sgn_out",
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
+    "sign",
+    "sign_out",
     "signbit",
     "signbit_out",
     "silu",
@@ -1386,6 +1403,7 @@ __all__ = [
     "std",
     "sub",
     "sub_",
+    "subtract",
     "subtract_",
     "sum",
     "sum_dim",
