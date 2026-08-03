@@ -18,22 +18,21 @@ import torch
 from . import base, consts
 
 
-@pytest.mark.subtract
-def test_subtract():
-    bench = base.BinaryPointwiseBenchmark(
-        op_name="subtract",
-        torch_op=torch.subtract,
+@pytest.mark.sign
+def test_sign():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="sign",
+        torch_op=torch.sign,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
-@pytest.mark.subtract_
-def test_subtract_():
-    bench = base.BinaryPointwiseBenchmark(
-        op_name="subtract_",
-        torch_op=lambda a, b: a.subtract_(b),
+@pytest.mark.sign_out
+def test_sign_out():
+    bench = base.UnaryPointwiseOutBenchmark(
+        op_name="sign_out",
+        torch_op=torch.sign,
         dtypes=consts.FLOAT_DTYPES,
-        is_inplace=True,
     )
     bench.run()
