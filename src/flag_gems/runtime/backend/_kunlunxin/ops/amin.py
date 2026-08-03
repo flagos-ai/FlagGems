@@ -13,6 +13,9 @@ from ..utils.block_size_utils import get_block_size_1d
 
 logger = logging.getLogger(__name__)
 
+_NATIVE_AMIN = torch.library.get_kernel("aten::amin", "CUDA")
+_CUDA_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
+
 # amin mirrors the kunlunxin amax override. The generic ops/amin.py used a
 # persisted [BLOCK_M, BLOCK_N] accumulator (`_all`) reduced only at the end;
 # combined with the naive_reduction tuner that produced a huge IR dump
@@ -101,6 +104,13 @@ def amin_kernel(
 
 def amin(inp, dim=None, keepdim=False):
     logger.debug("GEMS_KUNLUNXIN AMIN")
+    if isinstance(dim, int):
+        dim = [dim]
+    elif dim is not None:
+        dim = list(dim)
+    if dim is not None and len(dim) > 1:
+        return _NATIVE_AMIN.call_boxed(_CUDA_KEYSET, inp, dim, keepdim)
+
     if dim is None or len(dim) == 0:
         M = inp.numel()
         block_size = get_block_size_1d(M, inp.element_size())
@@ -124,8 +134,6 @@ def amin(inp, dim=None, keepdim=False):
             )  # max block size is 128k, so mid does not requires int64 index
         return out
     else:
-        if isinstance(dim, int):
-            dim = [dim]
         assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
         dtype = inp.dtype
 
