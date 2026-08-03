@@ -52,7 +52,7 @@ def test_accuracy_nested_view_from_buffer(layout, dtype):
     nested_size, nested_strides, offsets_t = _make_metadata(sizes, strides, offsets)
 
     ref_out = torch.ops.aten._nested_view_from_buffer.default(
-        buffer, nested_size, nested_strides, offsets_t
+        utils.to_reference(buffer), nested_size, nested_strides, offsets_t
     )
     with flag_gems.use_gems():
         res_out = flag_gems._nested_view_from_buffer(
@@ -87,9 +87,10 @@ def test_nested_view_from_buffer_matches_slices(dtype):
 
     comps = torch.unbind(out)
     lengths = [s[0] for s in sizes]
+    ref_buffer = utils.to_reference(buffer)
     for i, comp in enumerate(comps):
         start = offsets[i]
-        expected = buffer[start : start + lengths[i]]
+        expected = ref_buffer[start : start + lengths[i]]
         utils.gems_assert_equal(comp, expected)
 
 
