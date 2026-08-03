@@ -7471,7 +7471,7 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: rshift__
+  - id: rshift
     description: Applies a bitwise right shift to an integer tensor with a tensor or scalar shift value.
     for:
       - __rshift__.Scalar

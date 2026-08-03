@@ -33,10 +33,10 @@ class RshiftBenchmark(base.Benchmark):
             yield value, shift
 
 
-@pytest.mark.rshift__
-def test_rshift__():
+@pytest.mark.rshift
+def test_rshift():
     bench = RshiftBenchmark(
-        op_name="rshift__",
+        op_name="rshift",
         torch_op=torch.ops.aten.__rshift__.Tensor,
         dtypes=consts.INT_DTYPES + consts.EXTRA_INT_DTYPES,
     )
