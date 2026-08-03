@@ -4871,6 +4871,30 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: cholesky_solve
+    description: |-
+      Solves a system of linear equations with a symmetric positive-definite matrix
+      using its Cholesky factorization.
+    for:
+      - cholesky_solve
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: cholesky_solve_out
+    description: |-
+      Solves a system of linear equations with a symmetric positive-definite matrix
+      using its Cholesky factorization.
+    for:
+      - cholesky_solve.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linalg_eigvals
     description: Computes the eigenvalues of a square matrix.
     for:
