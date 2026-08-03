@@ -3695,6 +3695,20 @@ ops:
     stages:
       - alpha: '5.0'
       - beta: '5.3'
+  - id: fused_topk_with_score_function_bwd
+    description: |
+      Backward pass for fused top-k with score function. Computes grad_logits from grad_probs
+      using routing_map and intermediate values saved during forward. Supports sigmoid, softmax,
+      and sqrtsoftplus score functions. Compatible with TransformerEngine API.
+    for:
+      - te_fused_topk_with_score_function_bwd
+    labels:
+      - fused
+      - MoE
+    kind:
+      - MoE
+    stages:
+      - alpha: '5.4'
   - id: gather
     description: Gathers values along an axis specified by `dim`.
     for:

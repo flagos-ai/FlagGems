@@ -106,6 +106,9 @@ from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import (
     stage_deepseek_v4_mega_moe_inputs,
 )
 from flag_gems.fused.swiglu import dswiglu, swiglu
+from flag_gems.fused.te_fused_topk_with_score_function_bwd import (
+    te_fused_topk_with_score_function_bwd,
+)
 from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
 from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
 from flag_gems.fused.topk_softmax import topk_softmax
@@ -144,6 +147,7 @@ __all__ = [
     "fp8_fp4_mqa_logits",
     "fp8_fp4_paged_mqa_logits",
     "fused_add_rms_norm",
+    "te_fused_topk_with_score_function_bwd",
     "fused_deepseek_v4_qnorm_rope_kv_rope_insert",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_experts_impl",
