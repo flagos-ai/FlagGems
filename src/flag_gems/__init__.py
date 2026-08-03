@@ -441,6 +441,7 @@ _FULL_CONFIG = (
     ("gt_.Tensor", gt_tensor_),
     ("hardsigmoid", hardsigmoid),
     ("hardsigmoid.out", hardsigmoid_out),
+    ("hardsigmoid_", hardsigmoid_),
     ("hardswish_", hardswish_),
     ("histc", histc),
     ("hstack", hstack),
