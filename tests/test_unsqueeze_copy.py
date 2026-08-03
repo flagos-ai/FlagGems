@@ -25,7 +25,7 @@ def test_unsqueeze_copy(shape, dtype, dim):
     ref_out = torch.ops.aten.unsqueeze_copy(ref_inp, dim)
 
     with flag_gems.use_gems():
-        res_out = flag_gems.unsqueeze_copy(res_inp, dim)
+        res_out = torch.unsqueeze_copy(res_inp, dim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -33,6 +33,7 @@ def test_unsqueeze_copy(shape, dtype, dim):
     assert res_out.data_ptr() != res_inp.data_ptr()
 
 
+@pytest.mark.unsqueeze_copy
 @pytest.mark.parametrize(
     "shape, dim",
     [
@@ -69,7 +70,7 @@ def test_unsqueeze_copy_npu_semantics(shape, dim):
     )
 
     with flag_gems.use_gems():
-        out = flag_gems.unsqueeze_copy(inp, dim)
+        out = torch.unsqueeze_copy(inp, dim)
 
     ref = torch.ops.aten.unsqueeze_copy(inp, dim)
 
@@ -88,3 +89,54 @@ def test_unsqueeze_copy_npu_semantics(shape, dim):
     inp.fill_(0)
 
     assert torch.equal(out, out_clone)
+
+
+@pytest.mark.unsqueeze_copy
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((2, 3), 0),
+        ((2, 3), 1),
+        ((2, 3), -1),
+        ((16, 32, 64), 0),
+        ((16, 32, 64), 2),
+        ((16, 32, 64), -2),
+        ((2, 3, 4, 5), 1),
+        ((2, 3, 4, 5), -2),
+        ((1024, 1024), 1),
+    ],
+)
+def test_unsqueeze_copy_out(shape, dim):
+    inp = torch.randn(
+        shape,
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.empty_like(
+        torch.ops.aten.unsqueeze_copy(ref_inp, dim)
+    )
+
+    out = torch.empty_like(
+        torch.ops.aten.unsqueeze_copy(inp, dim)
+    )
+
+    with flag_gems.use_gems():
+        res = torch.ops.aten.unsqueeze_copy.out(
+            inp,
+            dim,
+            out=out,
+        )
+
+    ref = torch.ops.aten.unsqueeze_copy.out(
+        ref_inp,
+        dim,
+        out=ref_out,
+    )
+
+    utils.gems_assert_close(res, ref, torch.float32)
+
+    # out variant writes into provided output tensor
+    assert res.data_ptr() == out.data_ptr()
