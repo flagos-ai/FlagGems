@@ -8082,6 +8082,34 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: sign
+    description: |
+      Returns a new tensor with the sign of the elements of input.
+      For real numbers: 1 if x > 0, -1 if x < 0, 0 if x == 0, 0 if x is NaN.
+      Complex dtypes are not supported (use torch.sgn instead).
+    for:
+      - sign
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: sign_out
+    description: |
+      Out-variant of sign. Writes the element-wise sign to the `out` tensor.
+    for:
+      - sign.out
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: signbit
     description: Tests if each element of `input` has its sign bit set or not.
     for:

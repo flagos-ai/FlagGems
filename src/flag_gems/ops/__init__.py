@@ -537,6 +537,7 @@ from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
 from flag_gems.ops.sgn_ import sgn_
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
+from flag_gems.ops.sign import sign, sign_out
 from flag_gems.ops.signbit import signbit, signbit_out
 from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
@@ -1309,6 +1310,8 @@ __all__ = [
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
+    "sign",
+    "sign_out",
     "signbit",
     "signbit_out",
     "silu",

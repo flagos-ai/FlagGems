@@ -745,6 +745,8 @@ _FULL_CONFIG = (
     ("sigmoid", sigmoid),
     ("sigmoid_", sigmoid_),
     ("sigmoid_backward", sigmoid_backward),
+    ("sign", sign),
+    ("sign.out", sign_out),
     ("signbit", signbit),
     ("signbit.out", signbit_out),
     ("silu", silu),
