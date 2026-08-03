@@ -465,6 +465,8 @@ _FULL_CONFIG = (
     ("hardswish_", hardswish_),
     ("histc", histc),
     ("hstack", hstack),
+    ("huber_loss", huber_loss),
+    ("huber_loss.out", huber_loss_out),
     ("hypot", hypot),
     ("i0", i0),
     ("i0.out", i0_out),

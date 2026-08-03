@@ -313,6 +313,7 @@ from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardswish_ import hardswish_
 from flag_gems.ops.histc import histc
 from flag_gems.ops.hstack import hstack
+from flag_gems.ops.huber_loss import huber_loss, huber_loss_out
 from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
@@ -1030,6 +1031,8 @@ __all__ = [
     "hardswish_",
     "histc",
     "hstack",
+    "huber_loss",
+    "huber_loss_out",
     "hypot",
     "hypot_out",
     "i0",
