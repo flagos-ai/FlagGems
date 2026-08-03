@@ -21,7 +21,7 @@ def chunk(A: torch.Tensor, chunks: int, dim: int = 0) -> List[torch.Tensor]:
     Returns:
         List[torch.Tensor]: List of tensor chunks (views of the original).
     """
-    logger.debug("GEMS chunk")
+    logger.debug("GEMS CHUNK")
 
     # Handle negative dim
     if dim < 0:
