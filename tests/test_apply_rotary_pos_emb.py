@@ -152,3 +152,64 @@ def test_apply_rotary_pos_emb(
 
     utils.gems_assert_close(q_embed_out, q_embed_ref, dtype)
     utils.gems_assert_close(k_embed_out, k_embed_ref, dtype)
+
+
+@pytest.mark.apply_rotary_pos_emb
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("q_heads,k_heads", [(8, 2), (1, 1)])
+@pytest.mark.parametrize(
+    "rotary_interleaved,has_pos_id", [(False, False), (True, True)]
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_apply_rotary_pos_emb_inplace(
+    dtype, q_heads, k_heads, rotary_interleaved, has_pos_id
+):
+    batch_size = 2
+    head_dim = 96
+    max_seq_len = 64
+    cos, sin = _get_rope_cos_sin(max_seq_len, head_dim, dtype, device=flag_gems.device)
+
+    # Both token counts map to the same tuning bucket. This also checks that a
+    # cached kernel still launches the exact grid required by the current input.
+    for seq_len in (17, 31):
+        q = torch.randn(
+            (batch_size, seq_len, q_heads, head_dim),
+            dtype=dtype,
+            device=flag_gems.device,
+        )
+        k = torch.randn(
+            (batch_size, seq_len, k_heads, head_dim),
+            dtype=dtype,
+            device=flag_gems.device,
+        )
+        position_ids = torch.randint(
+            0, max_seq_len, (batch_size, seq_len), device=flag_gems.device
+        )
+
+        q_embed_ref, k_embed_ref = _torch_apply_rotary_pos_emb(
+            q=utils.to_reference(q, True),
+            k=utils.to_reference(k, True),
+            cos=utils.to_reference(cos, True),
+            sin=utils.to_reference(sin, True),
+            position_ids=utils.to_reference(position_ids) if has_pos_id else None,
+            rotary_interleaved=rotary_interleaved,
+        )
+        q_data_ptr = q.data_ptr()
+        k_data_ptr = k.data_ptr()
+
+        q_embed_out, k_embed_out = flag_gems.apply_rotary_pos_emb(
+            q=q,
+            k=k,
+            cos=cos,
+            sin=sin,
+            position_ids=position_ids if has_pos_id else None,
+            rotary_interleaved=rotary_interleaved,
+            inplace=True,
+        )
+
+        assert q_embed_out.data_ptr() == q_data_ptr
+        assert k_embed_out.data_ptr() == k_data_ptr
+        utils.gems_assert_close(q_embed_out, q_embed_ref, dtype)
+        utils.gems_assert_close(k_embed_out, k_embed_ref, dtype)
