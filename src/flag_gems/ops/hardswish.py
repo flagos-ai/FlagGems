@@ -36,7 +36,7 @@ def hardswish_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     # hardswish(x) = x * relu6(x + 3) / 6 = x * min(max(x + 3, 0), 6) / 6
     xf = x.to(tl.float32)
     inner = tl.minimum(tl.maximum(xf + 3.0, 0.0), 6.0)
-    y = xf * inner / 6.0
+    y = xf * inner * (1.0 / 6.0)
     y = y.to(x.dtype)
 
     tl.store(out_ptr + offsets, y, mask=mask)
