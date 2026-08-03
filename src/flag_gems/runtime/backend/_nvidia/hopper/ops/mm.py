@@ -657,13 +657,20 @@ def mm_kernel_splitk(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     SPLIT_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
 ):
     pid = tl.program_id(0)
     pid_k = tl.program_id(1)
 
+    grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
-    pid_m = pid // grid_n
-    pid_n = pid % grid_n
+
+    # re-order program ID for better L2 performance
+    width = GROUP_M * grid_n
+    group_id = pid // width
+    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+    pid_m = group_id * GROUP_M + (pid % group_size)
+    pid_n = (pid % width) // group_size
 
     offset_am = pid_m * BLOCK_M
     offset_bn = pid_n * BLOCK_N
@@ -696,7 +703,7 @@ def mm_kernel_splitk(
     offs_cn = offset_bn + tl.arange(0, BLOCK_N)
     c_ptrs = C + offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn
     mask = (offs_cm < M)[:, None] & (offs_cn < N)[None, :]
-    tl.atomic_add(c_ptrs, acc, mask=mask)
+    tl.atomic_add(c_ptrs, acc, mask=mask, sem="relaxed")
 
 
 def splitk_mm(a, b, c, M, N, K, op_name="mm"):
