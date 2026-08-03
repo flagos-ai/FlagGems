@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -523,14 +537,15 @@ def mha_varlan_fwd(
 
         # We have to forego parameter autotuning and particularly fix BLOCK_N
         # to avoid breaking a kv block onto multiple cache pages.
+        # BLOCK_M/N are selected dynamically by mha_varlen_heur_block_m/n
+        # based on params.seqlen_q (post-swap for decode = q_groups=8).
         cfg = runtime.get_heuristic_config("mha_varlen_fwd")
         cfg_params = {
-            "BLOCK_M": cfg["BLOCK_M"](args),
-            "BLOCK_N": cfg["BLOCK_N"](args),
+            "BLOCK_M": cfg["BLOCK_M"](params),
+            "BLOCK_N": cfg["BLOCK_N"](params),
             "num_warps": cfg["num_warps"](args),
             "num_stages": cfg["num_stages"](args),
         }
-        # BLOCK_M, BLOCK_N, num_warps, num_stages = 128, 32, 4, 3
         assert (
             block_size % cfg_params["BLOCK_N"] == 0
         ), f"block_size must be divisible by {cfg_params['BLOCK_N']}."
