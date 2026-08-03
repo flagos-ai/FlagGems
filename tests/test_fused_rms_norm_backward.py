@@ -30,6 +30,10 @@ from . import accuracy_utils as utils
     "output_mask", [(True, True), (True, False), (False, True), (False, False)]
 )
 def test_fused_rms_norm_backward(shape, normalized_shape, dtype, output_mask):
+    # aten._fused_rms_norm_backward has no CPU backend registration, so the
+    # CPU reference path (--ref=cpu) cannot compute the expected result.
+    if utils.TO_CPU:
+        pytest.skip("aten._fused_rms_norm_backward is not implemented on CPU")
     inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
     weight = torch.randn(normalized_shape, device=flag_gems.device, dtype=dtype)
     grad = torch.randn_like(inp)
@@ -59,6 +63,10 @@ def test_fused_rms_norm_backward(shape, normalized_shape, dtype, output_mask):
 
 @pytest.mark.fused_rms_norm_backward
 def test_fused_rms_norm_backward_without_weight():
+    # aten._fused_rms_norm_backward has no CPU backend registration, so the
+    # CPU reference path (--ref=cpu) cannot compute the expected result.
+    if utils.TO_CPU:
+        pytest.skip("aten._fused_rms_norm_backward is not implemented on CPU")
     inp = torch.randn((3, 8), device=flag_gems.device)
     grad = torch.randn_like(inp)
     rstd = torch.rsqrt(inp.pow(2).mean(dim=-1) + 1e-5)
