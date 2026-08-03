@@ -2,7 +2,6 @@ import logging
 
 import torch
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -12,8 +11,7 @@ def _normalize_dim(dim, ndim):
 
     if dim < 0 or dim > ndim:
         raise IndexError(
-            f"Dimension out of range "
-            f"(expected in [{-ndim-1}, {ndim}], got {dim})"
+            f"Dimension out of range " f"(expected in [{-ndim-1}, {ndim}], got {dim})"
         )
 
     return dim
@@ -59,9 +57,7 @@ def unsqueeze_copy_out(
         out.resize_(tuple(view.shape))
 
     if out.dtype != x.dtype:
-        raise RuntimeError(
-            "unsqueeze_copy_out: input and output dtype must match."
-        )
+        raise RuntimeError("unsqueeze_copy_out: input and output dtype must match.")
 
     if out.device != x.device:
         raise RuntimeError(
