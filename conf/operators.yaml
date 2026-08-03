@@ -3989,7 +3989,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      - beta: '5.0'
+      - alpha: '5.4'
   - id: hardswish_
     description: |
       Applies the Hard Swish activation function, commonly used in models like MobileNetV3
