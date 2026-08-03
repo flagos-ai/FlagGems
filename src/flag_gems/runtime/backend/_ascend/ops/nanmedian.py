@@ -25,9 +25,6 @@ logger = logging.getLogger(__name__)
 _ASCEND_FLOAT_SELECT_DTYPES = (torch.float16, torch.float32)
 _ASCEND_HISTOGRAM_SELECT_DTYPES = (torch.int8, torch.uint8)
 _ASCEND_BYTE_HISTOGRAM_SELECT_DTYPES = (torch.int16, torch.int32)
-_ASCEND_SPLIT_BYTE_RADIX_DTYPES = (
-    _ASCEND_HISTOGRAM_SELECT_DTYPES + _ASCEND_BYTE_HISTOGRAM_SELECT_DTYPES
-)
 _ASCEND_INTEGER_DTYPES = (
     torch.int8,
     torch.uint8,
@@ -43,10 +40,6 @@ _ASCEND_FLAT_SEARCH_FANOUT = 16
 _ASCEND_FLAT_SEARCH_FANOUT_BITS = 4
 _ASCEND_TOPK_FUSED_MAX_N = 4096
 _ASCEND_TOPK_SHORT_N = 128
-# CANN vector stores require 32-byte-aligned int32 scratch rows.
-_ASCEND_INDEX_SCRATCH_STRIDE = 8
-_ASCEND_SPLIT_BYTE_RADIX_MIN_N = 8192
-_ASCEND_RADIX_MAX_N = torch.iinfo(torch.int32).max
 _TORCH_VERSION = version.parse(torch.__version__.split("+", 1)[0])
 _TRITON_VERSION = version.parse(triton.__version__.split("+", 1)[0])
 _ASCEND_910B2C = torch.npu.get_device_name().startswith("Ascend910B2C")
@@ -178,69 +171,6 @@ def nanmedian_ascend_histogram_reduce_kernel(
 
 @libentry()
 @triton.jit
-def nanmedian_ascend_split_integer_find_index_kernel(
-    inp,
-    state,
-    partial_indices,
-    M,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    SPLITS: tl.constexpr,
-    CHUNKS_PER_SPLIT: tl.constexpr,
-    SCRATCH_STRIDE: tl.constexpr,
-):
-    pid_m = tle.program_id(0)
-    pid_split = tle.program_id(1)
-    offsets = tl.arange(0, BLOCK_N)
-    dtype = inp.dtype.element_ty
-    nbits: tl.constexpr = dtype.primitive_bitwidth
-    utype = tl.dtype(f"uint{nbits}")
-    desired = tl.load(state + pid_m * 3).to(utype)
-    split_start = pid_split * CHUNKS_PER_SPLIT * BLOCK_N
-    result_idx = tl.full((), N, dtype=tl.int32)
-
-    for chunk in tl.range(0, CHUNKS_PER_SPLIT, loop_unroll_factor=1):
-        cols = split_start + chunk * BLOCK_N + offsets
-        cols_i32 = cols.to(tl.int32)
-        mask = cols < N
-        vals = tl.load(inp + pid_m * N + cols, mask=mask, other=0)
-        keys = _to_order_key(vals, mask)
-        local_idx = tl.min(tl.where(mask & (keys == desired), cols_i32, N), axis=0)
-        result_idx = tl.minimum(result_idx, local_idx)
-
-    scratch_base = (pid_m * SPLITS + pid_split) * SCRATCH_STRIDE
-    scratch_lanes = tl.arange(0, SCRATCH_STRIDE)
-    tl.store(
-        partial_indices + scratch_base + scratch_lanes,
-        tl.where(scratch_lanes == 0, result_idx, N),
-    )
-
-
-@libentry()
-@triton.jit
-def nanmedian_ascend_integer_radix_finalize_kernel(
-    inp,
-    partial_indices,
-    out_values,
-    out_indices,
-    M,
-    N: tl.constexpr,
-    SPLITS: tl.constexpr,
-    SCRATCH_STRIDE: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    result_idx = tl.full((), N, dtype=tl.int32)
-    for split in tl.range(0, SPLITS, loop_unroll_factor=1):
-        scratch_base = (pid * SPLITS + split) * SCRATCH_STRIDE
-        result_idx = tl.minimum(result_idx, tl.load(partial_indices + scratch_base))
-
-    result_val = tl.load(inp + pid * N + result_idx)
-    tl.store(out_values + pid, result_val)
-    tl.store(out_indices + pid, result_idx)
-
-
-@libentry()
-@triton.jit
 def nanmedian_ascend_byte_histogram_select_kernel(
     inp,
     out_values,
@@ -353,51 +283,6 @@ def nanmedian_ascend_byte_histogram_count_kernel(
     counts = counts - tl.where(bins == 0, inactive_count, 0)
 
     count_offsets = (pid_m * NUM_CHUNKS + pid_chunk) * HISTOGRAM_BINS + bins
-    tl.store(partial_counts + count_offsets, counts)
-
-
-@libentry()
-@triton.jit
-def nanmedian_ascend_split_byte_histogram_count_kernel(
-    inp,
-    state,
-    partial_counts,
-    M,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    SPLITS: tl.constexpr,
-    CHUNKS_PER_SPLIT: tl.constexpr,
-    HISTOGRAM_BINS: tl.constexpr,
-    DIGIT_POS: tl.constexpr,
-):
-    pid_m = tle.program_id(0)
-    pid_split = tle.program_id(1)
-    offsets = tl.arange(0, BLOCK_N)
-    bins = tl.arange(0, HISTOGRAM_BINS)
-    counts = tl.zeros((HISTOGRAM_BINS,), dtype=tl.int32)
-
-    dtype = inp.dtype.element_ty
-    nbits: tl.constexpr = dtype.primitive_bitwidth
-    utype = tl.dtype(f"uint{nbits}")
-    byte_mask_val = tl.full((), HISTOGRAM_BINS - 1, dtype=utype)
-    state_base = pid_m * 3
-    desired = tl.load(state + state_base + 0).to(utype)
-    desired_mask = tl.load(state + state_base + 1).to(utype)
-    split_start = pid_split * CHUNKS_PER_SPLIT * BLOCK_N
-
-    for chunk in tl.range(0, CHUNKS_PER_SPLIT, loop_unroll_factor=1):
-        cols = split_start + chunk * BLOCK_N + offsets
-        mask = cols < N
-        vals = tl.load(inp + pid_m * N + cols, mask=mask, other=0)
-        keys = _to_order_key(vals, mask)
-        active = mask & ((keys & desired_mask) == desired)
-        digit = ((keys >> DIGIT_POS) & byte_mask_val).to(tl.int32)
-        digit = tl.where(active, digit, 0)
-        chunk_counts = tl.histogram(digit, HISTOGRAM_BINS).to(tl.int32)
-        inactive_count = tl.sum((~active).to(tl.int32), axis=0)
-        counts += chunk_counts - tl.where(bins == 0, inactive_count, 0)
-
-    count_offsets = (pid_m * SPLITS + pid_split) * HISTOGRAM_BINS + bins
     tl.store(partial_counts + count_offsets, counts)
 
 
@@ -817,82 +702,6 @@ def _nanmedian_float_flat_topk(inp, out=None):
     return values
 
 
-def _nanmedian_split_byte_radix_select(inp, M, N, values, indices):
-    block_n = _radix_block_n(inp, N)
-    num_warps = 4 if block_n <= 512 else 8
-    num_chunks = triton.cdiv(N, block_n)
-    splits = min(num_chunks, max(1, triton.cdiv(CORE_NUM, M)))
-    chunks_per_split = triton.cdiv(num_chunks, splits)
-    partial_counts = inp.new_empty(
-        (M, splits, _ASCEND_HISTOGRAM_BINS), dtype=torch.int32
-    )
-    partial_indices = inp.new_empty(
-        (M, splits, _ASCEND_INDEX_SCRATCH_STRIDE), dtype=torch.int32
-    )
-    state = inp.new_empty((M, 3), dtype=torch.int64)
-    nbits = inp.element_size() * 8
-
-    with torch_device_fn.device(inp.device):
-        nanmedian_ascend_byte_histogram_init_kernel[(M,)](
-            state,
-            M,
-            N,
-            num_warps=1,
-            num_stages=1,
-        )
-        for digit_pos in range(nbits - 8, -1, -8):
-            nanmedian_ascend_split_byte_histogram_count_kernel[(M, splits)](
-                inp,
-                state,
-                partial_counts,
-                M,
-                N,
-                block_n,
-                splits,
-                chunks_per_split,
-                _ASCEND_HISTOGRAM_BINS,
-                digit_pos,
-                num_warps=num_warps,
-                num_stages=1,
-            )
-            nanmedian_ascend_byte_histogram_update_kernel[(M,)](
-                inp,
-                partial_counts,
-                state,
-                M,
-                splits,
-                _ASCEND_HISTOGRAM_BINS,
-                digit_pos,
-                num_warps=num_warps,
-                num_stages=1,
-            )
-        nanmedian_ascend_split_integer_find_index_kernel[(M, splits)](
-            inp,
-            state,
-            partial_indices,
-            M,
-            N,
-            block_n,
-            splits,
-            chunks_per_split,
-            _ASCEND_INDEX_SCRATCH_STRIDE,
-            num_warps=num_warps,
-            num_stages=1,
-        )
-        nanmedian_ascend_integer_radix_finalize_kernel[(M,)](
-            inp,
-            partial_indices,
-            values,
-            indices,
-            M,
-            N,
-            splits,
-            _ASCEND_INDEX_SCRATCH_STRIDE,
-            num_warps=1,
-            num_stages=1,
-        )
-
-
 def _nanmedian_histogram_select(inp, M, N, values, indices):
     block_n = _radix_block_n(inp, N)
     num_warps = 4 if block_n <= 512 else 8
@@ -1072,11 +881,6 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
             _nanmedian_float_topk_select(inp, M, N, flat_values, flat_indices)
         else:
             _nanmedian_float_sort_select(inp, M, N, flat_values, flat_indices)
-    elif (
-        inp.dtype in _ASCEND_SPLIT_BYTE_RADIX_DTYPES
-        and _ASCEND_SPLIT_BYTE_RADIX_MIN_N <= N <= _ASCEND_RADIX_MAX_N
-    ):
-        _nanmedian_split_byte_radix_select(inp, M, N, flat_values, flat_indices)
     elif N <= MAX_BLOCK_N and inp.dtype in _ASCEND_SMALL_INTEGER_SORT_DTYPES:
         _nanmedian_integer_sort_select(inp, M, N, flat_values, flat_indices)
     elif inp.dtype in _ASCEND_HISTOGRAM_SELECT_DTYPES and N <= LONG_RADIX_REDUCTION_N:
