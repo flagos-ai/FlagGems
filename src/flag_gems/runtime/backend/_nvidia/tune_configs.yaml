@@ -1267,6 +1267,59 @@ mv:
     stages:
       - 3
       - 4
+nansum_dim:
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 32
+  num_warps: 2
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 64
+  num_warps: 4
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 128
+  num_warps: 4
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 256
+  num_warps: 4
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 512
+  num_warps: 8
+- META:
+    BLOCK_M: 1
+    BLOCK_N: 256
+  num_warps: 4
+- META:
+    BLOCK_M: 1
+    BLOCK_N: 512
+  num_warps: 8
+- META:
+    BLOCK_M: 1
+    BLOCK_N: 1024
+  num_warps: 8
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 256
+  num_warps: 8
+nansum_final_reduce:
+- META:
+    BLOCK_SIZE: 256
+  num_warps: 4
+- META:
+    BLOCK_SIZE: 512
+  num_warps: 8
+- META:
+    BLOCK_SIZE: 1024
+  num_warps: 8
+- META:
+    BLOCK_SIZE: 2048
+  num_warps: 8
+- META:
+    BLOCK_SIZE: 4096
+  num_warps: 8
 nonzero:
   - gen: true
     param_map:
