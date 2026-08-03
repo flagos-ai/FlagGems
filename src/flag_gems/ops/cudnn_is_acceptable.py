@@ -21,7 +21,7 @@ def cudnn_is_acceptable(self: torch.Tensor) -> bool:
     Returns:
         bool: Whether the tensor is acceptable for cuDNN.
     """
-    logger.debug("GEMS cudnn_is_acceptable")
+    logger.debug("GEMS CUDNN_IS_ACCEPTABLE")
 
     if not self.is_cuda:
         return False
