@@ -4239,6 +4239,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: igamma_
+    description: In-place computation of the regularized lower incomplete gamma function.
+    for:
+      - igamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: igammac_
     description: |
       In-place version of igammac. Computes the regularized upper incomplete gamma function complement.
@@ -4895,6 +4906,28 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_lu_factor
+    description: |
+      Computes a compact representation of the LU factorization with partial pivoting of a matrix.
+    for:
+      - linalg.lu_factor
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_lu_factor_out
+    description: |
+      Out-of-place version of linalg_lu_factor. Supports calling torch.linalg.lu_factor(A, *, pivot=True, out=(LU, pivots)). The out parameter provides pre-allocated output tensors.
+    for:
+      - linalg.lu_factor.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
@@ -5438,6 +5471,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: lstm
+    description: Triton kernel implementation for lstm.
+    for:
+      - aten.lstm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: lt
     description: Computes that `input` is less than `other` element-wise.
     for:
@@ -5865,6 +5909,17 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: miopen_batch_norm_backward
+    description: Triton kernel implementation for miopen_batch_norm_backward.
+    for:
+      - miopen_batch_norm_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: mish
     description: Applies the Mish activation function element-wise.
     for:
@@ -5887,6 +5942,19 @@ ops:
       - KernelGen
       - pointwise
       - Activation
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: mish_backward
+    description: |
+      Computes the gradient of Mish activation with respect to the input.
+    for:
+      - mish_backward
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
     kind:
       - NeuralNetwork
     stages:
@@ -8000,6 +8068,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: sgn
+    description: |
+      Computes the sign of each element in the input tensor, element-wise.
+      This function extends `sign()` to complex tensors.
+    for:
+      - sgn
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: sgn_
     description: |
       Computes the sign of each element in the `self` tensor, element-wise.
@@ -8015,6 +8096,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: sgn_out
+    description: |
+      Writes the element-wise sign of the input tensor to the `out` tensor.
+      This function extends `sign()` to complex tensors.
+    for:
+      - sgn.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: scalar_tensor
     description: |
       Creates a 0-dimensional (scalar) tensor from a Python numeric value.
@@ -8060,6 +8154,34 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: sign
+    description: |
+      Returns a new tensor with the sign of the elements of input.
+      For real numbers: 1 if x > 0, -1 if x < 0, 0 if x == 0, 0 if x is NaN.
+      Complex dtypes are not supported (use torch.sgn instead).
+    for:
+      - sign
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: sign_out
+    description: |
+      Out-variant of sign. Writes the element-wise sign to the `out` tensor.
+    for:
+      - sign.out
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: signbit
     description: Tests if each element of `input` has its sign bit set or not.
     for:
@@ -9090,6 +9212,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: subtract
+    description: Subtracts `other`, scaled by `alpha`, from `input`.
+    for:
+      - subtract.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: subtract_
     description: In-place version of subtract. Subtracts other, scaled by alpha, from input.
     for:
