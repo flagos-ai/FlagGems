@@ -106,6 +106,9 @@ from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import (
     stage_deepseek_v4_mega_moe_inputs,
 )
 from flag_gems.fused.swiglu import dswiglu, swiglu
+from flag_gems.fused.te_fused_topk_with_score_function_fwd import (
+    te_fused_topk_with_score_function_fwd,
+)
 from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
 from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
 from flag_gems.fused.topk_softmax import topk_softmax
@@ -189,6 +192,7 @@ __all__ = [
     "swiglu",
     "top_k_per_row_decode",
     "top_k_per_row_prefill",
+    "te_fused_topk_with_score_function_fwd",
     "topk_softmax",
     "topk_softplus_sqrt",
     "unpack_seq_triton",
