@@ -89,6 +89,7 @@ from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_ou
 from .sort import sort
 from .stack import stack
 from .threshold import threshold, threshold_backward
+from .topk import topk_ascend
 from .triu import triu
 from .unique import _unique2
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
@@ -204,6 +205,7 @@ __all__ = [
     "threshold",
     "threshold_backward",
     "triu",
+    "topk_ascend",
     "upsample_linear1d_backward",
     "upsample_nearest2d",
     "var_mean",
