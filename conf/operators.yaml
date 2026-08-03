@@ -8022,6 +8022,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: sgn
+    description: |
+      Computes the sign of each element in the input tensor, element-wise.
+      This function extends `sign()` to complex tensors.
+    for:
+      - sgn
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: sgn_
     description: |
       Computes the sign of each element in the `self` tensor, element-wise.
@@ -8037,6 +8050,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: sgn_out
+    description: |
+      Writes the element-wise sign of the input tensor to the `out` tensor.
+      This function extends `sign()` to complex tensors.
+    for:
+      - sgn.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: scalar_tensor
     description: |
       Creates a 0-dimensional (scalar) tensor from a Python numeric value.
