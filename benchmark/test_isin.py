@@ -21,7 +21,6 @@ import flag_gems
 
 from . import base, consts, utils
 
-
 # isin internally calls unique/sort which uses kernels that exceed Iluvatar's
 # 1024-thread-per-block limit when input elements >= 2^29. Cap here.
 MAX_ELEMENTS = 2**29
