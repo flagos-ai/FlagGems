@@ -17,11 +17,14 @@ from typing import Optional
 
 import torch
 import triton
+import triton.language as tl
 
 from ..utils.codegen_config_utils import CodeGenConfig
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+_FLOAT8_E8M0FNU = getattr(torch, "float8_e8m0fnu", None)
 
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
@@ -57,6 +60,18 @@ def _copy_kernel(src):
     return src
 
 
+@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def _copy_e8m0_to_float_kernel(src):
+    src_i32 = src.to(tl.int32)
+    # e8m0 stores the float32 exponent directly. Code zero represents 2^-127
+    # and needs the corresponding subnormal encoding; 255 represents NaN.
+    bits = src_i32 << 23
+    bits = tl.where(src_i32 == 0, 1 << 22, bits)
+    bits = tl.where(src_i32 == 255, 0x7FC00000, bits)
+    return bits.to(tl.float32, bitcast=True)
+
+
 def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
     if dst.layout != torch.strided or src.layout != torch.strided:
         return False
@@ -67,7 +82,11 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
     if src.is_complex() or dst.is_complex():
         # Triton on kunlunxin does not support complex dtypes; fall back to PyTorch.
         return False
-    if not src.is_contiguous():
+    # A one-dimensional expanded scalar has stride zero. The pointwise kernel
+    # supports this read, while aten.copy_ may dispatch an unavailable CUDA
+    # kernel on Kunlunxin. Keep other non-contiguous layouts on the fallback.
+    is_expanded_scalar = src.ndim == 1 and src.numel() > 0 and src.stride(0) == 0
+    if not src.is_contiguous() and not is_expanded_scalar:
         return False
     return True
 
@@ -98,6 +117,25 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         raise RuntimeError("ZeroTensors are immutable. Call clone() before copy_.")
     if src._is_zerotensor():
         return dst.zero_()
+
+    src_is_e8m0 = _FLOAT8_E8M0FNU is not None and src.dtype == _FLOAT8_E8M0FNU
+    dst_is_e8m0 = _FLOAT8_E8M0FNU is not None and dst.dtype == _FLOAT8_E8M0FNU
+
+    if src_is_e8m0 and dst_is_e8m0:
+        # Triton cannot bind e8m0 tensors, but same-dtype copy is bitwise.
+        return copy_(dst.view(torch.uint8), src.view(torch.uint8), non_blocking)
+
+    if src_is_e8m0 and dst.dtype == torch.float32:
+        if src.shape != dst.shape:
+            src = src.expand(dst.shape)
+        overload = _copy_e8m0_to_float_kernel.instantiate(src.ndim)
+        overload(src.view(torch.uint8), out0=dst)
+        return dst
+
+    if src_is_e8m0 or dst_is_e8m0:
+        return torch.ops.aten.copy_.default.redispatch(
+            _FALLBACK_KEYSET, dst, src, non_blocking
+        )
 
     if torch._C._is_alias_of(dst, src):
         # Align with PyTorch: if metadata fully matches, this is a no-op.
