@@ -14,17 +14,14 @@
 
 ```
 .devcontainer/
-├── README.md                          # 英文说明
-├── README_CN.md                       # 本文件（中文说明）
+├── Dockerfile                          # 基础镜像与构建依赖
+├── README.md                           # 英文说明文档
+├── README_CN.md                        # 本文档（中文）
 ├── common/
 │   └── scripts/
-│       └── install-flaggems.sh        # 通用安装脚本，读取环境变量
-└── <backend>/
-    ├── devcontainer.json              # VS Code Dev Container 配置
-    ├── Dockerfile                     # 基础镜像 + 构建依赖
-    ├── flaggems.env                   # 后端专属的 CMAKE_ARGS 和环境变量
-    └── scripts/
-        └── install-dev-tools.sh       # 加载 flaggems.env，再调用通用脚本
+│       └── install-flaggems.sh         # 共享安装逻辑脚本
+└── <backend>/                          # 特定后端目录（例如 hygon, nvidia-cuda12.8 等）
+    └── devcontainer.json               # VS Code Dev Container 配置文件
 ```
 
 ## 快速开始

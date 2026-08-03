@@ -16,17 +16,14 @@ When you open this repo in VS Code, it will prompt you to select a configuration
 
 ```
 .devcontainer/
-├── README.md                          # this file
-├── README_CN.md                       # Chinese version
+├── Dockerfile                          # base image + build dependencies
+├── README.md                           # this file
+├── README_CN.md                        # Chinese version
 ├── common/
 │   └── scripts/
-│       └── install-flaggems.sh        # shared install logic, consumes env vars
-└── <backend>/
-    ├── devcontainer.json              # VS Code Dev Container config
-    ├── Dockerfile                     # base image + build dependencies
-    ├── flaggems.env                   # backend-specific CMAKE_ARGS and env vars
-    └── scripts/
-        └── install-dev-tools.sh       # sources flaggems.env, then calls the common script
+│       └── install-flaggems.sh         # shared install logic
+└── <backend>/                          # backend folder (e.g., hygon, nvidia-cuda12.8, etc.)
+    └── devcontainer.json               # VS Code Dev Container config
 ```
 
 ## Quick Start
