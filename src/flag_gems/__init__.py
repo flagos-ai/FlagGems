@@ -587,6 +587,7 @@ _FULL_CONFIG = (
     ("min", min),
     ("min.dim", min_dim),
     ("minimum", minimum),
+    ("miopen_batch_norm_backward", miopen_batch_norm_backward),
     ("mish", mish),
     ("mish_", mish_),
     ("mish_backward", mish_backward),
