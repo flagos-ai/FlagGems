@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import os
 from typing import Optional, Tuple
 
@@ -783,13 +769,24 @@ if HAS_TLE_FLASHMLA_SPARSE:
                 layout=None,
                 scope=tle.gpu.smem,
             )
-            sS0_smem = sK0_tail_smem
-        else:
+            # alias: sS0 reuses sK0_tail memory [safe — no reader depends on this region]
             sS0_smem = tle.gpu.alloc(
                 [1, BH, BK],
                 dtype=kv.dtype.element_ty,
                 layout=None,
                 scope=tle.gpu.smem,
+                alias=sK0_tail_smem,
+                alias_offset_bytes=0,
+            )
+        else:
+            # alias: sS0 reuses sK0 memory [safe — only overlaps cols 0-63, sK0_r reads cols 256-511]
+            sS0_smem = tle.gpu.alloc(
+                [1, BH, BK],
+                dtype=kv.dtype.element_ty,
+                layout=None,
+                scope=tle.gpu.smem,
+                alias=sK0_smem,
+                alias_offset_bytes=0,
             )
         is_kv_valid_smem = tle.gpu.alloc(
             [1, PAIR_BLOCKS, BK],
