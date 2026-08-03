@@ -224,6 +224,7 @@ from flag_gems.ops.div import (
     true_divide_,
     true_divide_out,
 )
+from flag_gems.ops.divide_out import divide_out
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.elu import elu, elu_, elu_backward
@@ -915,6 +916,7 @@ __all__ = [
     "digamma_",
     "div_mode",
     "div_mode_",
+    "divide_out",
     "dot",
     "dropout",
     "dropout_backward",
