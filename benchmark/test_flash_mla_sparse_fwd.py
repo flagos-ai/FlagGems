@@ -96,11 +96,51 @@ class FlashmlaSparseBenchmark(base.Benchmark):
             # Small-sq shapes from FlagTree TLE alias optimization test — these stress
             # shared-memory occupancy where the alias savings are most visible
             + [
-                TestParam(1, 1024, 128, h_q=64, d_qk=576, have_attn_sink=True, have_topk_length=True),
-                TestParam(1, 1024, 128, h_q=128, d_qk=512, have_attn_sink=True, have_topk_length=True),
-                TestParam(62, 1521, 384, h_q=64, d_qk=576, have_attn_sink=True, have_topk_length=True),
-                TestParam(1, 1024, 128, h_q=128, d_qk=576, have_attn_sink=True, have_topk_length=True),
-                TestParam(32, 2048, 128, h_q=64, d_qk=576, have_attn_sink=True, have_topk_length=True),
+                TestParam(
+                    1,
+                    1024,
+                    128,
+                    h_q=64,
+                    d_qk=576,
+                    have_attn_sink=True,
+                    have_topk_length=True,
+                ),
+                TestParam(
+                    1,
+                    1024,
+                    128,
+                    h_q=128,
+                    d_qk=512,
+                    have_attn_sink=True,
+                    have_topk_length=True,
+                ),
+                TestParam(
+                    62,
+                    1521,
+                    384,
+                    h_q=64,
+                    d_qk=576,
+                    have_attn_sink=True,
+                    have_topk_length=True,
+                ),
+                TestParam(
+                    1,
+                    1024,
+                    128,
+                    h_q=128,
+                    d_qk=576,
+                    have_attn_sink=True,
+                    have_topk_length=True,
+                ),
+                TestParam(
+                    32,
+                    2048,
+                    128,
+                    h_q=64,
+                    d_qk=576,
+                    have_attn_sink=True,
+                    have_topk_length=True,
+                ),
             ]
         )
         return cases
