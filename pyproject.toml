@@ -236,13 +236,3 @@ version_scheme = "no-guess-dev"
 # in other words, don't treat the first index with a matching package
 # as the best one.
 index-strategy = "unsafe-best-match"
-
-[tool.flaggems.no-isolation-deps]
-# Packages that must be installed in the active environment BEFORE running
-# `pip install --no-build-isolation`.  They are intentionally excluded from
-# [build-system].requires (see comment there) but are still required at build
-# time.  Scripts read this table to avoid hard-coding version constraints.
-deps = [
-    "cmake>=3.20,<4.0",
-    "ninja==1.13.0",
-]
