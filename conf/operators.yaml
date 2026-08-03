@@ -3975,6 +3975,37 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: hardswish
+    description: |
+      Applies the Hard Swish activation function, commonly used in models like MobileNetV3
+      to improve accuracy while reducing computational cost compared to traditional Swish.
+    for:
+      - hardswish
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: hardswish_out
+    description: |
+      A variant of `hardswish` that supports an output tensor to receive the result.
+    for:
+      - hardswish.out
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: hardswish_
     description: |
       Applies the Hard Swish activation function, commonly used in models like MobileNetV3
