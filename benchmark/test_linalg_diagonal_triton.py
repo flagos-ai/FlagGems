@@ -1,7 +1,6 @@
 import pytest
 import torch
 
-import flag_gems
 from flag_gems.ops.linalg_diagonal import linalg_diagonal
 
 from . import base, consts, utils
@@ -28,6 +27,7 @@ def test_linalg_diagonal():
     bench = DiagonalBenchmark(
         op_name="linalg_diagonal",
         torch_op=torch.linalg.diagonal,
+        gems_op=linalg_diagonal,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
