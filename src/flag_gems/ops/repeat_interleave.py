@@ -95,7 +95,7 @@ def repeat_interleave_tensor_kernel(
         tl.store(out_ptr + offsets_k, pid, mask=mask_k)
 
 
-def repeat_interleave_tensor(repeats, *, output_size=None):
+def repeat_interleave_tensor(repeats, *, output_size=None, inp_dtype=None):
     logger.debug("GEMS REPEAT_INTERLEAVE_TENSOR")
 
     assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
@@ -105,7 +105,8 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
 
     assert result_size >= 0, "repeats can not be negative"
 
-    out = torch.empty((result_size,), dtype=repeats.dtype, device=repeats.device)
+    dtype = inp_dtype if inp_dtype is not None else repeats.dtype
+    out = torch.empty((result_size,), dtype=dtype, device=repeats.device)
     size = repeats.size(0)
 
     grid = (size,)
