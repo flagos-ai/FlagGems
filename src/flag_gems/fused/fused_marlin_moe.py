@@ -150,6 +150,12 @@ def _routed_tokens_per_expert(M: int, E: int, top_k: int) -> int:
     return max(M * max(top_k, 1) // max(E, 1), 1)
 
 
+def _block_m_padding_ratio(M: int, E: int, top_k: int, block_m: int) -> float:
+    """Padded rows issued (E * block_m, since every expert pads on its own) over
+    the rows actually routed."""
+    return E * block_m / max(M * max(top_k, 1), 1)
+
+
 def _select_block_m(
     M: int,
     E: int,
@@ -225,6 +231,14 @@ def _select_mxfp4_kernel_policy(
     routed_tokens_per_expert = _routed_tokens_per_expert(M, E, top_k)
     block_m = _select_block_m(M, E, top_k, 8 if swap_ab else 16)
     if is_reduced_hopper and M <= 128 and routed_tokens_per_expert < 8:
+        block_m = 8
+    elif (
+        is_reduced_hopper
+        and block_m == 16
+        # Halve the tile once padding costs more than the smaller tile's lower
+        # per-CTA efficiency; the crossover sits around 2.5x.
+        and _block_m_padding_ratio(M, E, top_k, block_m) >= 2.5
+    ):
         block_m = 8
 
     if is_reduced_hopper and M == 1:
