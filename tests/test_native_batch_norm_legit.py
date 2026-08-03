@@ -112,7 +112,7 @@ def test__native_batch_norm_legit(shape, dtype, affine, training):
 def test__native_batch_norm_legit_no_stats(shape, dtype, affine):
     channels = shape[1]
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    original = inp.clone()
+    original = utils.to_reference(inp)
     weight = (
         torch.randn(channels, dtype=dtype, device=flag_gems.device) if affine else None
     )
@@ -156,22 +156,30 @@ def test__native_batch_norm_legit_out(overload, dtype):
     weight = torch.randn(channels, dtype=dtype, device=flag_gems.device)
     bias = torch.randn(channels, dtype=dtype, device=flag_gems.device)
 
-    ref_out = torch.empty_like(inp)
-    ref_mean = torch.empty(channels, dtype=stats_dtype, device=flag_gems.device)
+    # Upcast the reference path so the (optionally CPU) reference is computed
+    # in high precision, matching how the other tests build their baseline.
+    ref_inp = utils.to_reference(inp, True)
+    ref_weight = utils.to_reference(weight, True)
+    ref_bias = utils.to_reference(bias, True)
+
+    # The reference out tensors follow the (upcast) reference dtype/device; the
+    # gems-side out tensors stay in the native dtype on flag_gems.device.
+    ref_out = torch.empty_like(ref_inp)
+    ref_mean = torch.empty(channels, dtype=ref_inp.dtype, device=ref_inp.device)
     ref_invstd = torch.empty_like(ref_mean)
     out = torch.empty_like(inp)
-    save_mean = torch.empty_like(ref_mean)
-    save_invstd = torch.empty_like(ref_mean)
+    save_mean = torch.empty(channels, dtype=stats_dtype, device=flag_gems.device)
+    save_invstd = torch.empty_like(save_mean)
 
     if overload == "out":
         running_mean = torch.zeros(channels, dtype=dtype, device=flag_gems.device)
         running_var = torch.ones(channels, dtype=dtype, device=flag_gems.device)
-        ref_running_mean = running_mean.clone()
-        ref_running_var = running_var.clone()
+        ref_running_mean = utils.to_reference(running_mean.clone(), True)
+        ref_running_var = utils.to_reference(running_var.clone(), True)
         ref = torch.ops.aten._native_batch_norm_legit.out(
-            inp,
-            weight,
-            bias,
+            ref_inp,
+            ref_weight,
+            ref_bias,
             ref_running_mean,
             ref_running_var,
             True,
@@ -199,9 +207,9 @@ def test__native_batch_norm_legit_out(overload, dtype):
         utils.gems_assert_close(running_var, ref_running_var, dtype)
     else:
         ref = torch.ops.aten._native_batch_norm_legit.no_stats_out(
-            inp,
-            weight,
-            bias,
+            ref_inp,
+            ref_weight,
+            ref_bias,
             True,
             0.1,
             1e-5,
@@ -225,6 +233,10 @@ def test__native_batch_norm_legit_out(overload, dtype):
     assert result[0].data_ptr() == out.data_ptr()
     assert result[1].data_ptr() == save_mean.data_ptr()
     assert result[2].data_ptr() == save_invstd.data_ptr()
-    for actual, expected in zip(result, ref):
-        assert actual.dtype == expected.dtype
+    # gems-side output dtypes: out follows the input dtype, stats stay float32.
+    # The reference may be upcast, so compare dtypes against the gems-side
+    # expectation rather than the (possibly upcast) reference dtype.
+    expected_dtypes = (dtype, stats_dtype, stats_dtype)
+    for actual, expected, expected_dtype in zip(result, ref, expected_dtypes):
+        assert actual.dtype == expected_dtype
         utils.gems_assert_close(actual.to(dtype), expected.to(dtype), dtype)
