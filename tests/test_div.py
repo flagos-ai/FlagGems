@@ -607,3 +607,98 @@ def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
     res_out = flag_gems.ops.div_mode_(inp, scalar, rounding_mode=rounding_mode)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+# divide.out
+@pytest.mark.divide_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_divide_out_tensor_tensor(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = torch.empty_like(ref_inp1)
+    torch.divide(ref_inp1, ref_inp2, out=ref_out)
+
+    out = torch.empty_like(inp1)
+    with flag_gems.use_gems():
+        res_out = torch.divide(inp1, inp2, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.divide_out
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_divide_out_tensor_scalar(shape, scalar, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.divide(ref_inp, scalar, out=ref_out)
+
+    out = torch.empty_like(inp)
+    with flag_gems.use_gems():
+        res_out = torch.divide(inp, scalar, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
+
+
+# divide.out_mode
+@pytest.mark.divide_out_mode
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("rounding_mode", ROUNDING_MODES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_divide_out_mode_tensor(shape, rounding_mode, dtype):
+    if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
+        pytest.skip(
+            "trunc_divide uses libdevice.div_rn which only supports float32/float64"
+        )
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = inp2 + torch.sign(inp2).clamp(min=1) * 1e-3
+    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp2 = utils.to_reference(inp2, False)
+
+    ref_out = torch.empty_like(ref_inp1)
+    torch.divide(ref_inp1, ref_inp2, rounding_mode=rounding_mode, out=ref_out)
+
+    out = torch.empty_like(inp1)
+    with flag_gems.use_gems():
+        res_out = torch.divide(inp1, inp2, rounding_mode=rounding_mode, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.divide_out_mode
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+@pytest.mark.parametrize("rounding_mode", ROUNDING_MODES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_divide_out_mode_scalar(shape, scalar, rounding_mode, dtype):
+    if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
+        pytest.skip(
+            "trunc_divide uses libdevice.div_rn which only supports float32/float64"
+        )
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_out = torch.empty_like(ref_inp)
+    if rounding_mode == "trunc" and isinstance(scalar, float):
+        scalar_tensor = torch.tensor(scalar, dtype=dtype, device=flag_gems.device)
+        torch.divide(ref_inp, scalar_tensor, rounding_mode=rounding_mode, out=ref_out)
+    else:
+        torch.divide(ref_inp, scalar, rounding_mode=rounding_mode, out=ref_out)
+
+    out = torch.empty_like(inp)
+    with flag_gems.use_gems():
+        res_out = torch.divide(inp, scalar, rounding_mode=rounding_mode, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)

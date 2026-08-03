@@ -368,6 +368,8 @@ _FULL_CONFIG = (
     ("divide.Scalar_mode", div_mode),
     ("divide.Tensor", true_divide),
     ("divide.Tensor_mode", div_mode),
+    ("divide.out", divide_out),
+    ("divide.out_mode", divide_out_mode),
     ("divide_.Scalar", true_divide_),
     ("divide_.Scalar_mode", div_mode_),
     ("divide_.Tensor", true_divide_),

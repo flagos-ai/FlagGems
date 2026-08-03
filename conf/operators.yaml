@@ -2522,6 +2522,28 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: divide_out
+    description: Out variant of divide.
+    for:
+      - divide.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      alpha: '5.4'
+  - id: divide_out_mode
+    description: Out variant of divide with rounding_mode.
+    for:
+      - divide.out_mode
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      alpha: '5.4'
   - id: dot
     description: Computes the dot product of two 1D tensors.
     for:
