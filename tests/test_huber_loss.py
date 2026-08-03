@@ -51,7 +51,7 @@ def test_huber_loss_out(shape, dtype, reduction, delta):
     ref_target = utils.to_reference(target, True)
 
     out_shape = shape if reduction == 0 else ()
-    ref_out = torch.empty(out_shape, dtype=ref_inp.dtype, device=flag_gems.device)
+    ref_out = torch.empty(out_shape, dtype=ref_inp.dtype, device=ref_inp.device)
     torch.ops.aten.huber_loss.out(
         ref_inp, ref_target, reduction, float(delta), out=ref_out
     )
