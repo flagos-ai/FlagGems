@@ -35,6 +35,9 @@ def hardsigmoid_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     xf = x.to(tl.float32)
     y = xf * (1.0 / 6.0) + 0.5
     y = tl.minimum(tl.maximum(y, 0.0), 1.0)
+    # PyTorch clamp propagates NaN, but tl.maximum/tl.minimum drop it; restore
+    # NaN where the input was NaN so the result matches aten.hardsigmoid_.
+    y = tl.where(xf != xf, xf, y)
     y = y.to(x.dtype)
 
     tl.store(x_ptr + offsets, y, mask=mask)
