@@ -21,7 +21,7 @@ def unfold(self: torch.Tensor, dimension: int, size: int, step: int) -> torch.Te
     Returns:
         torch.Tensor: A view of the input with an additional dimension.
     """
-    logger.debug("GEMS unfold")
+    logger.debug("GEMS UNFOLD")
 
     ndim = self.ndim
     if ndim == 0:
