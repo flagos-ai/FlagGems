@@ -314,6 +314,7 @@ from flag_gems.ops.hardswish_ import hardswish_
 from flag_gems.ops.histc import histc
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
+from flag_gems.ops.hypot_ import hypot_
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
 from flag_gems.ops.igamma_ import igamma_
@@ -1031,6 +1032,7 @@ __all__ = [
     "histc",
     "hstack",
     "hypot",
+    "hypot_",
     "hypot_out",
     "i0",
     "i0_",
