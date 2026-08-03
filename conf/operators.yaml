@@ -7825,6 +7825,21 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.4'
+  - id: scaled_dot_product_flash_attention
+    description: |
+      Forward pass of scaled dot product flash attention.
+      Wraps flash_attention_forward to expose the _scaled_dot_product_flash_attention ATen overload.
+      Returns a 9-tuple: (output, logsumexp, cum_seq_q, cum_seq_k, max_q, max_k, rng_state, unused, debug_attn_mask).
+    for:
+      - _scaled_dot_product_flash_attention
+    labels:
+      - aten
+      - NoCPU
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: scaled_dot_product_flash_attention_backward
     description: |
       Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
