@@ -25,7 +25,7 @@ from . import base, consts, utils
 
 class VStackBenchmark(base.Benchmark):
     # vstack creates 3 inputs + 1 output. Cap to avoid OOM / invalid-argument errors.
-    MAX_ELEMENTS = 2**28
+    MAX_ELEMENTS = 2**29
 
     def __init__(self, *args, input_fn, **kwargs):
         super().__init__(*args, **kwargs)

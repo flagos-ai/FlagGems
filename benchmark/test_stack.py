@@ -25,7 +25,7 @@ from . import base, consts, utils
 
 class StackBenchmark(base.Benchmark):
     # stack creates 3 inputs + 1 output (4x one input's memory). Cap to avoid OOM.
-    MAX_ELEMENTS = 2**28
+    MAX_ELEMENTS = 2**29
 
     def __init__(self, *args, input_fn, **kwargs):
         super().__init__(*args, **kwargs)

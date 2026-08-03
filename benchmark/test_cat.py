@@ -36,7 +36,7 @@ def _input_fn(shape, dtype, device):
 class CatBenchmark(base.Benchmark):
     # cat creates 3 inputs + 1 output (3x one input along cat dim),
     # totalling ~6x one input's memory. Cap elements to avoid OOM.
-    MAX_ELEMENTS = 2**28
+    MAX_ELEMENTS = 2**29
 
     def __init__(self, *args, **kwargs):
         self.input_fn = kwargs.pop("input_fn", _input_fn)

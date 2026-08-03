@@ -25,7 +25,7 @@ from . import base, consts, utils
 class UniqueBenchmark(base.GenericBenchmark2DOnly):
     """Filter out overly large shapes that trigger 'out of resource: threads'."""
 
-    MAX_ELEMENTS = 2**28  # 256M elements
+    MAX_ELEMENTS = 2**29  # 512M elements
 
     def set_more_shapes(self):
         shapes = super().set_more_shapes()
