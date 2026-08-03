@@ -20,7 +20,7 @@ def flatten(self: torch.Tensor, start_dim: int = 0, end_dim: int = -1) -> torch.
         torch.Tensor: A view (or reshape) of the input with the specified
             dimensions flattened into one.
     """
-    logger.debug("GEMS flatten")
+    logger.debug("GEMS FLATTEN")
 
     ndim = self.ndim
 
