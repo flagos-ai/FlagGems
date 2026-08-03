@@ -251,6 +251,7 @@ from flag_gems.ops.fill import (
     fill_tensor_out,
 )
 from flag_gems.ops.fix import fix
+from flag_gems.ops.fix_ import fix_
 from flag_gems.ops.flash_attention_backward import (
     efficient_attention_backward,
     flash_attention_backward,
@@ -958,6 +959,7 @@ __all__ = [
     "fill_tensor_",
     "fill_tensor_out",
     "fix",
+    "fix_",
     "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
