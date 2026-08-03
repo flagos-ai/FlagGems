@@ -4902,6 +4902,30 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: cholesky_solve
+    description: |-
+      Solves a system of linear equations with a symmetric positive-definite matrix
+      using its Cholesky factorization.
+    for:
+      - cholesky_solve
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: cholesky_solve_out
+    description: |-
+      Solves a system of linear equations with a symmetric positive-definite matrix
+      using its Cholesky factorization.
+    for:
+      - cholesky_solve.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linalg_eigvals
     description: Computes the eigenvalues of a square matrix.
     for:
@@ -6206,6 +6230,31 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.4'
+  - id: nansum
+    description: |
+      Returns the sum of all elements in the `input` tensor, treating `NaN` values as zero.
+      Supports global reduction and reduction along specified dimensions.
+    for:
+      - nansum
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
+  - id: nansum_out
+    description: |
+      A variant of `nansum()` with the `out` argument.
+    for:
+      - nansum.out
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
   - id: narrow
     description: Pure layout operation (narrow); returns a zero-copy view sharing storage with the input.
     for:
@@ -6463,6 +6512,29 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
+  - id: nonzero_static
+    description: |
+      Returns a fixed-size 2-D int64 tensor containing indices of nonzero elements.
+      Rows beyond the number of nonzero elements are filled with `fill_value`.
+    for:
+      - nonzero_static
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: nonzero_static_out
+    description: |
+      A variant of `nonzero_static` that writes the fixed-size result to `out`.
+    for:
+      - nonzero_static.out
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: norm
     description: |
       Computes the norm of vectors, matrices, and tensors.

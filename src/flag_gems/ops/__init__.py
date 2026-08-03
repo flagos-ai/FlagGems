@@ -172,6 +172,7 @@ from flag_gems.ops.cdist_backward import _cdist_backward
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.channel_shuffle import channel_shuffle
+from flag_gems.ops.cholesky_solve import cholesky_solve, cholesky_solve_out
 from flag_gems.ops.clamp import (
     clamp,
     clamp_,
@@ -423,6 +424,7 @@ from flag_gems.ops.nanmedian import (
     nanmedian_dim_values,
     nanmedian_out,
 )
+from flag_gems.ops.nansum import nansum, nansum_out
 from flag_gems.ops.narrow import narrow
 from flag_gems.ops.narrow_copy import narrow_copy
 from flag_gems.ops.ne import ne, ne_scalar
@@ -440,6 +442,7 @@ from flag_gems.ops.nllloss import (
 )
 from flag_gems.ops.nonzero import nonzero
 from flag_gems.ops.nonzero_numpy import nonzero_numpy
+from flag_gems.ops.nonzero_static import nonzero_static, nonzero_static_out
 from flag_gems.ops.norm import norm, norm_scalar, norm_scalaropt_dim
 from flag_gems.ops.normal import (
     normal_,
@@ -861,6 +864,8 @@ __all__ = [
     "celu",
     "celu_",
     "channel_shuffle",
+    "cholesky_solve",
+    "cholesky_solve_out",
     "clamp",
     "clamp_",
     "clamp_max",
@@ -1183,6 +1188,8 @@ __all__ = [
     "nanmedian_dim",
     "nanmedian_dim_values",
     "nanmedian_out",
+    "nansum",
+    "nansum_out",
     "narrow",
     "narrow_copy",
     "ne",
@@ -1202,6 +1209,8 @@ __all__ = [
     "nll_loss_nd_forward",
     "nonzero",
     "nonzero_numpy",
+    "nonzero_static",
+    "nonzero_static_out",
     "norm",
     "norm_scalar",
     "norm_scalaropt_dim",

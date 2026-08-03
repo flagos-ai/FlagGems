@@ -53,6 +53,7 @@ SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
 registrar = GeneralOpRegistrar
 current_work_registrar = None
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
+CONJUGATE_DISPATCH_KEY = torch._C.DispatchKey.Conjugate.name
 
 
 def torch_ge(v):
@@ -291,6 +292,8 @@ _FULL_CONFIG = (
     ("celu", celu),
     ("celu_", celu_),
     ("channel_shuffle", channel_shuffle),
+    ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
+    ("cholesky_solve.out", cholesky_solve_out, None, (CONJUGATE_DISPATCH_KEY,)),
     ("clamp", clamp),
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),
@@ -612,6 +615,8 @@ _FULL_CONFIG = (
     ("nanmedian.dim", nanmedian_dim),
     ("nanmedian.dim_values", nanmedian_dim_values),
     ("nanmedian.out", nanmedian_out),
+    ("nansum", nansum),
+    ("nansum.out", nansum_out),
     ("narrow", narrow),
     ("narrow_copy", narrow_copy),
     ("native_batch_norm", batch_norm),
@@ -639,6 +644,12 @@ _FULL_CONFIG = (
     ("nll_loss_nd_forward", nll_loss_nd_forward),
     ("nonzero", nonzero),
     ("nonzero_numpy", nonzero_numpy),
+    (
+        "nonzero_static",
+        nonzero_static,
+        lambda: torch_ge("2.1"),
+    ),
+    ("nonzero_static.out", nonzero_static_out, lambda: torch_ge("2.1")),
     ("norm", norm),
     ("norm.Scalar", norm_scalar),
     ("norm.ScalarOpt_dim", norm_scalaropt_dim),
