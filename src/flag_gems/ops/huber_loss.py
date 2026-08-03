@@ -87,6 +87,34 @@ def _reduce_sum_kernel(mid_ptr, out_ptr, mid_size, divisor, BLOCK_MID: tl.conste
     tl.store(out_ptr, tl.sum(vals, axis=0) / divisor)
 
 
+@libentry()
+@triton.jit
+def _huber_loss_fused_kernel(
+    x_ptr, y_ptr, out_ptr, n_elements, delta, divisor, BLOCK_SIZE: tl.constexpr
+):
+    # Single-launch fused reduction for small tensors: one program with a
+    # grid-stride loop consumes the whole input, reduces to a scalar, applies
+    # the mean/sum divisor, and casts to the output dtype in-kernel -- all in
+    # ONE launch with NO intermediate `mid` allocation. This removes the second
+    # kernel launch + mid-array allocation that dominated small-tensor latency
+    # in the two-stage path.
+    acc = tl.zeros((), dtype=tl.float32)
+    for base in range(0, n_elements, BLOCK_SIZE):
+        offsets = base + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        y = tl.load(y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        diff = x - y
+        absdiff = tl.abs(diff)
+        loss_quad = 0.5 * diff * diff
+        loss_linear = delta * (absdiff - 0.5 * delta)
+        loss = tl.where(absdiff <= delta, loss_quad, loss_linear)
+        loss = tl.where(mask, loss, 0.0)
+        acc += tl.sum(loss, axis=0)
+
+    tl.store(out_ptr, acc / divisor)
+
+
 def _normalize_reduction(reduction):
     if isinstance(reduction, str):
         r = reduction.lower()
@@ -115,6 +143,24 @@ def _huber_loss_compute(input, target, reduction, delta, result_dtype):
             )
             return out
 
+        divisor = float(numel) if reduction == 1 else 1.0  # mean vs sum
+        out = torch.empty((), dtype=result_dtype, device=device)
+
+        # Small tensors: the two-stage path is dominated by the fixed cost of a
+        # second kernel launch + the `mid` allocation. A single fused kernel
+        # (one launch, no `mid`) that grid-strides the whole input and writes
+        # the scalar result directly in the output dtype is markedly faster.
+        # The single-block grid-stride loop stays efficient until the input is
+        # large enough that a parallel tree reduction wins -- past FUSED_LIMIT
+        # we switch to the two-stage kernels.
+        FUSED_LIMIT = 1 << 17  # 131,072 elements
+        if numel <= FUSED_LIMIT:
+            block_size = min(1024, triton.next_power_of_2(numel))
+            _huber_loss_fused_kernel[(1, 1, 1)](
+                x_b, y_b, out, numel, float(delta), divisor, BLOCK_SIZE=block_size
+            )
+            return out
+
         # Two-stage tree reduction (mirrors mse_loss): stage 1 fuses the huber
         # computation with a per-block partial sum into `mid`; stage 2 reduces
         # `mid` to a scalar. Avoids the atomic-add serialization bottleneck.
@@ -123,8 +169,6 @@ def _huber_loss_compute(input, target, reduction, delta, result_dtype):
         block_mid = triton.next_power_of_2(mid_size)
 
         mid = torch.empty((mid_size,), dtype=torch.float32, device=device)
-        out = torch.empty((), dtype=result_dtype, device=device)
-        divisor = float(numel) if reduction == 1 else 1.0  # mean vs sum
 
         _huber_loss_reduce_kernel[(mid_size, 1, 1)](
             x_b, y_b, mid, numel, float(delta), BLOCK_SIZE=block_size
