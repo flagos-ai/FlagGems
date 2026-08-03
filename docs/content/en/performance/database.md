@@ -42,7 +42,7 @@ export FLAGGEMS_DB_URL=sqlite:///${DB_PATH}
 ```
 
 If you don't want to maintain or reuse the cached data in your current environment,
-you can choose to use SQLLite as an in-memory database. This can be achieved
+you can choose to use SQLite as an in-memory database. This can be achieved
 by setting the environment variable `FLAGGEMS_DB_URL` as shown below:
 
 ```shell
@@ -55,7 +55,7 @@ When the session ends, the database would be lost.
 ## 2. PostgreSQL
 
 As an embedded database, *SQLite3* doesn't support multi-writers at the same time.
-However, having multiple writers writing performace data is a common use case.
+However, having multiple writers writing performance data is a common use case.
 For this reason, we also support using *PostgreSQL* as the backend database.
 Different from the embedded database, *PostgreSQL* requires an additional setup
 step before being used. You could refer to the

@@ -81,7 +81,7 @@ When the session ends, the database would be lost.
 ## 2. PostgreSQL
 
 As an embedded database, *SQLite3* doesn't support multi-writers at the same time.
-However, having multiple writers writing performace data is a common use case.
+However, having multiple writers writing performance data is a common use case.
 For this reason, we also support using *PostgreSQL* as the backend database.
 Different from the embedded database, *PostgreSQL* requires an additional setup
 step before being used. You could refer to the

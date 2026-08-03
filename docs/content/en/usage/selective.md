@@ -77,7 +77,7 @@ certain operators.
   | `include`      | `List[str]` | Explicitly enable specific operators.  |
   | `exclude`      | `List[str]` | Explicitly disable specific operators. |
 
-  The `include` parameter, when specified, behaves indentically to that of
+  The `include` parameter, when specified, behaves identically to that of
   the `only_enable(include=...)` interface. Similarly, the `exclude` parameter,
   when specified, behaves identically to that of the `enable(unused=...)` interface.
   For example, the following code only enable the *FlagGems* acceleration

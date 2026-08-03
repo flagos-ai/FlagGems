@@ -70,7 +70,7 @@ vendor_info = VendorDescriptor(
 The important properties for `VendorDescriptor` are:
 
 - `vendor_name`: the vendor name at your choice, e.g. `nvidia`;
-- `device_name`: the name for your acclerator device, e.g. `cuda`;
+- `device_name`: the name for your accelerator device, e.g. `cuda`;
 - `device_query_cmd`: the command line that is used to check the hardware devices
   on the node, e.g. `nvidia-smi`.
 - `dispatch_key`: an optional property for registering operators to `torch.library.Library`

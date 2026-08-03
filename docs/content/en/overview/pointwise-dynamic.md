@@ -54,7 +54,7 @@ The principles of our design are:
 
 The result is a decorator `@pointwise_dynamic`.
 It provides a common wrapper for pointwise operator and a mechanism to generate triton kernels
-and corresponding wrappers based on the operation and the input configureations.
+and corresponding wrappers based on the operation and the input configurations.
 
 ## 2. Code generation
 
@@ -102,11 +102,11 @@ and is ready for the computation.
 
 Since pointwise operators shares similar logic at meta data computation,
 which has been implemented as a common function used by all `PointwiseDynamicFunction`s.
-It involes:
+It involves:
 
 - *shape inference*: infer the output shape by broadcasting input tensor shape;
 
-- *ouput layout inference*: infer an appropriate layout (stride order) for output tensors if necessary;
+- *output layout inference*: infer an appropriate layout (stride order) for output tensors if necessary;
 
 - *type promotion*: infer output dtypes according to prescribed rules;
 
@@ -116,13 +116,13 @@ It involes:
 
 - *infer the rank of the task-space*.
   This is a factor related to the code generation which depends on the arguments.
-  It also involes trying to reduce the dimension of task-space to `1`
+  It also involves trying to reduce the dimension of task-space to `1`
   when all pre-allocated tensors are dense and non-overlapping and have the same size
   and stride for each dimension.
 
 Pre-allocated output tensors can also be passed into `PointwiseDynamicFunctions`.
 In the cases where there are pre-allocated tensors in output tensors, the shape, layout,
-dtype and device of theses pre-allocated tensors are respected and checked.
+dtype and device of these pre-allocated tensors are respected and checked.
 
 The metadata computation can also be skipped, but when doing so you should ensure that
 the outputs have correct metadata and are pre-allocated, and you have to provide the rank of the task-space.
@@ -155,15 +155,15 @@ def abs_func(x):
 ```
 
 Since the decorated function does not provide enough information for the code generation,
-we supply other necessary information by passing arguemnts to `pointwise_dynamic`.
+we supply other necessary information by passing arguments to `pointwise_dynamic`.
 
 ### 5.2 Tensor/Non-Tensor
 
-By default, `@pointwise_dynamic` treats each arguemnt as tensor, and generates code to load/store them.
+By default, `@pointwise_dynamic` treats each argument as tensor, and generates code to load/store them.
 But it can be configured by passing a list of boolean values to the parameter `is_tensor`
 to indicate whether the corresponding argument is tensor or nor.
 
-For non-tensor arguments, its type can be specfied by passing `dtypes` to the decorator, although not required.
+For non-tensor arguments, its type can be specified by passing `dtypes` to the decorator, although not required.
 For tensor arguments, the corresponding value in `dtypes` is ignored, since its dtype is dynamic
 and Triton can dispatch according to it.
 
@@ -188,7 +188,7 @@ add_func(a, b, 0.2)
 ### 5.3 Output dtypes
 
 For pointwise operators to allocate outputs with correct dtype, `promotion_methods` is required.
-Since the output dtype may be depedent on the input dtypes with some rules,
+Since the output dtype may be dependent on the input dtypes with some rules,
 specifying the rule is more expressive than providing output dtypes directly.
 
 `promotion_methods` is a list of tuples (one per output), each of which consists of

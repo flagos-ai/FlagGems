@@ -40,7 +40,7 @@ in latency-sensitive or high-throughput scenarios.
 To address this, *FlagGems* provides a C++ runtime solution that encapsulates
 the operator's wrapper logic, registration mechanism, and runtime management in C++,
 while still reusing the underlying Triton kernels for the actual computation.
-This approach preseves the kernel-level efficiency from Triton
+This approach preserves the kernel-level efficiency from Triton
 while significantly reducing Python-related overhead, enabling tighter integration
 with low-level CUDA workflows and improving overall inference performance.
 -->

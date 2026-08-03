@@ -30,7 +30,7 @@ to support large model sizes and high-throughput inference.
 
 For **single-node deployments**, the [enablement of FlagGems](/FlagGems/usage/basic/)
 is straightforward. You can import `flag_gems` and invoke `flag_gems.enable()`
-at the beginning of your program or use the context manager when apprpriate.
+at the beginning of your program or use the context manager when appropriate.
 The *FlagGems* acceleration is then enabled without requiring any additional changes
 to your code.
 

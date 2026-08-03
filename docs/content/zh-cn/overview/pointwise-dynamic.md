@@ -181,7 +181,7 @@ and is ready for the computation.
 
 Since pointwise operators shares similar logic at metadata computation,
 which has been implemented as a common function used by all `PointwiseDynamicFunction`s.
-It involes:
+It involves:
 -->
 ## 3. 元数据计算  {#metadata-computation}
 
@@ -191,7 +191,7 @@ It involes:
 <!--
 - *shape inference*: infer the output shape by broadcasting input tensor shape;
 
-- *ouput layout inference*: infer an appropriate layout (stride order) for output tensors if necessary;
+- *output layout inference*: infer an appropriate layout (stride order) for output tensors if necessary;
 
 - *type promotion*: infer output dtypes according to prescribed rules;
 
@@ -201,7 +201,7 @@ It involes:
 
 - *infer the rank of the task-space*.
   This is a factor related to the code generation which depends on the arguments.
-  It also involes trying to reduce the dimension of task-space to `1`
+  It also involves trying to reduce the dimension of task-space to `1`
   when all pre-allocated tensors are dense and non-overlapping and have the same size
   and stride for each dimension.
 -->
@@ -217,7 +217,7 @@ It involes:
 <!--
 Pre-allocated output tensors can also be passed into `PointwiseDynamicFunctions`.
 In the cases where there are pre-allocated tensors in output tensors, the shape, layout,
-dtype and device of theses pre-allocated tensors are respected and checked.
+dtype and device of these pre-allocated tensors are respected and checked.
 
 The metadata computation can also be skipped, but when doing so you should ensure that
 the outputs have correct metadata and are pre-allocated, and you have to provide the rank of the task-space.
@@ -280,7 +280,7 @@ def abs_func(x):
 
 <!--
 Since the decorated function does not provide enough information for the code generation,
-we supply other necessary information by passing arguemnts to `pointwise_dynamic`.
+we supply other necessary information by passing arguments to `pointwise_dynamic`.
 -->
 由于被修饰的函数无法为代码生成提供足够的信息，我们会通过为 `pointwise_dynamic`
 传递参数来提供必要的信息。
@@ -299,7 +299,7 @@ to indicate whether the corresponding argument is tensor or nor.
 标示是否对应的参数是一个张量。
 
 <!--
-For non-tensor arguments, its type can be specfied by passing `dtypes` to the decorator, although not required.
+For non-tensor arguments, its type can be specified by passing `dtypes` to the decorator, although not required.
 For tensor arguments, the corresponding value in `dtypes` is ignored, since its dtype is dynamic
 and Triton can dispatch according to it.
 -->
@@ -333,7 +333,7 @@ add_func(a, b, 0.2)
 ### 5.3 Output dtypes
 
 For pointwise operators to allocate outputs with correct dtype, `promotion_methods` is required.
-Since the output dtype may be depedent on the input dtypes with some rules,
+Since the output dtype may be dependent on the input dtypes with some rules,
 specifying the rule is more expressive than providing output dtypes directly.
 -->
 ### 5.3 输出数据类型  {#output-dtypes}
@@ -450,7 +450,7 @@ using keyword arguments.
 
 由于 `@pointwise_dynamic` 修饰符会生成封装逻辑，将算子的输出作为参数，
 我们可以用它来实现原地（in-place）计算操作。
-对于所有的 `PointwiseDynamicFunction` 对象，你都可以使用关键字参数（keyword aruments）
+对于所有的 `PointwiseDynamicFunction` 对象，你都可以使用关键字参数（keyword arguments）
 将输出参数传递给它。为了区分输入参数和输出参数，我们遵循一个基本的原则：
 所有输入参数都要使用位置参数（positional arguments）来传递，
 而所有输出参数都要使用关键字参数来传递。
