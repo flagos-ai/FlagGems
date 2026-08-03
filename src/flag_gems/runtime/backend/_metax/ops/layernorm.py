@@ -359,24 +359,8 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     rstd = torch.empty(M, dtype=input.dtype, device=input.device)
 
     with torch_device_fn.device(input.device):
-        if N <= 128:
-            TILE_N = triton.next_power_of_2(N)
-            TILE_M = triton.cdiv(1024, TILE_N)
-            grid = (triton.cdiv(M, TILE_M), 1, 1)
-            layer_norm_persistent_kernel_multiline[grid](
-                input,
-                y,
-                weight,
-                bias,
-                mean,
-                rstd,
-                M,
-                N,
-                eps,
-                TILE_M,
-                TILE_N,
-            )
-        elif N <= 4096:
+        # MetaX lowers the resident one-row layout reliably across this range.
+        if N <= 4096:
             TILE_N = triton.next_power_of_2(N)
             grid = (M, 1, 1)
             layer_norm_persistent_kernel[grid](

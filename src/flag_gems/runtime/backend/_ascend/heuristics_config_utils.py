@@ -194,7 +194,8 @@ def layer_norm_heur_fused_max_resident_n(_args):
 
 
 def layer_norm_heur_fused_tile_elements(_args):
-    return 4096
+    # Bound BLOCK_M * TILE_N to a stable two-dimensional reduction tile.
+    return 2048
 
 
 def layer_norm_heur_fused_max_block_m(_args):
