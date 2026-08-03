@@ -9,10 +9,18 @@ from . import accuracy_utils as utils
 @pytest.mark.unflatten
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_unflatten(shape, dtype):
+@pytest.mark.parametrize("dim", [-1, 0, 1, 2])
+def test_unflatten(shape, dtype, dim):
     """Test unflatten accuracy against PyTorch implementation."""
-    # Choose a dim and sizes based on input shape
-    dim = 0
+    # Normalize negative dim
+    ndim = len(shape)
+    if dim < 0:
+        dim = dim % ndim
+
+    # Skip if dim is out of range
+    if dim >= ndim:
+        pytest.skip(f"dim {dim} out of range for shape {shape}")
+
     dim_size = shape[dim]
 
     # Find a valid factorization for sizes
