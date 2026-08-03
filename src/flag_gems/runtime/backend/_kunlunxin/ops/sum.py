@@ -73,23 +73,30 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, sum_val)
 
 
-def heur_m_block_size(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
-
-
-def heur_n_block_size(args):
-    import builtins
-
-    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+# Row-reduce tile bounds. We accumulate elementwise into a persisted
+# [BLOCK_M, BLOCK_N] tile and reduce ONCE after the loop (reduce-OUTSIDE). This is
+# exact for ALL N: the reduce-INSIDE variant (tl.sum per iteration) is faster in
+# theory but MISCOMPILES on this XPU whenever several full blocks are followed by a
+# partially-masked tail (verified in isolation), so we do not use it.
+#
+# BLOCK_N is capped at 8192 and BLOCK_M is fixed at 128: this bounds the live tile at
+# [128, 8192] (~1M elts, compiles cold in ~3.4s, no IR explosion). The old code
+# scaled BLOCK_M as next_pow2(cdiv(M, 12)) up to 131072, producing tensor<131072x8192>
+# tiles and multi-GB IR dumps. A wide BLOCK_N (up to 8192) is a big win for the
+# small-M / huge-N regime (e.g. [1024, 1048576]: 0.21 -> 0.52 speedup vs BLOCK_N=512)
+# and never hurts the other shapes. See harness/solution/sum_perf_fix.md sweeps.
+_BLOCK_M = 128
+_BLOCK_N_MAX = 8192
+# For small M + huge N, BLOCK_M=128 leaves only a handful of row-programs (e.g.
+# M=1024 -> grid=8) which under-fills the 12 clusters; a smaller BLOCK_M exposes more
+# row-parallelism (M=1024, N=1048576: 0.52 -> 0.71). It is catastrophic for large M
+# (grid over-subscription), so it is gated on M being small.
+_SMALL_M = 4096
+_HUGE_N = 32768
+_SMALL_BLOCK_M = 8
 
 
 @libentry()
-@triton.heuristics(
-    values={
-        "BLOCK_M": heur_m_block_size,
-        "BLOCK_N": heur_n_block_size,
-    },
-)
 @triton.jit
 def sum_kernel(
     inp,
@@ -99,6 +106,8 @@ def sum_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
+    # Reduce-OUTSIDE: elementwise-accumulate into a persisted [BLOCK_M, BLOCK_N] tile,
+    # reduce once after the loop. Exact for all N (see comment above).
     if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
         inp.dtype.element_ty == tl.bfloat16
     ):
@@ -106,22 +115,51 @@ def sum_kernel(
     else:
         cdtype = inp.dtype.element_ty
 
-    # Map the program id to the row of inp it should compute.
-    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp = inp + pid * N
-    out = out + pid
-    row_mask = pid < M
+    pid = ext.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inp = inp + rows * N
+    out = out + rows
+    row_mask = rows < M
 
     _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=cdtype)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
-
+        mask = row_mask and (cols < N)
         a = tl.load(inp + cols, mask, other=0).to(cdtype)
         _sum += a
-    sum = tl.sum(_sum, axis=1)[:, None]
-    tl.store(out, sum, row_mask)
+    tl.store(out, tl.sum(_sum, axis=1)[:, None], row_mask)
+
+
+def _launch_sum_dim(inp, out, M, N):
+    if M == 1:
+        # Degenerate: the whole tensor reduces to a single element. The row-parallel
+        # kernel would launch grid=1 and serialize the entire N-element reduction in
+        # one program (e.g. N=2**28 -> ~1.4s). Route to the two-stage split reduction
+        # (parallel over N), the same machinery the full-tensor sum() uses.
+        block_size = get_block_size_1d(N, inp.element_size())
+        mid_size = triton.cdiv(N, block_size)
+        block_mid = triton.next_power_of_2(mid_size)
+        mid = torch.empty((mid_size,), dtype=out.dtype, device=inp.device)
+        with torch_device_fn.device(inp.device):
+            sum_kernel_1[(mid_size, 1, 1)](
+                inp, mid, N, block_size, buffer_size_limit=2048
+            )
+            if mid_size == 1:
+                out.copy_(mid.reshape(out.shape))
+            else:
+                sum_kernel_2[(1, 1, 1)](
+                    mid, out, mid_size, block_mid, buffer_size_limit=2048
+                )
+        return
+
+    block_n = min(triton.next_power_of_2(N), _BLOCK_N_MAX)
+    if M <= _SMALL_M and N >= _HUGE_N:
+        block_m = _SMALL_BLOCK_M
+    else:
+        block_m = _BLOCK_M
+    grid = (triton.cdiv(M, block_m),)
+    with torch_device_fn.device(inp.device):
+        sum_kernel[grid](inp, out, M, N, block_m, block_n, buffer_size_limit=2048)
 
 
 def sum(inp, *, dtype=None):
@@ -209,9 +247,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
     out = torch.empty(shape, dtype=dtype, device=inp.device)
 
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    with torch_device_fn.device(inp.device):
-        sum_kernel[grid](inp, out, M, N, buffer_size_limit=2048)
+    _launch_sum_dim(inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out
@@ -253,9 +289,7 @@ def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
     M = inp.numel() // N
 
     out.resize_(shape)
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    with torch_device_fn.device(inp.device):
-        sum_kernel[grid](inp, out, M, N, buffer_size_limit=2048)
+    _launch_sum_dim(inp, out, M, N)
     if not keepdim:
         # Compute squeezed shape and resize in-place
         out_shape = [s for i, s in enumerate(shape) if i not in dim]
