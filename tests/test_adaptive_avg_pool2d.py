@@ -63,3 +63,35 @@ def test_accuracy_adaptive_avg_pool2d_forward(shape, output_size, dtype):
     res_out = flag_gems.adaptive_avg_pool2d(inp, output_size)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+# Regression for issue #4915: adaptive_avg_pool2d gave wrong values on
+# non-divisible ratios because the pooling window end was computed with floor
+# instead of PyTorch's ceil, and the fixed tile-loop bound was one row/col too
+# small. Every config above uses exactly divisible sizes, so this path was
+# never covered. Windows here stay well under the kernel's 64-element loop cap.
+ADAPTIVE_AVGPOOL2D_NON_DIVISIBLE_CONFIGS = [
+    ((2, 3, 10, 10), (3, 3)),  # 10/3, the issue's primary repro
+    ((2, 8, 5, 5), (3, 3)),  # 5/3, exercises a q+2 window
+    ((2, 3, 10, 10), (3, 7)),  # H and W non-divisible by different ratios
+    ((4, 3, 7, 9), (3, 4)),  # small, both dims non-divisible
+    ((2, 3, 17, 17), (4, 4)),  # 17/4
+    ((2, 3, 32, 32), (5, 5)),  # 32/5
+    ((1, 4, 224, 224), (13, 13)),  # 224/13, the issue's second repro
+]
+
+
+@pytest.mark.adaptive_avg_pool2d
+@pytest.mark.parametrize("shape, output_size", ADAPTIVE_AVGPOOL2D_NON_DIVISIBLE_CONFIGS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_accuracy_adaptive_avg_pool2d_non_divisible(shape, output_size, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.ops.aten._adaptive_avg_pool2d(ref_inp, output_size)
+    res_out = flag_gems.adaptive_avg_pool2d(inp, output_size)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
