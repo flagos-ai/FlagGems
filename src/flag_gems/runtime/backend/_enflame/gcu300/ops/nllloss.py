@@ -352,6 +352,10 @@ def nll_loss_backward(
 def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):
     logger.debug("GEMS_ENFLAME NLL_LOSS2D_FWD")
     assert self.ndim == 4, "Invalid input ndim"
+    # GCU300 does not support 64-bit data types; target is loaded as data in
+    # the kernel, so downcast int64 targets to int32 before the launch.
+    if target.dtype == torch.int64:
+        target = target.to(torch.int32)
 
     shape = list(target.shape)
     N, C, D1, D2 = self.shape
@@ -409,6 +413,10 @@ def nll_loss2d_backward(
     D = D1 * D2
     grad_output = grad_output.contiguous()
     target = target.contiguous()
+    # GCU300 does not support 64-bit data types; target is loaded as data in
+    # the backward kernel, so downcast int64 targets to int32 before the launch.
+    if target.dtype == torch.int64:
+        target = target.to(torch.int32)
     weight = None if weight is None else weight.contiguous()
 
     grad_input = torch.zeros_like(self).contiguous()

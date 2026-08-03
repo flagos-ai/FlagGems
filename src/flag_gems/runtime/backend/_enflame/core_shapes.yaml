@@ -68,6 +68,49 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+grouped_mm:
+  shapes:
+    - [16, 512, 2048]
+    - [16, 2560, 2048]
+    - [64, 2048, 128]
+  shape_desc: "Groups, N, K"
+
+ctc_loss:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
+ctc_loss_backward:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+
+svd:
+  shapes:
+    - [4096, 2, 2]
+    - [4096, 16, 2]
+    - [4096, 2, 16]
+    - [4096, 8, 8]
+    - [256, 16, 8]
+    - [256, 8, 16]
+    - [64, 32]
+    - [32, 64]
+    - [16, 16, 16]
+
+repeat:
+  shapes:
+    - [16, 256, 256]
+    - [64, 64, 64]
+    - [256, 128, 64]
+    - [512, 32, 32]
+    - [64, 64, 64, 64]
+
 MvAndOuterBenchmark:
   shapes:
     - [384, 384]
@@ -157,6 +200,19 @@ GenericBenchmark2DOnly:
     - [1024, 1024]
     - [4096, 4096]
     - [1024, 65536]
+
+# kron output is M=a*a, N=b*b (operands share the input shape), so memory grows
+# as (a*b)^2. The GenericBenchmark2DOnly shapes above are far too large for kron
+# on GCU300 (e.g. (256,256) -> 4.29e9 elems = 16 GiB in fp32 -> OOM). Use a
+# dedicated small-shape set so the kron benchmark stays within device memory.
+# Largest here is (160,160) -> 2.44 GiB (fp32) / 1.22 GiB (fp16).
+kron:
+  shapes:
+    - [64, 64]
+    - [96, 96]
+    - [128, 128]
+    - [160, 160]
+  shape_desc: "M, N"
 
 # default 4d-only shapes
 GenericBenchmark4DOnly:
