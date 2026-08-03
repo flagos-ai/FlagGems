@@ -109,6 +109,7 @@ _FULL_CONFIG = (
     ("_is_all_true", _is_all_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
     ("_linalg_eigvals", _linalg_eigvals),
+    ("cholesky_inverse", cholesky_inverse),
     ("linalg_svdvals", linalg_svdvals),
     ("_log_softmax", log_softmax),
     ("_log_softmax.out", log_softmax_out),
