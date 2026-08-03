@@ -2132,6 +2132,21 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cudnn_attention_backward
+    description: |
+      Backward kernel for cuDNN attention, computing gradients of query,
+      key, and value from the cuDNN attention forward pass.  Uses a
+      BHSD-native two-kernel design that eliminates the BHSD-BSHD
+      permute+contiguous overhead.
+    for:
+      - _cudnn_attention_backward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.5'
   - id: cudnn_batch_norm_backward
     description: Triton kernel implementation for cudnn_batch_norm_backward.
     for:

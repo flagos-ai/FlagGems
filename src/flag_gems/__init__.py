@@ -85,6 +85,7 @@ _FULL_CONFIG = (
     ("_chunk_cat", _chunk_cat),
     ("_conj", _conj),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_cudnn_attention_backward", cudnn_attention_backward),
     ("_efficient_attention_backward", efficient_attention_backward),
     ("_embedding_bag_dense_backward", _embedding_bag_dense_backward),
     (
