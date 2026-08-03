@@ -21,7 +21,7 @@ def unsafe_chunk(A: torch.Tensor, chunks: int, dim: int = 0) -> List[torch.Tenso
     Returns:
         List[torch.Tensor]: List of tensors.
     """
-    logger.debug("GEMS unsafe_chunk")
+    logger.debug("GEMS UNSAFE_CHUNK")
 
     # Handle negative dim
     if dim < 0:
