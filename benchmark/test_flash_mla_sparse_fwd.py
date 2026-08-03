@@ -93,6 +93,15 @@ class FlashmlaSparseBenchmark(base.Benchmark):
                 TestParam(4096, s_kv, 1024, h_q=128, d_qk=512, have_attn_sink=True)
                 for s_kv in [8192, 32768, 49152, 65536]
             ]
+            # Small-sq shapes from FlagTree TLE alias optimization test — these stress
+            # shared-memory occupancy where the alias savings are most visible
+            + [
+                TestParam(1, 1024, 128, h_q=64, d_qk=576, have_attn_sink=True, have_topk_length=True),
+                TestParam(1, 1024, 128, h_q=128, d_qk=512, have_attn_sink=True, have_topk_length=True),
+                TestParam(62, 1521, 384, h_q=64, d_qk=576, have_attn_sink=True, have_topk_length=True),
+                TestParam(1, 1024, 128, h_q=128, d_qk=576, have_attn_sink=True, have_topk_length=True),
+                TestParam(32, 2048, 128, h_q=64, d_qk=576, have_attn_sink=True, have_topk_length=True),
+            ]
         )
         return cases
 
