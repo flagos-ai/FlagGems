@@ -588,6 +588,7 @@ _FULL_CONFIG = (
     ("minimum", minimum),
     ("mish", mish),
     ("mish_", mish_),
+    ("mish_backward", mish_backward),
     ("mm", mm),
     ("mm.out", mm_out),
     ("mode", mode),
