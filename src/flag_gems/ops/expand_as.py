@@ -19,5 +19,5 @@ def expand_as(self: torch.Tensor, other: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: A view of ``self`` expanded to ``other``'s shape.
     """
-    logger.debug("GEMS expand_as")
+    logger.debug("GEMS EXPAND_AS")
     return self.expand(other.size())
