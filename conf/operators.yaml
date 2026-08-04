@@ -359,6 +359,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
+  - id: alias
+    description: Return a view tensor sharing the same storage (zero-copy alias).
+    for:
+      - alias
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: alias_copy
     description: |
       Creates a new tensor that shares the same storage data as the original tensor,
@@ -2474,7 +2485,6 @@ ops:
       - div.Tensor_mode
       - divide.Scalar_mode
       - divide.Tensor_mode
-      - divide.out_mode
     labels:
       - aten
       - pointwise
@@ -2500,7 +2510,6 @@ ops:
     description: This is an variant of `div()` with an `out` argument.
     for:
       - div.out
-      - divide.out
     labels:
       - aten
     kind:
@@ -2538,7 +2547,6 @@ ops:
       is an alias of `torch.div()` with `rounding_mode=None`.
     for:
       - div.Tensor
-      - divide.Tensor
       - true_divide.Tensor
     labels:
       - aten
@@ -2559,6 +2567,18 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: divide
+    description: An alias of `div()` for element-wise division.
+    for:
+      - divide.Tensor
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dot
     description: Computes the dot product of two 1D tensors.
     for:
@@ -8884,6 +8904,19 @@ ops:
       Alias for digamma; delegates to the digamma kernel.
     for:
       - special_digamma
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_erfcx
+    description: |
+      Computes the scaled complementary error function for each element of input.
+    for:
+      - special.erfcx
     labels:
       - aten
       - pointwise

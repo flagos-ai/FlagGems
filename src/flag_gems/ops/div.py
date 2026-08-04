@@ -314,15 +314,6 @@ def div_mode(A, B, rounding_mode=None):
         raise ValueError(msg)
 
 
-def div_mode_out(A, B, *, rounding_mode=None, out):
-    logger.debug("GEMS DIVIDE OUT MODE")
-    if rounding_mode is None:
-        return true_divide_out(A, B, out)
-    result = div_mode(A, B, rounding_mode=rounding_mode)
-    out.copy_(result)
-    return out
-
-
 def div_mode_(A, B, rounding_mode=None):
     logger.debug("GEMS DIV_MODE_")
     if rounding_mode is None:

@@ -161,6 +161,7 @@ tl_extra_shim = _patch_missing_symbols(
         "div_rn",
         "div_rz",
         "erf",
+        "erfcx",
         "erfinv",
         "exp",
         "exp2",

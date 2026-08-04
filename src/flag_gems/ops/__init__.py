@@ -92,6 +92,7 @@ from flag_gems.ops.addmm_ import addmm_
 from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addr import addr
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
+from flag_gems.ops.alias import alias
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.alpha_dropout import alpha_dropout
@@ -221,13 +222,13 @@ from flag_gems.ops.digamma_ import digamma, digamma_
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
-    div_mode_out,
     floor_divide,
     floor_divide_,
     true_divide,
     true_divide_,
     true_divide_out,
 )
+from flag_gems.ops.divide import divide
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.elu import elu, elu_, elu_backward
@@ -586,6 +587,7 @@ from flag_gems.ops.special_chebyshev_polynomial_w import (
 from flag_gems.ops.special_digamma import special_digamma
 
 # from flag_gems.ops.special_erfc import erfc, erfc_, special_erfc
+from flag_gems.ops.special_erfcx import special_erfcx
 from flag_gems.ops.special_erfinv import (
     special_erfinv,
     special_erfinv_,
@@ -778,6 +780,7 @@ __all__ = [
     "addmv_out",
     "addr",
     "affine_grid_generator",
+    "alias",
     "alias_copy",
     "alias_copy_out",
     "all",
@@ -931,7 +934,7 @@ __all__ = [
     "digamma_",
     "div_mode",
     "div_mode_",
-    "div_mode_out",
+    "divide",
     "dot",
     "dropout",
     "dropout_backward",
@@ -1388,6 +1391,7 @@ __all__ = [
     "special_chebyshev_polynomial_w_out",
     "special_digamma",
     # "special_erfc",
+    "special_erfcx",
     "special_erfinv",
     "special_erfinv_",
     "special_erfinv_out",
