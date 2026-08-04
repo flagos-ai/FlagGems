@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from typing import Generator
 
 import pytest
@@ -23,9 +24,16 @@ from . import base, consts, utils
 
 
 class VStackBenchmark(base.Benchmark):
+    # vstack creates 3 inputs + 1 output. Cap to avoid OOM / invalid-argument errors.
+    MAX_ELEMENTS = 2**29
+
     def __init__(self, *args, input_fn, **kwargs):
         super().__init__(*args, **kwargs)
         self.input_fn = input_fn
+
+    def init_user_config(self):
+        super().init_user_config()
+        self.shapes = [s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS]
 
     def get_input_iter(self, dtype) -> Generator:
         for shape in self.shapes:
