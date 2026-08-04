@@ -2803,6 +2803,17 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: eq_
+    description: The in-place version of `eq()`.
+    for:
+      - eq_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: eq_scalar
     description: Computes equality between scalars.
     for:
@@ -2814,6 +2825,17 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: eq_scalar_
+    description: The scalar version of `eq_()`.
+    for:
+      - eq_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: equal
     description: Returns True if two tensors have the same size and elements, False otherwise.
     for:

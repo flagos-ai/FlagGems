@@ -385,6 +385,8 @@ _FULL_CONFIG = (
     ("empty", empty),
     ("eq.Scalar", eq_scalar),
     ("eq.Tensor", eq),
+    ("eq_.Scalar", eq_scalar_),
+    ("eq_.Tensor", eq_),
     ("equal", equal),
     ("erf", erf),
     ("erf_", erf_),

@@ -234,6 +234,7 @@ from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.empty import empty
 from flag_gems.ops.eq import eq, eq_scalar, equal
+from flag_gems.ops.eq_ import eq_, eq_scalar_
 from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.erfinv_ import erfinv, erfinv_
 from flag_gems.ops.exp import exp, exp_, exp_out
@@ -941,7 +942,9 @@ __all__ = [
     "embedding_dense_backward",
     "empty",
     "eq",
+    "eq_",
     "eq_scalar",
+    "eq_scalar_",
     "equal",
     "erf",
     "erf_",
