@@ -96,11 +96,13 @@ def make_input(
 
 
 @pytest.mark.scaled_dot_product_flash_attention
+# Cover representative dense attention shapes and head sizes.
 @pytest.mark.parametrize(
     "batch,num_head,q_seq_len,kv_seq_len,head_size",
     [(1, 2, 64, 96, 64), (2, 4, 128, 128, 128)],
 )
 @pytest.mark.parametrize("is_causal", [False, True])
+# FlashAttention supports CUDA float16 and bfloat16 inputs.
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_scaled_dot_product_flash_attention(
     batch,

@@ -40,6 +40,7 @@ def test_scaled_dot_product_flash_attention():
         op_name="scaled_dot_product_flash_attention",
         input_fn=scaled_dot_product_flash_attention_input_fn,
         torch_op=torch.ops.aten._scaled_dot_product_flash_attention.default,
+        # FlashAttention supports CUDA float16 and bfloat16 inputs.
         dtypes=[torch.float16, torch.bfloat16],
     )
     bench.run()
