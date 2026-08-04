@@ -241,6 +241,7 @@ from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diagonal_scatter import diagonal_scatter
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
+from flag_gems.ops.dist import dist, dist_out
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
@@ -1007,6 +1008,8 @@ __all__ = [
     "diff",
     "digamma",
     "digamma_",
+    "dist",
+    "dist_out",
     "div_mode",
     "div_mode_",
     "dot",
