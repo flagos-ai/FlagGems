@@ -13,6 +13,19 @@
 # limitations under the License.
 
 ops:
+  - id: _sparse_semi_structured_addmm
+    description: |
+      Performs a matrix multiplication of the sparse semi-structured
+      (2:4 sparsity) matrices mat1 and mat2 with input added.
+    for:
+      - _sparse_semi_structured_addmm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: abs
     description: |
       Computes the absolute value of each element in `input`.
