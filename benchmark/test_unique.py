@@ -12,12 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import base, consts, utils
+
+
+class UniqueBenchmark(base.GenericBenchmark2DOnly):
+    """Filter out overly large shapes that trigger 'out of resource: threads'."""
+
+    MAX_ELEMENTS = 2**29  # 512M elements
+
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
+        return [s for s in shapes if math.prod(s) <= self.MAX_ELEMENTS]
 
 
 def _input_fn(shape, dtype, device):
@@ -30,7 +42,7 @@ def _input_fn(shape, dtype, device):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_unique2():
-    bench = base.GenericBenchmark2DOnly(
+    bench = UniqueBenchmark(
         input_fn=_input_fn,
         op_name="unique2",
         torch_op=torch.unique,
