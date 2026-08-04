@@ -8621,10 +8621,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: softmax
-    description: Apply a softmax function.
+  - id: _softmax
+    description: Apply a softmax function through the canonical `_softmax` operator.
     for:
       - _softmax
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: softmax
+    description: Apply a softmax function.
     labels:
       - aten
       - nn.functional

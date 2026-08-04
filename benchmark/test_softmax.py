@@ -20,6 +20,23 @@ import flag_gems
 from . import base, consts
 
 
+def _softmax_input_fn(shape, dtype, device):
+    inp = base.generate_tensor_input(shape, dtype, device)
+    dim = 1 if inp.ndim > 1 else 0
+    yield inp, dim, False
+
+
+@pytest.mark.underscore_softmax
+def test__softmax():
+    bench = base.GenericBenchmark(
+        op_name="_softmax",
+        torch_op=torch.ops.aten._softmax.default,
+        input_fn=_softmax_input_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.softmax
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

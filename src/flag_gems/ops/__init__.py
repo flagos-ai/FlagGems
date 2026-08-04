@@ -61,6 +61,7 @@ from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
+from flag_gems.ops._softmax import _softmax
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
 from flag_gems.ops._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
@@ -737,6 +738,7 @@ __all__ = [
     "_prelu_kernel_backward",
     "_resize_output",
     "_safe_softmax",
+    "_softmax",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
