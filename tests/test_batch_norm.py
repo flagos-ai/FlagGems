@@ -39,6 +39,7 @@ SHAPES = [
 
 
 @pytest.mark.native_batch_norm
+# Cover representative 3D and 4D batch-normalization inputs.
 @pytest.mark.parametrize("shape", [(4, 3, 8, 8), (2, 4, 16)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])
