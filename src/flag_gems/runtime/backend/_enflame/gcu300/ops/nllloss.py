@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -338,6 +352,10 @@ def nll_loss_backward(
 def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100):
     logger.debug("GEMS_ENFLAME NLL_LOSS2D_FWD")
     assert self.ndim == 4, "Invalid input ndim"
+    # GCU300 does not support 64-bit data types; target is loaded as data in
+    # the kernel, so downcast int64 targets to int32 before the launch.
+    if target.dtype == torch.int64:
+        target = target.to(torch.int32)
 
     shape = list(target.shape)
     N, C, D1, D2 = self.shape
@@ -395,6 +413,10 @@ def nll_loss2d_backward(
     D = D1 * D2
     grad_output = grad_output.contiguous()
     target = target.contiguous()
+    # GCU300 does not support 64-bit data types; target is loaded as data in
+    # the backward kernel, so downcast int64 targets to int32 before the launch.
+    if target.dtype == torch.int64:
+        target = target.to(torch.int32)
     weight = None if weight is None else weight.contiguous()
 
     grad_input = torch.zeros_like(self).contiguous()

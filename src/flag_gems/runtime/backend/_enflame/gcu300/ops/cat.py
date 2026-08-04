@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 from typing import List, Tuple, Union
 
@@ -60,9 +74,10 @@ def cat_copy_func_kernel_4(
     total_elements_c,
     total_elements_d,
     BLOCK_X: tl.constexpr,
+    ENABLE_I64: tl.constexpr,
 ):
-    pid_x = tl.program_id(0)
-    pid_y = tl.program_id(1)
+    pid_x = tl.program_id(0).to(tl.int64)
+    pid_y = tl.program_id(1).to(tl.int64)
 
     if pid_y == 0:
         in_ptr = in_ptr_a
@@ -187,6 +202,7 @@ def _cat_run_kernel(
             total_elements_c,
             total_elements_d,
             BLOCK_X=BLOCK,
+            ENABLE_I64=True,
         )
 
         dim_offset = current_dim_offset

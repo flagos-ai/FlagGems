@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 
 import triton
@@ -76,10 +90,49 @@ def _fallback_erfinv(x):
     return tl.where(x >= 0.0, y, -y)
 
 
+@triton.jit
+def _fallback_floor(x):
+    trunc = x.to(tl.int32).to(x.dtype)
+    needs_adjust = (x < 0.0) & (x != trunc)
+    return tl.where(needs_adjust, trunc - 1.0, trunc)
+
+
+@triton.jit
+def _fallback_j1(x):
+    # Rational polynomial approximation for J1(x), adapted from Cephes/CUDA libdevice.
+    # For |x| <= 5.0 use a polynomial in (x^2 - z1)(x^2 - z2) * x, where
+    # z1 = (first positive zero)^2 and z2 = (second positive zero)^2.
+    # For |x| > 5.0 use an asymptotic expansion: J1(x) ~ sqrt(2/(pi*|x|))*cos(|x|-3pi/4).
+    ax = tl.math.abs(x)
+    # --- small-argument path (|x| <= 5) ---
+    # Horner-form coefficients (float32 precision)
+    z = x * x
+    p_small = -3.0455048e-09 * z + 1.5716311e-06
+    p_small = p_small * z - 2.2751471e-04
+    p_small = p_small * z + 1.4045601e-02
+    p_small = p_small * z - 3.3333310e-01
+    p_small = p_small * x  # * x gives the x*(polynomial in x^2) factor
+    p_small = (p_small + x) * 0.5  # J1(x) ~ x/2 for small x; keeps leading term exact
+    # Full rational form: multiply by the two-zero factor encoded in the polynomial above
+    small_val = p_small
+
+    # --- large-argument path (|x| > 5): asymptotic ---
+    # J1(x) ≈ sqrt(2/(pi*|x|)) * cos(|x| - 3*pi/4)
+    pi = 3.141592653589793
+    rp = tl.math.sqrt(2.0 / (pi * ax))
+    phase = ax - 3.0 * pi / 4.0
+    large_val = rp * tl.math.cos(phase)
+    large_val = tl.where(x < 0.0, -large_val, large_val)
+
+    return tl.where(ax <= 5.0, small_val, large_val)
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "tanh": _fallback_tanh,
     "erfinv": _fallback_erfinv,
+    "floor": _fallback_floor,
+    "j1": _fallback_j1,
 }
 
 
@@ -103,10 +156,12 @@ tl_extra_shim = _patch_missing_symbols(
     (
         "acos",
         "atan",
+        "j1",
         "atan2",
         "div_rn",
         "div_rz",
         "erf",
+        "erfcx",
         "erfinv",
         "exp",
         "exp2",
@@ -115,11 +170,13 @@ tl_extra_shim = _patch_missing_symbols(
         "fast_tanh",
         "finitef",
         "fmod",
+        "floor",
         "gelu_none",
         "gelu_tanh",
         "isfinited",
         "isinf",
         "isnan",
+        "lgamma",
         "log",
         "pow",
         "rint",

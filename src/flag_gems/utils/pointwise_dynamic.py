@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import os
 from dataclasses import dataclass
@@ -1488,10 +1502,15 @@ class PointwiseDynamicFunction:
         out_tensors = []
         for i in range(schema.num_output_tensors()):
             k = f"out{i}"
-            if k in kwargs:
+            if k in kwargs and kwargs[k] is not None:
                 out_tensors.append(kwargs[k])
             else:
                 outputs_that_need_allocation.append(i)
+
+        # Clean kwargs: only keep valid outN keys, discard mismatched keys
+        # and None values that leaked through caller wrappers.
+        valid_out_keys = {f"out{i}" for i in range(schema.num_output_tensors())}
+        kwargs = {k: v for k, v in kwargs.items() if k in valid_out_keys}
         # input arguments must be passed by position
         if not _skip_tensor_check and schema._is_tensor is not None:
             if not check_tensor_attributes(args, (schema._is_tensor)):
