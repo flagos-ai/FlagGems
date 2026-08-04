@@ -4936,6 +4936,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_cond
+    description: Compute the condition number of a matrix with respect to a given norm.
+    for:
+      - linalg_cond
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linalg_ldl_solve
     description: Triton kernel implementation for linalg_ldl_solve.
     for:
