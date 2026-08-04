@@ -51,10 +51,28 @@ def log_(*args, **kwargs):
     if not isinstance(x, torch.Tensor):
         raise TypeError("log_ expects a torch.Tensor as input.")
 
+    # Handle non-contiguous tensors by operating on a contiguous copy and copying back
     if not x.is_contiguous():
-        return torch.ops.aten.log_(x)
+        y = x.contiguous()
+        n_elements = y.numel()
+        if n_elements == 0:
+            return x
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        with torch_device_fn.device(y.device):
+            log_kernel_[grid](y, n_elements, BLOCK_SIZE=1024)
+        x.copy_(y)
+        return x
+
     if x.dtype not in _SUPPORTED_DTYPES:
-        return torch.ops.aten.log_(x)
+        y = x.contiguous()
+        n_elements = y.numel()
+        if n_elements == 0:
+            return x
+        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        with torch_device_fn.device(y.device):
+            log_kernel_[grid](y, n_elements, BLOCK_SIZE=1024)
+        x.copy_(y)
+        return x
 
     n_elements = x.numel()
     if n_elements == 0:
