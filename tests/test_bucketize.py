@@ -100,3 +100,22 @@ def test_bucketize_boundary_cases(right, boundary_values, boundary_dtype):
         res_out = torch.bucketize(inp, boundaries, right=right)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.bucketize
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_bucketize_noncontiguous_input(dtype):
+    # Regression test: torch.empty_like(input) preserves a non-contiguous
+    # input's memory layout, so output.flatten() can't return a view and
+    # allocates separate storage. The kernel result must still end up in
+    # the tensor that gets returned.
+    boundaries = torch.tensor([1.0, 3.0, 5.0, 7.0, 9.0], device=flag_gems.device)
+    inp = torch.randn(6, 5, dtype=dtype, device=flag_gems.device).transpose(0, 1)
+    assert not inp.is_contiguous()
+
+    ref_out = _reference_bucketize(inp, boundaries)
+
+    with flag_gems.use_gems():
+        res_out = torch.bucketize(inp, boundaries)
+
+    utils.gems_assert_equal(res_out, ref_out)
