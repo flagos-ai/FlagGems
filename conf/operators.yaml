@@ -2985,6 +2985,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: expand_as
+    description: Expand tensor to the same size as another tensor (view operation).
+    for:
+      - expand_as
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: expm1
     description: Computes the exponential of the elements minus 1 of `input`.
     for:
