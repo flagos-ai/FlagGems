@@ -102,6 +102,223 @@ def test_mm_broadcast_stride_zero(dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
+# issue #2489: unaligned-stride or unaligned-base operands hit the Hopper host-TMA
+# descriptor, which requires 16-byte-aligned strides and base. Both sizes exercise
+# that path; the larger one covers bigger block sizes. M, N and K are all multiples
+# of 8 so that is_tma_compatible() holds and a descriptor is actually built.
+_UNALIGNED_MNK = [(64, 64, 64), (256, 128, 256)]
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("M, N, K", _UNALIGNED_MNK)
+@pytest.mark.parametrize("pad", [1, 8])
+def test_mm_unaligned_stride(dtype, M, N, K, pad):
+    """Regression test for #2489: mm on a row-major *view* whose outer (row)
+    stride is not 16-byte aligned must be correct on Hopper.
+
+    ``as_strided((M, K), (K + pad, 1))`` keeps the inner dim contiguous but gaps
+    the rows. A 16B-*misaligned* row stride (pad=1, e.g. 65 * 2B = 130B) fed to the
+    host-TMA ``TensorDescriptor`` raises "strides must be 16-byte aligned"; it is
+    fixed by copying the operand to contiguous. A 16B-*aligned* gap (pad=8) stays on
+    the fast TMA path and must remain numerically correct.
+    """
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
+    torch.manual_seed(0)
+    stride0 = K + pad
+    base = torch.randn(M * stride0 + K, dtype=dtype, device=flag_gems.device)
+    a = torch.as_strided(base, (M, K), (stride0, 1))
+    assert not a.is_contiguous() and a.stride() == (stride0, 1)
+    b = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.mm(
+        utils.to_reference(a.contiguous(), True), utils.to_reference(b, True)
+    )
+    with flag_gems.use_gems():
+        res_out = torch.mm(a, b)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("pad", [1, 8])
+def test_mm_unaligned_stride_column_major(dtype, pad):
+    """#2489 for a column-major operand: the weight ``b`` is a gapped transpose
+    view (stride ``(1, K + pad)``); an unaligned outer stride must also be handled
+    (exercises the column-major branch of the fix)."""
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
+    torch.manual_seed(0)
+    M, N, K = 256, 128, 256
+    a = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    stride1 = K + pad
+    base = torch.randn(N * stride1 + K, dtype=dtype, device=flag_gems.device)
+    b = torch.as_strided(base, (K, N), (1, stride1))  # column-major gapped view
+    assert b.stride() == (1, stride1)
+
+    ref_out = torch.mm(
+        utils.to_reference(a, True), utils.to_reference(b.contiguous(), True)
+    )
+    with flag_gems.use_gems():
+        res_out = torch.mm(a, b)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mm_out_unaligned_stride(dtype):
+    """#2489 also applies to the ``mm_out`` entry point (shares the guard)."""
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
+    torch.manual_seed(0)
+    M, N, K = 256, 128, 256
+    stride0 = K + 1
+    base = torch.randn(M * stride0 + K, dtype=dtype, device=flag_gems.device)
+    a = torch.as_strided(base, (M, K), (stride0, 1))
+    b = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.mm(
+        utils.to_reference(a.contiguous(), True), utils.to_reference(b, True)
+    )
+    with flag_gems.use_gems():
+        torch.mm(a, b, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mm_clean_transpose_unaligned_m(dtype):
+    """#2489 for a *clean* transpose whose M is not 16-byte aligned.
+
+    ``torch.mm(x.t(), w)`` (e.g. ``grad_w = x.t() @ grad_out``) makes ``a`` column-major,
+    and ``general_mm`` then builds its descriptor from ``a.T.stride() == (M, 1)`` -- so
+    the outer stride is M, which ``is_tma_compatible`` never validates (it only checks N
+    and K). M = 495 is not a multiple of 8 (fp16/bf16) or 4 (fp32), so the descriptor is
+    illegal until the operand is copied.
+    """
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
+    torch.manual_seed(0)
+    M, N, K = 495, 256, 64  # N, K aligned -> TMA is used; M is not
+    a = torch.randn((K, M), dtype=dtype, device=flag_gems.device).t()
+    b = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    assert a.stride() == (1, M) and a.t().is_contiguous()
+
+    ref_out = torch.mm(utils.to_reference(a, True), utils.to_reference(b, True))
+    with flag_gems.use_gems():
+        res_out = torch.mm(a, b)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mm_transpose_single_row(dtype):
+    """#2489 for an M == 1 operand: ``x.t()`` of a (K, 1) input is (1, K) with stride
+    (1, 1), and a size-1 dim never constrains contiguity -- so ``is_contiguous()`` is
+    True and both ``.contiguous()`` and ``.clone()`` preserve the stride. The descriptor
+    would still get a 1-element (2-byte) outer stride.
+    """
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
+    torch.manual_seed(0)
+    M, N, K = 1, 64, 64
+    a = torch.randn((K, M), dtype=dtype, device=flag_gems.device).t()
+    b = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    assert a.stride() == (1, 1) and a.is_contiguous()
+
+    ref_out = torch.mm(utils.to_reference(a, True), utils.to_reference(b, True))
+    with flag_gems.use_gems():
+        res_out = torch.mm(a, b)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mm_out_column_major(dtype):
+    """A column-major ``out``: unlike an operand, ``c`` is fed to the descriptor
+    untransposed, so TMA needs its innermost stride to be 1. A transposed ``out`` view
+    has stride (1, M) and must be routed through an aligned row-major buffer.
+    """
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
+    torch.manual_seed(0)
+    M, N, K = 64, 64, 64
+    a = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    b = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    out = torch.empty((N, M), dtype=dtype, device=flag_gems.device).t()
+    assert out.stride() == (1, N)
+
+    ref_out = torch.mm(utils.to_reference(a, True), utils.to_reference(b, True))
+    with flag_gems.use_gems():
+        torch.mm(a, b, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("layout", ["unaligned_base", "gapped_stride"])
+def test_mm_out_unaligned_output(dtype, layout):
+    """#2489 for the *output*: ``general_mm`` builds ``c_desc`` from the caller's ``out``,
+    so an unaligned ``out`` view is just as illegal as an unaligned operand. The result
+    has to land in the caller's storage, so it is computed into an aligned buffer and
+    copied back.
+    """
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
+    torch.manual_seed(0)
+    M, N, K = 64, 64, 64
+    a = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    b = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+
+    if layout == "unaligned_base":
+        base = torch.empty(M * N + 16, dtype=dtype, device=flag_gems.device)
+        out = torch.as_strided(base, (M, N), (N, 1), storage_offset=1)
+        assert out.is_contiguous() and out.data_ptr() % 16 != 0
+    else:
+        base = torch.empty(M * (N + 1), dtype=dtype, device=flag_gems.device)
+        out = torch.as_strided(base, (M, N), (N + 1, 1))
+        assert (N + 1) * out.element_size() % 16 != 0
+
+    ref_out = torch.mm(utils.to_reference(a, True), utils.to_reference(b, True))
+    with flag_gems.use_gems():
+        torch.mm(a, b, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("offset", [1, 2])
+def test_mm_unaligned_offset(dtype, offset):
+    """#2489 also covers an unaligned *base address*: a stride-contiguous view with
+    an odd ``storage_offset`` (e.g. ``weight[:, 1:]``) has 16B-aligned strides but a
+    misaligned base, which the host-TMA descriptor rejects ("base must be 16-byte
+    aligned"). ``.contiguous()`` is a no-op on such a view, so the fix forces a copy.
+    """
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
+    torch.manual_seed(0)
+    M, N, K = 64, 64, 64
+    base = torch.randn(M * K + 16, dtype=dtype, device=flag_gems.device)
+    a = torch.as_strided(base, (M, K), (K, 1), storage_offset=offset)
+    assert a.is_contiguous() and a.data_ptr() % 16 != 0
+    b = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.mm(utils.to_reference(a, True), utils.to_reference(b, True))
+    with flag_gems.use_gems():
+        res_out = torch.mm(a, b)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
 @pytest.mark.mm
 def test_mm_out_vllm_tma_column_major_weight():
     """Regression test for vLLM Inductor mm_out with a column-major BF16 weight."""
