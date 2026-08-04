@@ -55,11 +55,11 @@ def test_native_batch_norm(shape, dtype, affine, caplog):
     running_mean = torch.zeros(channel_count, dtype=dtype, device=flag_gems.device)
     running_var = torch.ones(channel_count, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = inp.clone()
-    ref_weight = weight.clone() if weight is not None else None
-    ref_bias = bias.clone() if bias is not None else None
-    ref_running_mean = running_mean.clone()
-    ref_running_var = running_var.clone()
+    ref_inp = utils.to_reference(inp, True)
+    ref_weight = utils.to_reference(weight, True)
+    ref_bias = utils.to_reference(bias, True)
+    ref_running_mean = utils.to_reference(running_mean, True)
+    ref_running_var = utils.to_reference(running_var, True)
     ref_result = torch.ops.aten.native_batch_norm.default(
         ref_inp,
         ref_weight,

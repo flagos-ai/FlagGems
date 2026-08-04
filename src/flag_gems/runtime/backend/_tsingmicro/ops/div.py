@@ -18,7 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.triton_lang_extension import div_rn, div_rz, fmod, trunc
+from flag_gems.utils.triton_lang_extension import div_rn, fmod
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -163,10 +163,47 @@ def true_divide_(A, B):
         return true_div_func_tensor_scalar(A, B, True, out0=A)
 
 
+@triton.jit
+def _float_truncdiv(x, y):
+    orig_dtype = x.dtype
+    x_fp32 = x.to(tl.float32)
+    y_fp32 = y.to(tl.float32)
+
+    remainder = fmod(x_fp32, y_fp32)
+    if orig_dtype == tl.float16 or orig_dtype == tl.bfloat16:
+        remainder = remainder.to(orig_dtype)
+
+    q_est = div_rn(x_fp32, y_fp32)
+    nearest_est = tl.where(
+        q_est >= 0.0,
+        tl.math.floor(q_est + 0.5),
+        -tl.math.floor(-q_est + 0.5),
+    )
+    exact_multiple = (nearest_est * y_fp32).to(orig_dtype) == x
+    rounded_div = x_fp32 / y_fp32
+    remainder = tl.where(
+        exact_multiple
+        & ((tl.abs(remainder) == tl.abs(y)) | (rounded_div != nearest_est)),
+        0.0,
+        remainder,
+    )
+
+    numerator = x_fp32 - remainder.to(tl.float32)
+    if orig_dtype == tl.float16 or orig_dtype == tl.bfloat16:
+        numerator = numerator.to(orig_dtype).to(tl.float32)
+    q = div_rn(numerator, y_fp32)
+    nearest_q = tl.where(
+        q >= 0.0,
+        tl.math.floor(q + 0.5),
+        -tl.math.floor(-q + 0.5),
+    )
+    return tl.where(y == 0.0, x / y, nearest_q).to(orig_dtype)
+
+
 @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func(x, y, inplace):
-    return trunc(div_rz(x, y))
+    return _float_truncdiv(x, y)
 
 
 @pointwise_dynamic(
@@ -174,7 +211,7 @@ def trunc_div_func(x, y, inplace):
 )
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y, inplace):
-    return trunc(div_rz(x, tl.cast(y, x.dtype)))
+    return _float_truncdiv(x, tl.cast(y, x.dtype))
 
 
 @pointwise_dynamic(
@@ -182,7 +219,7 @@ def trunc_div_func_tensor_scalar(x, y, inplace):
 )
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y, inplace):
-    return trunc(div_rz(tl.cast(x, y.dtype), y))
+    return _float_truncdiv(tl.cast(x, y.dtype), y)
 
 
 # Integer truncation division: Triton's // on integers is C-style (truncates toward zero)
@@ -244,29 +281,26 @@ def trunc_divide_(A, B):
 
 
 @triton.jit
-def _int_floordiv(x, y):
-    # TODO: request Triton to add an integer remainder builtin
-    # The semantic of Triton floordiv differs from Pytorch/Numpy
-    # Triton floordiv equates to
-    #     (x - np.fmod(x, y)) / y
-    # whereas Pytorch floordiv is
-    #     (x - np.remainder(x, y)) y
-    # The results show a one off difference when
-    #     C1) x and y have opposite signs
-    # and C2) x is not multiples of y.
-    # Apart from the above, there's an erroneous case x // 0 returns -1
-    # whereas in Pytorch x // 0 returns -1 if x >=0 and -2 if x < 0
-    # but this special case is coalesced into the c1 and c2 check so
-    # there's extra handling.
-    r = x % y
-    c1 = r != 0
-    c2 = (x < 0) ^ (y < 0)
-    c3 = (x < 0) & (y == 0)
-    c = c1 & c2
-    if x.dtype == tl.int16:
-        if y.dtype == tl.int16:
-            return (x.to(tl.int32) // y.to(tl.int32)).cast(tl.int16) - c - c3
-    return x // y - c - c3
+def _int_floordiv_corrected(x, y):
+    # TXDA int32 division uses an approximate fp32 quotient. Its error is small,
+    # so recover the exact truncating quotient by dividing the integer residual.
+    x_i32 = x.to(tl.int32)
+    y_i32 = y.to(tl.int32)
+    is_zero = y_i32 == 0
+    safe_y = tl.where(is_zero, 1, y_i32)
+
+    quotient = x_i32 // safe_y
+    for _ in tl.static_range(0, 2):
+        residual = x_i32 - quotient * safe_y
+        quotient = quotient + residual // safe_y
+
+    remainder = x_i32 - quotient * safe_y
+    different_sign = (x_i32 < 0) ^ (y_i32 < 0)
+    q = quotient - ((remainder != 0) & different_sign)
+
+    # Match PyTorch's device integer divide-by-zero result.
+    zero_result = tl.where(x_i32 < 0, -2, -1)
+    return tl.where(is_zero, zero_result, q)
 
 
 # TO be consistent with python, numpy and torch, we have to implement it in the
@@ -279,35 +313,53 @@ def _int_floordiv(x, y):
 # https://github.com/pytorch/pytorch/blob/d6d9183456cd07ca0b361a194b98c2fb196e7c36/c10/util/generic_math.h#L23
 @triton.jit
 def _float_floordiv(x, y):
-    # NOTE: fmod's sign is the same as the dividend
-    if y.type.scalar.is_int():
-        y = y.to(tl.float32)
-    remainder = fmod(x, y)
-    imperfect = remainder != 0.0
-    different_sign = (x < 0) ^ (y < 0)
+    # TXDA fmod/div_rn only support fp32/fp64; promote their operands.
+    orig_dtype = x.dtype
+    x_fp32 = x.to(tl.float32)
+    y_fp32 = y.to(tl.float32)
 
-    # NOTE: we have to use div_rn explicitly here
-    q = div_rn(x - remainder, y)
-    q = tl.where(imperfect & different_sign, q - 1, q)
+    if orig_dtype == tl.float16 or orig_dtype == tl.bfloat16:
+        # Reproduce PyTorch's native low-precision floor-divide algorithm.
+        # Every arithmetic step is rounded to the input dtype.
+        remainder = fmod(x_fp32, y_fp32).to(orig_dtype)
+        # TXDA fmod may return ±y for an exact multiple. Recover the zero
+        # remainder when low-precision multiplication confirms the multiple.
+        q_est = div_rn(x_fp32, y_fp32)
+        nearest_q = tl.where(
+            q_est >= 0.0,
+            tl.math.floor(q_est + 0.5),
+            -tl.math.floor(-q_est + 0.5),
+        )
+        exact_multiple = (nearest_q * y_fp32).to(orig_dtype) == x
+        remainder = tl.where(
+            (tl.abs(remainder) == tl.abs(y)) & exact_multiple, 0.0, remainder
+        )
+        imperfect = remainder != 0.0
+        different_sign = (x < 0) ^ (y < 0)
+        numerator = (x_fp32 - remainder.to(tl.float32)).to(orig_dtype)
+        q = div_rn(numerator.to(tl.float32), y_fp32).to(orig_dtype)
+        q = tl.where(imperfect & different_sign, q - 1, q)
 
+        q_fp32 = q.to(tl.float32)
+        floor_q = tl.math.floor(q_fp32)
+        floor_q = tl.where(q_fp32 - floor_q > 0.5, floor_q + 1.0, floor_q)
+        floor_q = tl.where(q == 0.0, tl.where(different_sign, -0.0, 0.0), floor_q)
+        return tl.where(y == 0.0, x / y, floor_q).to(orig_dtype)
+
+    q = x_fp32 / y_fp32
     floor_q = tl.math.floor(q)
-    c = q - floor_q > 0.5
-    floor_q = tl.where(c, floor_q + 1.0, floor_q)
-
-    q_is_zeros = q == 0.0
-    floor_q = tl.where(q_is_zeros, tl.where(different_sign, -0.0, 0.0), floor_q)
-
-    is_div_by_zero = y == 0.0
-    float_division = x / y
-    out = tl.where(is_div_by_zero, float_division, floor_q)
-    return out
+    residual = tl.fma(-q, y_fp32, x_fp32)
+    quotient_below_q = (residual < 0.0) ^ (y_fp32 < 0.0)
+    rounded_to_integer = (q == floor_q) & (residual != 0.0)
+    floor_q = tl.where(rounded_to_integer & quotient_below_q, floor_q - 1.0, floor_q)
+    return floor_q.to(orig_dtype)
 
 
 @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func(x, y, inplace):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
-        return _int_floordiv(x, y)
+        return _int_floordiv_corrected(x, y)
     else:
         return _float_floordiv(x, y)
 
@@ -318,7 +370,7 @@ def floor_div_func(x, y, inplace):
 @triton.jit
 def floor_div_func_tensor_scalar(x, y, inplace):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
-        return _int_floordiv(x, y)
+        return _int_floordiv_corrected(x, y)
     else:
         return _float_floordiv(x, y)
 
@@ -329,13 +381,52 @@ def floor_div_func_tensor_scalar(x, y, inplace):
 @triton.jit
 def floor_div_func_scalar_tensor(x, y, inplace):
     if x.type.scalar.is_int() & y.type.scalar.is_int():
-        return _int_floordiv(x, y)
+        return _int_floordiv_corrected(x, y)
     else:
         return _float_floordiv(x, y)
 
 
+def _is_integral_value(x):
+    if isinstance(x, torch.Tensor):
+        return not x.is_floating_point() and not x.is_complex()
+    return isinstance(x, int)
+
+
+def _integer_floordiv_cpu(A, B, out=None):
+    tensor_arg = A if isinstance(A, torch.Tensor) else B
+    device = tensor_arg.device
+    a_cpu = A.cpu() if isinstance(A, torch.Tensor) else A
+    b_cpu = B.cpu() if isinstance(B, torch.Tensor) else B
+
+    if isinstance(b_cpu, torch.Tensor):
+        is_zero = b_cpu == 0
+        safe_b = torch.where(is_zero, 1, b_cpu)
+    else:
+        is_zero = b_cpu == 0
+        safe_b = 1 if is_zero else b_cpu
+
+    result = torch.floor_divide(a_cpu, safe_b)
+    if isinstance(is_zero, torch.Tensor):
+        zero_result = torch.where(
+            torch.as_tensor(a_cpu) < 0,
+            torch.full_like(result, -2),
+            torch.full_like(result, -1),
+        )
+        result = torch.where(is_zero, zero_result, result)
+    elif is_zero:
+        result = torch.where(result < 0, -2, -1)
+
+    result = result.to(device)
+    if out is not None:
+        out.copy_(result)
+        return out
+    return result
+
+
 def floor_divide(A, B):
     logger.debug("GEMS_TSINGMICRO FLOOR_DIVIDE")
+    if _is_integral_value(A) and _is_integral_value(B):
+        return _integer_floordiv_cpu(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return floor_div_func(A, B, False)
     elif isinstance(A, torch.Tensor):
@@ -349,6 +440,8 @@ def floor_divide(A, B):
 
 def floor_divide_(A, B):
     logger.debug("GEMS_TSINGMICRO FLOOR_DIVIDE_")
+    if _is_integral_value(A) and _is_integral_value(B):
+        return _integer_floordiv_cpu(A, B, out=A)
     if isinstance(B, torch.Tensor):
         return floor_div_func(A, B, True, out0=A)
     else:
@@ -411,8 +504,22 @@ def rem_st(x, y, inplace):
     return _remainder(x, y)
 
 
+def _integer_remainder_cpu(A, B, out=None):
+    tensor_arg = A if isinstance(A, torch.Tensor) else B
+    device = tensor_arg.device
+    a_cpu = A.cpu() if isinstance(A, torch.Tensor) else A
+    b_cpu = B.cpu() if isinstance(B, torch.Tensor) else B
+    result = torch.remainder(a_cpu, b_cpu).to(device)
+    if out is not None:
+        out.copy_(result)
+        return out
+    return result
+
+
 def remainder(A, B):
     logger.debug("GEMS_TSINGMICRO REMAINDER")
+    if _is_integral_value(A) and _is_integral_value(B):
+        return _integer_remainder_cpu(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return rem_tt(A, B, False)
     elif isinstance(A, torch.Tensor):
@@ -426,6 +533,8 @@ def remainder(A, B):
 
 def remainder_(A, B):
     logger.debug("GEMS_TSINGMICRO REMAINDER_")
+    if _is_integral_value(A) and _is_integral_value(B):
+        return _integer_remainder_cpu(A, B, out=A)
     if isinstance(B, torch.Tensor):
         return rem_tt(A, B, True, out0=A)
     else:
