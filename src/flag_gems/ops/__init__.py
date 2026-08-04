@@ -79,7 +79,7 @@ from flag_gems.ops._upsample_nearest_exact2d_backward import (
 )
 from flag_gems.ops._upsample_nearest_exact3d import _upsample_nearest_exact3d
 from flag_gems.ops.abs import abs, abs_
-from flag_gems.ops.absolute import absolute
+from flag_gems.ops.absolute import absolute, absolute_
 from flag_gems.ops.acos import acos
 from flag_gems.ops.acosh import acosh, acosh_
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
@@ -757,6 +757,7 @@ __all__ = [
     "abs",
     "abs_",
     "absolute",
+    "absolute_",
     "acos",
     "acosh",
     "acosh_",
