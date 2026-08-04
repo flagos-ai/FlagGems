@@ -159,11 +159,13 @@ def gems_flash_fwd(
 
 
 @pytest.mark.underscore_flash_attention_forward
+# Cover representative dense attention shapes and head sizes.
 @pytest.mark.parametrize(
     "batch,num_head,q_seq_len,kv_seq_len,head_size",
     [(1, 2, 128, 128, 64), (2, 4, 64, 96, 128)],
 )
 @pytest.mark.parametrize("is_causal", [False, True])
+# FlashAttention supports CUDA float16 and bfloat16 inputs.
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test__flash_attention_forward(
     batch,

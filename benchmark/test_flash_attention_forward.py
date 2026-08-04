@@ -284,6 +284,7 @@ def test__flash_attention_forward():
         op_name="_flash_attention_forward",
         input_fn=_flash_attention_forward_input_fn,
         torch_op=torch.ops.aten._flash_attention_forward.default,
+        # FlashAttention supports CUDA float16 and bfloat16 inputs.
         dtypes=[torch.float16, torch.bfloat16],
     )
     bench.run()
