@@ -95,6 +95,56 @@ def make_input(
     return q, k, v
 
 
+@pytest.mark.scaled_dot_product_flash_attention
+@pytest.mark.parametrize(
+    "batch,num_head,q_seq_len,kv_seq_len,head_size",
+    [(1, 2, 64, 96, 64), (2, 4, 128, 128, 128)],
+)
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_scaled_dot_product_flash_attention(
+    batch,
+    num_head,
+    q_seq_len,
+    kv_seq_len,
+    head_size,
+    is_causal,
+    dtype,
+    caplog,
+):
+    current_device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch,
+        num_head,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        current_device,
+    )
+    scale = float(1.0 / np.sqrt(head_size))
+
+    ref_result = torch.ops.aten._scaled_dot_product_flash_attention.default(
+        q, k, v, 0.0, is_causal, False, scale=scale
+    )
+    with caplog.at_level(
+        "DEBUG", logger="flag_gems.ops._scaled_dot_product_flash_attention"
+    ):
+        with flag_gems.use_gems():
+            result = torch.ops.aten._scaled_dot_product_flash_attention.default(
+                q, k, v, 0.0, is_causal, False, scale=scale
+            )
+
+    assert "GEMS _SCALED_DOT_PRODUCT_FLASH_ATTENTION" in caplog.text
+    assert len(result) == len(ref_result) == 9
+    utils.gems_assert_close(result[0], ref_result[0], dtype)
+    utils.gems_assert_close(result[1], ref_result[1], torch.float)
+    assert result[2] is ref_result[2] is None
+    assert result[3] is ref_result[3] is None
+    assert result[4:6] == ref_result[4:6] == (q_seq_len, kv_seq_len)
+
+
 def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
     if torch.__version__ < "2.5":
         return torch.nn.functional.scaled_dot_product_attention(
