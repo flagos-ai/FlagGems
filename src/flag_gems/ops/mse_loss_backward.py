@@ -35,6 +35,7 @@ def mse_loss_backward_kernel(
     N,
     M,
     reduction,
+    GRAD_OUTPUT_SCALAR: tl.constexpr,
     BLOCK_M: tl.constexpr,
 ):
     """Kernel for mse_loss_backward.
@@ -47,7 +48,14 @@ def mse_loss_backward_kernel(
     mask = offset < M
 
     # Load data (flattened view)
-    grad_val = tl.load(grad_output_ptr + offset, mask=mask, other=0.0).to(tl.float32)
+    if GRAD_OUTPUT_SCALAR:
+        # reduction='mean'/'sum': the forward returns a scalar, so grad_output
+        # is a single element that broadcasts against self.
+        grad_val = tl.load(grad_output_ptr).to(tl.float32)
+    else:
+        grad_val = tl.load(grad_output_ptr + offset, mask=mask, other=0.0).to(
+            tl.float32
+        )
     self_val = tl.load(self_ptr + offset, mask=mask, other=0.0).to(tl.float32)
     target_val = tl.load(target_ptr + offset, mask=mask, other=0.0).to(tl.float32)
 
@@ -97,6 +105,7 @@ def mse_loss_backward(grad_output, self, target, reduction=1):
         M,  # N = M for scalar reduction
         M,
         reduction,
+        GRAD_OUTPUT_SCALAR=grad_output.numel() == 1,
         BLOCK_M=BLOCK_M,
     )
 
