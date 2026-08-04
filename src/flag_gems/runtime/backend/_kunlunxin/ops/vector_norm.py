@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import builtins
 import logging
 
@@ -330,9 +344,16 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             x = dim_compress(x, dim)
             M = x.numel()
             cluster_num = 12
+            # XPU: tl.sum over a 1D tile is only correct up to a bounded lane
+            # count. Empirically BLOCK_SIZE=32768 (bsl=2048) is the safe max;
+            # a larger tile silently drops lanes. Cap here (dtype-independent)
+            # keeps stage-1 tiles correct AND bounds MID_SIZE <= 32768 for all
+            # M <= 2**30 so stage-2's tl.sum(mid) is also within the safe range.
+            # The old cap int(1024*64/element_size) gave 16384 for fp32 -> for
+            # M=2**30 MID_SIZE=65536 which broke stage-2 (wrong fp32 results).
             BLOCK_SIZE = min(
                 triton.next_power_of_2(triton.cdiv(M, cluster_num)),
-                int(1024 * 64 / x.element_size()),
+                32768,
             )
             MID_SIZE = triton.cdiv(M, BLOCK_SIZE)
             BLOCK_MID = triton.next_power_of_2(MID_SIZE)

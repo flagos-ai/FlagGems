@@ -18,6 +18,17 @@ export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 export LIBRARY_PATH="${LIBRARY_PATH:-}"
 export PYTHONPATH="${PYTHONPATH:-}"
 
+flaggems_c_extensions_enabled() {
+  case " ${CMAKE_ARGS:-} ${SKBUILD_CMAKE_ARGS:-} " in
+    *"-DFLAGGEMS_BUILD_C_EXTENSIONS=ON"*|*"-DFLAGGEMS_BUILD_C_EXTENSIONS=TRUE"*|*"-DFLAGGEMS_BUILD_C_EXTENSIONS=1"*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 case $BACKEND in
   ascend|ascend-cann850|ascend-cann900)
     # This script is provided by the Huawei Ascend CANN toolkit installation.
@@ -49,11 +60,24 @@ case $BACKEND in
     ;;
   kunlunxin)
     export LD_LIBRARY_PATH=/xcudart/lib:/usr/local/cuda/lib64
+    export XPU_EVENT_KL3_ENABLE=1
     ;;
   metax)
-    export MACA_PATH=/opt/maca
+    export MACA_PATH=${MACA_PATH:-/opt/maca}
     export LD_LIBRARY_PATH=$MACA_PATH/lib:$LD_LIBRARY_PATH
     export LD_LIBRARY_PATH=$MACA_PATH/mxgpu_llvm/lib:$LD_LIBRARY_PATH
+    if flaggems_c_extensions_enabled; then
+      export CUCC_PATH=${CUCC_PATH:-$MACA_PATH/tools/cu-bridge}
+      export PATH=$CUCC_PATH/tools:$PATH
+      export CUCC_CMAKE_ENTRY=${CUCC_CMAKE_ENTRY:-2}
+      if [ -x "$CUCC_PATH/tools/cmake_maca" ]; then
+        export CMAKE_EXECUTABLE=${CMAKE_EXECUTABLE:-$CUCC_PATH/tools/cmake_maca}
+      fi
+    fi
+    if [ -z "${USE_TRITON}" ]; then
+      SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.12/site-packages
+      export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/backends/metax/lib:$LD_LIBRARY_PATH
+    fi
     ;;
   nvidia|nvidia-cuda128|nvidia-cuda133)
     export PATH=/usr/local/cuda/bin:$PATH
