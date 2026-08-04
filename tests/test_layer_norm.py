@@ -25,7 +25,7 @@ if cfg.QUICK_MODE:
     LAYER_NORM_SHAPES = [(1, 40999)]
 else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
-LAYER_NORM_SHAPES = [(200, 36), (4096, 100), (1, 40999), (100, 40499), (4096, 256)]
+    LAYER_NORM_SHAPES = [(200, 36), (4096, 100), (1, 40999), (100, 40499), (4096, 256)]
 
 
 @pytest.mark.native_layer_norm
