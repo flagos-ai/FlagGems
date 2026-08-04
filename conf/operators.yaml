@@ -13,6 +13,20 @@
 # limitations under the License.
 
 ops:
+  - id: _reshape_alias
+    description: |
+      Creates a view of the input tensor with the given size and stride,
+      sharing the same storage as the input. This is an internal reshape
+      helper that skips the validity checks a normal reshape performs.
+    for:
+      - _reshape_alias
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: abs
     description: |
       Computes the absolute value of each element in `input`.

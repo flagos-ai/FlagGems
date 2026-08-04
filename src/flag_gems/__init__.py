@@ -129,6 +129,7 @@ _FULL_CONFIG = (
     ("_pdist_forward", _pdist_forward),
     ("_prelu_kernel", _prelu_kernel),
     ("_prelu_kernel_backward", _prelu_kernel_backward),
+    ("_reshape_alias", _reshape_alias),
     ("_resize_output", _resize_output),
     ("_safe_softmax", _safe_softmax),
     (
