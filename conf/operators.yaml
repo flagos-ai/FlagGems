@@ -1989,6 +1989,17 @@ ops:
       - Convolution
     stages:
       - alpha: '5.3'
+  - id: convert_weight_to_int4pack
+    description: Converts a weight tensor to int4 packed format.
+    for:
+      - _convert_weight_to_int4pack
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: copy
     description: |
       As a wrapper of `copy_`, this operator copies elements from `src` to `out`
