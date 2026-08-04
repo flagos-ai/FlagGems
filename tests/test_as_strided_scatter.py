@@ -27,7 +27,9 @@ from . import accuracy_utils as utils
     [
         ((2, 3), (3, 1), 0, 6),
         ((4, 4), (10, 2), 3, 40),
-        ((2, 2), (1, 1), 0, 8),
+        # Non-overlapping compact view; overlapping strides make the scatter
+        # write order undefined and are intentionally avoided.
+        ((2, 2), (2, 1), 0, 8),
         ((), (), 0, 8),
     ],
 )
@@ -64,6 +66,11 @@ def test_as_strided_scatter_preserves_storage_geometry():
     assert actual.stride() == expected.stride()
     assert actual.storage_offset() == expected.storage_offset()
     assert actual.untyped_storage().nbytes() == expected.untyped_storage().nbytes()
+    # Reference is computed on flag_gems.device; under --ref=cpu the checker
+    # expects the reference on CPU, so move both operands to CPU there.
+    if utils.TO_CPU:
+        actual = actual.to("cpu")
+        expected = expected.to("cpu")
     utils.gems_assert_close(actual, expected, torch.float32)
 
 
@@ -75,4 +82,9 @@ def test_as_strided_scatter_noncontiguous_self():
     with flag_gems.use_gems():
         actual = torch.ops.aten.as_strided_scatter(inp, src, (2, 2), (1, 5), None)
     assert actual.stride() == expected.stride()
+    # Reference is computed on flag_gems.device; under --ref=cpu the checker
+    # expects the reference on CPU, so move both operands to CPU there.
+    if utils.TO_CPU:
+        actual = actual.to("cpu")
+        expected = expected.to("cpu")
     utils.gems_assert_close(actual, expected, torch.float32)
