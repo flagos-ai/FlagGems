@@ -31,11 +31,11 @@ class PinMemoryBenchmark(base.Benchmark):
             yield (torch.randn(shape, dtype=cur_dtype),)
 
 
-@pytest.mark.pin_memory
-def test_pin_memory():
+@pytest.mark.underscore_pin_memory
+def test__pin_memory():
     bench = PinMemoryBenchmark(
-        op_name="pin_memory",
-        torch_op=torch.ops.aten.pin_memory,
+        op_name="_pin_memory",
+        torch_op=torch.ops.aten._pin_memory,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
