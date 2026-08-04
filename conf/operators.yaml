@@ -5268,6 +5268,17 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: unsafe_chunk
+    description: Split a tensor into a specified number of chunks along a given dimension.
+    for:
+      - unsafe_chunk
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: xlogy
     description: Computes `input * log(other)` element-wise, returning zero where `input` is zero (following PyTorch's `xlogy` semantics).
     for:
