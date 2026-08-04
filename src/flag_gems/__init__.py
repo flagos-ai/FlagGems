@@ -514,6 +514,8 @@ _FULL_CONFIG = (
     ("lcm_", lcm_),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
+    ("le_.Scalar", le_scalar_),
+    ("le_.Tensor", le_),
     ("leaky_relu", leaky_relu),
     ("leaky_relu.out", leaky_relu_out),
     ("leaky_relu_", leaky_relu_),
