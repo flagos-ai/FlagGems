@@ -40,9 +40,3 @@ def _pin_memory(self: torch.Tensor, device=None) -> torch.Tensor:
     )
     result.copy_(self)
     return result
-
-
-def pin_memory(self: torch.Tensor, device=None) -> torch.Tensor:
-    """Alias of ``_pin_memory`` used by the public ATen schema."""
-    logger.debug("GEMS PIN_MEMORY")
-    return _pin_memory(self, device)

@@ -23,23 +23,18 @@ from . import accuracy_utils as utils
 PIN_MEMORY_SHAPES = [(1024,), (1024, 1024), (4096, 4096)]
 
 
-@pytest.mark.pin_memory
+@pytest.mark.underscore_pin_memory
 @pytest.mark.parametrize("shape", PIN_MEMORY_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_pin_memory(shape, dtype):
-    # pin_memory only accepts CPU tensors, so the input always lives on CPU.
+def test__pin_memory(shape, dtype):
+    # _pin_memory only accepts CPU tensors, so the input always lives on CPU.
     inp = torch.randn(shape, dtype=dtype, device="cpu")
     ref_inp = utils.to_reference(inp)
 
-    # Reference: PyTorch native pin_memory
-    ref_out = torch.ops.aten.pin_memory(ref_inp)
+    ref_out = torch.ops.aten._pin_memory(ref_inp)
 
-    # FlagGems implementation
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.pin_memory(inp)
+        res_out = torch.ops.aten._pin_memory(inp)
 
-    # Verify the output is pinned
     assert res_out.is_pinned()
-
-    # Verify content matches
     utils.gems_assert_equal(res_out, ref_out)
