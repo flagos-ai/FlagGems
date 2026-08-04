@@ -1143,6 +1143,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: binary_cross_entropy_backward
+    description: Computes the gradient of binary cross entropy loss with respect to the input, with optional per-element weight.
+    for:
+      - binary_cross_entropy_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: binary_cross_entropy_with_logits
     description: Compute the binary cross entropy loss with logits.
     for:
