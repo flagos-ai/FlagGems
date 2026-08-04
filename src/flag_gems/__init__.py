@@ -298,6 +298,7 @@ _FULL_CONFIG = (
     ("channel_shuffle", channel_shuffle),
     ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
     ("cholesky_solve.out", cholesky_solve_out, None, (CONJUGATE_DISPATCH_KEY,)),
+    ("chunk", chunk),
     ("clamp", clamp),
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),

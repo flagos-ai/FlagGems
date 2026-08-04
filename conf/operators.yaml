@@ -1636,6 +1636,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: chunk
+    description: Split a tensor into a specific number of chunks along a given dimension.
+    for:
+      - chunk
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: chunk_cat
     description: Triton kernel implementation for _chunk_cat.
     for:
