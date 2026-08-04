@@ -9967,6 +9967,18 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: uniform
+    description: Returns a new tensor filled with numbers sampled from the continuous uniform distribution.
+    for:
+      - uniform
+    labels:
+      - aten
+      - KernelGen
+      - skip_precision_check
+    kind:
+      - Distribution
+    stages:
+      - alpha: '5.4'
   - id: uniform_
     description: Fills `self` tensor with numbers sampled from the continuous uniform distribution.
     for:
