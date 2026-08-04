@@ -4949,6 +4949,28 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: less_equal_
+    description: The in-place version of `less_equal()`.
+    for:
+      - less_equal_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: less_equal_scalar_
+    description: The scalar version of `less_equal_()`.
+    for:
+      - less_equal_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: lgamma
     description: Computes the logarithm of the gamma function on input.
     for:

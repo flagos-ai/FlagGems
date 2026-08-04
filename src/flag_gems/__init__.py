@@ -527,6 +527,8 @@ _FULL_CONFIG = (
     ("less_.Tensor", less_),
     ("less_equal.Scalar", less_equal_scalar),
     ("less_equal.Tensor", less_equal),
+    ("less_equal_.Scalar", less_equal_scalar_),
+    ("less_equal_.Tensor", less_equal_),
     ("lgamma", lgamma),
     ("lgamma_", lgamma_),
     ("lift", lift),
