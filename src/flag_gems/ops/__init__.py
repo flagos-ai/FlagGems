@@ -29,6 +29,7 @@ from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
 from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
 from flag_gems.ops._conj import _conj
+from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
 from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
@@ -134,6 +135,7 @@ from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
+from flag_gems.ops.binary_cross_entropy_backward import binary_cross_entropy_backward
 from flag_gems.ops.binary_cross_entropy_with_logits import (
     binary_cross_entropy_with_logits,
 )
@@ -168,7 +170,7 @@ from flag_gems.ops.broadcast_to import broadcast_to
 from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
-from flag_gems.ops.cdist_backward import _cdist_backward
+from flag_gems.ops.cdist import _cdist_backward, _cdist_forward
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.channel_shuffle import channel_shuffle
@@ -232,11 +234,13 @@ from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.empty import empty
 from flag_gems.ops.eq import eq, eq_scalar, equal
+from flag_gems.ops.eq_ import eq_, eq_scalar_
 from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.erfinv_ import erfinv, erfinv_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
 from flag_gems.ops.expand import expand, expand_
+from flag_gems.ops.expand_as import expand_as
 from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
 from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
@@ -259,6 +263,7 @@ from flag_gems.ops.flash_attention_backward import (
     scaled_dot_product_efficient_attention_backward,
     scaled_dot_product_flash_attention_backward,
 )
+from flag_gems.ops.flatten import flatten
 from flag_gems.ops.flip import flip
 from flag_gems.ops.float_power_ import (
     float_power_tensor_scalar,
@@ -647,12 +652,14 @@ from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.trunc_ import trunc, trunc_
 from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
+from flag_gems.ops.unfold import unfold
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
+from flag_gems.ops.unsafe_chunk import unsafe_chunk
 from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
@@ -703,9 +710,11 @@ __all__ = [
     "_assert_async",
     "_batch_norm_no_update",
     "_cdist_backward",
+    "_cdist_forward",
     "_chunk_cat",
     "_conj",
     "_conv_depthwise2d",
+    "_convert_weight_to_int4pack",
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
     "_euclidean_dist",
@@ -825,6 +834,7 @@ __all__ = [
     "batch_norm_backward",
     "bernoulli",
     "bernoulli_",
+    "binary_cross_entropy_backward",
     "binary_cross_entropy_with_logits",
     "bincount",
     "bitwise_and_scalar",
@@ -932,7 +942,9 @@ __all__ = [
     "embedding_dense_backward",
     "empty",
     "eq",
+    "eq_",
     "eq_scalar",
+    "eq_scalar_",
     "equal",
     "erf",
     "erf_",
@@ -947,6 +959,7 @@ __all__ = [
     "exp_out",
     "expand",
     "expand_",
+    "expand_as",
     "expm1",
     "expm1_",
     "expm1_out",
@@ -963,6 +976,7 @@ __all__ = [
     "fill_tensor_",
     "fill_tensor_out",
     "fix",
+    "flatten",
     "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
@@ -1117,6 +1131,7 @@ __all__ = [
     "logaddexp2_out",
     "logcumsumexp",
     "logcumsumexp_out",
+    "unsafe_chunk",
     "xlogy",
     "xlogy_out",
     "xlogy_tensor_scalar",
@@ -1448,6 +1463,7 @@ __all__ = [
     "trunc_",
     "unbind",
     "unbind_copy",
+    "unfold",
     "unfold_backward",
     "unfold_copy",
     "uniform_",

@@ -1143,6 +1143,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: binary_cross_entropy_backward
+    description: Computes the gradient of binary cross entropy loss with respect to the input, with optional per-element weight.
+    for:
+      - binary_cross_entropy_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: binary_cross_entropy_with_logits
     description: Compute the binary cross entropy loss with logits.
     for:
@@ -1522,6 +1533,19 @@ ops:
       computing the gradient with respect to the input tensors.
     for:
       - _cdist_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: cdist_forward
+    description: |
+      Computes the batched pairwise distance (cdist) between two collections of row vectors,
+      supporting p=2.0 (L2 norm).
+    for:
+      - _cdist_forward
     labels:
       - aten
       - KernelGen
@@ -1976,6 +2000,17 @@ ops:
       - Convolution
     stages:
       - alpha: '5.3'
+  - id: convert_weight_to_int4pack
+    description: Converts a weight tensor to int4 packed format.
+    for:
+      - _convert_weight_to_int4pack
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: copy
     description: |
       As a wrapper of `copy_`, this operator copies elements from `src` to `out`
@@ -2768,6 +2803,17 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: eq_
+    description: The in-place version of `eq()`.
+    for:
+      - eq_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: eq_scalar
     description: Computes equality between scalars.
     for:
@@ -2779,6 +2825,17 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: eq_scalar_
+    description: The scalar version of `eq_()`.
+    for:
+      - eq_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: equal
     description: Returns True if two tensors have the same size and elements, False otherwise.
     for:
@@ -2950,6 +3007,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: expand_as
+    description: Expand tensor to the same size as another tensor (view operation).
+    for:
+      - expand_as
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: expm1
     description: Computes the exponential of the elements minus 1 of `input`.
     for:
@@ -3115,6 +3183,17 @@ ops:
     description: "fix operator"
     for:
       - fix
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: flatten
+    description: Flatten a contiguous range of dimensions into a single dimension (view operation).
+    for:
+      - flatten.using_ints
     labels:
       - aten
       - KernelGen
@@ -5211,6 +5290,17 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: unsafe_chunk
+    description: Split a tensor into a specified number of chunks along a given dimension.
+    for:
+      - unsafe_chunk
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: xlogy
     description: Computes `input * log(other)` element-wise, returning zero where `input` is zero (following PyTorch's `xlogy` semantics).
     for:
@@ -9813,6 +9903,17 @@ ops:
       - KernelGen
     kind:
       - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: unfold
+    description: Return a view of the tensor with a sliding window along the given dimension.
+    for:
+      - unfold
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
     stages:
       - alpha: '5.4'
   - id: unfold_backward
