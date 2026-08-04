@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 single_dim_shapes: &single_dim_shapes
   shapes:
     - [64]
@@ -50,6 +64,42 @@ svd:
     - [17, 17]
     - [256, 256]
   shape_desc: "(*B), M, N"
+
+linalg_lu_factor:
+  shapes:
+    - [16, 16]
+    - [32, 32]
+    - [64, 64]
+    - [128, 128]
+    - [256, 256]
+    - [1024, 512]
+    - [32, 16]
+    - [16, 32]
+    - [128, 64]
+    - [64, 128]
+    - [4, 32, 32]
+    - [128, 16, 16]
+    - [1024, 512, 512]
+    - [4096, 512, 512]
+  shape_desc: "input shape"
+
+linalg_lu_factor_out:
+  shapes:
+    - [16, 16]
+    - [32, 32]
+    - [64, 64]
+    - [128, 128]
+    - [256, 256]
+    - [1024, 512]
+    - [32, 16]
+    - [16, 32]
+    - [128, 64]
+    - [64, 128]
+    - [4, 32, 32]
+    - [128, 16, 16]
+    - [1024, 512, 512]
+    - [4096, 512, 512]
+  shape_desc: "input shape"
 
 segment_reduce: &segment_reduce_shapes
   shapes:
@@ -114,6 +164,15 @@ log10_:
 
 log10_out:
   shapes:
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 65536]
+  shape_desc: "(B), M, N"
+
+float_power_:
+  shapes:
+    - [1048576]
+    - [64, 64]
     - [4096, 4096]
     - [64, 512, 512]
     - [1024, 65536]
@@ -484,6 +543,14 @@ AttentionBenchmark:
     - [4, 32, 4096, 128]
     - [4, 32, 8192, 128]
 
+ScaledDotProductFusedAttentionOverrideableBenchmark:
+  shapes:
+    - [2, 8, 64, 64]
+    - [4, 8, 128, 64]
+    - [2, 8, 128, 128]
+    - [1, 16, 256, 64]
+  shape_desc: "B, H, S, D"
+
 KronBenchmark:
   shapes:
     - [16, 16]
@@ -523,6 +590,15 @@ index:
     - [[1024, 1024], [[64], [64]]]
     - [[512, 512, 512], [[2, 128]]]
     - [[64, 64, 64], [[2, 8], [2, 8]]]
+
+index_select_backward:
+  shapes:
+    - [16, 64]
+    - [32, 128]
+    - [64, 256]
+    - [16, 16, 64]
+    - [32, 32, 128]
+  shape_desc: "N, M"
 
 FlashMLABenchmark:
   shapes:
@@ -629,6 +705,15 @@ ReshapeAndCacheFlashBenchmark:
     - [21, 4, 80, 16, 10000]
     - [42, 8, 64, 8, 1024]
     - [42, 8, 80, 16, 10000]
+
+FractionalMaxPool2dBenchmark:
+  shapes:
+    - [4, 3, 224, 224]
+    - [16, 64, 56, 56]
+    - [32, 128, 28, 28]
+    - [64, 256, 14, 14]
+    - [128, 512, 7, 7]
+  shape_desc: "N, C, H, W"
 
 pixel_shuffle:
   shapes:

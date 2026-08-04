@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import torch
 import triton
 
@@ -374,24 +388,28 @@ def mean_heur_one_tile_per_cta(args):
 
 
 def mha_varlen_heur_block_m(params):
-    if params.seqlen_q == 1:
-        return 1
-    elif params.seqlen_q >= 1024:
+    # seqlen_q is the kernel's actual Q length (after swap for decode).
+    # Prefill (sq >= 1024): large tiles for throughput -> BLOCK_M=512
+    # Decode swapped  (sq=8):  small tiles for SM utilization -> BLOCK_M=8
+    sq = params.seqlen_q
+    if sq >= 1024:
         return 512
-    elif params.seqlen_q >= 512:
+    elif sq >= 512:
         return 256
-    elif params.seqlen_q >= 256:
+    elif sq >= 128:
         return 128
-    elif params.seqlen_q >= 128:
+    elif sq >= 64:
         return 64
-    elif params.seqlen_q >= 64:
+    elif sq >= 32:
         return 32
     else:
-        return 16
+        return 8  # decode swap: sq=q_groups=8
 
 
 def mha_varlen_heur_block_n(params):
-    return 16
+    # BLOCK_N must be divide by block_size, so BLOCK_N must be <= block_size,
+    # as tsingmicro DSA acrh, the BLOCK_N equal to block_size works well
+    return params.block_size
 
 
 HEURISTICS_CONFIGS = {
@@ -495,11 +513,12 @@ HEURISTICS_CONFIGS = {
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
     },
+    # Dynamically chosen by mha_varlen_heur_block_m based on seqlen_q:
     "mha_varlen_fwd": {
-        "BLOCK_M": lambda a: 16,  # mha_varlen_heur_block_m,
-        "BLOCK_N": lambda a: 32,  # mha_varlen_heur_block_n,
+        "BLOCK_M": mha_varlen_heur_block_m,
+        "BLOCK_N": mha_varlen_heur_block_n,
         "num_warps": lambda args: 1,
-        "num_stages": lambda args: 1,
+        "num_stages": lambda args: 2,
     },
     "elementwise_generic": {
         "BLOCK_SIZE": simple_elementwise_blocksize_heur,
