@@ -9872,6 +9872,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: unfold
+    description: Return a view of the tensor with a sliding window along the given dimension.
+    for:
+      - unfold
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: unfold_backward
     description: |
       An operator for calculating the gradient of the `unfold` operation during backpropagation.
