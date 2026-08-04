@@ -36,7 +36,7 @@ def test_log_(shape, dtype):
 
 @pytest.mark.log_
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_log__special_values(dtype):
+def test_log_special_values(dtype):
     """Test log_ on inf, -inf, 0, and nan inputs."""
     inp = torch.tensor(
         [float("inf"), float("-inf"), 0.0, float("nan"), 1.0],
