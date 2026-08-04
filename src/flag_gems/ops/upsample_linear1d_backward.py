@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import math
 
 import torch
 import triton
@@ -147,7 +148,15 @@ def upsample_linear1d_backward(
 
     BLOCK = 512
     WINDOW = 2
-    if out_w > 2 * in_w:
+    if align_corners and in_w > 1:
+        # With align_corners the input-to-output stretch is (out_w - 1) / (in_w - 1),
+        # not out_w / in_w, and it is the stretch that says how far an input pixel's
+        # contributions reach. An output position further away than WINDOW is never
+        # scanned, so its weight would be dropped from the gradient.
+        reach = (out_w - 1) / (in_w - 1)
+        if reach > 2:
+            WINDOW = math.ceil(reach) + 1
+    elif out_w > 2 * in_w:
         WINDOW = triton.cdiv(out_w, in_w) + 2
     grid = (triton.cdiv(n * c * in_w, BLOCK),)
 

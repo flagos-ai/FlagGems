@@ -236,3 +236,35 @@ def test_upsample_linear1d_backward(
         reduce_dim = (out_w + input_w - 1) // input_w
 
     gems_assert_close(res_out, ref_out, dtype, atol=atol, reduce_dim=reduce_dim)
+
+
+# align_corners stretches the input-to-output mapping by (out_w - 1) / (in_w - 1),
+# which is larger than out_w / in_w. These ratios are the first ones past that
+# difference for each input width; the grid above stops at 4.0 and never reaches them.
+@pytest.mark.upsample_linear1d_backward
+@pytest.mark.parametrize("in_w, out_w", [(2, 10), (3, 24), (4, 44), (8, 200)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_upsample_linear1d_backward_align_corners_large_ratio(in_w, out_w, dtype):
+    shape = (1, 1, in_w)
+    # a constant gradient makes the shortfall exact: each input cell must collect
+    # the total weight of every output position that interpolates from it
+    res_grad = torch.ones((1, 1, out_w), dtype=dtype, device=flag_gems.device)
+    ref_grad = to_reference(res_grad)
+
+    ref_out = upsample_linear1d_backward_call(ref_grad, shape, True)
+    with flag_gems.use_gems():
+        res_out = upsample_linear1d_backward_call(res_grad, shape, True)
+
+    if dtype == torch.float32:
+        atol = 1e-4
+    elif dtype == torch.float16:
+        atol = 1e-2
+    else:
+        atol = 2e-2
+
+    gems_assert_close(
+        res_out, ref_out, dtype, atol=atol, reduce_dim=(out_w + in_w - 1) // in_w
+    )
