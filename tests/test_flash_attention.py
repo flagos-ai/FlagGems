@@ -577,6 +577,93 @@ def test_flash_attention_foward_splitkv(
 @pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
+    ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
+    SPLITKV_CONFIGS + [(1, 2, 2, 256, 8192)],
+)
+@pytest.mark.parametrize("head_size", SPLITKV_HEAD_SIZES)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_flash_attention_foward_splitkv_contiguous_layout(
+    batch, num_head, num_head_k, q_seq_len, kv_seq_len, head_size, dtype
+):
+    # The other splitkv test reaches the op through transpose(1, 2) views, whose
+    # seqlen stride happens to equal head_size and to match the combine kernel's
+    # flat row order. Freshly allocated (batch, seqlen, num_heads, head_size)
+    # tensors — the layout the aten op documents — carry seqlen stride
+    # num_heads * head_size (a transpose().contiguous() round-trip keeps the old
+    # strides when seqlen is 1, so allocate directly), which the combine kernel
+    # must honor when scattering rows back. The non-splitkv path handles that
+    # layout correctly, so it serves as a tight same-dtype reference that
+    # corrupted or never-written rows cannot slip past.
+    device = torch_device_fn.current_device()
+    random_utils.set_philox_state(1234567890, 0, device)
+    q_bshd = torch.empty(
+        (batch, q_seq_len, num_head, head_size), dtype=dtype, device=device
+    ).uniform_(-0.05, 0.05)
+    k_bshd = torch.empty(
+        (batch, kv_seq_len, num_head_k, head_size), dtype=dtype, device=device
+    ).uniform_(-0.05, 0.05)
+    v_bshd = torch.empty(
+        (batch, kv_seq_len, num_head_k, head_size), dtype=dtype, device=device
+    ).uniform_(-0.05, 0.05)
+    scale = float(1.0 / np.sqrt(head_size))
+
+    # attention_ref scales its q argument in place, so hand it copies.
+    torch_out, _ = attention_ref(
+        q_bshd.transpose(1, 2).clone(),
+        k_bshd.transpose(1, 2).clone(),
+        v_bshd.transpose(1, 2).clone(),
+        scale,
+        None,
+        None,
+        None,
+        0.0,
+        None,
+        causal=False,
+        window_size=(-1, -1),
+        softcap=0,
+    )
+
+    nosplit_out, _, _, _, _ = flag_gems.flash_attention_forward(
+        q_bshd,
+        k_bshd,
+        v_bshd,
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        0.0,
+        False,
+        False,
+        scale=scale,
+        disable_splitkv=True,
+    )
+    gems_out, gems_lse, _, _, _ = flag_gems.flash_attention_forward(
+        q_bshd,
+        k_bshd,
+        v_bshd,
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        0.0,
+        False,
+        False,
+        scale=scale,
+    )
+
+    assert not torch.isnan(gems_out).any()
+    utils.gems_assert_close(gems_out, torch_out, dtype)
+    utils.gems_assert_close(gems_out, nosplit_out, dtype)
+
+
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
+@pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not working")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not working")
+@pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
+@pytest.mark.flash_attention_forward
+@pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
     SWA_CONFIGS,
 )
