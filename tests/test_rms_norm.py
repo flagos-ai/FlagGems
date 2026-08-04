@@ -111,9 +111,18 @@ def _run_dw_kernel(kernel_fn, X, DY, INV_RMS, M, N, extra_kwargs=None):
     grid = (row_block_num, col_block_num)
 
     kernel_fn[grid](
-        X, DY, INV_RMS, DW,
-        N, 1, N, 1, M, N,
-        _DW_ROW_BLOCK_SIZE, _DW_COL_BLOCK_SIZE,
+        X,
+        DY,
+        INV_RMS,
+        DW,
+        N,
+        1,
+        N,
+        1,
+        M,
+        N,
+        _DW_ROW_BLOCK_SIZE,
+        _DW_COL_BLOCK_SIZE,
         **extra_kwargs,
     )
     return torch.sum(DW, dim=0, dtype=torch.float32)
@@ -147,7 +156,11 @@ def test_dw_tle_matches_baseline(M, N, dtype):
     dw_base = _run_dw_kernel(rms_norm_grad_dw_kernel, X, DY, INV_RMS, M, N)
     dw_tle = _run_dw_kernel(
         rms_norm_grad_dw_kernel_tle,
-        X, DY, INV_RMS, M, N,
+        X,
+        DY,
+        INV_RMS,
+        M,
+        N,
         extra_kwargs={
             "TARGET_LAYOUT": _DW_TARGET_LAYOUT,
             "num_warps": _DW_TLE_NUM_WARPS,
@@ -201,10 +214,14 @@ def test_rms_norm_end_to_end_with_tle_dispatch(M, N, dtype):
     )
 
     out_tol = (
-        dict(rtol=1e-2, atol=1e-2) if dtype == torch.float16 else dict(rtol=1e-3, atol=1e-3)
+        dict(rtol=1e-2, atol=1e-2)
+        if dtype == torch.float16
+        else dict(rtol=1e-3, atol=1e-3)
     )
     dw_tol = (
-        dict(rtol=2e-2, atol=2e-2) if dtype == torch.float16 else dict(rtol=1e-3, atol=1e-3)
+        dict(rtol=2e-2, atol=2e-2)
+        if dtype == torch.float16
+        else dict(rtol=1e-3, atol=1e-3)
     )
 
     torch.testing.assert_close(res_out.float(), ref_out.float(), **out_tol)

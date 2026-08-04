@@ -32,9 +32,9 @@ def build_layout(row_block_size, col_block_size, num_warps):
     import triton.experimental.tle.language as tle
 
     denom = 32 * num_warps
-    assert col_block_size % denom == 0, (
-        f"col_block_size={col_block_size} not divisible by 32*num_warps={denom}"
-    )
+    assert (
+        col_block_size % denom == 0
+    ), f"col_block_size={col_block_size} not divisible by 32*num_warps={denom}"
     size_per_thread_col = col_block_size // denom
     return tle.gpu.BlockEncoding(
         size_per_thread=[row_block_size, size_per_thread_col],
@@ -51,8 +51,18 @@ def make_inputs(M, N, dtype):
     return X, DY, INV_RMS
 
 
-def run_one(kernel_fn, M, N, ROW_BLOCK_SIZE, COL_BLOCK_SIZE, num_warps,
-            dtype, extra_kwargs=None, warmup=25, rep=100):
+def run_one(
+    kernel_fn,
+    M,
+    N,
+    ROW_BLOCK_SIZE,
+    COL_BLOCK_SIZE,
+    num_warps,
+    dtype,
+    extra_kwargs=None,
+    warmup=25,
+    rep=100,
+):
     extra_kwargs = extra_kwargs or {}
     torch.manual_seed(0)
     X, DY, INV_RMS = make_inputs(M, N, dtype)
@@ -62,9 +72,18 @@ def run_one(kernel_fn, M, N, ROW_BLOCK_SIZE, COL_BLOCK_SIZE, num_warps,
 
     def launch():
         kernel_fn[grid](
-            X, DY, INV_RMS, DW,
-            N, 1, N, 1, M, N,
-            ROW_BLOCK_SIZE, COL_BLOCK_SIZE,
+            X,
+            DY,
+            INV_RMS,
+            DW,
+            N,
+            1,
+            N,
+            1,
+            M,
+            N,
+            ROW_BLOCK_SIZE,
+            COL_BLOCK_SIZE,
             num_warps=num_warps,
             **extra_kwargs,
         )
@@ -80,7 +99,12 @@ def benchmark_case(name, dtype):
 
     ms_base = run_one(
         rms_norm_grad_dw_kernel,
-        M, N, ROW_BLOCK_SIZE, COL_BLOCK_SIZE, num_warps, dtype,
+        M,
+        N,
+        ROW_BLOCK_SIZE,
+        COL_BLOCK_SIZE,
+        num_warps,
+        dtype,
     )
 
     is_integrated_config = (
@@ -96,7 +120,12 @@ def benchmark_case(name, dtype):
 
     ms_set_layout = run_one(
         rms_norm_grad_dw_kernel_tle,
-        M, N, ROW_BLOCK_SIZE, COL_BLOCK_SIZE, num_warps, dtype,
+        M,
+        N,
+        ROW_BLOCK_SIZE,
+        COL_BLOCK_SIZE,
+        num_warps,
+        dtype,
         extra_kwargs={"TARGET_LAYOUT": layout},
     )
 
