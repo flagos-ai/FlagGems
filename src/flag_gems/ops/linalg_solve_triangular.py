@@ -113,7 +113,8 @@ def _persistent_trsm_kernel(
             src_x = B_ptr + (blk_start + xr) * stride_b_k + k_start + xc
             tl.store(loc_x, tl.load(src_x, mask=rm_bc & km_bc, other=0.0))
 
-            # Pre-compute diagonal reciprocals in parallel: move division out of the serial forward-substitution chain (multiply instead)
+            # Pre-compute diagonal reciprocals in parallel: move division out of
+            # the serial forward-substitution chain (multiply instead)
             if not UNIT:
                 diag_loc = tle.gpu.local_ptr(A_sm, (a_rows, a_rows))
                 inv_diag = 1.0 / tl.load(diag_loc, mask=a_rows < blk_sz, other=1.0)
@@ -300,7 +301,8 @@ def _kslice_trsm_kernel(
         src_x = B_ptr + (blk_start + xr) * stride_b_k + col_offs[None, :]
         tl.store(loc_x, tl.load(src_x, mask=rm_bc & col_mask[None, :], other=0.0))
 
-        # Pre-compute diagonal reciprocals in parallel: move division out of the serial forward-substitution chain (multiply instead)
+        # Pre-compute diagonal reciprocals in parallel: move division out of
+        # the serial forward-substitution chain (multiply instead)
         if not UNIT:
             diag_loc = tle.gpu.local_ptr(A_sm, (a_rows, a_rows))
             inv_diag = 1.0 / tl.load(diag_loc, mask=a_rows < blk_sz, other=1.0)
@@ -500,7 +502,8 @@ def _small_diag_kernel_notle(
             inv_d = tl.load(INV_ptr + (pid_batch * NUM_K_TILES + pid_k) * 16 + row)
             b_row *= inv_d
         tl.store(B_batch + row * stride_b_k + k_offs, b_row, mask=k_mask)
-        # Make this row's writeback visible to the next row's cross-thread reads (row dependency, no automatic sync on global)
+        # Make this row's writeback visible to the next row's cross-thread
+        # reads (row dependency, no automatic sync on global)
         tl.debug_barrier()
 
 
@@ -588,7 +591,8 @@ def _kslice_trsm_kernel_notle(
                 inv_d = tl.load(INV_ptr + pid * BLOCK_SIZE + row_rel)
                 x_vals *= inv_d
             tl.store(B_ptr + row * stride_b_k + col_offs, x_vals, mask=col_mask)
-            # Make this row's writeback visible to the next row's cross-thread reads (no automatic smem sync on global)
+            # Make this row's writeback visible to the next row's cross-thread
+            # reads (no automatic smem sync on global)
             tl.debug_barrier()
 
         # ═══════ Update: B[rest, kslice] -= A[rest, blk_k] @ X[blk_k, kslice] ═══════
@@ -720,7 +724,8 @@ def _persistent_trsm_kernel_notle(
                     inv_d = tl.load(INV_ptr + kt * BLOCK_SIZE + row_rel)
                     x_vals *= inv_d
                 tl.store(B_ptr + row * stride_b_k + k_offs, x_vals, mask=k_mask)
-                # Make this row's writeback visible to the next row's cross-thread reads (no automatic smem sync on global)
+                # Make this row's writeback visible to the next row's cross-thread
+                # reads (no automatic smem sync on global)
                 tl.debug_barrier()
 
         _barrier_with_atomic_add(sync_ptr, zeros, lane, (phase + 1) * NUM_CTAS)
