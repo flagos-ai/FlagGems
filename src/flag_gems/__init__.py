@@ -912,6 +912,7 @@ _FULL_CONFIG = (
     ("var.dim", var_dim),
     ("var_mean.correction", var_mean),
     ("vdot", vdot),
+    ("view_as_complex", view_as_complex),
     ("view_copy", view_copy),
     ("vstack", vstack),
     ("where.self", where_self),
