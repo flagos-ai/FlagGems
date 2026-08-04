@@ -388,6 +388,7 @@ from flag_gems.ops.logit_ import logit_
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lstm import lstm
+from flag_gems.ops.lstm_cell import lstm_cell
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.lt_ import lt_, lt_scalar_
 from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
@@ -1155,6 +1156,7 @@ __all__ = [
     "logspace",
     "logsumexp",
     "lstm",
+    "lstm_cell",
     "lt",
     "lt_",
     "lt_scalar",
