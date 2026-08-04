@@ -5417,6 +5417,20 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
+  - id: linalg_solve_triangular
+    description: |-
+      Solves a triangular system of linear equations with a unique solution, returning
+      a tensor X such that A*X = B (or X*A = B when right=True) for a triangular
+      matrix A and matrix of right-hand sides B.
+    for:
+      - linalg_solve_triangular
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linalg_svdvals
     description: Computes the singular values of a matrix.
     for:
