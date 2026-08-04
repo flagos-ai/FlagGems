@@ -39,9 +39,9 @@ def test_absolute_(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp.clone())
 
-    ref_out = torch.absolute_(ref_inp)
+    ref_out = ref_inp.absolute_()
     with flag_gems.use_gems():
-        res_out = torch.absolute_(inp)
+        res_out = inp.absolute_()
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -52,8 +52,8 @@ def test_absolute__non_contiguous(dtype):
     inp = torch.randn((64, 64), dtype=dtype, device=flag_gems.device)[::2, ::2]
     ref_inp = utils.to_reference(inp.clone())
 
-    ref_out = torch.absolute_(ref_inp)
+    ref_out = ref_inp.absolute_()
     with flag_gems.use_gems():
-        res_out = torch.absolute_(inp)
+        res_out = inp.absolute_()
 
     utils.gems_assert_equal(res_out, ref_out)

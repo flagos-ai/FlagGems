@@ -30,7 +30,7 @@ def test_absolute():
 def test_absolute_inplace():
     bench = base.UnaryPointwiseBenchmark(
         op_name="absolute_",
-        torch_op=torch.absolute_,
+        torch_op=lambda x: x.absolute_(),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
