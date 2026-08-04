@@ -158,6 +158,74 @@ def gems_flash_fwd(
     return out, lse, seed, offset, debug_softmax
 
 
+@pytest.mark.underscore_flash_attention_forward
+@pytest.mark.parametrize(
+    "batch,num_head,q_seq_len,kv_seq_len,head_size",
+    [(1, 2, 128, 128, 64), (2, 4, 64, 96, 128)],
+)
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test__flash_attention_forward(
+    batch,
+    num_head,
+    q_seq_len,
+    kv_seq_len,
+    head_size,
+    is_causal,
+    dtype,
+    caplog,
+):
+    current_device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch,
+        num_head,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        current_device,
+    )
+    q = q.transpose(1, 2)
+    k = k.transpose(1, 2)
+    v = v.transpose(1, 2)
+    scale = float(1.0 / np.sqrt(head_size))
+
+    ref_result = torch.ops.aten._flash_attention_forward.default(
+        q,
+        k,
+        v,
+        None,
+        None,
+        q.shape[-3],
+        k.shape[-3],
+        0.0,
+        is_causal,
+        False,
+        scale=scale,
+    )
+    with caplog.at_level("DEBUG", logger="flag_gems.ops._flash_attention_forward"):
+        with flag_gems.use_gems():
+            result = torch.ops.aten._flash_attention_forward.default(
+                q,
+                k,
+                v,
+                None,
+                None,
+                q.shape[-3],
+                k.shape[-3],
+                0.0,
+                is_causal,
+                False,
+                scale=scale,
+            )
+
+    assert "GEMS _FLASH_ATTENTION_FORWARD" in caplog.text
+    assert len(result) == len(ref_result) == 5
+    utils.gems_assert_close(result[0], ref_result[0], dtype)
+    utils.gems_assert_close(result[1], ref_result[1], torch.float)
+
+
 def sparse_attention_ref(q, kv, attn_sink, topk_idxs, scale):
     batch, seq_len, heads, dim = q.shape
     topk = topk_idxs.shape[-1]
