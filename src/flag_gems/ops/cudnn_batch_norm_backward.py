@@ -8,7 +8,7 @@ from torch import Tensor
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, tl_extra_shim
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +69,10 @@ def cudnn_batch_norm_backward_kernel(
     feat_pid = tl.program_id(axis=0)
 
     mean = tl.load(feat_pid + mean_pointer).to(tl.float32)
-    var = tl.load(feat_pid + var_pointer).to(tl.float32)
-    inv_std = tl_extra_shim.rsqrt(var + eps)
+    # cudnn_batch_norm saves cuDNN's resultSaveInvVariance: the tensor handed
+    # here already is 1/sqrt(var + eps), so consume it directly — exactly as
+    # batch_norm.py's backward consumes its saved inv_std.
+    inv_std = tl.load(feat_pid + var_pointer).to(tl.float32)
 
     term1 = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
     term2 = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
@@ -202,7 +204,7 @@ def cudnn_batch_norm_backward(
             input_3d,
             weight,
             save_mean,
-            save_var,  # Pass variance
+            save_var,  # Saved inverse standard deviation from the forward
             input_grad,
             weight_grad,
             bias_grad,
