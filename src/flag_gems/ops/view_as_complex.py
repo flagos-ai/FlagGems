@@ -18,7 +18,7 @@ def view_as_complex(A: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: A complex tensor view.
     """
-    logger.debug("GEMS view_as_complex")
+    logger.debug("GEMS VIEW_AS_COMPLEX")
 
     # Validate input - only float32 and float64 are supported
     assert A.dtype in (

@@ -26,3 +26,15 @@ def test_view_as_complex(shape, dtype):
     res_out_ref = utils.to_reference(torch.view_as_real(res_out))
     ref_out_ref = utils.to_reference(torch.view_as_real(ref_out))
     utils.gems_assert_close(res_out_ref, ref_out_ref, dtype)
+
+
+@pytest.mark.view_as_complex
+def test_view_as_complex_invalid_last_dim():
+    """Test that view_as_complex raises RuntimeError when last dim != 2."""
+    inp = torch.randn((64, 3), dtype=torch.float32, device=flag_gems.device)
+
+    with pytest.raises(
+        RuntimeError, match="expects a tensor with last dimension of size 2"
+    ):
+        with flag_gems.use_gems():
+            torch.view_as_complex(inp)
