@@ -6898,11 +6898,22 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
-  - id: pin_memory
+  - id: _pin_memory
     description: Copies a strided CPU tensor into page-locked host memory for
       asynchronous transfer to an accelerator.
     for:
       - _pin_memory
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: pin_memory
+    description: Public entry that pins a strided CPU tensor into page-locked host
+      memory; delegates to _pin_memory.
+    for:
       - pin_memory
     labels:
       - aten
