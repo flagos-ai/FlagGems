@@ -359,6 +359,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
+  - id: alias
+    description: Return a view tensor sharing the same storage (zero-copy alias).
+    for:
+      - alias
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: alias_copy
     description: |
       Creates a new tensor that shares the same storage data as the original tensor,
@@ -1143,6 +1154,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: binary_cross_entropy_backward
+    description: Computes the gradient of binary cross entropy loss with respect to the input, with optional per-element weight.
+    for:
+      - binary_cross_entropy_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: binary_cross_entropy_with_logits
     description: Compute the binary cross entropy loss with logits.
     for:
@@ -1522,6 +1544,19 @@ ops:
       computing the gradient with respect to the input tensors.
     for:
       - _cdist_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: cdist_forward
+    description: |
+      Computes the batched pairwise distance (cdist) between two collections of row vectors,
+      supporting p=2.0 (L2 norm).
+    for:
+      - _cdist_forward
     labels:
       - aten
       - KernelGen
@@ -1976,6 +2011,17 @@ ops:
       - Convolution
     stages:
       - alpha: '5.3'
+  - id: convert_weight_to_int4pack
+    description: Converts a weight tensor to int4 packed format.
+    for:
+      - _convert_weight_to_int4pack
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: copy
     description: |
       As a wrapper of `copy_`, this operator copies elements from `src` to `out`
@@ -2768,6 +2814,17 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: eq_
+    description: The in-place version of `eq()`.
+    for:
+      - eq_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: eq_scalar
     description: Computes equality between scalars.
     for:
@@ -2779,6 +2836,17 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: eq_scalar_
+    description: The scalar version of `eq_()`.
+    for:
+      - eq_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: equal
     description: Returns True if two tensors have the same size and elements, False otherwise.
     for:
@@ -2950,6 +3018,17 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: expand_as
+    description: Expand tensor to the same size as another tensor (view operation).
+    for:
+      - expand_as
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: expm1
     description: Computes the exponential of the elements minus 1 of `input`.
     for:
@@ -3115,6 +3194,17 @@ ops:
     description: "fix operator"
     for:
       - fix
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: flatten
+    description: Flatten a contiguous range of dimensions into a single dimension (view operation).
+    for:
+      - flatten.using_ints
     labels:
       - aten
       - KernelGen
@@ -4887,6 +4977,30 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: cholesky_solve
+    description: |-
+      Solves a system of linear equations with a symmetric positive-definite matrix
+      using its Cholesky factorization.
+    for:
+      - cholesky_solve
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: cholesky_solve_out
+    description: |-
+      Solves a system of linear equations with a symmetric positive-definite matrix
+      using its Cholesky factorization.
+    for:
+      - cholesky_solve.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linalg_eigvals
     description: Computes the eigenvalues of a square matrix.
     for:
@@ -5203,6 +5317,17 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: unsafe_chunk
+    description: Split a tensor into a specified number of chunks along a given dimension.
+    for:
+      - unsafe_chunk
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: xlogy
     description: Computes `input * log(other)` element-wise, returning zero where `input` is zero (following PyTorch's `xlogy` semantics).
     for:
@@ -6191,6 +6316,31 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.4'
+  - id: nansum
+    description: |
+      Returns the sum of all elements in the `input` tensor, treating `NaN` values as zero.
+      Supports global reduction and reduction along specified dimensions.
+    for:
+      - nansum
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
+  - id: nansum_out
+    description: |
+      A variant of `nansum()` with the `out` argument.
+    for:
+      - nansum.out
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - beta: '5.4'
   - id: narrow
     description: Pure layout operation (narrow); returns a zero-copy view sharing storage with the input.
     for:
@@ -6448,6 +6598,29 @@ ops:
       - Tensor
     stages:
       - alpha: '5.3'
+  - id: nonzero_static
+    description: |
+      Returns a fixed-size 2-D int64 tensor containing indices of nonzero elements.
+      Rows beyond the number of nonzero elements are filled with `fill_value`.
+    for:
+      - nonzero_static
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: nonzero_static_out
+    description: |
+      A variant of `nonzero_static` that writes the fixed-size result to `out`.
+    for:
+      - nonzero_static.out
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: norm
     description: |
       Computes the norm of vectors, matrices, and tensors.
@@ -8744,6 +8917,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_erfcx
+    description: |
+      Computes the scaled complementary error function for each element of input.
+    for:
+      - special.erfcx
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_erfinv
     description: |
       Computes the inverse error function element-wise.
@@ -9757,6 +9943,17 @@ ops:
       - KernelGen
     kind:
       - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: unfold
+    description: Return a view of the tensor with a sliding window along the given dimension.
+    for:
+      - unfold
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
     stages:
       - alpha: '5.4'
   - id: unfold_backward
