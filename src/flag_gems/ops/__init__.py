@@ -432,6 +432,7 @@ from flag_gems.ops.nanmedian import (
 from flag_gems.ops.nansum import nansum, nansum_out
 from flag_gems.ops.narrow import narrow
 from flag_gems.ops.narrow_copy import narrow_copy
+from flag_gems.ops.native_batch_norm import native_batch_norm
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
@@ -1207,6 +1208,7 @@ __all__ = [
     "nansum_out",
     "narrow",
     "narrow_copy",
+    "native_batch_norm",
     "ne",
     "ne_scalar",
     "neg",
