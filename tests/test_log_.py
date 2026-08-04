@@ -52,7 +52,7 @@ def test_log_special_values(dtype):
 
 @pytest.mark.log_
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_log__noncontiguous(dtype):
+def test_log_noncontiguous(dtype):
     """Non-contiguous tensors should fall back to aten and still produce correct results."""
     base = torch.rand(64, 64, dtype=dtype, device=flag_gems.device) + 0.1
     inp = base[::2, ::2].clone()  # make contiguous copy for gems path
@@ -66,9 +66,25 @@ def test_log__noncontiguous(dtype):
 
 @pytest.mark.log_
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_log__empty(dtype):
+def test_log_empty(dtype):
     """Empty tensor should return immediately without error."""
     inp = torch.empty(0, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         res_out = inp.log_()
     assert res_out.numel() == 0
+
+
+@pytest.mark.log_
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32, torch.int64])
+def test_log_unsupported_dtype_raises(dtype):
+    """Integer in-place log cannot store a float result: match torch and raise
+    instead of silently truncating."""
+    inp = torch.arange(1, 5, dtype=dtype, device=flag_gems.device)
+
+    # torch raises RuntimeError; gems raises TypeError (cannot delegate to aten
+    # without recursion). Both prevent silent truncation.
+    with pytest.raises(RuntimeError):
+        inp.clone().log_()
+    with flag_gems.use_gems():
+        with pytest.raises((RuntimeError, TypeError)):
+            inp.log_()

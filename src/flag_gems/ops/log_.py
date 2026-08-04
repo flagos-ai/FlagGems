@@ -51,19 +51,17 @@ def log_(*args, **kwargs):
     if not isinstance(x, torch.Tensor):
         raise TypeError("log_ expects a torch.Tensor as input.")
 
+    if x.dtype not in _SUPPORTED_DTYPES:
+        # The Triton kernel only handles real floating-point dtypes. For anything
+        # else (e.g. integer tensors), an in-place log cannot store the float
+        # result, so raise instead of silently truncating -- matching torch, which
+        # errors on int32.log_() and similar. We raise directly rather than
+        # delegating to torch.ops.aten.log_, which would recurse back into this
+        # patched op while gems is active.
+        raise TypeError(f"log_ does not support dtype {x.dtype}")
+
     # Handle non-contiguous tensors by operating on a contiguous copy and copying back
     if not x.is_contiguous():
-        y = x.contiguous()
-        n_elements = y.numel()
-        if n_elements == 0:
-            return x
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        with torch_device_fn.device(y.device):
-            log_kernel_[grid](y, n_elements, BLOCK_SIZE=1024)
-        x.copy_(y)
-        return x
-
-    if x.dtype not in _SUPPORTED_DTYPES:
         y = x.contiguous()
         n_elements = y.numel()
         if n_elements == 0:
