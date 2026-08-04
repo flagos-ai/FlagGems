@@ -391,7 +391,9 @@ def rnn_relu_kernel_forward(
         ):
             block_i = _small_block_size(input_size)
             block_h = _small_block_size(hidden_size)
-            grid = ((batch_size + _SMALL_DOT_BATCH_BLOCK - 1) // _SMALL_DOT_BATCH_BLOCK,)
+            grid = (
+                (batch_size + _SMALL_DOT_BATCH_BLOCK - 1) // _SMALL_DOT_BATCH_BLOCK,
+            )
             rnn_relu_forward_small_bf16_dot_kernel[grid](
                 input,
                 hx,
@@ -414,7 +416,9 @@ def rnn_relu_kernel_forward(
                 num_stages=3,
             )
         elif hidden_size <= _SMALL_HIDDEN_LIMIT and input_size <= _SMALL_HIDDEN_LIMIT:
-            block_size = max(_small_block_size(input_size), _small_block_size(hidden_size))
+            block_size = max(
+                _small_block_size(input_size), _small_block_size(hidden_size)
+            )
             grid = (batch_size,)
             rnn_relu_forward_small_scalar_kernel[grid](
                 input,
@@ -545,7 +549,9 @@ class RnnReluFunction(torch.autograd.Function):
                 outputs.append(h)
 
             output_native = (
-                torch.stack(outputs, dim=1) if batch_first else torch.stack(outputs, dim=0)
+                torch.stack(outputs, dim=1)
+                if batch_first
+                else torch.stack(outputs, dim=0)
             )
             hx_native = h.unsqueeze(0)
 

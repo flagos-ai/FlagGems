@@ -240,8 +240,7 @@ def _launch_addmm(bias, mat1, mat2, out, *, beta=1, alpha=1):
         stride_in = 0
 
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"])
-        * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
     with torch_device_fn.device(mat1.device):
         addmm_kernel[grid](

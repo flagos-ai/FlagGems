@@ -129,10 +129,9 @@ def broadcast_to_2d_active_kernel(
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE).to(tl.int64)
     mask = offsets < n_elements
-    in_offsets = (
-        ((offsets // OUT_CUMPROD0) % OUT_SHAPE0) * IN_STRIDE0
-        + ((offsets // OUT_CUMPROD1) % OUT_SHAPE1) * IN_STRIDE1
-    )
+    in_offsets = ((offsets // OUT_CUMPROD0) % OUT_SHAPE0) * IN_STRIDE0 + (
+        (offsets // OUT_CUMPROD1) % OUT_SHAPE1
+    ) * IN_STRIDE1
     x = tl.load(x_ptr + in_offsets, mask=mask, eviction_policy="evict_last")
     tl.store(out_ptr + offsets, x, mask=mask, eviction_policy="evict_first")
 
@@ -290,29 +289,57 @@ def broadcast_to(x, size):
 
     if n_active == 1:
         broadcast_to_1d_active_kernel[grid](
-            x, out, n_elements,
-            OUT_SHAPE0=s[0], OUT_CUMPROD0=c[0], IN_STRIDE0=st[0],
+            x,
+            out,
+            n_elements,
+            OUT_SHAPE0=s[0],
+            OUT_CUMPROD0=c[0],
+            IN_STRIDE0=st[0],
         )
     elif n_active == 2:
         broadcast_to_2d_active_kernel[grid](
-            x, out, n_elements,
-            OUT_SHAPE0=s[0], OUT_CUMPROD0=c[0], IN_STRIDE0=st[0],
-            OUT_SHAPE1=s[1], OUT_CUMPROD1=c[1], IN_STRIDE1=st[1],
+            x,
+            out,
+            n_elements,
+            OUT_SHAPE0=s[0],
+            OUT_CUMPROD0=c[0],
+            IN_STRIDE0=st[0],
+            OUT_SHAPE1=s[1],
+            OUT_CUMPROD1=c[1],
+            IN_STRIDE1=st[1],
         )
     elif n_active == 3:
         broadcast_to_3d_active_kernel[grid](
-            x, out, n_elements,
-            OUT_SHAPE0=s[0], OUT_CUMPROD0=c[0], IN_STRIDE0=st[0],
-            OUT_SHAPE1=s[1], OUT_CUMPROD1=c[1], IN_STRIDE1=st[1],
-            OUT_SHAPE2=s[2], OUT_CUMPROD2=c[2], IN_STRIDE2=st[2],
+            x,
+            out,
+            n_elements,
+            OUT_SHAPE0=s[0],
+            OUT_CUMPROD0=c[0],
+            IN_STRIDE0=st[0],
+            OUT_SHAPE1=s[1],
+            OUT_CUMPROD1=c[1],
+            IN_STRIDE1=st[1],
+            OUT_SHAPE2=s[2],
+            OUT_CUMPROD2=c[2],
+            IN_STRIDE2=st[2],
         )
     elif n_active == 4:
         broadcast_to_4d_active_kernel[grid](
-            x, out, n_elements,
-            OUT_SHAPE0=s[0], OUT_CUMPROD0=c[0], IN_STRIDE0=st[0],
-            OUT_SHAPE1=s[1], OUT_CUMPROD1=c[1], IN_STRIDE1=st[1],
-            OUT_SHAPE2=s[2], OUT_CUMPROD2=c[2], IN_STRIDE2=st[2],
-            OUT_SHAPE3=s[3], OUT_CUMPROD3=c[3], IN_STRIDE3=st[3],
+            x,
+            out,
+            n_elements,
+            OUT_SHAPE0=s[0],
+            OUT_CUMPROD0=c[0],
+            IN_STRIDE0=st[0],
+            OUT_SHAPE1=s[1],
+            OUT_CUMPROD1=c[1],
+            IN_STRIDE1=st[1],
+            OUT_SHAPE2=s[2],
+            OUT_CUMPROD2=c[2],
+            IN_STRIDE2=st[2],
+            OUT_SHAPE3=s[3],
+            OUT_CUMPROD3=c[3],
+            IN_STRIDE3=st[3],
         )
     else:
         # Fallback for >4 active dims (rare). Metadata passed as device arrays.
@@ -325,7 +352,9 @@ def broadcast_to(x, size):
         meta_key = (
             x.device.type,
             x.device.index,
-            tuple(s), tuple(c), tuple(st),
+            tuple(s),
+            tuple(c),
+            tuple(st),
         )
         cached_meta = _meta_cache.get(meta_key)
         if cached_meta is None:

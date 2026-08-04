@@ -1,4 +1,5 @@
 import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -8,7 +9,7 @@ from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
-you
+
 
 @libentry()
 @triton.jit
@@ -87,7 +88,7 @@ def renorm(input, p, dim, maxnorm):
     if input.is_contiguous():
         num_slices = input.shape[dim]
         outer_size = input.shape[:dim].numel() if dim > 0 else 1
-        inner_size = input.shape[dim+1:].numel() if dim < input.ndim - 1 else 1
+        inner_size = input.shape[dim + 1 :].numel() if dim < input.ndim - 1 else 1
 
         stride_slice = input.stride(dim)
         stride_outer = input.stride(dim - 1) if dim > 0 else 0
@@ -98,10 +99,15 @@ def renorm(input, p, dim, maxnorm):
 
         with torch_device_fn.device(input.device):
             renorm_fused_kernel[grid](
-                input, output,
-                num_slices, outer_size, inner_size,
-                p, maxnorm,
-                stride_slice, stride_outer,
+                input,
+                output,
+                num_slices,
+                outer_size,
+                inner_size,
+                p,
+                maxnorm,
+                stride_slice,
+                stride_outer,
                 BLOCK_SIZE=BLOCK,
             )
         return output
@@ -125,7 +131,7 @@ def renorm_(input, p, dim, maxnorm):
     if input.is_contiguous():
         num_slices = input.shape[dim]
         outer_size = input.shape[:dim].numel() if dim > 0 else 1
-        inner_size = input.shape[dim+1:].numel() if dim < input.ndim - 1 else 1
+        inner_size = input.shape[dim + 1 :].numel() if dim < input.ndim - 1 else 1
 
         stride_slice = input.stride(dim)
         stride_outer = input.stride(dim - 1) if dim > 0 else 0
@@ -135,10 +141,15 @@ def renorm_(input, p, dim, maxnorm):
 
         with torch_device_fn.device(input.device):
             renorm_fused_kernel[grid](
-                input, input,
-                num_slices, outer_size, inner_size,
-                p, maxnorm,
-                stride_slice, stride_outer,
+                input,
+                input,
+                num_slices,
+                outer_size,
+                inner_size,
+                p,
+                maxnorm,
+                stride_slice,
+                stride_outer,
                 BLOCK_SIZE=BLOCK,
             )
         return input
