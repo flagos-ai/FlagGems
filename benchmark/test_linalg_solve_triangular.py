@@ -29,7 +29,7 @@ SOLVE_TRI_SHAPES = [
 
 
 def _make_triangular_input(n, k, dtype, device, upper, unitriangular):
-    """生成良态三角矩阵：A = I + 0.1 * tri(randn)"""
+    """Generate a well-conditioned triangular matrix: A = I + 0.1 * tri(randn)"""
     A = torch.randn(n, n, dtype=dtype, device=device)
     off_diag = 0.1
     if upper:

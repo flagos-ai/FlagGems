@@ -173,7 +173,7 @@ def test_out_kwarg(n, k, upper, dtype):
 @pytest.mark.parametrize("k", [1, 8])
 @pytest.mark.parametrize("upper", [False, True])
 def test_residual_f64(n, k, upper):
-    """残差验证 (float64 确保精度)"""
+    """Residual check (float64 for precision)"""
     dtype = torch.float64
     A = _make_triangular(
         (n, n), dtype, flag_gems.device, upper=upper, unitriangular=False
@@ -206,7 +206,7 @@ def test_empty(dtype):
 @pytest.mark.parametrize("upper", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_large_n_f64(n, k, upper, dtype):
-    """大规模矩阵测试 — 覆盖所有三个内核分派路径"""
+    """Large matrix tests - covering all three kernel dispatch paths"""
     A = _make_triangular(
         (n, n), dtype, flag_gems.device, upper=upper, unitriangular=False
     )
@@ -221,10 +221,11 @@ def test_large_n_f64(n, k, upper, dtype):
 
     atol = 1e-4
     if n >= 1024 and dtype == torch.float32:
-        # fp32 大 N 累积精度物理极限 (实测 2026-08-03, vs fp64 参考): 我们与 torch 同量级
-        # (误差比值 0.45-0.99, 残差普遍略优), n=1024 差异 ~1.9-3.2e-4。用静态容差 1e-3
-        # (3-5 倍余量), 不依赖运行时 torch GPU/CPU 差异 —— quick-cpu 模式 (--ref=cpu) 下
-        # ref 为 CPU torch 求解, 动态锚定 (GPU vs CPU) 会退化为 0 导致断言失败。
+        # fp32 accumulated-precision physical limit (measured 2026-08-03, vs fp64 reference):
+        # our error is on par with torch (ratio 0.45-0.99, residual usually slightly better),
+        # n=1024 diff ~1.9-3.2e-4. Use a static tolerance of 1e-3 (3-5x margin) instead of
+        # anchoring to the runtime torch GPU/CPU difference: in quick-cpu mode (--ref=cpu)
+        # the reference is the CPU torch solve, so the dynamic anchor (GPU vs CPU) collapses to 0.
         atol = 1e-3
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
@@ -235,7 +236,7 @@ def test_large_n_f64(n, k, upper, dtype):
 @pytest.mark.parametrize("upper", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_no_tle_fallback(n, upper, dtype, monkeypatch):
-    """非 TLE 平台回退路径冒烟测试: 强制 HAS_TLE=False 走纯 Triton 回退 kernel."""
+    """Non-TLE fallback smoke tests: force HAS_TLE=False to exercise pure-Triton fallback kernels."""
     import importlib
 
     import flag_gems.ops  # noqa: F401

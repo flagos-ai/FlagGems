@@ -113,7 +113,7 @@ def _persistent_trsm_kernel(
             src_x = B_ptr + (blk_start + xr) * stride_b_k + k_start + xc
             tl.store(loc_x, tl.load(src_x, mask=rm_bc & km_bc, other=0.0))
 
-            # 并行预计算对角倒数: 把除法移出 32 步串行前代链 (乘法替代)
+            # Pre-compute diagonal reciprocals in parallel: move division out of the serial forward-substitution chain (multiply instead)
             if not UNIT:
                 diag_loc = tle.gpu.local_ptr(A_sm, (a_rows, a_rows))
                 inv_diag = 1.0 / tl.load(diag_loc, mask=a_rows < blk_sz, other=1.0)
@@ -300,7 +300,7 @@ def _kslice_trsm_kernel(
         src_x = B_ptr + (blk_start + xr) * stride_b_k + col_offs[None, :]
         tl.store(loc_x, tl.load(src_x, mask=rm_bc & col_mask[None, :], other=0.0))
 
-        # 并行预计算对角倒数: 把除法移出 32 步串行前代链 (乘法替代)
+        # Pre-compute diagonal reciprocals in parallel: move division out of the serial forward-substitution chain (multiply instead)
         if not UNIT:
             diag_loc = tle.gpu.local_ptr(A_sm, (a_rows, a_rows))
             inv_diag = 1.0 / tl.load(diag_loc, mask=a_rows < blk_sz, other=1.0)
@@ -359,7 +359,7 @@ def _kslice_trsm_kernel(
                     other=0.0,
                 )
                 if K_SLICE < 8:
-                    # tl.dot 的 N 维必须 >= 8, 小 K_SLICE 用手动 FMA 归约
+                    # tl.dot requires N >= 8; use manual FMA reduction for small K_SLICE
                     acc = tl.sum(a_sub[:, :, None] * x_panel[None, :, :], axis=1)
                 elif IS_FP64:
                     acc = tl.dot(a_sub, x_panel, allow_tf32=False)
@@ -374,7 +374,7 @@ def _kslice_trsm_kernel(
                 b_curr = b_curr.to(acc.dtype) - acc
                 tl.store(b_base, b_curr, mask=mask_m[:, None] & col_mask[None, :])
 
-        # 确保本块更新写回对下一个对角块的加载可见 (防编译器跨块重排)
+        # Ensure this block's update is visible to the next block's diagonal load (prevent compiler reordering)
         tl.debug_barrier()
 
 
@@ -403,7 +403,7 @@ def _small_diag_kernel(
     k_offs = k_start + tl.arange(0, BLOCK_K)
     k_mask = k_offs < K
 
-    # 并行预计算对角倒数: 除法移出串行前代链 (乘法替代)
+    # Pre-compute diagonal reciprocals: move division out of the serial forward-substitution chain (multiply instead)
     if not UNITRIANGULAR:
         sm_dtype = tl.float64 if IS_FP64 else tl.float32
         d_sm = tle.gpu.alloc(
@@ -440,8 +440,8 @@ def _small_diag_kernel(
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# 非 TLE 回退实现 (HAS_TLE=False 的平台, 纯 Triton, 无 tle.gpu 依赖)
-# 结构对齐 TLE 版, 仅将 smem 缓冲替换为 global 内存访问
+# Non-TLE fallback implementations (HAS_TLE=False platforms, pure Triton, no tle.gpu dependency)
+# Structure mirrors the TLE versions, replacing smem buffers with global memory access
 # ══════════════════════════════════════════════════════════════════════════
 
 
@@ -471,7 +471,7 @@ def _small_diag_kernel_notle(
     k_offs = k_start + tl.arange(0, BLOCK_K)
     k_mask = k_offs < K
 
-    # 并行预计算对角倒数 (global 数组, 除法移出串行前代链)
+    # Pre-compute diagonal reciprocals (global array, division moved out of the serial chain)
     if not UNITRIANGULAR:
         r16 = tl.arange(0, 16)
         diag_vals = tl.load(A_batch + r16 * stride_a_n + r16, mask=r16 < N, other=1.0)
@@ -480,7 +480,7 @@ def _small_diag_kernel_notle(
             1.0 / diag_vals,
             mask=r16 < N,
         )
-        # INV 写回对行循环的跨线程读可见 (global 无自动同步)
+        # Make INV writeback visible to the row loop's cross-thread reads (no automatic sync on global)
         tl.debug_barrier()
 
     for r in range(N):
@@ -500,7 +500,7 @@ def _small_diag_kernel_notle(
             inv_d = tl.load(INV_ptr + (pid_batch * NUM_K_TILES + pid_k) * 16 + row)
             b_row *= inv_d
         tl.store(B_batch + row * stride_b_k + k_offs, b_row, mask=k_mask)
-        # 本行写回对下一行的跨线程读可见 (行间依赖, global 无自动同步)
+        # Make this row's writeback visible to the next row's cross-thread reads (row dependency, no automatic sync on global)
         tl.debug_barrier()
 
 
@@ -520,7 +520,7 @@ def _kslice_trsm_kernel_notle(
     UPPER: tl.constexpr,
     UNIT: tl.constexpr,
 ):
-    """非 TLE 版 K-slice TRSM: X 缓冲直接用 global B, 无 smem."""
+    """Non-TLE K-slice TRSM: X buffer operates directly on global B, no smem."""
     pid = tl.program_id(0)
     col_start = pid * K_SLICE
     if col_start >= K:
@@ -544,7 +544,7 @@ def _kslice_trsm_kernel_notle(
         blk_sz = blk_end - blk_start
 
         # ═══════ Diag: forward substitution on global B[blk_k, kslice] ═══════
-        # 并行预计算对角倒数 (global, 每 kslice 区域)
+        # Pre-compute diagonal reciprocals (global, per-kslice region)
         if not UNIT:
             diag_vals = tl.load(
                 A_ptr + (blk_start + a_cols) * stride_a_n + (blk_start + a_cols),
@@ -561,7 +561,7 @@ def _kslice_trsm_kernel_notle(
             row = blk_end - 1 - r_idx if UPPER else blk_start + r_idx
             row_rel = row - blk_start
 
-            # A 行 (global, 三角 mask)
+            # Row of A (global, triangular mask)
             a_row = tl.load(
                 A_ptr + row * stride_a_n + blk_start + a_cols,
                 mask=a_cols < blk_sz,
@@ -572,7 +572,7 @@ def _kslice_trsm_kernel_notle(
             else:
                 a_row = tl.where(a_cols < row_rel, a_row, 0.0)
 
-            # X 全部行 (global B), 行 < row 的部分在 a_row mask 下生效
+            # All rows of X (global B); rows < row are selected by the a_row mask
             x_all = tl.load(
                 B_ptr + (blk_start + xr) * stride_b_k + col_offs[None, :],
                 mask=(xr < blk_sz) & col_mask[None, :],
@@ -588,7 +588,7 @@ def _kslice_trsm_kernel_notle(
                 inv_d = tl.load(INV_ptr + pid * BLOCK_SIZE + row_rel)
                 x_vals *= inv_d
             tl.store(B_ptr + row * stride_b_k + col_offs, x_vals, mask=col_mask)
-            # 本行写回对下一行的跨线程读可见 (global 无 smem 自动同步)
+            # Make this row's writeback visible to the next row's cross-thread reads (no automatic smem sync on global)
             tl.debug_barrier()
 
         # ═══════ Update: B[rest, kslice] -= A[rest, blk_k] @ X[blk_k, kslice] ═══════
@@ -622,7 +622,7 @@ def _kslice_trsm_kernel_notle(
                 b_curr = b_curr.to(acc.dtype) - acc
                 tl.store(b_base, b_curr, mask=mask_m[:, None] & col_mask[None, :])
 
-        # 确保本块更新写回对下一个对角块的加载可见
+        # Ensure this block's update is visible to the next block's diagonal load
         tl.debug_barrier()
 
 
@@ -648,7 +648,7 @@ def _persistent_trsm_kernel_notle(
     UPPER: tl.constexpr,
     UNIT: tl.constexpr,
 ):
-    """非 TLE 版持久 TRSM: X 缓冲直接用 global B, 无 smem."""
+    """Non-TLE persistent TRSM: X buffer operates directly on global B, no smem."""
     pid = tl.program_id(0)
     if pid >= NUM_CTAS:
         return
@@ -669,7 +669,7 @@ def _persistent_trsm_kernel_notle(
 
         phase = block_idx * 2
 
-        # ═══════ Diag phase: K-tile 并行, X 直接操作 global B ═══════
+        # ═══════ Diag phase: K-tile parallel, X operates directly on global B ═══════
         for kt in range(pid, num_k_tiles, NUM_CTAS):
             k_start = kt * BLOCK_K
             k_offs = k_start + tl.arange(0, BLOCK_K)
@@ -678,7 +678,7 @@ def _persistent_trsm_kernel_notle(
             x_rows = tl.arange(0, BLOCK_SIZE)
             xr = tl.broadcast_to(x_rows[:, None], (BLOCK_SIZE, BLOCK_K))
 
-            # 并行预计算对角倒数 (global, 每 kt 区域)
+            # Pre-compute diagonal reciprocals (global, per-kt region)
             if not UNIT:
                 diag_vals = tl.load(
                     A_ptr + (blk_start + a_cols) * stride_a_n + (blk_start + a_cols),
@@ -720,7 +720,7 @@ def _persistent_trsm_kernel_notle(
                     inv_d = tl.load(INV_ptr + kt * BLOCK_SIZE + row_rel)
                     x_vals *= inv_d
                 tl.store(B_ptr + row * stride_b_k + k_offs, x_vals, mask=k_mask)
-                # 本行写回对下一行的跨线程读可见 (global 无 smem 自动同步)
+                # Make this row's writeback visible to the next row's cross-thread reads (no automatic smem sync on global)
                 tl.debug_barrier()
 
         _barrier_with_atomic_add(sync_ptr, zeros, lane, (phase + 1) * NUM_CTAS)
