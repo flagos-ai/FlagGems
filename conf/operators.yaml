@@ -4905,6 +4905,28 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: less_
+    description: The in-place version of `less()`.
+    for:
+      - less_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: less_scalar_
+    description: The scalar version of `less_()`.
+    for:
+      - less_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: less_equal
     description: Computes element-wise less-than-or-equal-to comparison.
     for:
