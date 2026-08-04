@@ -6898,6 +6898,19 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: pin_memory
+    description: Copies a strided CPU tensor into page-locked host memory for
+      asynchronous transfer to an accelerator.
+    for:
+      - _pin_memory
+      - pin_memory
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: pixel_shuffle
     description: Rearranges elements in a tensor to a new tensor of different shape.
     for:
