@@ -19,6 +19,7 @@ from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmin import argmin
+from .attention import scaled_dot_product_attention
 from .batch_norm import batch_norm, batch_norm_backward
 from .celu import celu
 from .conv2d import conv2d
@@ -73,6 +74,7 @@ __all__ = [
     "arange",
     "arange_start",
     "argmin",
+    "scaled_dot_product_attention",
     "batch_norm",
     "batch_norm_backward",
     "celu",
