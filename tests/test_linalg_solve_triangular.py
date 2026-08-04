@@ -221,14 +221,11 @@ def test_large_n_f64(n, k, upper, dtype):
 
     atol = 1e-4
     if n >= 1024 and dtype == torch.float32:
-        # fp32 大 N 精度物理极限 (实测 2026-08-03): n=1024 abs误差~1e-4, 与 torch 同量级
-        # (误差比值 0.45-0.99, 残差我们普遍略优)。以 torch 两个官方路径 (GPU cuBLAS vs
-        # CPU LAPACK) 的内部差异为容差锚点 ×1.5 余量 — torch 内部自身差异都大于该量级。
-        out_torch_cpu = torch.linalg.solve_triangular(A.cpu(), B.cpu(), upper=upper)
-        torch_internal_diff = (
-            (ref_out.double().cpu() - out_torch_cpu.double()).abs().max().item()
-        )
-        atol = torch_internal_diff * 1.5
+        # fp32 大 N 累积精度物理极限 (实测 2026-08-03, vs fp64 参考): 我们与 torch 同量级
+        # (误差比值 0.45-0.99, 残差普遍略优), n=1024 差异 ~1.9-3.2e-4。用静态容差 1e-3
+        # (3-5 倍余量), 不依赖运行时 torch GPU/CPU 差异 —— quick-cpu 模式 (--ref=cpu) 下
+        # ref 为 CPU torch 求解, 动态锚定 (GPU vs CPU) 会退化为 0 导致断言失败。
+        atol = 1e-3
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
