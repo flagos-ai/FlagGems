@@ -114,3 +114,34 @@ def test_hardtanh_special_values(dtype):
         res_out = torch.ops.aten.hardtanh(res_inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.hardtanh
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_hardtanh_out_special_values(dtype):
+    # Same boundary values as test_hardtanh_special_values, but exercising the
+    # hardtanh.out variant: NaN must propagate and the infinities clamp to
+    # [min_val, max_val].
+    values = [
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+        0.0,
+        -0.0,
+        -1.0,
+        1.0,
+        2.0,
+        -2.0,
+    ]
+    inp = torch.tensor(values, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.empty_like(ref_inp)
+    torch.ops.aten.hardtanh.out(ref_inp, out=ref_out)
+
+    out = torch.empty_like(inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.hardtanh.out(inp, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
