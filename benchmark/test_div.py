@@ -169,10 +169,7 @@ def test_div_out():
     bench.run()
 
 
-@pytest.mark.divide_out
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
+@pytest.mark.div_out
 def test_divide_out():
     def input_fn(shape, dtype, device):
         inp1 = utils.generate_tensor_input(shape, dtype, device)
@@ -181,19 +178,16 @@ def test_divide_out():
         yield inp1, inp2, {"out": out}
 
     bench = base.GenericBenchmark(
-        op_name="divide_out",
+        op_name="div_out",
         input_fn=input_fn,
-        torch_op=torch.divide,
+        torch_op=torch.ops.aten.divide.out,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
-@pytest.mark.divide_out_mode
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-@pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
+@pytest.mark.div_mode
+@pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
 def test_divide_out_mode(rounding_mode):
     def input_fn(shape, dtype, device):
         inp1 = utils.generate_tensor_input(shape, dtype, device)
@@ -204,9 +198,9 @@ def test_divide_out_mode(rounding_mode):
         yield inp1, inp2, {"rounding_mode": rounding_mode, "out": out}
 
     bench = base.GenericBenchmark(
-        op_name="divide_out_mode",
+        op_name="div_mode",
         input_fn=input_fn,
-        torch_op=torch.divide,
+        torch_op=torch.ops.aten.divide.out_mode,
         dtypes=_div_mode_dtypes(rounding_mode),
     )
     bench.run()
