@@ -262,6 +262,7 @@ from flag_gems.ops.flash_attention_backward import (
     scaled_dot_product_efficient_attention_backward,
     scaled_dot_product_flash_attention_backward,
 )
+from flag_gems.ops.flatten import flatten
 from flag_gems.ops.flip import flip
 from flag_gems.ops.float_power_ import (
     float_power_tensor_scalar,
@@ -970,6 +971,7 @@ __all__ = [
     "fill_tensor_",
     "fill_tensor_out",
     "fix",
+    "flatten",
     "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",

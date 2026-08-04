@@ -415,6 +415,7 @@ _FULL_CONFIG = (
     ("fill_.Scalar", fill_scalar_),
     ("fill_.Tensor", fill_tensor_),
     ("fix", fix),
+    ("flatten.using_ints", flatten),
     ("flip", flip),
     ("float_power_.Scalar", float_power_tensor_scalar_),
     ("float_power_.Tensor", float_power_tensor_tensor_),
