@@ -23,7 +23,7 @@
 # Combined with the setuptools<77 pin above, `pip install .` then fails during
 # "Getting requirements to build wheel" with
 # `AttributeError: ignore_egg_info_in_manifest`. 9.x has no such integration.
-requires = ["setuptools>=64.0,<77", "setuptools-scm>=8,<10"]
+requires = ["setuptools>=64.0,<77", "setuptools-scm>=8,<10", "wheel==0.45.0"]
 
 build-backend = "setuptools.build_meta"
 
@@ -65,10 +65,11 @@ classifiers = [
 ]
 
 dependencies = [
-    "packaging==26.0",
+    "packaging>=26.0",
     "PyYAML==6.0.1",
     "sqlalchemy==2.0.48",
-    "numpy==1.26.4",
+    # python 3.10 requires numpy < 2, while upper layer requires numpy>2 ..
+    "numpy",
 ]
 
 [project.optional-dependencies]
@@ -107,6 +108,7 @@ iluvatar = [
     "torch==2.7.1+corex.4.4.0",
     "torchaudio==2.7.1+corex.4.4.0",
     "torchvision==0.22.1+corex.4.4.0",
+    "numpy<2",
 ]
 
 kunlunxin = [
@@ -187,6 +189,7 @@ test = [
     "distro==1.9.0",
     "coverage==7.13.5",
     "openpyxl==3.1.5",
+    "pandas==2.3.3",
     "pytest==9.0.3",
     "pytest-md-report==0.8.0",
     "scipy>=1.15.3",

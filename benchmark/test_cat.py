@@ -34,9 +34,17 @@ def _input_fn(shape, dtype, device):
 
 
 class CatBenchmark(base.Benchmark):
+    # cat creates 3 inputs + 1 output (3x one input along cat dim),
+    # totalling ~6x one input's memory. Cap elements to avoid OOM.
+    MAX_ELEMENTS = 2**29
+
     def __init__(self, *args, **kwargs):
         self.input_fn = kwargs.pop("input_fn", _input_fn)
         super().__init__(*args, **kwargs)
+
+    def init_user_config(self):
+        super().init_user_config()
+        self.shapes = [s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS]
 
     def get_input_iter(self, dtype) -> Generator:
         for shape in self.shapes:

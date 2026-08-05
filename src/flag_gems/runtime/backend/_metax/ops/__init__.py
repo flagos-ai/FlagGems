@@ -1,3 +1,4 @@
+from ._make_dep_token import _make_dep_token
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from .addmm import addmm
 from .amax import amax
@@ -15,6 +16,7 @@ from .index_select import index_select
 from .isin import isin
 from .layernorm import layer_norm, layer_norm_backward
 from .linalg_svdvals import linalg_svdvals
+from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import log_softmax, log_softmax_backward
 from .masked_fill import masked_fill, masked_fill_
 from .matmul_bf16 import matmul_bf16
@@ -40,6 +42,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_make_dep_token",
     "_nested_view_from_buffer_copy",
     "_unique2",
     "addmm",
@@ -61,9 +64,10 @@ __all__ = [
     "isin",
     "layer_norm",
     "layer_norm_backward",
+    "linalg_svdvals",
+    "log_sigmoid_forward",
     "log_softmax",
     "log_softmax_backward",
-    "linalg_svdvals",
     "matmul_bf16",
     "matmul_int8",
     "masked_fill",

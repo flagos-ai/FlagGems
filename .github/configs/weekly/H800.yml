@@ -56,4 +56,4 @@ test_env:
 gpu_check_script: tools/gpu_check_nvidia.sh
 
 # Output base directory for this backends
-output_base_dir: /home/flaggems/weekly_test
+output_base_dir: /data/flaggems/weekly

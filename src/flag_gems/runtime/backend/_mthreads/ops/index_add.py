@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 @triton.heuristics(runtime.get_heuristic_config("index_add"))
 @triton.jit
 def index_add_kernel(
-    inp_ptr,
     out_ptr,
     index_ptr,
     src_ptr,
@@ -68,20 +67,18 @@ def index_add_kernel(
     # Calculate offsets into inp/out (which has shape M x inp_len)
     inp_off = rows_offset * inp_len + cur_indices
 
-    # Load current values from input
-    cur_inp = tl.load(inp_ptr + inp_off, mask=block_mask, other=0.0)
-
     # Calculate offsets into src (which has shape M x N)
     src_off = rows_offset * N + cols_offset
 
     # Load source values
     cur_src = tl.load(src_ptr + src_off, mask=block_mask, other=0.0)
 
-    # Compute: out = inp + alpha * src
-    result = cur_inp + alpha * cur_src
-
-    # Store result
-    tl.store(out_ptr + inp_off, result, mask=block_mask)
+    # Use atomic_add to correctly handle repeated indices in index,
+    # aligned with the common op (src/flag_gems/ops/index_add.py).
+    # When multiple source elements map to the same output position (duplicate
+    # indices), plain load-store would cause race conditions or lost updates.
+    # atomic_add guarantees all contributions are accumulated correctly.
+    tl.atomic_add(out_ptr + inp_off, alpha * cur_src, mask=block_mask)
 
 
 def index_add(inp, dim, index, src, alpha=1):
@@ -108,6 +105,14 @@ def index_add(inp, dim, index, src, alpha=1):
     N = index.numel()
     M = src.numel() // N
 
+    # Bounds check: the common op (src/flag_gems/ops/index_add.py) performs this
+    # inside the Triton kernel. Other backends (kunlunxin, ascend, cambricon) do
+    # it in Python instead, which we follow here.
+    # Use min/max to avoid allocating full-size boolean tensors.
+    idx_min = index.min().item()
+    idx_max = index.max().item()
+    assert idx_min >= 0 and idx_max < inp_len, "0 <= index < self.size(dim)"
+
     # Move target dim to last position for coalesced memory access
     final_dim = inp.ndim - 1
     if dim != final_dim:
@@ -124,7 +129,7 @@ def index_add(inp, dim, index, src, alpha=1):
     )
 
     with torch_device_fn.device(inp.device):
-        index_add_kernel[grid](inp, out, index, src, M, N, alpha, inp_len)
+        index_add_kernel[grid](out, index, src, M, N, alpha, inp_len)
 
     # Restore original dimension order if needed
     if dim != final_dim:
@@ -151,6 +156,14 @@ def index_add_(inp, dim, index, src, alpha=1):
     N = index.numel()
     M = src.numel() // N
 
+    # Bounds check: the common op (src/flag_gems/ops/index_add.py) performs this
+    # inside the Triton kernel. Other backends (kunlunxin, ascend, cambricon) do
+    # it in Python instead, which we follow here.
+    # Use min/max to avoid allocating full-size boolean tensors.
+    idx_min = index.min().item()
+    idx_max = index.max().item()
+    assert idx_min >= 0 and idx_max < inp_len, "0 <= index < self.size(dim)"
+
     # Move target dim to last position
     final_dim = inp.ndim - 1
 
@@ -166,9 +179,7 @@ def index_add_(inp, dim, index, src, alpha=1):
         )
 
         with torch_device_fn.device(inp.device):
-            index_add_kernel[grid](
-                inp_work, inp_work, index, src_work, M, N, alpha, inp_len
-            )
+            index_add_kernel[grid](inp_work, index, src_work, M, N, alpha, inp_len)
 
         # Restore original dimension order and copy back
         order = list(range(inp_work.ndim - 1))
@@ -186,9 +197,7 @@ def index_add_(inp, dim, index, src, alpha=1):
         )
 
         with torch_device_fn.device(inp.device):
-            index_add_kernel[grid](
-                inp_contig, inp_contig, index, src, M, N, alpha, inp_len
-            )
+            index_add_kernel[grid](inp_contig, index, src, M, N, alpha, inp_len)
 
         # Copy back if input wasn't contiguous
         if not inp.is_contiguous():
