@@ -577,18 +577,66 @@ def test_cudnn_rnn_packed_bidirectional(dtype):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 @pytest.mark.cudnn_rnn
-@pytest.mark.skip(
-    reason="Dispatch test excluded: FlagGems use_gems() intercepts internal "
-    "torch.sigmoid/torch.tanh calls in the host-side kernel launcher, "
-    "causing TensorWrapper conflicts."
-)
 def test_cudnn_rnn_dispatch():
-    """Verify that torch.ops.aten._cudnn_rnn dispatches through FlagGems.
+    """Verify that torch.ops.aten._cudnn_rnn dispatches through FlagGems."""
+    if TO_CPU:
+        pytest.skip("_cudnn_rnn is CUDA-only")
 
-    This test is skipped because the flag_gems.use_gems() context manager
-    intercepts torch.sigmoid/torch.tanh/torch.relu calls inside the
-    host-side helper code that prepares kernel arguments, leading to
-    TypeError on TensorWrapper objects.  The operator is fully functional
-    when called directly via flag_gems.ops.cudnn_rnn().
-    """
-    pytest.skip("Skipped: TensorWrapper incompatibility with internal sigmoid")
+    device = flag_gems.device
+    dtype = torch.float32
+    seq_len, batch_size, input_size, hidden_size = 4, 2, 8, 8
+
+    rnn = torch.nn.LSTM(input_size, hidden_size, 1)
+    rnn = rnn.to(dtype=dtype, device=device)
+    rnn.flatten_parameters()
+    weights = tuple(rnn._flat_weights)
+
+    inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device=device)
+    hx = torch.randn(1, batch_size, hidden_size, dtype=dtype, device=device)
+    cx = torch.randn(1, batch_size, hidden_size, dtype=dtype, device=device)
+
+    with flag_gems.use_gems(include=["cudnn_rnn"]):
+        dispatch_result = torch.ops.aten._cudnn_rnn(
+            inp,
+            weights,
+            4,
+            None,
+            hx,
+            cx,
+            LSTM,
+            hidden_size,
+            0,
+            1,
+            False,
+            0.0,
+            False,
+            False,
+            [],
+            None,
+        )
+
+    direct_result = flag_gems.ops.cudnn_rnn(
+        inp,
+        weights,
+        4,
+        None,
+        hx,
+        cx,
+        LSTM,
+        hidden_size,
+        0,
+        1,
+        False,
+        0.0,
+        False,
+        False,
+        [],
+        None,
+    )
+
+    # Compare first 3 results (output, hy, cy); weight_buf may be None
+    for i in range(3):
+        a, b = dispatch_result[i], direct_result[i]
+        assert a is not None, f"dispatch_result[{i}] is None"
+        assert b is not None, f"direct_result[{i}] is None"
+        assert torch.allclose(a, b, atol=1e-5), f"Result[{i}] mismatch via dispatch"

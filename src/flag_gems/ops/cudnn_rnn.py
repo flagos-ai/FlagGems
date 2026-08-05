@@ -1164,21 +1164,26 @@ def _triton_layer_forward(
     # Compute offsets for packed layout
     inp_offs, out_offs = _compute_offsets(batch_sizes) if is_packed else (None, None)
 
-    # Allocate output
+    # Allocate output (use new_empty from input to get real tensors
+    # even under flag_gems.use_gems() dispatch)
     if is_packed:
         total_len = input_seq.size(0)
-        output = torch.empty(total_len, hidden_out, device=device, dtype=dtype)
+        output = input_seq.new_empty(total_len, hidden_out, dtype=dtype)
     else:
-        output = torch.empty(seq_len, max_batch, hidden_out, device=device, dtype=dtype)
+        output = input_seq.new_empty(seq_len, max_batch, hidden_out, dtype=dtype)
 
-    # Scratch buffers
     scratch_dim = max(hidden_out, hidden_size) if mode == _LSTM else hidden_out
-    h_scratch = torch.empty(max_batch, scratch_dim, device=device, dtype=torch.float32)
-    h_read = torch.empty(max_batch, scratch_dim, device=device, dtype=torch.float32)
+    h_scratch = input_seq.new_empty(max_batch, scratch_dim, dtype=torch.float32)
+    h_read = input_seq.new_empty(max_batch, scratch_dim, dtype=torch.float32)
 
-    hy_out = torch.empty(max_batch, hidden_out, device=device, dtype=dtype)
+    hy_out = input_seq.new_empty(max_batch, hidden_out, dtype=dtype)
     cy_out = (
-        torch.empty(max_batch, hidden_size, device=device, dtype=dtype)
+        input_seq.new_empty(max_batch, hidden_size, dtype=dtype)
+        if mode == _LSTM
+        else None
+    )
+    c_scratch = (
+        input_seq.new_empty(max_batch, hidden_size, dtype=torch.float32)
         if mode == _LSTM
         else None
     )
@@ -1187,16 +1192,14 @@ def _triton_layer_forward(
 
     has_bias_flag = b_ih is not None
     if not has_bias_flag:
-        b_dummy = torch.empty(0, device=device, dtype=torch.float32)
+        b_dummy = input_seq.new_empty(0, dtype=torch.float32)
         b_ih_ptr = b_hh_ptr = b_dummy
     else:
         b_ih_ptr = b_ih.contiguous()
         b_hh_ptr = b_hh.contiguous()
 
     w_hr_ptr = (
-        w_hr
-        if (w_hr is not None)
-        else torch.empty(0, device=device, dtype=torch.float32)
+        w_hr if (w_hr is not None) else input_seq.new_empty(0, dtype=torch.float32)
     )
 
     with runtime.torch_device_fn.device(device):
@@ -1233,9 +1236,6 @@ def _triton_layer_forward(
                     BLOCK_SIZE=64,
                 )
             elif mode == _LSTM:
-                c_scratch = torch.empty(
-                    max_batch, hidden_size, device=device, dtype=torch.float32
-                )
                 _lstm_packed_kernel[grid](
                     input_seq,
                     hx,
@@ -1452,33 +1452,31 @@ def cudnn_rnn(
         if cx.shape != expected_c:
             raise ValueError(f"cx shape mismatch: {tuple(cx.shape)} vs {expected_c}")
 
-    # --- Allocate outputs ---
+    # --- Allocate outputs (use new_empty from input to get real tensors
+    # even under flag_gems.use_gems() dispatch) ---
     if is_packed:
-        output = torch.empty(
+        output = input_seq.new_empty(
             input_seq.size(0),
             hidden_out * num_directions,
-            device=input.device,
             dtype=input.dtype,
         )
     else:
         seq_len = input_seq.size(0)
-        output = torch.empty(
+        output = input_seq.new_empty(
             seq_len,
             max_batch,
             hidden_out * num_directions,
-            device=input.device,
             dtype=input.dtype,
         )
 
-    hy = torch.empty_like(hx)
+    hy = input_seq.new_empty(hx.shape, dtype=hx.dtype)
     cy = (
-        torch.empty_like(cx)
-        if mode == _LSTM
-        else torch.empty(
+        input_seq.new_empty(cx.shape, dtype=cx.dtype)
+        if mode == _LSTM and cx is not None
+        else input_seq.new_empty(
             num_layers * num_directions,
             max_batch,
             hidden_size,
-            device=input.device,
             dtype=input.dtype,
         )
     )
@@ -1545,5 +1543,5 @@ def cudnn_rnn(
     if not is_packed and batch_first:
         output = output.transpose(0, 1).contiguous()
 
-    reserve = torch.empty(0, device=input.device, dtype=torch.uint8)
+    reserve = input_seq.new_empty(0, dtype=torch.uint8)
     return output, hy, cy, reserve, weight_buf
