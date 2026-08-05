@@ -5984,6 +5984,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: max_pool3d_with_indices_backward
+    description: |
+      Backward pass for 3D max pooling with indices. Computes the gradient of the
+      input given the gradient of the output and the indices from the forward pass.
+    for:
+      - max_pool3d_with_indices_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.3'
   - id: max_unpool2d
     description: Computes a partial inverse of `MaxPool2d`.
     for:
