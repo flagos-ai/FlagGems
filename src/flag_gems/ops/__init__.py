@@ -15,6 +15,7 @@
 from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops.__irshift__ import __irshift__
 from flag_gems.ops.__lshift__ import __lshift__
+from flag_gems.ops.__rshift__ import __rshift__
 from flag_gems.ops.__xor__ import (  # noqa: F401
     xor,
     xor_,
@@ -716,6 +717,7 @@ __all__ = [
     "__ilshift__",
     "__irshift__",
     "__lshift__",
+    "__rshift__",
     "_add_relu",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
