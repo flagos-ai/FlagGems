@@ -130,43 +130,117 @@ def log_softmax_kernel(
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("log_softmax"), key=["M", "N", "K"])
+@triton.autotune(
+    configs=runtime.get_tuned_config("softmax_non_inner"),
+    key=["M", "N", "K"],
+)
+@triton.heuristics(runtime.get_heuristic_config("softmax_backward_non_inner"))
 @triton.jit
-def log_softmax_backward_kernel(
+def log_softmax_backward_kernel_non_inner(
     out_ptr,
     out_grad_ptr,
     in_grad_ptr,
     M,
     N,
     K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
 ):
     pid_m = ext.program_id(0)
     pid_k = ext.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offsets_k = pid_k * TILE_K + tl.arange(0, TILE_K)
 
-    scale = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for start_n in range(0, N, BLOCK_N):
-        n_offset = start_n + tl.arange(0, BLOCK_N)
-        offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
-        out_grad_ptrs = out_grad_ptr + offsets
-        out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
-        scale += out_grad
-    scale = tl.sum(scale, 1)
+    if ONE_TILE_PER_CTA:
+        offsets_n = tl.arange(0, TILE_N)
+        offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
+        mask = (offsets_n < N)[:, None] & (offsets_k < K)
+        out_tile = tl.load(out_ptr + offsets, mask=mask).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
+        scale = tl.sum(out_grad_tile, axis=0)
+        in_grad_tile = out_grad_tile - tl.exp(out_tile) * scale[None, :]
+        tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
+    else:
+        offsets_n = tl.arange(0, TILE_N)
+        offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
+        scale = tl.zeros([TILE_N, TILE_K], dtype=tl.float32)
+        for _ in range(0, N, TILE_N):
+            mask = (offsets_n < N)[:, None] & (offsets_k < K)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
+            scale += out_grad_tile
+            offsets_n += TILE_N
+            offsets += TILE_N * K
+        scale = tl.sum(scale, axis=0)  # (TILE_K,)
 
-    for start_n in range(0, N, BLOCK_N):
-        n_offset = start_n + tl.arange(0, BLOCK_N)
-        offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
-        out_ptrs = out_ptr + offsets
-        out = tl.load(out_ptrs, mask=mask).to(tl.float32)
-        out_grad_ptrs = out_grad_ptr + offsets
-        out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
-        in_grad = out_grad - tl.exp(out) * scale[:, None]
-        in_grad_ptrs = in_grad_ptr + offsets
-        tl.store(in_grad_ptrs, in_grad, mask=mask)
+        offsets_n = tl.arange(0, TILE_N)
+        offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
+        for _ in range(0, N, TILE_N):
+            mask = (offsets_n < N)[:, None] & (offsets_k < K)
+            out_tile = tl.load(out_ptr + offsets, mask=mask).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
+            in_grad_tile = out_grad_tile - tl.exp(out_tile) * scale[None, :]
+            tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
+            offsets_n += TILE_N
+            offsets += TILE_N * K
+
+
+@libentry()
+@triton.autotune(
+    configs=runtime.get_tuned_config("softmax_inner"),
+    key=["M", "N"],
+)
+@triton.heuristics(
+    values=runtime.get_heuristic_config("softmax_backward_inner"),
+)
+@triton.jit
+def log_softmax_backward_kernel_inner(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    M,
+    N,
+    TILE_M: tl.constexpr,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = ext.program_id(0)
+    m_offsets = pid_m * TILE_M + tl.arange(0, TILE_M)
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        offsets = m_offsets[:, None] * N + n_offsets
+        mask = (m_offsets[:, None] < M) & (n_offsets < N)
+        out_tile = tl.load(out_ptr + offsets, mask=mask).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
+        scale = tl.sum(out_grad_tile, 1)
+        in_grad_tile = out_grad_tile - tl.exp(out_tile) * scale[:, None]
+        tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
+    else:
+        scale = tl.zeros([TILE_M, TILE_N], dtype=tl.float32)
+
+        n_offsets = tl.arange(0, TILE_N)
+        offsets = m_offsets[:, None] * N + n_offsets
+        for _ in range(0, N, TILE_N):
+            mask = (m_offsets[:, None] < M) & (n_offsets < N)
+            out_grad_tile = tl.load(
+                out_grad_ptr + offsets, mask=mask, eviction_policy="evict_last"
+            ).to(tl.float32)
+            scale += out_grad_tile
+            n_offsets += TILE_N
+            offsets += TILE_N
+        scale = tl.sum(scale, 1)  # (TILE_M,)
+
+        n_offsets = tl.arange(0, TILE_N)
+        offsets = m_offsets[:, None] * N + n_offsets
+        for _ in range(0, N, TILE_N):
+            mask = (m_offsets[:, None] < M) & (n_offsets < N)
+            out_tile = tl.load(
+                out_ptr + offsets, mask=mask, eviction_policy="evict_first"
+            ).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
+            in_grad_tile = out_grad_tile - tl.exp(out_tile) * scale[:, None]
+            tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
+            n_offsets += TILE_N
+            offsets += TILE_N
 
 
 def log_softmax_out(self, dim, half_to_float=False, *, out):
@@ -245,19 +319,26 @@ def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
         )
     K = output.numel() // M // N
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        K,
-    )
     with torch_device_fn.device(out.device):
-        log_softmax_backward_kernel[grid](
-            output,
-            grad_output,
-            out,
-            M,
-            N,
-            K,
-        )
+        if K > 1:
+            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+            log_softmax_backward_kernel_non_inner[grid](
+                output,
+                grad_output,
+                out,
+                M,
+                N,
+                K,
+            )
+        else:
+            grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
+            log_softmax_backward_kernel_inner[grid](
+                output,
+                grad_output,
+                out,
+                M,
+                N,
+            )
     return out
 
 
