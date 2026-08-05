@@ -25,6 +25,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max, get_dtype_min
+from flag_gems.utils.shape_utils import c_contiguous_stride
 
 from .topk import _get_finfo_val
 
@@ -648,14 +649,20 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
     output_shape = keepdim_shape if keepdim else out_shape
     compute_shape = output_shape if out is not None else keepdim_shape
 
-    if N == 0:
-        if M != 0:
-            raise IndexError(
-                f"median(): Expected reduction dim {dim} to have non-zero size."
-            )
+    if N == 0 and M != 0:
+        raise IndexError(
+            f"median(): Expected reduction dim {dim} to have non-zero size."
+        )
+
+    if M == 0:
         if out is None:
-            values = torch.empty(compute_shape, dtype=inp.dtype, device=inp.device)
-            indices = torch.empty(compute_shape, dtype=torch.long, device=inp.device)
+            strides = c_contiguous_stride(compute_shape)
+            values = torch.empty_strided(
+                compute_shape, strides, dtype=inp.dtype, device=inp.device
+            )
+            indices = torch.empty_strided(
+                compute_shape, strides, dtype=torch.long, device=inp.device
+            )
             if not keepdim:
                 values = torch.squeeze(values, dim)
                 indices = torch.squeeze(indices, dim)
@@ -668,12 +675,6 @@ def _nanmedian_dim_impl(inp, dim, keepdim, out=None):
         indices = torch.empty(compute_shape, dtype=torch.long, device=inp.device)
     else:
         values, indices = out
-
-    if M == 0:
-        if out is None and not keepdim:
-            values = torch.squeeze(values, dim)
-            indices = torch.squeeze(indices, dim)
-        return NanMedian(values=values, indices=indices)
 
     inp = dim_compress(inp, dim)
     is_cuda = inp.is_cuda
