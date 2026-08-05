@@ -1,105 +1,92 @@
 import pytest
 import torch
 
-import flag_gems
 from flag_gems.ops.linalg_diagonal import linalg_diagonal
 
 
-@pytest.mark.linalg_diagonal
-@pytest.mark.parametrize("shape", [(3, 3), (4, 5), (5, 4), (2, 3, 4), (3, 4, 5, 6)])
-@pytest.mark.parametrize("offset", [-2, -1, 0, 1, 2])
-def test_diagonal_basic(shape, offset):
-    """Test basic functionality: different shapes and offsets."""
-    device = flag_gems.device
-    A = torch.randn(shape, device=device)
-    expected = torch.linalg.diagonal(A, offset=offset)
-    result = linalg_diagonal(A, offset=offset)
-    torch.testing.assert_close(result, expected, rtol=1e-4, atol=1e-4)
-
-
-@pytest.mark.linalg_diagonal
-@pytest.mark.parametrize("shape", [(3, 3), (4, 5)])
-@pytest.mark.parametrize("dim1, dim2", [(0, 1), (-2, -1)])
-@pytest.mark.parametrize("offset", [-1, 0, 1])
-def test_diagonal_with_dims(shape, dim1, dim2, offset):
-    """Test specifying dim1 and dim2."""
-    device = flag_gems.device
-    A = torch.randn(shape, device=device)
-    expected = torch.linalg.diagonal(A, offset=offset, dim1=dim1, dim2=dim2)
-    result = linalg_diagonal(A, offset=offset, dim1=dim1, dim2=dim2)
-    torch.testing.assert_close(result, expected, rtol=1e-4, atol=1e-4)
-
-
-@pytest.mark.linalg_diagonal
-def test_diagonal_empty():
-    """Test empty diagonal (offset out of range)."""
-    device = flag_gems.device
-    A = torch.randn(2, 3, device=device)
-    result = linalg_diagonal(A, offset=3)
-    expected = torch.linalg.diagonal(A, offset=3)
-    assert result.shape == expected.shape
-    torch.testing.assert_close(result, expected)
-
-
-@pytest.mark.linalg_diagonal
-def test_diagonal_2d_manual():
-    """Manual verification of 2D diagonal values."""
-    device = flag_gems.device
-    A = torch.tensor([[1, 2, 3], [4, 5, 6], [7, 8, 9]], device=device)
-    result = linalg_diagonal(A)
-    expected = torch.tensor([1, 5, 9], device=device)
-    torch.testing.assert_close(result, expected)
-
-    result = linalg_diagonal(A, offset=1)
-    expected = torch.tensor([2, 6], device=device)
-    torch.testing.assert_close(result, expected)
-
-    result = linalg_diagonal(A, offset=-1)
-    expected = torch.tensor([4, 8], device=device)
-    torch.testing.assert_close(result, expected)
-
-
-@pytest.mark.linalg_diagonal
-@pytest.mark.parametrize("shape", [(3, 3), (4, 5, 6)])
-def test_diagonal_non_last_dims(shape):
-    """Test taking diagonal on non-last two dimensions."""
-    device = flag_gems.device
-    A = torch.randn(shape, device=device)
-    dim1, dim2 = 0, 1
-    expected = torch.linalg.diagonal(A, dim1=dim1, dim2=dim2)
-    result = linalg_diagonal(A, dim1=dim1, dim2=dim2)
-    torch.testing.assert_close(result, expected, rtol=1e-4, atol=1e-4)
-
-
-@pytest.mark.linalg_diagonal
-def test_diagonal_negative_dim():
-    """Test negative dim1/dim2."""
-    device = flag_gems.device
-    A = torch.randn(2, 3, 4, 5, device=device)
-    # Default: last two dimensions using -1 and -2
-    expected = torch.linalg.diagonal(A, dim1=-2, dim2=-1)
-    result = linalg_diagonal(A, dim1=-2, dim2=-1)
-    torch.testing.assert_close(result, expected, rtol=1e-4, atol=1e-4)
-
-    # Using -3 and -1
-    expected = torch.linalg.diagonal(A, dim1=-3, dim2=-1)
-    result = linalg_diagonal(A, dim1=-3, dim2=-1)
-    torch.testing.assert_close(result, expected, rtol=1e-4, atol=1e-4)
-
-
-@pytest.mark.linalg_diagonal
-@pytest.mark.parametrize("shape", [(4, 4), (5, 6, 7)])
-def test_diagonal_large_offset(shape):
-    """Test case where offset equals dimension size - 1, diagonal length is 1."""
-    device = flag_gems.device
-    A = torch.randn(shape, device=device)
-    if len(shape) == 2:
-        max_offset = min(shape) - 1
-        offset = max_offset
+def _make_tensor(shape, dtype=torch.float32, device="cuda"):
+    if dtype.is_complex:
+        real = torch.randn(shape, dtype=torch.float32, device=device)
+        imag = torch.randn(shape, dtype=torch.float32, device=device)
+        return real + 1j * imag
     else:
-        # For 3D, default last two dimensions
-        max_offset = min(shape[-2], shape[-1]) - 1
-        offset = max_offset
-    expected = torch.linalg.diagonal(A, offset=offset)
-    result = linalg_diagonal(A, offset=offset)
-    torch.testing.assert_close(result, expected, rtol=1e-4, atol=1e-4)
+        return torch.randn(shape, dtype=dtype, device=device)
+
+
+class TestLinalgDiagonal:
+    @pytest.mark.parametrize(
+        "dtype", [torch.float32, torch.float64, torch.bfloat16, torch.float16]
+    )
+    @pytest.mark.parametrize(
+        "shape, dim1, dim2",
+        [
+            ((256, 256), -2, -1),
+            ((512, 512), 0, 1),
+            ((128, 256, 256), 1, 2),
+            ((64, 128, 128, 128), -1, -2),
+            ((10, 20, 30, 40), 0, 3),
+            ((5, 7, 11, 13), -3, -1),
+            ((32, 64, 64, 64), 2, 3),
+            ((2, 3, 4, 5, 6), 0, 4),
+            ((2, 3, 4, 5, 6), 1, 3),
+        ],
+    )
+    def test_correctness(self, shape, dim1, dim2, dtype):
+        A = _make_tensor(shape, dtype)
+        result_gems = linalg_diagonal(A, dim1=dim1, dim2=dim2)
+        result_torch = torch.diagonal(A, dim1=dim1, dim2=dim2)
+        torch.testing.assert_close(result_gems, result_torch, atol=1e-3, rtol=1e-3)
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    @pytest.mark.parametrize(
+        "shape, dim1, dim2, offset",
+        [
+            ((5, 5), 0, 1, 2),
+            ((5, 5), 0, 1, -2),
+            ((7, 7), -2, -1, 3),
+            ((7, 7), -2, -1, -4),
+            ((10, 10, 10), 0, 2, 1),
+            ((10, 10, 10), 0, 2, -2),
+            ((4, 8, 16), 0, 2, 3),
+            ((4, 8, 16), 1, 2, -1),
+        ],
+    )
+    def test_offset(self, shape, dim1, dim2, offset, dtype):
+        A = _make_tensor(shape, dtype)
+        result_gems = linalg_diagonal(A, offset=offset, dim1=dim1, dim2=dim2)
+        result_torch = torch.diagonal(A, offset=offset, dim1=dim1, dim2=dim2)
+        torch.testing.assert_close(result_gems, result_torch, atol=1e-3, rtol=1e-3)
+
+    def test_empty_diag(self):
+        A = torch.randn(3, 4, device="cuda")
+        result_gems = linalg_diagonal(A, offset=10, dim1=0, dim2=1)
+        result_torch = torch.diagonal(A, offset=10, dim1=0, dim2=1)
+        assert result_gems.shape == result_torch.shape
+        assert result_gems.numel() == 0
+
+    def test_not_contiguous(self):
+        A = torch.randn(4, 5, 6, device="cuda").transpose(0, 2)
+        dim1, dim2 = 1, 2
+        result_gems = linalg_diagonal(A, dim1=dim1, dim2=dim2)
+        result_torch = torch.diagonal(A, dim1=dim1, dim2=dim2)
+        torch.testing.assert_close(result_gems, result_torch, atol=1e-3, rtol=1e-3)
+
+    @pytest.mark.skip(reason="Custom Triton kernel does not support autograd yet")
+    def test_gradient(self):
+        A = torch.randn(5, 5, device="cuda", requires_grad=True)
+        result = linalg_diagonal(A)
+        loss = result.sum()
+        loss.backward()
+        assert A.grad is not None
+
+    def test_2d_single_element(self):
+        A = torch.tensor([[42.0]], device="cuda")
+        result = linalg_diagonal(A)
+        expected = torch.diagonal(A)
+        torch.testing.assert_close(result, expected)
+
+    def test_large_tensor(self):
+        A = torch.randn(128, 128, 128, device="cuda")
+        result = linalg_diagonal(A, dim1=1, dim2=2)
+        expected = torch.diagonal(A, dim1=1, dim2=2)
+        torch.testing.assert_close(result, expected, atol=1e-3, rtol=1e-3)

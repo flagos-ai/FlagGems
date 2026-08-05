@@ -8,7 +8,6 @@ from . import base, consts, utils
 
 class DiagonalBenchmark(base.Benchmark):
     def get_input_iter(self, dtype):
-
         shapes = [
             (256, 256),
             (512, 512),
@@ -26,7 +25,7 @@ class DiagonalBenchmark(base.Benchmark):
 def test_linalg_diagonal():
     bench = DiagonalBenchmark(
         op_name="linalg_diagonal",
-        torch_op=torch.linalg.diagonal,
+        torch_op=lambda x: torch.diagonal(x).contiguous(),
         gems_op=linalg_diagonal,
         dtypes=consts.FLOAT_DTYPES,
     )
