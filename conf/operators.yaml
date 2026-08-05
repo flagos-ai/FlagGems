@@ -5228,6 +5228,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: log_
+    description: The in-place version of `log()`. Computes the natural logarithm of each element in the input tensor in-place.
+    for:
+      - log_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.3'
   - id: log10
     description: Returns a new tensor with the logarithm to the base 10 of the elements of `input`.
     for:

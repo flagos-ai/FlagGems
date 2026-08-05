@@ -548,6 +548,7 @@ _FULL_CONFIG = (
     ("linear_backward", linear_backward),
     ("linspace", linspace),
     ("log", log),
+    ("log_", log_),
     ("log10", log10),
     ("log10.out", log10_out),
     ("log10_", log10_),
