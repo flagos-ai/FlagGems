@@ -4074,6 +4074,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: has_compatible_shallow_copy_type
+    description: |
+      Metadata-only check that returns True when `self` can shallow-copy the
+      TensorImpl type of `from`. Compatibility depends solely on the tensor
+      layout category (dense, sparse COO, or sparse compressed) and is
+      independent of device, dtype and shape.
+    for:
+      - _has_compatible_shallow_copy_type
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: hardsigmoid
     description: |
       An activation function that provides a piecewise linear approximation of the standard sigmoid function,
