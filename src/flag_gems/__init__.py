@@ -124,6 +124,7 @@ _FULL_CONFIG = (
         "_native_batch_norm_legit_functional",
         _native_batch_norm_legit_functional,
     ),
+    ("_nested_tensor_from_tensor_list", _nested_tensor_from_tensor_list),
     ("_nested_view_from_buffer_copy", _nested_view_from_buffer_copy),
     ("_pdist_backward", _pdist_backward),
     ("_pdist_forward", _pdist_forward),

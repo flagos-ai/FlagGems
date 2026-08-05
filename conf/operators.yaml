@@ -6559,6 +6559,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: nested_tensor_from_tensor_list
+    description: |
+      Constructs a nested tensor from a list of tensors, where each tensor in
+      the list becomes a component of the resulting nested tensor.
+    for:
+      - _nested_tensor_from_tensor_list
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: nested_view_from_buffer_copy
     description: |
       Creates a nested tensor from a flat buffer using component sizes, strides,
