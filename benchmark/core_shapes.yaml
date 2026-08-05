@@ -777,3 +777,14 @@ repeat_interleave_tensor:
     - [128, 256, 256]
     - [64, 64, 64, 64]
   shape_desc: "M, N, K"
+
+# config: (seq_len, batch, input, hidden, layers, bidirectional, mode, batch_first)
+# mode: 0=RNN_RELU, 1=RNN_TANH, 2=LSTM, 3=GRU
+cudnn_rnn:
+  shapes:
+    - [16, 4, 128, 128, 1, 0, 2, 0]
+    - [32, 8, 256, 256, 1, 0, 2, 0]
+    - [16, 4, 128, 128, 1, 0, 0, 0]
+    - [16, 4, 128, 128, 1, 0, 3, 0]
+    - [16, 4, 128, 128, 1, 1, 2, 0]
+  shape_desc: "seq, batch, input, hidden, layers, bidir, mode, batch_first"
