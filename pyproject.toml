@@ -216,7 +216,10 @@ Documentation = "https://flagos-ai.github.io/FlagGems"
 "Bug Tracker" = "https://github.com/flagos-ai/FlagGems/issues"
 
 [project.scripts]
-flaggems-setup = "flag_gems._setup:main"
+# Top-level module (NOT flag_gems._setup): importing the flag_gems package
+# pulls in torch and triton at load time, but this bootstrap CLI runs *before*
+# those are installed, so its entry point must not import the package.
+flaggems-setup = "flaggems_setup:main"
 
 # Package discovery (including shipping the tests/ and benchmark/ suites under
 # collision-safe names) is defined in setup.py, so it is intentionally omitted
