@@ -15,26 +15,37 @@
 import pytest
 import torch
 
-from . import base, consts
+import flag_gems
 
-
-def functional_assert_async_input_fn(shape, dtype, device):
-    # Always use single-element tensor (requirement of the op)
-    inp = torch.ones(1, dtype=dtype, device=device)
-    dep_token = torch.empty(0, dtype=dtype, device=device)
-    yield inp, "assertion", dep_token
-
-
-def functional_assert_async_torch_wrapper(inp, msg, dep_token):
-    return torch.ops.aten._functional_assert_async.msg(inp, msg, dep_token)
+from . import consts
 
 
 @pytest.mark.functional_assert_async
 def test_functional_assert_async():
-    bench = base.GenericBenchmark(
-        op_name="functional_assert_async",
-        input_fn=functional_assert_async_input_fn,
-        torch_op=functional_assert_async_torch_wrapper,
-        dtypes=consts.INT_DTYPES + consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    """Benchmark FlagGems implementation only (PyTorch has no CUDA reference)"""
+
+    for dtype in consts.INT_DTYPES + consts.FLOAT_DTYPES:
+        inp = torch.ones(1, dtype=dtype, device=flag_gems.device)
+        dep_token = torch.empty(0, dtype=dtype, device=flag_gems.device)
+
+        # Warmup
+        with flag_gems.use_gems():
+            for _ in range(10):
+                _ = torch.ops.aten._functional_assert_async.msg(inp, "test", dep_token)
+
+        # Simple timing (no comparison since PyTorch has no CUDA impl)
+        import time
+
+        torch.cuda.synchronize()
+        start = time.perf_counter()
+        with flag_gems.use_gems():
+            for _ in range(100):
+                _ = torch.ops.aten._functional_assert_async.msg(inp, "test", dep_token)
+        torch.cuda.synchronize()
+        elapsed = time.perf_counter() - start
+
+        print(
+            f"  {dtype}: {elapsed*1000:.3f}ms for 100 iters, {elapsed*10:.3f}us per call"
+        )
+
+    print("  Benchmark completed (no PyTorch CUDA reference available for comparison)")
