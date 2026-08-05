@@ -35,7 +35,7 @@ def test_hardshrink(shape, dtype, lambd):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.hardshrink
+@pytest.mark.hardshrink_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("lambd", [0.0, 0.75, 1.5])
