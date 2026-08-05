@@ -102,6 +102,28 @@ def _meshgrid_kernel_2d_small(
 
 
 @triton.jit
+def _meshgrid_kernel_2d_ultra_small(
+    out0_ptr,
+    out1_ptr,
+    in0_ptr,
+    in1_ptr,
+    size0,
+    size1,
+):
+    offsets = tl.arange(0, size0 * size1)
+    mask = offsets < (size0 * size1)
+
+    row_idx = offsets // size1
+    col_idx = offsets - row_idx * size1
+
+    vals0 = tl.load(in0_ptr + row_idx, mask=mask)
+    vals1 = tl.load(in1_ptr + col_idx, mask=mask)
+
+    tl.store(out0_ptr + offsets, vals0, mask=mask)
+    tl.store(out1_ptr + offsets, vals1, mask=mask)
+
+
+@triton.jit
 def _meshgrid_kernel_3d(
     out0_ptr,
     out1_ptr,
@@ -272,6 +294,102 @@ def _meshgrid_kernel_4d_strided(
     tl.store(out3_ptr + out_offset, val3, mask=mask)
 
 
+def _meshgrid_2d_pytorch(tensors, indexing):
+    x, y = tensors
+    nx, ny = x.numel(), y.numel()
+
+    if indexing == "ij":
+        x_expanded = x.as_strided((nx, ny), (1, 0))
+        y_expanded = y.as_strided((nx, ny), (0, 1))
+        return x_expanded, y_expanded
+    else:
+        x_expanded = x.as_strided((ny, nx), (0, 1))
+        y_expanded = y.as_strided((ny, nx), (1, 0))
+        return x_expanded, y_expanded
+
+
+def _meshgrid_3d_pytorch(tensors, indexing):
+    x, y, z = tensors
+    nx, ny, nz = x.numel(), y.numel(), z.numel()
+
+    if indexing == "ij":
+        x_expanded = x.as_strided((nx, ny, nz), (1, 0, 0))
+        y_expanded = y.as_strided((nx, ny, nz), (0, 1, 0))
+        z_expanded = z.as_strided((nx, ny, nz), (0, 0, 1))
+        return x_expanded, y_expanded, z_expanded
+    else:
+        x_expanded = x.as_strided((ny, nx, nz), (0, 1, 0))
+        y_expanded = y.as_strided((ny, nx, nz), (1, 0, 0))
+        z_expanded = z.as_strided((ny, nx, nz), (0, 0, 1))
+        return x_expanded, y_expanded, z_expanded
+
+
+def _meshgrid_4d_pytorch(tensors, indexing):
+    x, y, z, w = tensors
+    nx, ny, nz, nw = x.numel(), y.numel(), z.numel(), w.numel()
+
+    if indexing == "ij":
+        x_expanded = x.as_strided((nx, ny, nz, nw), (1, 0, 0, 0))
+        y_expanded = y.as_strided((nx, ny, nz, nw), (0, 1, 0, 0))
+        z_expanded = z.as_strided((nx, ny, nz, nw), (0, 0, 1, 0))
+        w_expanded = w.as_strided((nx, ny, nz, nw), (0, 0, 0, 1))
+        return x_expanded, y_expanded, z_expanded, w_expanded
+    else:
+        x_expanded = x.as_strided((ny, nx, nz, nw), (0, 1, 0, 0))
+        y_expanded = y.as_strided((ny, nx, nz, nw), (1, 0, 0, 0))
+        z_expanded = z.as_strided((ny, nx, nz, nw), (0, 0, 1, 0))
+        w_expanded = w.as_strided((ny, nx, nz, nw), (0, 0, 0, 1))
+        return x_expanded, y_expanded, z_expanded, w_expanded
+
+
+def _meshgrid_2d_npu_optimized(tensors, indexing):
+    x, y = tensors
+    nx, ny = x.numel(), y.numel()
+
+    if indexing == "ij":
+        out0 = x.as_strided((nx, ny), (1, 0))
+        out1 = y.as_strided((nx, ny), (0, 1))
+    else:
+        out0 = x.as_strided((ny, nx), (0, 1))
+        out1 = y.as_strided((ny, nx), (1, 0))
+
+    return out0, out1
+
+
+def _meshgrid_3d_npu_optimized(tensors, indexing):
+    x, y, z = tensors
+    nx, ny, nz = x.numel(), y.numel(), z.numel()
+
+    if indexing == "ij":
+        out0 = x.as_strided((nx, ny, nz), (1, 0, 0))
+        out1 = y.as_strided((nx, ny, nz), (0, 1, 0))
+        out2 = z.as_strided((nx, ny, nz), (0, 0, 1))
+    else:
+        out0 = x.as_strided((ny, nx, nz), (0, 1, 0))
+        out1 = y.as_strided((ny, nx, nz), (1, 0, 0))
+        out2 = z.as_strided((ny, nx, nz), (0, 0, 1))
+
+    return out0, out1, out2
+
+
+def _meshgrid_4d_npu_optimized(tensors, indexing):
+    x, y, z, w = tensors
+    nx, ny, nz, nw = x.numel(), y.numel(), z.numel(), w.numel()
+
+    if indexing == "ij":
+        out0 = x.as_strided((nx, ny, nz, nw), (1, 0, 0, 0))
+        out1 = y.as_strided((nx, ny, nz, nw), (0, 1, 0, 0))
+        out2 = z.as_strided((nx, ny, nz, nw), (0, 0, 1, 0))
+        out3 = w.as_strided((nx, ny, nz, nw), (0, 0, 0, 1))
+    else:
+        out0 = x.as_strided((ny, nx, nz, nw), (0, 1, 0, 0))
+        out1 = y.as_strided((ny, nx, nz, nw), (1, 0, 0, 0))
+        out2 = z.as_strided((ny, nx, nz, nw), (0, 0, 1, 0))
+        out3 = w.as_strided((ny, nx, nz, nw), (0, 0, 0, 1))
+
+    return out0, out1, out2, out3
+
+
 def meshgrid(
     tensors: List[torch.Tensor], indexing: str = "ij"
 ) -> Tuple[torch.Tensor, ...]:
@@ -293,8 +411,26 @@ def meshgrid(
 
     device = tensors[0].device
 
+    if device.type == "npu":
+        for t in tensors:
+            if t.device.type != "npu":
+                raise RuntimeError(
+                    f"All tensors must be on NPU devices, got {t.device}"
+                )
+
+        if rank == 1:
+            return tensors
+        elif rank == 2:
+            return _meshgrid_2d_npu_optimized(tensors, indexing)
+        elif rank == 3:
+            return _meshgrid_3d_npu_optimized(tensors, indexing)
+        elif rank == 4:
+            return _meshgrid_4d_npu_optimized(tensors, indexing)
+        else:
+            raise ValueError(f"Unsupported rank: {rank}")
+
     if device.type != "cuda":
-        raise RuntimeError(f"All tensors must be on CUDA devices, got {device}")
+        raise RuntimeError(f"All tensors must be on CUDA or NPU devices, got {device}")
 
     for t in tensors:
         if t.device.type != "cuda":
@@ -304,16 +440,16 @@ def meshgrid(
         return tensors
 
     if rank == 2:
-        return _meshgrid_2d(tensors, indexing)
+        return _meshgrid_2d_cuda(tensors, indexing)
     elif rank == 3:
-        return _meshgrid_3d(tensors, indexing)
+        return _meshgrid_3d_cuda(tensors, indexing)
     elif rank == 4:
-        return _meshgrid_4d(tensors, indexing)
+        return _meshgrid_4d_cuda(tensors, indexing)
     else:
         raise ValueError(f"Unsupported rank: {rank}")
 
 
-def _meshgrid_2d(tensors, indexing):
+def _meshgrid_2d_cuda(tensors, indexing):
     x, y = tensors
     size0, size1 = x.size(0), y.size(0)
 
@@ -331,7 +467,11 @@ def _meshgrid_2d(tensors, indexing):
 
     total_elements = actual_size0 * actual_size1
 
-    if total_elements <= 16384:
+    if total_elements <= 64:
+        _meshgrid_kernel_2d_ultra_small[(1,)](
+            out0, out1, in0, in1, actual_size0, actual_size1
+        )
+    elif total_elements <= 16384:
         if total_elements <= 4096:
             BLOCK_SIZE = 16
         else:
@@ -378,7 +518,7 @@ def _meshgrid_2d(tensors, indexing):
     return out0, out1
 
 
-def _meshgrid_3d(tensors, indexing):
+def _meshgrid_3d_cuda(tensors, indexing):
     x, y, z = tensors
 
     if indexing == "xy":
@@ -445,7 +585,7 @@ def _meshgrid_3d(tensors, indexing):
     return out0, out1, out2
 
 
-def _meshgrid_4d(tensors, indexing):
+def _meshgrid_4d_cuda(tensors, indexing):
     x, y, z, w = tensors
 
     if indexing == "xy":

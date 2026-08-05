@@ -33,8 +33,6 @@ from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
-from .ops.meshgrid import meshgrid, meshgrid_stack, register_ops
-
 try:
     from flag_gems._version import version as __version__
 except ImportError:
@@ -554,6 +552,7 @@ _FULL_CONFIG = (
     ("median.dim", median_dim),
     ("median.dim_values", median_dim_values),
     ("median.out", median_out),
+    ("meshgrid", meshgrid),
     ("min", min),
     ("min.dim", min_dim),
     ("minimum", minimum),
@@ -1034,6 +1033,4 @@ __all__ = [
     "only_enable",
     "use_gems",
     "meshgrid",
-    "meshgrid_stack",
-    "register_ops",
 ]

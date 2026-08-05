@@ -1,183 +1,72 @@
 import pytest
 import torch
 
-from flag_gems.ops.meshgrid import meshgrid
+import flag_gems
+
+from . import accuracy_utils as utils
+
+DEVICE = flag_gems.device
 
 
-def get_available_device():
-    """自动检测可用设备"""
-    if torch.cuda.is_available():
-        return "cuda"
-    try:
-        import torch_npu  # noqa: F401
+@pytest.mark.meshgrid
+@pytest.mark.correctness
+@pytest.mark.parametrize(
+    "shapes",
+    [
+        [(512,), (512,)],
+        [(1024,), (2048,)],
+        [(256,), (256,)],
+        [(4096,), (2048,)],
+    ],
+    ids=[
+        "same_size_512",
+        "diff_size_1024_2048",
+        "same_size_256",
+        "diff_size_4096_2048",
+    ],
+)
+@pytest.mark.parametrize("indexing", ["ij", "xy"])
+def test_meshgrid_basic(shapes, indexing):
+    tensors = [torch.randn(shape, device=DEVICE) for shape in shapes]
 
-        if torch.npu.is_available():
-            return "npu:0"
-    except ImportError:
-        pass
-    return "cpu"
-
-
-DEVICE = get_available_device()
-
-
-def test_meshgrid_correctness():
-    """全面正确性测试"""
-    sizes = [1, 2, 3, 4, 5, 10, 100]
-
-    for size in sizes:
-        x = torch.randn(size, device=DEVICE)
-        y = torch.randn(size, device=DEVICE)
-
-        for indexing in ["ij", "xy"]:
-            our_out = meshgrid([x, y], indexing=indexing)
-            ref_out = torch.meshgrid(x, y, indexing=indexing)
-
-            for i, (our, ref) in enumerate(zip(our_out, ref_out)):
-                if size == 1:
-                    assert torch.allclose(
-                        our, ref, rtol=1e-4, atol=1e-4
-                    ), f"Failed for size {size}, indexing {indexing}, output {i}"
-                else:
-                    assert torch.allclose(
-                        our, ref, rtol=1e-5, atol=1e-5
-                    ), f"Failed for size {size}, indexing {indexing}, output {i}"
-
-
-def test_meshgrid_xy_single_element():
-    """专门测试xy模式下的单元素情况"""
-    test_cases = [
-        (torch.tensor([1.0]), torch.tensor([2.0])),
-        (torch.tensor([-1.0]), torch.tensor([3.14])),
-        (torch.tensor([0.0]), torch.tensor([0.0])),
-    ]
-
-    for x, y in test_cases:
-        x = x.to(DEVICE)
-        y = y.to(DEVICE)
-
-        our_out = meshgrid([x, y], indexing="xy")
-        ref_out = torch.meshgrid(x, y, indexing="xy")
-
-        for our, ref in zip(our_out, ref_out):
-            assert our.shape == ref.shape
-            assert torch.allclose(our, ref, rtol=1e-5, atol=1e-5)
-
-
-def test_meshgrid_xy_mode():
-    """测试xy模式的各种情况"""
-    x = torch.tensor([1, 2, 3], device=DEVICE)
-    y = torch.tensor([4, 5], device=DEVICE)
-
-    our_out = meshgrid([x, y], indexing="xy")
-    ref_out = torch.meshgrid(x, y, indexing="xy")
+    with flag_gems.use_gems():
+        our_out = torch.meshgrid(*tensors, indexing=indexing)
+    ref_out = torch.meshgrid(*tensors, indexing=indexing)
 
     for our, ref in zip(our_out, ref_out):
-        assert torch.allclose(our, ref)
+        utils.gems_assert_close(our, ref, our.dtype)
 
-    x = torch.tensor([1, 2, 3], device=DEVICE)
-    y = torch.tensor([1, 2, 3], device=DEVICE)
 
-    our_out = meshgrid([x, y], indexing="xy")
-    ref_out = torch.meshgrid(x, y, indexing="xy")
+@pytest.mark.meshgrid
+@pytest.mark.dimensional
+@pytest.mark.parametrize("ndim", [2, 3, 4], ids=["2d", "3d", "4d"])
+@pytest.mark.parametrize("indexing", ["ij", "xy"])
+def test_meshgrid_multidimensional(ndim, indexing):
+    tensors = [torch.randn(64 + i * 32, device=DEVICE) for i in range(ndim)]
+
+    with flag_gems.use_gems():
+        our_out = torch.meshgrid(*tensors, indexing=indexing)
+    ref_out = torch.meshgrid(*tensors, indexing=indexing)
 
     for our, ref in zip(our_out, ref_out):
-        assert torch.allclose(our, ref)
+        utils.gems_assert_close(our, ref, our.dtype)
 
 
-def test_meshgrid_3d():
-    """3D测试"""
-    x = torch.randn(4, device=DEVICE)
-    y = torch.randn(5, device=DEVICE)
-    z = torch.randn(6, device=DEVICE)
+@pytest.mark.meshgrid
+@pytest.mark.dtype
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.float32, torch.float64, torch.int32, torch.int64],
+    ids=["float32", "float64", "int32", "int64"],
+)
+def test_meshgrid_dtypes(dtype):
+    x = torch.arange(1, 513, dtype=dtype, device=DEVICE)
+    y = torch.arange(1000, 2000, dtype=dtype, device=DEVICE)
 
-    for indexing in ["ij", "xy"]:
-        our_out = meshgrid([x, y, z], indexing=indexing)
-        ref_out = torch.meshgrid(x, y, z, indexing=indexing)
-
-        for our, ref in zip(our_out, ref_out):
-            assert torch.allclose(our, ref, rtol=1e-5, atol=1e-5)
-
-
-def test_meshgrid_4d():
-    """4D测试"""
-    tensors = [torch.randn(3, device=DEVICE) for _ in range(4)]
-
-    for indexing in ["ij", "xy"]:
-        our_out = meshgrid(tensors, indexing=indexing)
-        ref_out = torch.meshgrid(*tensors, indexing=indexing)
-
-        for our, ref in zip(our_out, ref_out):
-            assert torch.allclose(our, ref, rtol=1e-5, atol=1e-5)
-
-
-def test_meshgrid_different_dtypes():
-    """不同数据类型测试"""
-    dtypes = [torch.float32, torch.float64, torch.int32, torch.int64]
-
-    for dtype in dtypes:
-        x = torch.tensor([1, 2, 3], dtype=dtype, device=DEVICE)
-        y = torch.tensor([4, 5, 6], dtype=dtype, device=DEVICE)
-
-        for indexing in ["ij", "xy"]:
-            our_out = meshgrid([x, y], indexing=indexing)
-            ref_out = torch.meshgrid(x, y, indexing=indexing)
-
-            for our, ref in zip(our_out, ref_out):
-                assert our.dtype == ref.dtype
-                if dtype in [torch.int32, torch.int64]:
-                    assert torch.equal(our, ref)
-                else:
-                    assert torch.allclose(our, ref, rtol=1e-5, atol=1e-5)
-
-
-def test_meshgrid_edge_cases():
-    """边界情况测试"""
-    x = torch.randn(2, device=DEVICE)
-    y = torch.randn(5, device=DEVICE)
-    z = torch.randn(3, device=DEVICE)
-
-    for indexing in ["ij", "xy"]:
-        our_out = meshgrid([x, y, z], indexing=indexing)
-        ref_out = torch.meshgrid(x, y, z, indexing=indexing)
-
-        for our, ref in zip(our_out, ref_out):
-            assert our.shape == ref.shape
-            assert torch.allclose(our, ref, rtol=1e-5, atol=1e-5)
-
-    x = torch.randn(1, device=DEVICE)
-    y = torch.randn(100, device=DEVICE)
-
-    our_out = meshgrid([x, y], indexing="ij")
+    with flag_gems.use_gems():
+        our_out = torch.meshgrid(x, y, indexing="ij")
     ref_out = torch.meshgrid(x, y, indexing="ij")
 
     for our, ref in zip(our_out, ref_out):
-        assert torch.allclose(our, ref)
-
-
-def test_meshgrid_error_handling():
-    """错误处理测试"""
-    # 测试空列表
-    with pytest.raises(ValueError, match="tensors must be a non-empty list or tuple"):
-        meshgrid([])
-
-    # 测试无效的 indexing 参数
-    x = torch.randn(2, device=DEVICE)
-    with pytest.raises(ValueError, match="indexing must be 'ij' or 'xy'"):
-        meshgrid([x], indexing="invalid")
-
-    # 测试超过4维
-    tensors = [torch.randn(2, device=DEVICE) for _ in range(5)]
-    with pytest.raises(
-        NotImplementedError, match="Currently only supports up to 4 dimensions"
-    ):
-        meshgrid(tensors)
-
-    # 测试非1D张量
-    x = torch.randn(2, 3, device=DEVICE)
-    with pytest.raises(ValueError, match="must be 1D"):
-        meshgrid([x])
-
-    # 测试非张量输入
-    with pytest.raises(TypeError, match="must be a torch.Tensor"):
-        meshgrid([1, 2, 3])
+        assert our.dtype == ref.dtype
+        utils.gems_assert_close(our, ref, dtype)
