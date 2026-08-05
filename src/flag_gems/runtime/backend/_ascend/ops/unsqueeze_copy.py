@@ -6,9 +6,7 @@ from flag_gems.runtime import device
 
 device_ = device
 
-logger = logging.getLogger(
-    f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
 
 def unsqueeze_copy(inp, dim):

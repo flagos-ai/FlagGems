@@ -11,7 +11,7 @@ def _normalize_dim(dim, ndim):
 
     if dim < 0 or dim > ndim:
         raise IndexError(
-            f"Dimension out of range " f"(expected in [{-ndim-1}, {ndim}], got {dim})"
+            f"Dimension out of range " f"(expected in [{-ndim - 1}, {ndim}], got {dim})"
         )
 
     return dim

@@ -115,13 +115,9 @@ def test_unsqueeze_copy_out(shape, dim):
 
     ref_inp = utils.to_reference(inp, True)
 
-    ref_out = torch.empty_like(
-        torch.ops.aten.unsqueeze_copy(ref_inp, dim)
-    )
+    ref_out = torch.empty_like(torch.ops.aten.unsqueeze_copy(ref_inp, dim))
 
-    out = torch.empty_like(
-        torch.ops.aten.unsqueeze_copy(inp, dim)
-    )
+    out = torch.empty_like(torch.ops.aten.unsqueeze_copy(inp, dim))
 
     with flag_gems.use_gems():
         res = torch.ops.aten.unsqueeze_copy.out(
