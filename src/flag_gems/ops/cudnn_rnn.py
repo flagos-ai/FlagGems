@@ -26,8 +26,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import libentry
-from flag_gems.utils import tl_extra_shim
+from flag_gems.utils import libentry, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
@@ -76,18 +75,6 @@ def _init_cell(
             tl.float32
         )
         tl.store(scratch_ptr + batch_idx * hidden_size + offs, val, mask=mask)
-
-
-@triton.jit
-def _dropout_mask(seed, offset, N, BLOCK_SIZE: tl.constexpr):
-    """Generate a dropout mask for N elements.  Returns float32 0/scale."""
-    pid = tl.program_id(0)
-    offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offs < N
-    # Philox-style random: use seed + offs
-    r = tl.rand(seed, offs)
-    keep = r > 0.5  # dummy — real dropout uses p from host
-    return tl.where(keep, 1.0, 0.0)
 
 
 # ===================================================================
@@ -1390,13 +1377,7 @@ def _triton_dropout(x, p, train):
     """Apply dropout using a Triton kernel."""
     if p <= 0.0 or not train:
         return x
-    scale = 1.0 / (1.0 - p)
-    prob = p
-    # Use torch.nn.functional.dropout — this is still Triton-dispatched
-    # through FlagGems if native_dropout is registered.  To keep it
-    # self-contained we keep the standard PyTorch dropout which uses
-    # a Triton kernel inside FlagGems.
-    return torch.nn.functional.dropout(x, p=prob, training=train)
+    return torch.nn.functional.dropout(x, p=p, training=train)
 
 
 # ===================================================================
