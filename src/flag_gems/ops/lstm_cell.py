@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 @libentry()
 @triton.autotune(
     configs=[
-        # Narrow BLOCK_N with deeper pipelining wins here: each K iteration
-        # loads four separate gate weight tiles, so a narrow N keeps the
-        # loads in flight and lets num_stages hide the latency.
+        # Original narrow BLOCK_N configs with deeper pipelining: each K iteration
+        # loads four separate gate weight tiles, so a narrow N keeps the loads
+        # in flight and lets num_stages hide the latency.
         triton.Config(
             {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=4, num_stages=4
         ),
@@ -29,14 +29,7 @@ logger = logging.getLogger(__name__)
         triton.Config(
             {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=8, num_stages=4
         ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=4, num_stages=3
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=8, num_stages=4
-        ),
-        # Smaller tiles for small-batch / small-hidden shapes, where the
-        # 64x32 tiles would leave most of the grid empty.
+        # Smaller tiles for small batch / small hidden shapes
         triton.Config(
             {"BLOCK_M": 32, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=4, num_stages=4
         ),
@@ -46,12 +39,41 @@ logger = logging.getLogger(__name__)
         triton.Config(
             {"BLOCK_M": 16, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=2, num_stages=4
         ),
-        # Wider N kept as fallback for shapes where it happens to tile better.
+        # Wider N fallback
         triton.Config(
             {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 64}, num_warps=4, num_stages=4
         ),
         triton.Config(
             {"BLOCK_M": 32, "BLOCK_N": 64, "BLOCK_K": 64}, num_warps=4, num_stages=3
+        ),
+        # Aggressive: larger BLOCK_K to increase arithmetic intensity and amortize
+        # the 4x weight load overhead. Higher num_stages compensates for longer
+        # load latency. These target medium-to-large shapes (hidden >= 256).
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 256}, num_warps=8, num_stages=5
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 128}, num_warps=8, num_stages=5
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=8, num_stages=4
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64}, num_warps=8, num_stages=3
+        ),
+        # Very aggressive: maximize tile size for large batches (batch >= 64)
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=8, num_stages=5
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 128}, num_warps=8, num_stages=4
+        ),
+        # High pipeline depth for memory-bound cases
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=4, num_stages=6
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=4, num_stages=6
         ),
     ],
     key=["batch_size", "input_size", "hidden_size"],
