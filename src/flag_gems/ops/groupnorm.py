@@ -50,10 +50,12 @@ def group_norm_kernel(
     hw_offset = tl.arange(0, BLOCK_HW_SIZE)
 
     wb_offset = group * group_size + group_offset
-    wb_mask = wb_offset < C
+    # BLOCK_GROUP_SIZE is group_size rounded up to a power of two, so the tail
+    # lanes address channels of the *next* group: mask on group_size, not on C.
+    wb_mask = (group_offset < group_size) & (wb_offset < C)
 
     xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-    xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
+    xy_mask = wb_mask[:, None] & (hw_offset[None, :] < HW)
 
     Mean_ptr = Mean + pid
     Rstd_ptr = Rstd + pid
@@ -107,7 +109,9 @@ def group_norm_backward_kernel(
     group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
     wb_offset = group * group_size + group_offset
 
-    wb_mask = wb_offset < C
+    # See group_norm_kernel: the padding lanes of BLOCK_GROUP_SIZE fall inside
+    # the next group, so bounding by C alone lets them through.
+    wb_mask = (group_offset < group_size) & (wb_offset < C)
 
     rstd = tl.load(Rstd + pid).to(tl.float32)
     mean = tl.load(Mean + pid).to(tl.float32)
