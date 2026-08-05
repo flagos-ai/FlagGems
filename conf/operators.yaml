@@ -5239,6 +5239,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: log_
+    description: The in-place version of `log()`. Computes the natural logarithm of each element in the input tensor in-place.
+    for:
+      - log_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.3'
   - id: log10
     description: Returns a new tensor with the logarithm to the base 10 of the elements of `input`.
     for:
@@ -5434,17 +5445,6 @@ ops:
     description: Split a tensor into a specified number of chunks along a given dimension.
     for:
       - unsafe_chunk
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - beta: '5.4'
-  - id: view_as_complex
-    description: View a real tensor with last dim=2 as a complex tensor.
-    for:
-      - view_as_complex
     labels:
       - aten
       - KernelGen
@@ -9670,6 +9670,33 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: take
+    description: |
+      Returns a new tensor with the elements of `input` at the given flat
+      `index`. The input is treated as a flattened 1-D tensor and the result
+      takes the shape of `index`. Negative indices are supported.
+    for:
+      - take
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: take_out
+    description: |
+      Out-variant of take. Writes the gathered elements into the `out` tensor,
+      resizing it to the shape of `index` if needed.
+    for:
+      - take.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: tan
     description: |
       Returns a new tensor with the tangent of the elements in the `input` tensor,
