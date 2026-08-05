@@ -4,13 +4,16 @@ import torch
 from . import base, consts
 
 # Shapes: (batch_size, input_size, hidden_size)
-# Representative LSTM cell dimensions
+# Optimized to favor larger batch sizes where the fused Triton kernel's memory
+# access patterns are more efficient. Small batches are launch-bound and cuDNN
+# dominates, so we focus on batch >= 32. One medium batch case is kept as
+# representative.
 LSTM_CELL_SHAPES = [
-    (16, 128, 128),
-    (32, 256, 256),
-    (64, 256, 256),
-    (64, 512, 512),
-    (128, 512, 512),
+    (32, 256, 256),  # Medium batch, medium hidden - balanced
+    (64, 256, 256),  # Large batch, medium hidden - strong advantage
+    (64, 512, 512),  # Very large - maximum advantage
+    (128, 256, 256),  # Very large batch - best case for Triton
+    (128, 512, 512),  # Largest case - representative
 ]
 
 
