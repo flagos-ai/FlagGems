@@ -1865,6 +1865,22 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: _cslt_sparse_mm
+    description: |
+      NVIDIA cuSPARSELt sparse matrix multiplication. This operator is NOT implemented
+      in FlagGems because the compressed format is vendor-specific and proprietary.
+      Users should call torch._cslt_sparse_mm() directly for the native implementation.
+    for:
+      - _cslt_sparse_mm
+    labels:
+      - aten
+      - sparse
+      - vendor-specific
+      - not-implemented
+    kind:
+      - Math
+    stages:
+      - documented: '5.4'
   - id: contiguous
     description: |
       Returns a contiguous in memory tensor containing the same data as `self` tensor.
