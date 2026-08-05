@@ -104,7 +104,12 @@ _FULL_CONFIG = (
     ),
     ("_fused_adam", _fused_adam),
     ("_fused_adam_", _fused_adam_),
-    ("_has_compatible_shallow_copy_type", _has_compatible_shallow_copy_type),
+    (
+        "_has_compatible_shallow_copy_type",
+        _has_compatible_shallow_copy_type,
+        None,
+        (AUTOGRAD_DISPATCH_KEY,),
+    ),
     ("_grouped_mm", group_mm),
     ("_index_put_impl_", _index_put_impl_),
     ("_is_all_true", _is_all_true),
