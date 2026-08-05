@@ -13,8 +13,19 @@
 # limitations under the License.
 
 import pytest
+import torch
 
 from . import base, consts
+
+
+@pytest.mark.subtract
+def test_subtract():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="subtract",
+        torch_op=torch.subtract,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
 
 
 @pytest.mark.subtract_
