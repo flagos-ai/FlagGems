@@ -375,6 +375,7 @@ from flag_gems.ops.log1p import log1p, log1p_out
 from flag_gems.ops.log1p_ import log1p_
 from flag_gems.ops.log2 import log2, log2_
 from flag_gems.ops.log10 import log10, log10_, log10_out
+from flag_gems.ops.log_ import log_
 from flag_gems.ops.log_normal_ import log_normal_
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_sigmoid_forward import log_sigmoid_forward
@@ -647,6 +648,7 @@ from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.svd import svd
 from flag_gems.ops.sym_stride import sym_stride
 from flag_gems.ops.t_copy import t_copy, t_copy_out
+from flag_gems.ops.take import take, take_out
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
@@ -685,7 +687,6 @@ from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
-from flag_gems.ops.view_as_complex import view_as_complex
 from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
@@ -1135,6 +1136,7 @@ __all__ = [
     "linear_backward",
     "linspace",
     "log",
+    "log_",
     "log10",
     "log10_",
     "log10_out",
@@ -1463,6 +1465,8 @@ __all__ = [
     "sym_stride",
     "t_copy",
     "t_copy_out",
+    "take",
+    "take_out",
     "tan",
     "tan_",
     "tanh",
@@ -1510,7 +1514,6 @@ __all__ = [
     "var_mean",
     "vdot",
     "vector_norm",
-    "view_as_complex",
     "view_copy",
     "vstack",
     "w8a8_block_fp8_matmul",
