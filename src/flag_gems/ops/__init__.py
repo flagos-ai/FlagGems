@@ -41,11 +41,15 @@ from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
 from flag_gems.ops._fused_adam import _fused_adam, _fused_adam_
+from flag_gems.ops._fused_moving_avg_obs_fq_helper import (
+    _fused_moving_avg_obs_fq_helper,
+)
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
+from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._native_batch_norm_legit_functional import (
     _native_batch_norm_legit_functional,
@@ -701,6 +705,7 @@ __all__ = [
     "_assert_async",
     "_batch_norm_no_update",
     "_functional_assert_async",
+    "_fused_moving_avg_obs_fq_helper",
     "_cdist_backward",
     "_chunk_cat",
     "_conj",
@@ -716,6 +721,7 @@ __all__ = [
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
+    "_list_to_tensor",
     "_masked_scale",
     "_native_batch_norm_legit_functional",
     "_nested_view_from_buffer_copy",

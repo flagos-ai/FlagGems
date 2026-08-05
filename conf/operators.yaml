@@ -928,6 +928,21 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: fused_moving_avg_obs_fq_helper
+    description: |
+      Fused moving-average observer + fake-quantize helper used in
+      quantization-aware training. Updates running_min/max by moving average,
+      recomputes scale/zero_point, and fake-quantizes the input. Supports
+      per-tensor and per-channel modes.
+    for:
+      - _fused_moving_avg_obs_fq_helper
+    labels:
+      - quantization
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: atan
     description: Returns a new tensor with the arctangent of the elements (in radians) in the `input` tensor.
     for:
@@ -1894,6 +1909,20 @@ ops:
       - Math
     stages:
       - documented: '5.4'
+  - id: _list_to_tensor
+    description: |
+      Constructs a 1-D int32 tensor from a Python list of integers. This is an
+      IR/prim operator; the FlagGems implementation copies the values into the
+      output tensor with a Triton kernel.
+    for:
+      - _list_to_tensor
+    labels:
+      - aten
+      - IR
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.4'
   - id: contiguous
     description: |
       Returns a contiguous in memory tensor containing the same data as `self` tensor.

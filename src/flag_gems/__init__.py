@@ -82,6 +82,7 @@ _FULL_CONFIG = (
     ("_assert_async", _assert_async),
     ("_batch_norm_no_update", _batch_norm_no_update),
     ("_functional_assert_async.msg", _functional_assert_async),
+    ("_fused_moving_avg_obs_fq_helper", _fused_moving_avg_obs_fq_helper),
     ("_cdist_backward", _cdist_backward),
     ("_chunk_cat", _chunk_cat),
     ("_conj", _conj),
@@ -110,6 +111,12 @@ _FULL_CONFIG = (
     ("_is_all_true", _is_all_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
     ("_linalg_eigvals", _linalg_eigvals),
+    # NOTE: aten::_list_to_tensor is a JIT-only prim op with no c10 dispatcher
+    # kernel (torch._C._dispatch_has_kernel("aten::_list_to_tensor") is False),
+    # so an aten IMPL registration here would be dead code -- use_gems() could
+    # never dispatch to it. The Triton implementation is instead exposed
+    # directly as flag_gems._list_to_tensor (via flag_gems.ops) and must be
+    # called explicitly.
     ("linalg_svdvals", linalg_svdvals),
     ("_log_softmax", log_softmax),
     ("_log_softmax.out", log_softmax_out),
