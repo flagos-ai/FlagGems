@@ -17,35 +17,38 @@ import torch
 
 import flag_gems
 
-from . import consts
+from . import base
+
+# _functional_assert_async only operates on single-element tensors, so the
+# shapes are all unit-sized. The dependency token semantics are exercised
+# per dtype below.
+FUNCTIONAL_ASSERT_ASYNC_SHAPES = [
+    (1,),
+    (1, 1),
+    (1, 1, 1),
+]
+
+
+class FunctionalAssertAsyncBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = FUNCTIONAL_ASSERT_ASYNC_SHAPES
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            # Non-zero single-element tensor so the device assertion passes.
+            tensor = torch.ones(shape, dtype=cur_dtype, device=self.device)
+            dep_token = torch.empty(0, dtype=cur_dtype, device=self.device)
+            yield tensor, "Benchmark functional_assert_async", dep_token
 
 
 @pytest.mark.functional_assert_async
 def test_functional_assert_async():
-    """Benchmark FlagGems implementation only (PyTorch has no CUDA reference)"""
-
-    for dtype in consts.INT_DTYPES + consts.FLOAT_DTYPES:
-        inp = torch.ones(1, dtype=dtype, device=flag_gems.device)
-        dep_token = torch.empty(0, dtype=dtype, device=flag_gems.device)
-
-        # Warmup
-        with flag_gems.use_gems():
-            for _ in range(10):
-                _ = torch.ops.aten._functional_assert_async.msg(inp, "test", dep_token)
-
-        # Simple timing (no comparison since PyTorch has no CUDA impl)
-        import time
-
-        torch.cuda.synchronize()
-        start = time.perf_counter()
-        with flag_gems.use_gems():
-            for _ in range(100):
-                _ = torch.ops.aten._functional_assert_async.msg(inp, "test", dep_token)
-        torch.cuda.synchronize()
-        elapsed = time.perf_counter() - start
-
-        print(
-            f"  {dtype}: {elapsed*1000:.3f}ms for 100 iters, {elapsed*10:.3f}us per call"
-        )
-
-    print("  Benchmark completed (no PyTorch CUDA reference available for comparison)")
+    bench = FunctionalAssertAsyncBenchmark(
+        op_name="functional_assert_async",
+        # Use flag_gems._functional_assert_async for both baseline and gems
+        # since there is no native PyTorch CUDA implementation for this op.
+        torch_op=flag_gems._functional_assert_async,
+        dtypes=[torch.int32, torch.float32, torch.float16],
+    )
+    bench.set_gems(flag_gems._functional_assert_async)
+    bench.run()
