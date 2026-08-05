@@ -145,6 +145,10 @@ _FULL_CONFIG = (
         scaled_dot_product_flash_attention_backward,
     ),
     (
+        "_scaled_dot_product_attention_math_for_mps",
+        _scaled_dot_product_attention_math_for_mps,
+    ),
+    (
         "_scaled_dot_product_fused_attention_overrideable",
         _scaled_dot_product_fused_attention_overrideable,
     ),
