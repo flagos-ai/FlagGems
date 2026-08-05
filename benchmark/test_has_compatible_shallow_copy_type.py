@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -29,8 +31,10 @@ def test_has_compatible_shallow_copy_type():
     bench = base.GenericBenchmark(
         input_fn=has_compatible_shallow_copy_type_input_fn,
         op_name="has_compatible_shallow_copy_type",
+        # Baseline is the native PyTorch op; the Gems path exercises the actual
+        # FlagGems implementation so the benchmark measures gems vs torch.
         torch_op=torch._has_compatible_shallow_copy_type,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(lambda x, y: torch._has_compatible_shallow_copy_type(x, y))
+    bench.set_gems(flag_gems._has_compatible_shallow_copy_type)
     bench.run()
