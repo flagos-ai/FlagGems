@@ -44,7 +44,7 @@ def test_hardswish():
     bench.run()
 
 
-@pytest.mark.hardswish
+@pytest.mark.hardswish_out
 def test_hardswish_out():
     bench = base.UnaryPointwiseOutBenchmark(
         op_name="hardswish_out",
