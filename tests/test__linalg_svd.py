@@ -55,12 +55,34 @@ def _assert_orthonormal(actual, atol=2e-2):
 # kernels are not implemented for Half/BFloat16), so restrict to float32.
 LINALG_SVD_DTYPES = [torch.float32]
 # The Triton SVD kernels only cover float32 CUDA matrices; the full_matrices
-# (some=False) path additionally requires max(m, n) <= 64.
-LINALG_SVD_SHAPES = [(3, 3), (4, 4), (8, 8), (3, 5), (5, 3), (16, 16)]
-# Small batched matrices that satisfy the reduced-path max(m, n) <= 64 limit.
-LINALG_SVD_BATCH_SHAPES = [(2, 4, 4), (3, 8, 8)]
+# (some=False) path additionally requires max(m, n) <= 64, so the shared shape
+# list stays within that bound while still covering medium (32, 64) sizes and
+# non-square matrices.
+LINALG_SVD_SHAPES = [
+    (3, 3),
+    (4, 4),
+    (8, 8),
+    (3, 5),
+    (5, 3),
+    (16, 16),
+    (32, 32),
+    (64, 64),
+    (32, 16),
+]
+# The reduced (full_matrices=False) and singular-values-only paths are not bound
+# by the max(m, n) <= 64 limit, so they additionally exercise a larger matrix.
+LINALG_SVD_REDUCED_SHAPES = LINALG_SVD_SHAPES + [(128, 128)]
+# Batched matrices covering the reduced path, including a larger 32x32 batch.
+LINALG_SVD_BATCH_SHAPES = [(2, 4, 4), (3, 8, 8), (4, 32, 32)]
 # Shapes for the orthonormality check driven by a controlled spectrum.
-LINALG_SVD_ORTHONORMAL_SHAPES = [(8, 8), (16, 16), (5, 3), (3, 5), (2, 8, 8)]
+LINALG_SVD_ORTHONORMAL_SHAPES = [(8, 8), (16, 16), (5, 3), (3, 5), (2, 8, 8), (32, 32)]
+# Singular values are gauge invariant and match the reference tightly; the
+# reconstruction A = U diag(S) Vh is a product of three device tensors and so
+# carries slightly more floating-point error. Both are far tighter than the
+# original 1e-2 bound (observed: singular values <= 4e-4, reconstruction <=
+# 2e-3 for shapes up to 128x128).
+SINGULAR_VALUE_ATOL = 1e-3
+RECONSTRUCTION_ATOL = 5e-3
 
 
 # aten::_linalg_svd is the private primitive that torch.linalg.svd (compute_uv
@@ -85,14 +107,16 @@ def test__linalg_svd_full_matrices(shape, dtype):
     # invariant, so they are the robust correctness checks for general inputs.
     # Per-vector orthonormality of U/Vh is only well-posed for well-separated
     # singular values; it is exercised in the orthonormal test below.
-    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=1e-2)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
     reconstructed = _reconstruct(res_u, res_s, res_vh)
-    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=1e-2)
+    utils.gems_assert_close(
+        reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
+    )
 
 
 @pytest.mark.underscore_linalg_svd
 @pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
-@pytest.mark.parametrize("shape", LINALG_SVD_SHAPES)
+@pytest.mark.parametrize("shape", LINALG_SVD_REDUCED_SHAPES)
 def test__linalg_svd_reduced(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
@@ -105,9 +129,11 @@ def test__linalg_svd_reduced(shape, dtype):
     _assert_same_shape(res_s, ref_s)
     _assert_same_shape(res_vh, ref_vh)
 
-    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=1e-2)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
     reconstructed = _reconstruct(res_u, res_s, res_vh)
-    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=1e-2)
+    utils.gems_assert_close(
+        reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
+    )
 
 
 @pytest.mark.underscore_linalg_svd
@@ -125,14 +151,16 @@ def test__linalg_svd_batched(shape, dtype):
     _assert_same_shape(res_s, ref_s)
     _assert_same_shape(res_vh, ref_vh)
 
-    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=1e-2)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
     reconstructed = _reconstruct(res_u, res_s, res_vh)
-    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=1e-2)
+    utils.gems_assert_close(
+        reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
+    )
 
 
 @pytest.mark.underscore_linalg_svd
 @pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
-@pytest.mark.parametrize("shape", LINALG_SVD_SHAPES)
+@pytest.mark.parametrize("shape", LINALG_SVD_REDUCED_SHAPES)
 def test__linalg_svd_compute_uv_false(shape, dtype):
     # torch.linalg.svdvals routes through aten::_linalg_svd with compute_uv
     # False, which materializes only the singular values (U/Vh are empty).
@@ -144,7 +172,7 @@ def test__linalg_svd_compute_uv_false(shape, dtype):
         res_s = torch.linalg.svdvals(inp)
 
     _assert_same_shape(res_s, ref_s)
-    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=1e-2)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
 
 
 @pytest.mark.underscore_linalg_svd
@@ -175,7 +203,9 @@ def test__linalg_svd_orthonormal(shape, dtype):
     _assert_same_shape(res_s, ref_s)
     _assert_same_shape(res_vh, ref_vh)
 
-    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=1e-2)
+    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
     reconstructed = _reconstruct(res_u, res_s, res_vh)
-    utils.gems_assert_close(reconstructed, ref_inp, reconstructed.dtype, atol=1e-2)
+    utils.gems_assert_close(
+        reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
+    )
     _assert_orthonormal(res_vh.mH)
