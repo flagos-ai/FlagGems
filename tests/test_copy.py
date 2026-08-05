@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -93,6 +107,10 @@ def test_copy_inplace_dtype_fallback():
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="mthreads does not support float8_e8m0fnu dtype",
+)
 @pytest.mark.parametrize("shape", [(8,), (4, 4), (2, 3, 4)])
 def test_copy_inplace_float8_e8m0fnu(shape):
     """Test that copy_ works correctly with float8_e8m0fnu (e8m0) dtype tensors.
@@ -126,6 +144,10 @@ def test_copy_inplace_float8_e8m0fnu(shape):
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="mthreads does not support float8_e8m0fnu dtype",
 )
 def test_copy_inplace_float8_e8m0fnu_to_float32():
     """Test copy_ from float8_e8m0fnu to float32."""

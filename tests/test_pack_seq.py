@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -119,9 +133,11 @@ def test_pack_seq_accuracy_3d(N, H, D, lengths_list, dtype):
 @pytest.mark.pack_seq_triton
 @pytest.mark.parametrize(
     "N, H, D, lengths_list",
-    [(6, 8, 4, [3, 3])]
-    if cfg.QUICK_MODE
-    else [(20, 8, 16, [10, 10]), (15, 4, 8, [5, 7, 3])],
+    (
+        [(6, 8, 4, [3, 3])]
+        if cfg.QUICK_MODE
+        else [(20, 8, 16, [10, 10]), (15, 4, 8, [5, 7, 3])]
+    ),
 )
 def test_pack_seq_shape_consistency(N, H, D, lengths_list):
     lengths = torch.tensor(lengths_list, dtype=torch.int32, device=flag_gems.device)

@@ -1,5 +1,30 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import torch
 import triton
+
+
+def _metax_max_num_warps():
+    """Return the maximum number of warps safe on the current device.
+
+    MetaX C550 has warp_size=64 and max 512 threads per block, so
+    max safe num_warps is 8 (64*8=512).  For standard warp_size=32
+    devices this returns 16, preserving existing behavior.
+    """
+    props = torch.cuda.get_device_properties(torch.cuda.current_device())
+    return 512 // props.warp_size
 
 
 def simple_elementwise_blocksize_heur(args):
@@ -47,7 +72,7 @@ def dropout_heur_num_warps(args):
     elif args["N"] <= 1024:
         return 8
     else:
-        return 16
+        return _metax_max_num_warps()
 
 
 def exponential_heur_block(args):
@@ -63,7 +88,7 @@ def exponential_heur_num_warps(args):
     elif args["N"] <= 1024:
         return 8
     else:
-        return 16
+        return _metax_max_num_warps()
 
 
 def gather_heur_block_m(args):
@@ -127,7 +152,7 @@ def rand_heur_num_warps(args):
     elif args["N"] <= 1024:
         return 8
     else:
-        return 16
+        return _metax_max_num_warps()
 
 
 def randn_heur_block(args):
@@ -143,7 +168,7 @@ def randn_heur_num_warps(args):
     elif args["N"] <= 1024:
         return 8
     else:
-        return 16
+        return _metax_max_num_warps()
 
 
 def softmax_heur_tile_k(args):
@@ -183,7 +208,7 @@ def softmax_heur_num_warps_non_inner(args):
     elif tile_size < 4096:
         return 8
     else:
-        return 16
+        return _metax_max_num_warps()
 
 
 def softmax_heur_tile_n_inner(args):
@@ -200,7 +225,7 @@ def softmax_heur_num_warps_inner(args):
     elif tile_size < 4096:
         return 8
     else:
-        return 16
+        return _metax_max_num_warps()
 
 
 def softmax_heur_tile_n_bwd_non_inner(args):
@@ -224,7 +249,7 @@ def uniform_heur_num_warps(args):
     elif args["N"] <= 1024:
         return 8
     else:
-        return 16
+        return _metax_max_num_warps()
 
 
 def var_mean_heur_block_n(args):

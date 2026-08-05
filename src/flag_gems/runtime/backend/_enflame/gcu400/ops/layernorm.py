@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -335,7 +349,7 @@ def weight_bias_backward_kernel(
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
-    print("GEMS LAYERNORM FORWARD")
+    logger.debug("GEMS LAYERNORM FORWARD")
 
     MAX_GRID_X = 65535
 
@@ -413,7 +427,7 @@ def layer_norm_backward(
     bias=None,
     output_mask=None,
 ):
-    print("GEMS LAYERNORM BACKWARD")
+    logger.debug("GEMS LAYERNORM BACKWARD")
 
     grad_out = grad_out.contiguous()
     input = input.contiguous()
