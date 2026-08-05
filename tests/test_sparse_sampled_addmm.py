@@ -101,7 +101,8 @@ def _csr_to_cpu(csr):
 
 
 def _to_cpu_ref(csr):
-    ref_dtype = torch.float64 if utils.fp64_is_supported else torch.float32
+    can_use_fp64 = utils.fp64_is_supported or utils.TO_CPU
+    ref_dtype = torch.float64 if can_use_fp64 else torch.float32
     return torch.sparse_csr_tensor(
         csr.crow_indices().cpu(),
         csr.col_indices().cpu(),
@@ -140,7 +141,6 @@ def test_sparse_sampled_addmm(
     mat1 = torch.randn(mat1_shape, dtype=dtype, device=device)
     mat2 = torch.randn(mat2_shape, dtype=dtype, device=device)
     if noncontiguous:
-        # Transpose and transpose back to get non-contiguous strides.
         mat1 = mat1.transpose(-2, -1).transpose(-2, -1)
         mat2 = mat2.transpose(-2, -1).transpose(-2, -1)
     input = _make_sparse_csr(input_shape, dtype, device, sparsity, index_dtype)

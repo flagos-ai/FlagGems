@@ -36,7 +36,11 @@ def _make_sparse_input(shape, dtype, device, sparsity=0.9):
 
 
 def _torch_sampled_addmm(input, mat1, mat2, *, alpha=1.0, beta=1.0, out=None):
-    if input.device.type not in ("cuda", "cpu"):
+    native_ok = input.device.type == "cpu" or (
+        input.device.type == "cuda"
+        and flag_gems.vendor_name in ("nvidia", "metax", "hygon")
+    )
+    if not native_ok:
         dense = getattr(input, "_dense_twin", None)
         mask = getattr(input, "_dense_mask", None)
         flat_idx = getattr(input, "_dense_flat_idx", None)
