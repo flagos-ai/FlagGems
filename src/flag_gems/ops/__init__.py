@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops.__irshift__ import __irshift__
 from flag_gems.ops.__lshift__ import __lshift__
@@ -486,10 +472,10 @@ from flag_gems.ops.linear import linear
 from flag_gems.ops.linear_backward import linear_backward
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
+from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log1p import log1p, log1p_out
 from flag_gems.ops.log1p_ import log1p_
 from flag_gems.ops.log2 import log2, log2_
-from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_ import log_
 from flag_gems.ops.log_normal_ import log_normal_
 from flag_gems.ops.log_sigmoid import log_sigmoid
@@ -625,6 +611,11 @@ from flag_gems.ops.pow import (
 from flag_gems.ops.prelu import prelu
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
+from flag_gems.ops.quantized_gru import (
+    quantized_gru_data,
+    quantized_gru_impl,
+    quantized_gru_input,
+)
 from flag_gems.ops.rad2deg import rad2deg, rad2deg_
 from flag_gems.ops.rand import rand
 from flag_gems.ops.rand_like import rand_like
@@ -743,8 +734,6 @@ from flag_gems.ops.special_chebyshev_polynomial_w import (
 )
 from flag_gems.ops.special_digamma import special_digamma
 from flag_gems.ops.special_erf import special_erf
-
-# from flag_gems.ops.special_erfc import erfc, erfc_, special_erfc
 from flag_gems.ops.special_erfcx import special_erfcx
 from flag_gems.ops.special_erfinv import (
     special_erfinv,
@@ -891,9 +880,6 @@ __all__ = [
     "_assert_async",
     "_batch_norm_impl_index",
     "_batch_norm_no_update",
-    "_cummin_helper",
-    "_fake_quantize_learnable_per_tensor_affine",
-    "_functional_assert_async",
     "_cdist_backward",
     "_cdist_forward",
     "_cholesky_solve_helper",
@@ -904,11 +890,14 @@ __all__ = [
     "_conv_depthwise2d",
     "_convert_weight_to_int4pack",
     "_convolution_mode",
+    "_cummin_helper",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
     "_euclidean_dist",
+    "_fake_quantize_learnable_per_tensor_affine",
     "_flash_attention_forward",
+    "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adam",
@@ -928,8 +917,8 @@ __all__ = [
     "_native_batch_norm_legit_functional",
     "_native_batch_norm_legit_no_stats",
     "_native_batch_norm_legit_no_stats_out",
-    "_native_batch_norm_legit_out",
     "_native_batch_norm_legit_no_training",
+    "_native_batch_norm_legit_out",
     "_nested_view_from_buffer_copy",
     "_pdist_backward",
     "_pdist_forward",
@@ -1045,8 +1034,8 @@ __all__ = [
     "asinh_out",
     "atan",
     "atan2",
-    "atan2_out",
     "atan2_",
+    "atan2_out",
     "atan_",
     "atanh",
     "atanh_",
@@ -1063,11 +1052,11 @@ __all__ = [
     "bernoulli",
     "bernoulli_",
     "bilinear",
+    "binary_cross_entropy",
     "binary_cross_entropy_backward",
+    "binary_cross_entropy_out",
     "binary_cross_entropy_with_logits",
     "bincount",
-    "binary_cross_entropy",
-    "binary_cross_entropy_out",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
     "bitwise_and_scalar_tensor",
@@ -1188,8 +1177,8 @@ __all__ = [
     "equal",
     "erf",
     "erf_",
-    # "erfc",
-    # "erfc_",
+    "erfc",
+    "erfc_",
     "erfinv",
     "erfinv_",
     "exp",
@@ -1219,11 +1208,11 @@ __all__ = [
     "fill_tensor_out",
     "fix",
     "fix_",
-    "flatten",
     "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
+    "flatten",
     "flip",
     "float_power_tensor_scalar",
     "float_power_tensor_scalar_",
@@ -1292,8 +1281,8 @@ __all__ = [
     "hardshrink",
     "hardshrink_out",
     "hardsigmoid",
-    "hardsigmoid_out",
     "hardsigmoid_",
+    "hardsigmoid_out",
     "hardswish",
     "hardswish_",
     "hardswish_out",
@@ -1355,11 +1344,11 @@ __all__ = [
     "lerp_tensor",
     "lerp_tensor_",
     "less_",
-    "less_scalar_",
     "less_equal",
     "less_equal_",
     "less_equal_scalar",
     "less_equal_scalar_",
+    "less_scalar_",
     "lgamma",
     "lgamma_",
     "lift",
@@ -1392,7 +1381,6 @@ __all__ = [
     "linear_backward",
     "linspace",
     "log",
-    "log_",
     "log10",
     "log10_",
     "log10_out",
@@ -1401,31 +1389,22 @@ __all__ = [
     "log1p_out",
     "log2",
     "log2_",
+    "log_",
     "log_normal_",
     "log_sigmoid",
-    "log_sigmoid_forward",
     "log_sigmoid_backward",
     "log_sigmoid_backward_out",
+    "log_sigmoid_forward",
     "log_softmax",
     "log_softmax_backward",
     "log_softmax_backward_out",
     "log_softmax_out",
     "logaddexp",
-    "logaddexp_out",
     "logaddexp2",
     "logaddexp2_out",
+    "logaddexp_out",
     "logcumsumexp",
     "logcumsumexp_out",
-    "unflatten",
-    "unsafe_chunk",
-    "xlogy",
-    "xlogy_out",
-    "xlogy_tensor_scalar",
-    "xlogy_tensor_scalar_out",
-    "xlogy_scalar_tensor",
-    "xlogy_scalar_tensor_out",
-    "xlogy_",
-    "xlogy_tensor_scalar_",
     "logical_and",
     "logical_and_",
     "logical_not",
@@ -1502,8 +1481,8 @@ __all__ = [
     "native_dropout_backward",
     "native_layer_norm",
     "ne",
-    "ne_scalar",
     "ne_",
+    "ne_scalar",
     "ne_scalar_",
     "neg",
     "neg_",
@@ -1532,8 +1511,8 @@ __all__ = [
     "normal_tensor_tensor",
     "normed_cumsum",
     "not_equal",
-    "not_equal_scalar",
     "not_equal_",
+    "not_equal_scalar",
     "not_equal_scalar_",
     "one_hot",
     "ones",
@@ -1561,6 +1540,9 @@ __all__ = [
     "prod",
     "prod_dim",
     "quantile",
+    "quantized_gru_data",
+    "quantized_gru_impl",
+    "quantized_gru_input",
     "rad2deg",
     "rad2deg_",
     "rand",
@@ -1596,9 +1578,9 @@ __all__ = [
     "replication_pad1d",
     "replication_pad1d_out",
     "replication_pad2d",
-    "replication_pad2d_out",
     "replication_pad2d_backward",
     "replication_pad2d_backward_grad_input",
+    "replication_pad2d_out",
     "replication_pad3d",
     "replication_pad3d_backward",
     "resize",
@@ -1610,8 +1592,6 @@ __all__ = [
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
-    "te_rmsnorm_bwd",
-    "te_rmsnorm_fwd",
     "rnn_relu",
     "roll",
     "rot90",
@@ -1625,6 +1605,7 @@ __all__ = [
     "rsqrt_",
     "rsub_scalar",
     "rsub_tensor",
+    "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
@@ -1688,7 +1669,6 @@ __all__ = [
     "softplus_backward",
     "softshrink",
     "softshrink_out",
-    "scalar_tensor",
     "sort",
     "sort_stable",
     "sparse_sampled_addmm",
@@ -1704,7 +1684,7 @@ __all__ = [
     "special_chebyshev_polynomial_w_out",
     "special_digamma",
     "special_erf",
-    # "special_erfc",
+    "special_erfc",
     "special_erfcx",
     "special_erfinv",
     "special_erfinv_",
@@ -1721,9 +1701,9 @@ __all__ = [
     "special_i1_out",
     "special_i1e",
     "special_legendre_polynomial_p",
-    "special_log_softmax",
     "special_log1p",
     "special_log1p_out",
+    "special_log_softmax",
     "special_logsumexp",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
@@ -1770,6 +1750,8 @@ __all__ = [
     "tanh",
     "tanh_",
     "tanh_backward",
+    "te_rmsnorm_bwd",
+    "te_rmsnorm_fwd",
     "tensor_split",
     "threshold",
     "threshold_",
@@ -1792,12 +1774,14 @@ __all__ = [
     "trunc_",
     "unbind",
     "unbind_copy",
+    "unflatten",
     "unfold",
     "unfold_backward",
     "unfold_copy",
     "uniform_",
     "unique_consecutive",
     "unique_dim",
+    "unsafe_chunk",
     "unsqueeze",
     "unsqueeze_",
     "upsample_bicubic2d",
@@ -1825,6 +1809,14 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "xlogy",
+    "xlogy_",
+    "xlogy_out",
+    "xlogy_scalar_tensor",
+    "xlogy_scalar_tensor_out",
+    "xlogy_tensor_scalar",
+    "xlogy_tensor_scalar_",
+    "xlogy_tensor_scalar_out",
     "xor",
     "xor_",
     "xor_scalar",
