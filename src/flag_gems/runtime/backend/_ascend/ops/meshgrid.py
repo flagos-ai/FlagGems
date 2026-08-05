@@ -4,23 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
+try:
+    import torch_npu  # noqa: F401
 
-def get_backend():
-    if torch.cuda.is_available():
-        return "cuda"
-    try:
-        import torch_npu  # noqa: F401
-
-        if torch.npu.is_available():
-            return "npu"
-    except ImportError:
-        pass
-    return "cpu"
-
-
-BACKEND = get_backend()
-IS_NPU = BACKEND == "npu"
-IS_CUDA = BACKEND == "cuda"
+    IS_NPU = True
+except ImportError:
+    IS_NPU = False
 
 
 @triton.jit
@@ -317,9 +306,13 @@ def _meshgrid_2d_pytorch(tensors, indexing):
     nx, ny = x.numel(), y.numel()
 
     if indexing == "ij":
-        return x.view(-1, 1).expand(nx, ny), y.view(1, -1).expand(nx, ny)
+        x_expanded = x.as_strided((nx, ny), (1, 0))
+        y_expanded = y.as_strided((nx, ny), (0, 1))
+        return x_expanded, y_expanded
     else:
-        return x.view(1, -1).expand(ny, nx), y.view(-1, 1).expand(ny, nx)
+        x_expanded = x.as_strided((ny, nx), (0, 1))
+        y_expanded = y.as_strided((ny, nx), (1, 0))
+        return x_expanded, y_expanded
 
 
 def _meshgrid_3d_pytorch(tensors, indexing):
@@ -327,17 +320,15 @@ def _meshgrid_3d_pytorch(tensors, indexing):
     nx, ny, nz = x.numel(), y.numel(), z.numel()
 
     if indexing == "ij":
-        return (
-            x.view(-1, 1, 1).expand(nx, ny, nz),
-            y.view(1, -1, 1).expand(nx, ny, nz),
-            z.view(1, 1, -1).expand(nx, ny, nz),
-        )
+        x_expanded = x.as_strided((nx, ny, nz), (1, 0, 0))
+        y_expanded = y.as_strided((nx, ny, nz), (0, 1, 0))
+        z_expanded = z.as_strided((nx, ny, nz), (0, 0, 1))
+        return x_expanded, y_expanded, z_expanded
     else:
-        return (
-            x.view(1, -1, 1).expand(ny, nx, nz),
-            y.view(-1, 1, 1).expand(ny, nx, nz),
-            z.view(1, 1, -1).expand(ny, nx, nz),
-        )
+        x_expanded = x.as_strided((ny, nx, nz), (0, 1, 0))
+        y_expanded = y.as_strided((ny, nx, nz), (1, 0, 0))
+        z_expanded = z.as_strided((ny, nx, nz), (0, 0, 1))
+        return x_expanded, y_expanded, z_expanded
 
 
 def _meshgrid_4d_pytorch(tensors, indexing):
@@ -345,19 +336,65 @@ def _meshgrid_4d_pytorch(tensors, indexing):
     nx, ny, nz, nw = x.numel(), y.numel(), z.numel(), w.numel()
 
     if indexing == "ij":
-        return (
-            x.view(-1, 1, 1, 1).expand(nx, ny, nz, nw),
-            y.view(1, -1, 1, 1).expand(nx, ny, nz, nw),
-            z.view(1, 1, -1, 1).expand(nx, ny, nz, nw),
-            w.view(1, 1, 1, -1).expand(nx, ny, nz, nw),
-        )
+        x_expanded = x.as_strided((nx, ny, nz, nw), (1, 0, 0, 0))
+        y_expanded = y.as_strided((nx, ny, nz, nw), (0, 1, 0, 0))
+        z_expanded = z.as_strided((nx, ny, nz, nw), (0, 0, 1, 0))
+        w_expanded = w.as_strided((nx, ny, nz, nw), (0, 0, 0, 1))
+        return x_expanded, y_expanded, z_expanded, w_expanded
     else:
-        return (
-            x.view(1, -1, 1, 1).expand(ny, nx, nz, nw),
-            y.view(-1, 1, 1, 1).expand(ny, nx, nz, nw),
-            z.view(1, 1, -1, 1).expand(ny, nx, nz, nw),
-            w.view(1, 1, 1, -1).expand(ny, nx, nz, nw),
-        )
+        x_expanded = x.as_strided((ny, nx, nz, nw), (0, 1, 0, 0))
+        y_expanded = y.as_strided((ny, nx, nz, nw), (1, 0, 0, 0))
+        z_expanded = z.as_strided((ny, nx, nz, nw), (0, 0, 1, 0))
+        w_expanded = w.as_strided((ny, nx, nz, nw), (0, 0, 0, 1))
+        return x_expanded, y_expanded, z_expanded, w_expanded
+
+
+def _meshgrid_2d_npu_optimized(tensors, indexing):
+    x, y = tensors
+    nx, ny = x.numel(), y.numel()
+
+    if indexing == "ij":
+        out0 = x.as_strided((nx, ny), (1, 0))
+        out1 = y.as_strided((nx, ny), (0, 1))
+    else:
+        out0 = x.as_strided((ny, nx), (0, 1))
+        out1 = y.as_strided((ny, nx), (1, 0))
+
+    return out0, out1
+
+
+def _meshgrid_3d_npu_optimized(tensors, indexing):
+    x, y, z = tensors
+    nx, ny, nz = x.numel(), y.numel(), z.numel()
+
+    if indexing == "ij":
+        out0 = x.as_strided((nx, ny, nz), (1, 0, 0))
+        out1 = y.as_strided((nx, ny, nz), (0, 1, 0))
+        out2 = z.as_strided((nx, ny, nz), (0, 0, 1))
+    else:
+        out0 = x.as_strided((ny, nx, nz), (0, 1, 0))
+        out1 = y.as_strided((ny, nx, nz), (1, 0, 0))
+        out2 = z.as_strided((ny, nx, nz), (0, 0, 1))
+
+    return out0, out1, out2
+
+
+def _meshgrid_4d_npu_optimized(tensors, indexing):
+    x, y, z, w = tensors
+    nx, ny, nz, nw = x.numel(), y.numel(), z.numel(), w.numel()
+
+    if indexing == "ij":
+        out0 = x.as_strided((nx, ny, nz, nw), (1, 0, 0, 0))
+        out1 = y.as_strided((nx, ny, nz, nw), (0, 1, 0, 0))
+        out2 = z.as_strided((nx, ny, nz, nw), (0, 0, 1, 0))
+        out3 = w.as_strided((nx, ny, nz, nw), (0, 0, 0, 1))
+    else:
+        out0 = x.as_strided((ny, nx, nz, nw), (0, 1, 0, 0))
+        out1 = y.as_strided((ny, nx, nz, nw), (1, 0, 0, 0))
+        out2 = z.as_strided((ny, nx, nz, nw), (0, 0, 1, 0))
+        out3 = w.as_strided((ny, nx, nz, nw), (0, 0, 0, 1))
+
+    return out0, out1, out2, out3
 
 
 def meshgrid(
@@ -382,19 +419,25 @@ def meshgrid(
     device = tensors[0].device
 
     if device.type == "npu" or IS_NPU:
+        for t in tensors:
+            if t.device.type != "npu":
+                raise RuntimeError(
+                    f"All tensors must be on NPU devices, got {t.device}"
+                )
+
         if rank == 1:
             return tensors
         elif rank == 2:
-            return _meshgrid_2d_pytorch(tensors, indexing)
+            return _meshgrid_2d_npu_optimized(tensors, indexing)
         elif rank == 3:
-            return _meshgrid_3d_pytorch(tensors, indexing)
+            return _meshgrid_3d_npu_optimized(tensors, indexing)
         elif rank == 4:
-            return _meshgrid_4d_pytorch(tensors, indexing)
+            return _meshgrid_4d_npu_optimized(tensors, indexing)
         else:
             raise ValueError(f"Unsupported rank: {rank}")
 
     if device.type != "cuda":
-        raise RuntimeError(f"All tensors must be on CUDA devices, got {device}")
+        raise RuntimeError(f"All tensors must be on CUDA or NPU devices, got {device}")
 
     for t in tensors:
         if t.device.type != "cuda":
@@ -404,16 +447,16 @@ def meshgrid(
         return tensors
 
     if rank == 2:
-        return _meshgrid_2d(tensors, indexing)
+        return _meshgrid_2d_cuda(tensors, indexing)
     elif rank == 3:
-        return _meshgrid_3d(tensors, indexing)
+        return _meshgrid_3d_cuda(tensors, indexing)
     elif rank == 4:
-        return _meshgrid_4d(tensors, indexing)
+        return _meshgrid_4d_cuda(tensors, indexing)
     else:
         raise ValueError(f"Unsupported rank: {rank}")
 
 
-def _meshgrid_2d(tensors, indexing):
+def _meshgrid_2d_cuda(tensors, indexing):
     x, y = tensors
     size0, size1 = x.size(0), y.size(0)
 
@@ -482,7 +525,7 @@ def _meshgrid_2d(tensors, indexing):
     return out0, out1
 
 
-def _meshgrid_3d(tensors, indexing):
+def _meshgrid_3d_cuda(tensors, indexing):
     x, y, z = tensors
 
     if indexing == "xy":
@@ -549,7 +592,7 @@ def _meshgrid_3d(tensors, indexing):
     return out0, out1, out2
 
 
-def _meshgrid_4d(tensors, indexing):
+def _meshgrid_4d_cuda(tensors, indexing):
     x, y, z, w = tensors
 
     if indexing == "xy":
