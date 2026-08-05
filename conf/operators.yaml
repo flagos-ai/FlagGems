@@ -10134,6 +10134,19 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: quantized_gru
+  description: |
+    Quantized GRU (Gated Recurrent Unit) implementation using Triton fused gate kernel for efficient RNN inference.
+  for:
+  - quantized_gru.input
+  - quantized_gru.data
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: quantized_lstm
   description: Applies a multi-layer quantized LSTM over an input sequence. Takes
     the input sequence, initial hidden and cell states, and per-layer quantized weights,
