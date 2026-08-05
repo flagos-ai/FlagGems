@@ -872,6 +872,8 @@ _FULL_CONFIG = (
     ("sym_stride", sym_stride),
     ("t_copy", t_copy),
     ("t_copy.out", t_copy_out),
+    ("take", take),
+    ("take.out", take_out),
     ("tan", tan),
     ("tan_", tan_),
     ("tanh", tanh),

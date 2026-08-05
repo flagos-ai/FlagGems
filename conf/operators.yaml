@@ -9648,6 +9648,33 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: take
+    description: |
+      Returns a new tensor with the elements of `input` at the given flat
+      `index`. The input is treated as a flattened 1-D tensor and the result
+      takes the shape of `index`. Negative indices are supported.
+    for:
+      - take
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: take_out
+    description: |
+      Out-variant of take. Writes the gathered elements into the `out` tensor,
+      resizing it to the shape of `index` if needed.
+    for:
+      - take.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: tan
     description: |
       Returns a new tensor with the tangent of the elements in the `input` tensor,
