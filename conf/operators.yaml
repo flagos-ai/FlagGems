@@ -4236,6 +4236,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: hardswish_backward
+    description: |
+      The backward pass for `hardswish`. Computes the gradient of the hardswish activation
+      function: piecewise derivative ``0`` for ``x <= -3``, ``(2x + 3) / 6`` for ``-3 < x < 3``,
+      and ``1`` for ``x >= 3``.
+    for:
+      - hardswish_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
   - id: hardtanh_
     description: |
       An activation function that clips input values to lie within a fixed range
