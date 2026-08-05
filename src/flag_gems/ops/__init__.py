@@ -489,6 +489,11 @@ from flag_gems.ops.pow import (
 from flag_gems.ops.prelu import prelu
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
+from flag_gems.ops.quantized_gru import (
+    quantized_gru_data,
+    quantized_gru_impl,
+    quantized_gru_input,
+)
 from flag_gems.ops.rad2deg import rad2deg, rad2deg_
 from flag_gems.ops.rand import rand
 from flag_gems.ops.rand_like import rand_like
@@ -1156,6 +1161,9 @@ __all__ = [
     "logaddexp2_out",
     "logcumsumexp",
     "logcumsumexp_out",
+    "quantized_gru_impl",
+    "quantized_gru_input",
+    "quantized_gru_data",
     "unsafe_chunk",
     "xlogy",
     "xlogy_out",

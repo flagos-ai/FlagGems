@@ -5430,6 +5430,19 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: quantized_gru
+    description: |
+      Quantized GRU (Gated Recurrent Unit) implementation using Triton fused gate kernel for efficient RNN inference.
+    for:
+      - quantized_gru.input
+      - quantized_gru.data
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Data
+    stages:
+      - stable: '2.2'
   - id: unsafe_chunk
     description: Split a tensor into a specified number of chunks along a given dimension.
     for:
