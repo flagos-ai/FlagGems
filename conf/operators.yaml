@@ -915,6 +915,19 @@ ops:
       - Tensor
     stages:
       - stable: '5.3'
+  - id: functional_assert_async
+    description: |
+      Functional version of _assert_async that takes a dependency token and returns a new token.
+      Part of PyTorch's functionalization framework for tracking operation dependencies.
+    for:
+      - _functional_assert_async.msg
+    labels:
+      - utility
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: atan
     description: Returns a new tensor with the arctangent of the elements (in radians) in the `input` tensor.
     for:
