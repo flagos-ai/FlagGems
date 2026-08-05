@@ -5429,17 +5429,6 @@ ops:
     kind:
       - Math
     stages:
-      - beta: '5.4'
-  - id: view_as_complex
-    description: View a real tensor with last dim=2 as a complex tensor.
-    for:
-      - view_as_complex
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
       - alpha: '5.4'
   - id: xlogy
     description: Computes `input * log(other)` element-wise, returning zero where `input` is zero (following PyTorch's `xlogy` semantics).
