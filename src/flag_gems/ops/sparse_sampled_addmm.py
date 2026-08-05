@@ -5,6 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -118,6 +119,7 @@ def sparse_sampled_addmm_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     IS_FP64: tl.constexpr,
+    MANUAL_DOT: tl.constexpr,
 ):
     pid = ext.program_id(0)
     num_pid_n = tl.cdiv(N, BLOCK_N)
@@ -159,7 +161,10 @@ def sparse_sampled_addmm_kernel(
             other=0.0,
         )
         if IS_FP64:
-            acc += tl.dot(a, b_val, allow_tf32=False)
+            if MANUAL_DOT:
+                acc += tl.sum(a[:, :, None] * b_val[None, :, :], axis=1)
+            else:
+                acc += tl.dot(a, b_val, allow_tf32=False)
         else:
             acc += tl.dot(a, b_val, out_dtype=tl.float32, allow_tf32=False)
         a_ptrs += BLOCK_K * stride_mat1_k
@@ -286,6 +291,12 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
     BLOCK_N = _dot_block(N, 64)
     BLOCK_K = _dot_block(K, 32)
 
+    manual_dot = input.dtype == torch.float64 and runtime_device.vendor_name == "metax"
+    if manual_dot:
+        BLOCK_M = min(BLOCK_M, 16)
+        BLOCK_N = min(BLOCK_N, 16)
+        BLOCK_K = min(BLOCK_K, 16)
+
     grid_fill = (B * M,)
     grid = (B * triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
 
@@ -333,6 +344,7 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
             BLOCK_N=BLOCK_N,
             BLOCK_K=BLOCK_K,
             IS_FP64=input.dtype == torch.float64,
+            MANUAL_DOT=manual_dot,
             num_warps=4,
         )
 
