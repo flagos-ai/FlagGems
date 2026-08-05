@@ -38,10 +38,39 @@ else:
     tle_gpu = None
     HAS_TLE_EXTRACT_TILE = False
 
-PAIR_TILE = 16
+def _valid_rope_configs(configs, named_args, **kwargs):
+    """Keep only PAIR_TILE values that tile PADDED_HALF_DIM evenly.
+
+    The TLE path slices the pair vector with ``tl.static_range(0,
+    PADDED_HALF_DIM // PAIR_TILE)``, so a PAIR_TILE larger than the padded
+    half dim would run zero iterations and silently produce no output.
+    """
+    padded_half_dim = named_args["PADDED_HALF_DIM"]
+    return [c for c in configs if padded_half_dim % c.kwargs["PAIR_TILE"] == 0]
 
 
 @libentry()
+@triton.autotune(
+    configs=[
+        triton.Config({"PAIR_TILE": 8}, num_warps=4),
+        triton.Config({"PAIR_TILE": 16}, num_warps=4),
+        triton.Config({"PAIR_TILE": 32}, num_warps=4),
+        triton.Config({"PAIR_TILE": 16}, num_warps=2),
+    ],
+    key=[
+        "PADDED_HALF_DIM",
+        "HALF_DIM",
+        "NUM_Q_HEADS",
+        "NUM_K_HEADS",
+        "ROTARY_INTERLEAVED",
+        "USE_TLE",
+    ],
+    prune_configs_by={"early_config_prune": _valid_rope_configs},
+    # Autotuning benchmarks each config on the tensors passed at launch; for
+    # the in-place update (oq_ptr == q_ptr) this would clobber q/k before the
+    # final run. Restore them after every benchmark so inputs stay intact.
+    restore_value=["q_ptr", "k_ptr"],
+)
 @triton.jit
 def apply_rotary_pos_emb_kernel(
     oq_ptr,
@@ -353,7 +382,6 @@ def apply_rotary_pos_emb(
             padded_half_dim,
             rotary_interleaved,
             USE_TLE=HAS_TLE_EXTRACT_TILE,
-            PAIR_TILE=PAIR_TILE,
             MAX_POSITION_EMBEDDINGS=cos.shape[0],
         )
 
