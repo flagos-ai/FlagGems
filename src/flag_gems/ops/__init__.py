@@ -47,6 +47,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
+from flag_gems.ops._make_dep_token import _make_dep_token
 from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._native_batch_norm_legit_functional import (
     _native_batch_norm_legit_functional,
@@ -56,6 +57,7 @@ from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
+from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._scaled_dot_product_flash_attention import (
@@ -179,6 +181,7 @@ from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.cholesky_solve import cholesky_solve, cholesky_solve_out
+from flag_gems.ops.chunk import chunk
 from flag_gems.ops.clamp import (
     clamp,
     clamp_,
@@ -321,6 +324,7 @@ from flag_gems.ops.hadamard_transform import (
 )
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardswish_ import hardswish_
+from flag_gems.ops.hardtanh_ import hardtanh_
 from flag_gems.ops.histc import histc
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.hypot import hypot, hypot_out
@@ -343,15 +347,19 @@ from flag_gems.ops.isin import isin
 from flag_gems.ops.isinf import isinf
 from flag_gems.ops.isnan import isnan
 from flag_gems.ops.isneginf import isneginf, isneginf_out
+from flag_gems.ops.isposinf import isposinf
 from flag_gems.ops.kron import kron
 from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
 from flag_gems.ops.lcm import lcm, lcm_
 from flag_gems.ops.ldl_factor_ex import ldl_factor_ex
 from flag_gems.ops.le import le, le_scalar
+from flag_gems.ops.le_ import le_, le_scalar_
 from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from flag_gems.ops.less_ import less_, less_scalar_
 from flag_gems.ops.less_equal import less_equal, less_equal_scalar
+from flag_gems.ops.less_equal_ import less_equal_, less_equal_scalar_
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
 from flag_gems.ops.lift import lift, lift_out
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
@@ -369,6 +377,7 @@ from flag_gems.ops.log1p import log1p, log1p_out
 from flag_gems.ops.log1p_ import log1p_
 from flag_gems.ops.log2 import log2, log2_
 from flag_gems.ops.log10 import log10, log10_, log10_out
+from flag_gems.ops.log_ import log_
 from flag_gems.ops.log_normal_ import log_normal_
 from flag_gems.ops.log_sigmoid import log_sigmoid
 from flag_gems.ops.log_sigmoid_forward import log_sigmoid_forward
@@ -641,6 +650,7 @@ from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.svd import svd
 from flag_gems.ops.sym_stride import sym_stride
 from flag_gems.ops.t_copy import t_copy, t_copy_out
+from flag_gems.ops.take import take, take_out
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
@@ -731,6 +741,7 @@ __all__ = [
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
+    "_make_dep_token",
     "_masked_scale",
     "_native_batch_norm_legit_functional",
     "_nested_view_from_buffer_copy",
@@ -738,6 +749,7 @@ __all__ = [
     "_pdist_forward",
     "_prelu_kernel",
     "_prelu_kernel_backward",
+    "_reshape_alias",
     "_resize_output",
     "_safe_softmax",
     "_scaled_dot_product_flash_attention",
@@ -882,6 +894,7 @@ __all__ = [
     "channel_shuffle",
     "cholesky_solve",
     "cholesky_solve_out",
+    "chunk",
     "clamp",
     "clamp_",
     "clamp_max",
@@ -1054,6 +1067,7 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_out",
     "hardswish_",
+    "hardtanh_",
     "histc",
     "hstack",
     "hypot",
@@ -1082,6 +1096,7 @@ __all__ = [
     "isnan",
     "isneginf",
     "isneginf_out",
+    "isposinf",
     "kron",
     "kthvalue",
     "layer_norm",
@@ -1091,7 +1106,9 @@ __all__ = [
     "ldl_factor",
     "ldl_factor_ex",
     "le",
+    "le_",
     "le_scalar",
+    "le_scalar_",
     "leaky_relu",
     "leaky_relu_",
     "leaky_relu_out",
@@ -1099,8 +1116,12 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
+    "less_",
+    "less_scalar_",
     "less_equal",
+    "less_equal_",
     "less_equal_scalar",
+    "less_equal_scalar_",
     "lgamma",
     "lgamma_",
     "lift",
@@ -1117,6 +1138,7 @@ __all__ = [
     "linear_backward",
     "linspace",
     "log",
+    "log_",
     "log10",
     "log10_",
     "log10_out",
@@ -1445,6 +1467,8 @@ __all__ = [
     "sym_stride",
     "t_copy",
     "t_copy_out",
+    "take",
+    "take_out",
     "tan",
     "tan_",
     "tanh",
