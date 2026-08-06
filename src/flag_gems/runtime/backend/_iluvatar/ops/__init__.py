@@ -23,6 +23,7 @@ from .linear import linear
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
+from .per_token_group_quant_fp8 import per_token_group_quant_fp8
 from .repeat import repeat
 from .scatter_add import scatter_add_
 from .special_modified_bessel_k1 import (
@@ -50,6 +51,7 @@ __all__ = [
     "matmul_int8",
     "mm",
     "mm_out",
+    "per_token_group_quant_fp8",
     "repeat",
     "scatter_add_",
     "special_modified_bessel_k1",
