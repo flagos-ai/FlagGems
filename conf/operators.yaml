@@ -7880,6 +7880,19 @@ ops:
     stages:
       - alpha: '5.0'
       - beta: '5.3'
+  - id: replication_pad3d_backward
+    description: |
+      Accumulates output gradients into the clamped input positions used by
+      three-dimensional replication padding.
+    for:
+      - replication_pad3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: reshape_and_cache
     description: Store the key/value token states into the pre-allcated kv_cache buffers of paged attention.
     for:
