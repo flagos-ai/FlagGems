@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -109,13 +95,13 @@ def _launch_contiguous_kernel(grad_output, self, buffer, grad_input):
 
 
 def log_sigmoid(x):
-    logger.debug("GEMS LOG_SIGMOID FORWARD")
+    logger.debug("GEMS_METAX LOG_SIGMOID FORWARD")
 
     return log_sigmoid_forward(x)
 
 
 def log_sigmoid_backward(grad_output, self, buffer):
-    logger.debug("GEMS LOG_SIGMOID BACKWARD")
+    logger.debug("GEMS_METAX LOG_SIGMOID BACKWARD")
 
     if (
         buffer.shape == self.shape
@@ -128,7 +114,7 @@ def log_sigmoid_backward(grad_output, self, buffer):
 
 
 def log_sigmoid_backward_out(grad_output, self, buffer, *, grad_input):
-    logger.debug("GEMS LOG_SIGMOID BACKWARD OUT")
+    logger.debug("GEMS_METAX LOG_SIGMOID BACKWARD OUT")
 
     if _can_use_contiguous_kernel(grad_output, self, grad_input):
         return _launch_contiguous_kernel(grad_output, self, buffer, grad_input)

@@ -20,6 +20,7 @@ from .conv_transpose1d import conv_transpose1d
 from .div import div_mode, div_mode_
 from .hadamard_transform import hadamard_transform
 from .linear import linear
+from .log_sigmoid import log_sigmoid_backward, log_sigmoid_backward_out
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
@@ -46,6 +47,8 @@ __all__ = [
     "div_mode_",
     "hadamard_transform",
     "linear",
+    "log_sigmoid_backward",
+    "log_sigmoid_backward_out",
     "matmul_bf16",
     "matmul_int8",
     "mm",

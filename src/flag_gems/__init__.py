@@ -580,6 +580,8 @@ _FULL_CONFIG = (
     ("log_normal_", log_normal_),
     ("log_sigmoid", log_sigmoid),
     ("log_sigmoid_forward", log_sigmoid_forward),
+    ("log_sigmoid_backward", log_sigmoid_backward),
+    ("log_sigmoid_backward.grad_input", log_sigmoid_backward_out),
     ("logaddexp", logaddexp),
     ("logaddexp.out", logaddexp_out),
     ("logaddexp2", logaddexp2),
