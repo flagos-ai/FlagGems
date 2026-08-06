@@ -22,43 +22,90 @@ logger = logging.getLogger(__name__)
 #
 # This is a metadata-only operator: it reports whether the TensorImpl of
 # ``self`` can shallow-copy the TensorImpl type of ``from``. It performs no
-# element-wise computation, so there is no Triton kernel involved. The result
-# depends solely on the tensor layout category and is independent of device,
-# dtype or shape:
-#   * dense (strided) tensors
-#   * sparse COO tensors
-#   * sparse compressed tensors (CSR / CSC / BSR / BSC)
-# Two tensors are shallow-copy compatible iff they fall into the same layout
-# category.
+# element-wise computation, so there is no Triton kernel involved.
+#
+# The predicate is defined on DispatchKeySets, not on ``Tensor.layout``. From
+# c10::TensorImpl::has_compatible_shallow_copy_type, two TensorImpls are
+# compatible when their key sets are equal, or when both are dense, both are
+# sparse (COO), or both are sparse compressed:
+#
+#     return (key_set_ == from) || (is_dense(key_set_) && is_dense(from)) ||
+#         (is_sparse(key_set_) && is_sparse(from)) ||
+#         (is_sparse_compressed(key_set_) && is_sparse_compressed(from));
+#
+# where ``is_dense``/``is_sparse`` additionally require the backend component to
+# be one of an explicit allow-list. That backend requirement is why ``layout``
+# alone is not sufficient: a meta tensor carries the Dense functionality key but
+# the Meta backend bit, so it is *not* dense-compatible and only matches another
+# tensor with an identical key set. Nested, MKL-DNN and quantized tensors also
+# report ``torch.strided`` while living on their own backends.
 
-# Layouts that share the SparseCsrTensorImpl backing store.
-_SPARSE_COMPRESSED_LAYOUTS = (
-    torch.sparse_csr,
-    torch.sparse_csc,
-    torch.sparse_bsr,
-    torch.sparse_bsc,
-)
+# Backend components accepted by each family in TensorImpl.h.
+_DENSE_BACKENDS = ("CPU", "CUDA", "MPS", "HIP", "XPU", "HPU", "MTIA")
+_SPARSE_BACKENDS = ("CPU", "CUDA", "MPS", "HIP", "XPU")
+
+# ``DispatchKeySet.has`` takes a *runtime* key, i.e. a functionality key already
+# combined with a backend bit ("SparseCPU"), so the allow-lists are expressed as
+# those combined names rather than as bare backend components -- the Python
+# bindings do not expose BackendComponent bits on their own.
+_DENSE_RUNTIME_KEYS = _DENSE_BACKENDS
+_SPARSE_RUNTIME_KEYS = tuple("Sparse" + b for b in _SPARSE_BACKENDS)
+_SPARSE_CSR_RUNTIME_KEYS = tuple("SparseCsr" + b for b in _SPARSE_BACKENDS)
 
 
-def _layout_group(t: torch.Tensor) -> int:
-    layout = t.layout
-    if layout == torch.sparse_coo:
-        return 1
-    if layout in _SPARSE_COMPRESSED_LAYOUTS:
-        return 2
-    # torch.strided (dense) and any other dense-backed layout.
-    return 0
+def _parse_keys(names):
+    """Resolve dispatch key names, ignoring any absent from this build."""
+    keys = []
+    for name in names:
+        try:
+            keys.append(torch._C._dispatch_key_parse(name))
+        except (RuntimeError, AttributeError):
+            continue
+    return tuple(keys)
+
+
+_DENSE_KEYS = _parse_keys(_DENSE_RUNTIME_KEYS)
+_SPARSE_KEYS = _parse_keys(_SPARSE_RUNTIME_KEYS)
+_SPARSE_CSR_KEYS = _parse_keys(_SPARSE_CSR_RUNTIME_KEYS)
+
+
+def _has_any(key_set, keys):
+    return any(key_set.has(k) for k in keys)
+
+
+def _is_dense(key_set):
+    return _has_any(key_set, _DENSE_KEYS)
+
+
+def _is_sparse(key_set):
+    return _has_any(key_set, _SPARSE_KEYS)
+
+
+def _is_sparse_compressed(key_set):
+    return _has_any(key_set, _SPARSE_CSR_KEYS)
 
 
 def _has_compatible_shallow_copy_type(self: torch.Tensor, from_: torch.Tensor) -> bool:
     """Return True if ``self`` can shallow-copy the TensorImpl type of ``from_``.
+
+    Mirrors ``c10::TensorImpl::has_compatible_shallow_copy_type``.
 
     Args:
         self: The destination tensor.
         from_: The source tensor whose TensorImpl type is checked.
 
     Returns:
-        bool: True when both tensors share the same TensorImpl layout category.
+        bool: True when the two TensorImpls are shallow-copy compatible.
     """
     logger.debug("GEMS _HAS_COMPATIBLE_SHALLOW_COPY_TYPE")
-    return _layout_group(self) == _layout_group(from_)
+
+    self_keys = torch._C._dispatch_keys(self)
+    from_keys = torch._C._dispatch_keys(from_)
+
+    if self_keys.raw_repr() == from_keys.raw_repr():
+        return True
+    if _is_dense(self_keys) and _is_dense(from_keys):
+        return True
+    if _is_sparse(self_keys) and _is_sparse(from_keys):
+        return True
+    return _is_sparse_compressed(self_keys) and _is_sparse_compressed(from_keys)

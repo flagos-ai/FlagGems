@@ -4396,9 +4396,12 @@ ops:
   - id: has_compatible_shallow_copy_type
     description: |
       Metadata-only check that returns True when `self` can shallow-copy the
-      TensorImpl type of `from`. Compatibility depends solely on the tensor
-      layout category (dense, sparse COO, or sparse compressed) and is
-      independent of device, dtype and shape.
+      TensorImpl type of `from`. Compatibility is decided on the tensors'
+      DispatchKeySets: the sets are equal, or both are dense, both are sparse
+      COO, or both are sparse compressed. It is independent of dtype and shape,
+      and of device within a family, but opaque impls (meta, MKL-DNN, nested,
+      quantized) only match an identical key set even though some of them
+      report a strided layout.
     for:
       - _has_compatible_shallow_copy_type
     labels:
