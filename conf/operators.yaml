@@ -3226,6 +3226,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: fix_
+    description: |
+      In-place version of fix. Truncates each element toward zero
+      (floor for non-negative values, ceil for negative values).
+      Integer tensors are left unchanged.
+    for:
+      - fix_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: flatten
     description: Flatten a contiguous range of dimensions into a single dimension (view operation).
     for:
