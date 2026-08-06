@@ -5635,6 +5635,19 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: pack_padded_sequence
+    description: |
+      Packs a padded batch of variable length sequences into a PackedSequence
+      data tensor together with the per-time-step batch sizes.
+    for:
+      - _pack_padded_sequence
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: unsafe_chunk
     description: Split a tensor into a specified number of chunks along a given dimension.
     for:
