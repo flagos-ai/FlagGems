@@ -13,6 +13,31 @@
 # limitations under the License.
 
 ops:
+  - id: _addmm_activation
+    description: |
+      Performs `addmm` followed by an activation function. Computes
+      `beta * input + alpha * (mat1 @ mat2)` and applies ReLU, or GELU (tanh
+      approximation) when `use_gelu` is True.
+    for:
+      - _addmm_activation
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.4'
+  - id: _addmm_activation_out
+    description: A variant of `_addmm_activation()` that assigns the output to the provided `out` parameter.
+    for:
+      - _addmm_activation.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - beta: '5.4'
   - id: _reshape_alias
     description: |
       Creates a view of the input tensor with the given size and stride,
