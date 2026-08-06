@@ -13,6 +13,19 @@
 # limitations under the License.
 
 ops:
+  - id: _linalg_svd
+    description: |
+      Computes the singular value decomposition (SVD) of a matrix; the private
+      primitive backing torch.linalg.svd and torch.linalg.svdvals.
+    for:
+      - _linalg_svd
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: _reshape_alias
     description: |
       Creates a view of the input tensor with the given size and stride,
