@@ -262,26 +262,10 @@ def lu_unpack(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
         P = torch.zeros(*batch_dims, m, m, device=device, dtype=dtype)
 
         # Hybrid strategy based on matrix size:
-        # - Small m (<=512): per-row kernel with single store (better SM utilization)
-        # - Large m (>512): vectorized kernel processing entire perm in one program
+        # - Small m (<=512): vectorized kernel processing entire perm in one program
         #   (reduces total pivot loop iterations from m*k to k with SIMD width m)
+        # - Large m (>512): per-row kernel with single store (better parallelism)
         if m <= 512:
-            # Per-row kernel: each program tracks one row through pivots
-            BLOCK_SIZE = 1  # Each program writes single element
-            grid = (batch_size * m,)
-            lu_unpack_p_kernel_large[grid](
-                LU_pivots,
-                P,
-                m,
-                k,
-                LU_pivots.stride(-2) if len(pivots_shape) > 1 else 0,
-                LU_pivots.stride(-1) if len(pivots_shape) > 0 else 0,
-                P.stride(-3) if len(batch_dims) > 0 else 0,
-                P.stride(-2),
-                P.stride(-1),
-                BLOCK_SIZE,
-            )
-        else:
             # Vectorized kernel: one program per batch, processes all rows in parallel
             BLOCK_M = triton.next_power_of_2(m)
             grid = (batch_size,)
@@ -296,6 +280,22 @@ def lu_unpack(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
                 P.stride(-2),
                 P.stride(-1),
                 BLOCK_M,
+            )
+        else:
+            # Per-row kernel: each program tracks one row through pivots
+            BLOCK_SIZE = 1  # Each program writes single element
+            grid = (batch_size * m,)
+            lu_unpack_p_kernel_large[grid](
+                LU_pivots,
+                P,
+                m,
+                k,
+                LU_pivots.stride(-2) if len(pivots_shape) > 1 else 0,
+                LU_pivots.stride(-1) if len(pivots_shape) > 0 else 0,
+                P.stride(-3) if len(batch_dims) > 0 else 0,
+                P.stride(-2),
+                P.stride(-1),
+                BLOCK_SIZE,
             )
     else:
         # Return empty tensor
@@ -352,5 +352,45 @@ def lu_unpack(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
         # Return empty tensors
         L = torch.empty(0, device=device, dtype=dtype)
         U = torch.empty(0, device=device, dtype=dtype)
+
+    return (P, L, U)
+
+
+def lu_unpack_out(
+    LU_data, LU_pivots, unpack_data=True, unpack_pivots=True, *, P=None, L=None, U=None
+):
+    """
+    Out-of-place variant of lu_unpack that writes results into pre-allocated tensors.
+
+    Args:
+        LU_data: Tensor of shape (..., m, n) containing the packed LU factorization
+        LU_pivots: Tensor of shape (..., min(m, n)) containing the pivots (1-indexed)
+        unpack_data: If True, unpack L and U. If False, return empty tensors.
+        unpack_pivots: If True, unpack P. If False, return empty tensor.
+        P: Optional pre-allocated output tensor for permutation matrix
+        L: Optional pre-allocated output tensor for lower triangular matrix
+        U: Optional pre-allocated output tensor for upper triangular matrix
+
+    Returns:
+        Tuple of (P, L, U)
+    """
+    P_result, L_result, U_result = lu_unpack(
+        LU_data, LU_pivots, unpack_data, unpack_pivots
+    )
+
+    if P is not None and P_result.numel() > 0:
+        P.copy_(P_result)
+    else:
+        P = P_result
+
+    if L is not None and L_result.numel() > 0:
+        L.copy_(L_result)
+    else:
+        L = L_result
+
+    if U is not None and U_result.numel() > 0:
+        U.copy_(U_result)
+    else:
+        U = U_result
 
     return (P, L, U)

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops.__irshift__ import __irshift__
 from flag_gems.ops.__lshift__ import __lshift__
@@ -356,10 +370,10 @@ from flag_gems.ops.linear import linear
 from flag_gems.ops.linear_backward import linear_backward
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
-from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log1p import log1p, log1p_out
 from flag_gems.ops.log1p_ import log1p_
 from flag_gems.ops.log2 import log2, log2_
+from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_ import log_
 from flag_gems.ops.log_normal_ import log_normal_
 from flag_gems.ops.log_sigmoid import log_sigmoid
@@ -385,7 +399,7 @@ from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lstm import lstm
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.lt_ import lt_, lt_scalar_
-from flag_gems.ops.lu_unpack import lu_unpack
+from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_out
 from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
@@ -580,6 +594,8 @@ from flag_gems.ops.special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w_out,
 )
 from flag_gems.ops.special_digamma import special_digamma
+
+# from flag_gems.ops.special_erfc import erfc, erfc_, special_erfc
 from flag_gems.ops.special_erfcx import special_erfcx
 from flag_gems.ops.special_erfinv import (
     special_erfinv,
@@ -949,8 +965,8 @@ __all__ = [
     "equal",
     "erf",
     "erf_",
-    "erfc",
-    "erfc_",
+    # "erfc",
+    # "erfc_",
     "erfinv",
     "erfinv_",
     "exp",
@@ -977,11 +993,11 @@ __all__ = [
     "fill_tensor_",
     "fill_tensor_out",
     "fix",
+    "flatten",
     "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
-    "flatten",
     "flip",
     "float_power_tensor_scalar",
     "float_power_tensor_scalar_",
@@ -1098,11 +1114,11 @@ __all__ = [
     "lerp_tensor",
     "lerp_tensor_",
     "less_",
+    "less_scalar_",
     "less_equal",
     "less_equal_",
     "less_equal_scalar",
     "less_equal_scalar_",
-    "less_scalar_",
     "lgamma",
     "lgamma_",
     "lift",
@@ -1119,6 +1135,7 @@ __all__ = [
     "linear_backward",
     "linspace",
     "log",
+    "log_",
     "log10",
     "log10_",
     "log10_out",
@@ -1127,7 +1144,6 @@ __all__ = [
     "log1p_out",
     "log2",
     "log2_",
-    "log_",
     "log_normal_",
     "log_sigmoid",
     "log_sigmoid_forward",
@@ -1136,11 +1152,18 @@ __all__ = [
     "log_softmax_backward_out",
     "log_softmax_out",
     "logaddexp",
+    "logaddexp_out",
     "logaddexp2",
     "logaddexp2_out",
-    "logaddexp_out",
     "logcumsumexp",
     "logcumsumexp_out",
+    "unsafe_chunk",
+    "xlogy",
+    "xlogy_out",
+    "xlogy_tensor_scalar",
+    "xlogy_tensor_scalar_out",
+    "xlogy_scalar_tensor",
+    "xlogy_scalar_tensor_out",
     "logical_and",
     "logical_and_",
     "logical_not",
@@ -1160,6 +1183,7 @@ __all__ = [
     "lt_scalar",
     "lt_scalar_",
     "lu_unpack",
+    "lu_unpack_out",
     "margin_ranking_loss",
     "masked_fill",
     "masked_fill_",
@@ -1301,6 +1325,8 @@ __all__ = [
     "rms_norm",
     "rms_norm_backward",
     "rms_norm_forward",
+    "te_rmsnorm_bwd",
+    "te_rmsnorm_fwd",
     "rnn_relu",
     "roll",
     "rot90",
@@ -1314,7 +1340,6 @@ __all__ = [
     "rsqrt_",
     "rsub_scalar",
     "rsub_tensor",
-    "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
@@ -1377,6 +1402,7 @@ __all__ = [
     "softplus_backward",
     "softshrink",
     "softshrink_out",
+    "scalar_tensor",
     "sort",
     "sort_stable",
     "special_airy_ai",
@@ -1387,7 +1413,7 @@ __all__ = [
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
     "special_digamma",
-    "special_erfc",
+    # "special_erfc",
     "special_erfcx",
     "special_erfinv",
     "special_erfinv_",
@@ -1401,9 +1427,9 @@ __all__ = [
     "special_i1",
     "special_i1_out",
     "special_legendre_polynomial_p",
+    "special_log_softmax",
     "special_log1p",
     "special_log1p_out",
-    "special_log_softmax",
     "special_logsumexp",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
@@ -1447,8 +1473,6 @@ __all__ = [
     "tanh",
     "tanh_",
     "tanh_backward",
-    "te_rmsnorm_bwd",
-    "te_rmsnorm_fwd",
     "tensor_split",
     "threshold",
     "threshold_",
@@ -1476,7 +1500,6 @@ __all__ = [
     "uniform_",
     "unique_consecutive",
     "unique_dim",
-    "unsafe_chunk",
     "unsqueeze",
     "unsqueeze_",
     "upsample_bicubic2d",
@@ -1501,12 +1524,6 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
-    "xlogy",
-    "xlogy_out",
-    "xlogy_scalar_tensor",
-    "xlogy_scalar_tensor_out",
-    "xlogy_tensor_scalar",
-    "xlogy_tensor_scalar_out",
     "xor",
     "xor_",
     "xor_scalar",

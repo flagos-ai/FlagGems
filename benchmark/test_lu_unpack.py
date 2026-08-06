@@ -23,6 +23,6 @@ def test_lu_unpack():
         op_name="lu_unpack",
         torch_op=torch.ops.aten.lu_unpack,
         # torch.linalg.lu_factor only supports float32/float64; half/bfloat16 not supported
-        dtypes=[torch.float32],
+        dtypes=[torch.float32, torch.float64],
     )
     bench.run()
