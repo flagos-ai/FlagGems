@@ -5,22 +5,27 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+BLOCK_SHAPES = [
+    # (list of (rows, cols) for each block)
+    [(2, 3), (4, 2), (1, 5)],
+    [(8, 8), (16, 16)],
+    [(1, 1), (2, 2), (3, 3), (4, 4)],
+    [(32, 64), (64, 32), (16, 16)],
+    [(128, 256), (256, 128)],
+]
+
 
 @pytest.mark.block_diag
+@pytest.mark.parametrize("shapes", BLOCK_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_block_diag(dtype):
+def test_accuracy_block_diag(dtype, shapes):
     # Test with multiple blocks of different sizes
-    a = torch.randn((2, 3), dtype=dtype, device=flag_gems.device)
-    b = torch.randn((4, 2), dtype=dtype, device=flag_gems.device)
-    c = torch.randn((1, 5), dtype=dtype, device=flag_gems.device)
+    blocks = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shapes]
+    refs = [utils.to_reference(b) for b in blocks]
 
-    ref_a = utils.to_reference(a)
-    ref_b = utils.to_reference(b)
-    ref_c = utils.to_reference(c)
-
-    ref_out = torch.block_diag(ref_a, ref_b, ref_c)
+    ref_out = torch.block_diag(*refs)
     with flag_gems.use_gems():
-        res_out = torch.block_diag(a, b, c)
+        res_out = torch.block_diag(*blocks)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
