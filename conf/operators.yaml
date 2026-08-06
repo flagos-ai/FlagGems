@@ -5073,6 +5073,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: leaky_relu_backward
+    description: A variant of `leaky_relu()` for backward case.
+    for:
+      - leaky_relu_backward
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.3'
   - id: lerp_scalar
     description: The scalar version of `lerp()`.
     for:
