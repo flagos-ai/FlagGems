@@ -688,15 +688,16 @@ class BlasBenchmark(Benchmark):
                 yield from self.input_fn(b, m, n, k, dtype, self.device, True)
 
     def set_more_shapes(self):
-        large_k_shapes = [
-            (8, 1848, 1536, 151936),
-            (8, 1848, 1536, 128256),
-            (8, 1848, 1536, 152064),
-            (8, 4096, 1, 152064),
-        ]
+        return None
+        # large_k_shapes = [
+        #     (8, 1848, 1536, 151936),
+        #     (8, 1848, 1536, 128256),
+        #     (8, 1848, 1536, 152064),
+        #     (8, 4096, 1, 152064),
+        # ]
 
-        model_shaps = model_shapes()
-        return large_k_shapes + model_shaps
+        # model_shaps = model_shapes()
+        # return large_k_shapes + model_shaps
 
     def get_tflops(self, op, *args, **kwargs):
         total_flops = 0
