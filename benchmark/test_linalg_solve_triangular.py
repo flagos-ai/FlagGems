@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 SOLVE_TRI_SHAPES = [
@@ -62,6 +64,7 @@ def test_linalg_solve_triangular(monkeypatch):
     bench = SolveTriBenchmark(
         op_name="linalg_solve_triangular",
         torch_op=torch.ops.aten.linalg_solve_triangular,
+        gems_op=flag_gems.linalg_solve_triangular,
         dtypes=[torch.float32, torch.float64],
     )
     bench.run()
@@ -86,6 +89,7 @@ def test_linalg_solve_triangular_out(monkeypatch):
     bench = SolveTriOutBenchmark(
         op_name="linalg_solve_triangular_out",
         torch_op=torch.ops.aten.linalg_solve_triangular.out,
+        gems_op=flag_gems.linalg_solve_triangular_out,
         dtypes=[torch.float32, torch.float64],
     )
     bench.run()
