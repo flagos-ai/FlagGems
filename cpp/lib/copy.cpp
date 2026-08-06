@@ -65,6 +65,9 @@ static at::Tensor& redispatch_copy_fallback(at::Tensor& dst, const at::Tensor& s
   constexpr c10::DispatchKeySet fallback_keyset =
       c10::DispatchKeySet(c10::DispatchKey::CompositeExplicitAutograd);
 
+  // Exclude PrivateUse1 to prevent recursive dispatch:
+  // _to_copy/copy_ -> redispatch -> _copy_from -> CPU fallback -> _to_copy -> ...
+  c10::impl::ExcludeDispatchKeyGuard guard(c10::DispatchKey::PrivateUse1);
   return op.redispatch(fallback_keyset, dst, src, non_blocking);
 }
 
@@ -88,6 +91,7 @@ static at::Tensor redispatch_to_copy_fallback(const at::Tensor& src,
   constexpr c10::DispatchKeySet fallback_keyset =
       c10::DispatchKeySet(c10::DispatchKey::CompositeExplicitAutograd);
 
+  c10::impl::ExcludeDispatchKeyGuard guard(c10::DispatchKey::PrivateUse1);
   return op.redispatch(fallback_keyset, src, dtype, layout, device, pin_memory, non_blocking, memory_format);
 }
 
