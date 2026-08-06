@@ -4285,18 +4285,34 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: has_compatible_shallow_copy_type
+  - id: hardshrink
     description: |
-      Metadata-only check that returns True when `self` can shallow-copy the
-      TensorImpl type of `from`. Compatibility depends solely on the tensor
-      layout category (dense, sparse COO, or sparse compressed) and is
-      independent of device, dtype and shape.
+      Applies the hard shrinkage function element-wise: returns x if |x| > lambd, else 0.
     for:
-      - _has_compatible_shallow_copy_type
+      - hardshrink
     labels:
       - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
     kind:
-      - Tensor
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: hardshrink_out
+    description: |
+      Out-variant of hardshrink. Writes the element-wise result into the `out` tensor.
+    for:
+      - hardshrink.out
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
     stages:
       - alpha: '5.4'
   - id: hardsigmoid
@@ -4375,6 +4391,20 @@ ops:
       - KernelGen
     kind:
       - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: has_compatible_shallow_copy_type
+    description: |
+      Metadata-only check that returns True when `self` can shallow-copy the
+      TensorImpl type of `from`. Compatibility depends solely on the tensor
+      layout category (dense, sparse COO, or sparse compressed) and is
+      independent of device, dtype and shape.
+    for:
+      - _has_compatible_shallow_copy_type
+    labels:
+      - aten
+    kind:
+      - Tensor
     stages:
       - alpha: '5.4'
   - id: hc_head_fused_kernel
@@ -6162,6 +6192,19 @@ ops:
       - IR
     stages:
       - stable: '4.0'
+  - id: max_pool2d_with_indices_backward
+    description: |
+      The backward version of `max_pool2d_with_indices()`.
+      This is an IR representation rather than a public API and it is for the backward step.
+    for:
+      - max_pool2d_with_indices_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: max_pool3d_backward
     description: The backward version of `max_pool2d_with_indices()`.
     for:

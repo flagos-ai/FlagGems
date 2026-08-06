@@ -337,6 +337,7 @@ from flag_gems.ops.hadamard_transform import (
     hadamard_transform_28N,
     hadamard_transform_40N,
 )
+from flag_gems.ops.hardshrink import hardshrink, hardshrink_out
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardsigmoid_ import hardsigmoid_
 from flag_gems.ops.hardswish_ import hardswish_
@@ -430,6 +431,7 @@ from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_backward,
     max_pool2d_with_indices,
+    max_pool2d_with_indices_backward,
 )
 from flag_gems.ops.max_pool3d_with_indices import (
     max_pool3d_backward,
@@ -1100,6 +1102,8 @@ __all__ = [
     "hadamard_transform_20N",
     "hadamard_transform_28N",
     "hadamard_transform_40N",
+    "hardshrink",
+    "hardshrink_out",
     "hardsigmoid",
     "hardsigmoid_out",
     "hardsigmoid_",
@@ -1237,6 +1241,7 @@ __all__ = [
     "max_dim",
     "max_pool2d_backward",
     "max_pool2d_with_indices",
+    "max_pool2d_with_indices_backward",
     "max_pool3d_backward",
     "max_pool3d_with_indices",
     "max_unpool2d",
