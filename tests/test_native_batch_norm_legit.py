@@ -41,7 +41,7 @@ SHAPES = [
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])
 @pytest.mark.parametrize("training", TRAININGS)
-def test__native_batch_norm_legit(shape, dtype, affine, training):
+def test_native_batch_norm_legit(shape, dtype, affine, training):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(23)
         torch.mlu.manual_seed_all(23)
