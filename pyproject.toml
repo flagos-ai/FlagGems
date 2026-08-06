@@ -23,7 +23,7 @@
 # Combined with the setuptools<77 pin above, `pip install .` then fails during
 # "Getting requirements to build wheel" with
 # `AttributeError: ignore_egg_info_in_manifest`. 9.x has no such integration.
-requires = ["setuptools>=64.0,<77", "setuptools-scm>=8,<10", "wheel==0.45.0"]
+requires = ["setuptools>=64.0,<77", "setuptools-scm>=8,<10", "wheel==0.46.2"]
 
 build-backend = "setuptools.build_meta"
 
@@ -108,6 +108,7 @@ iluvatar = [
     "torch==2.7.1+corex.4.4.0",
     "torchaudio==2.7.1+corex.4.4.0",
     "torchvision==0.22.1+corex.4.4.0",
+    "numpy<2",
 ]
 
 kunlunxin = [
@@ -215,7 +216,10 @@ Documentation = "https://flagos-ai.github.io/FlagGems"
 "Bug Tracker" = "https://github.com/flagos-ai/FlagGems/issues"
 
 [project.scripts]
-flaggems-setup = "flag_gems._setup:main"
+# Top-level module (NOT flag_gems._setup): importing the flag_gems package
+# pulls in torch and triton at load time, but this bootstrap CLI runs *before*
+# those are installed, so its entry point must not import the package.
+flaggems-setup = "flaggems_setup:main"
 
 # Package discovery (including shipping the tests/ and benchmark/ suites under
 # collision-safe names) is defined in setup.py, so it is intentionally omitted
