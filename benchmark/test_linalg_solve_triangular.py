@@ -65,3 +65,27 @@ def test_linalg_solve_triangular(monkeypatch):
         dtypes=[torch.float32, torch.float64],
     )
     bench.run()
+
+
+class SolveTriOutBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = SOLVE_TRI_SHAPES
+
+    def get_input_iter(self, cur_dtype):
+        for n, k in self.shapes:
+            for upper in (False, True):
+                A, B = _make_triangular_input(
+                    n, k, cur_dtype, self.device, upper, False
+                )
+                out = torch.empty_like(B)
+                yield A, B, {"upper": upper, "out": out}
+
+
+@pytest.mark.linalg_solve_triangular
+def test_linalg_solve_triangular_out(monkeypatch):
+    bench = SolveTriOutBenchmark(
+        op_name="linalg_solve_triangular_out",
+        torch_op=torch.ops.aten.linalg_solve_triangular.out,
+        dtypes=[torch.float32, torch.float64],
+    )
+    bench.run()
