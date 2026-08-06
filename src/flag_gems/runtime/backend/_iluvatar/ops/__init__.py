@@ -18,6 +18,7 @@ from .arccosh_ import arccosh_
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .div import div_mode, div_mode_
+from .flip import flip
 from .hadamard_transform import hadamard_transform
 from .linear import linear
 from .matmul_bf16 import matmul_bf16
@@ -44,6 +45,7 @@ __all__ = [
     "conv_transpose1d",
     "div_mode",
     "div_mode_",
+    "flip",
     "hadamard_transform",
     "linear",
     "matmul_bf16",
