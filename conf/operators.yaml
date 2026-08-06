@@ -3879,6 +3879,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: fused_moving_avg_obs_fq_helper
+    description: Fused moving-average observer with fake-quantize for QAT; updates running min/max, recomputes scale/zero_point, and fake-quantizes the input for both per-tensor and per-channel modes.
+    for:
+      - _fused_moving_avg_obs_fq_helper
+    labels:
+      - aten
+      - quantization
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: fused_q_kv_rmsnorm
     description: |
       Applies RMSNorm to Q and KV tensors in a single fused kernel for DeepSeekV4 attention.
