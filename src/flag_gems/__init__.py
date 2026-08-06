@@ -96,7 +96,7 @@ _FULL_CONFIG = (
     ),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_backward", flash_attention_backward),
-    ("_flash_attention_forward", flash_attention_forward),
+    ("_flash_attention_forward", _flash_attention_forward),
     (
         "_functional_sym_constrain_range",
         _functional_sym_constrain_range,
@@ -145,6 +145,10 @@ _FULL_CONFIG = (
     (
         "_scaled_dot_product_efficient_attention_backward",
         scaled_dot_product_efficient_attention_backward,
+    ),
+    (
+        "_scaled_dot_product_flash_attention",
+        _scaled_dot_product_flash_attention,
     ),
     (
         "_scaled_dot_product_flash_attention_backward",
@@ -427,6 +431,7 @@ _FULL_CONFIG = (
     ("fill_.Scalar", fill_scalar_),
     ("fill_.Tensor", fill_tensor_),
     ("fix", fix),
+    ("fix_", fix_),
     ("flatten.using_ints", flatten),
     ("flip", flip),
     ("float_power_.Scalar", float_power_tensor_scalar_),
@@ -541,6 +546,7 @@ _FULL_CONFIG = (
     ("lgamma_", lgamma_),
     ("lift", lift),
     ("lift.out", lift_out),
+    ("lift_fresh", lift_fresh),
     ("lift_fresh_copy", lift_fresh_copy),
     ("linalg_cholesky", linalg_cholesky),
     ("linalg_ldl_factor", ldl_factor),
@@ -649,7 +655,7 @@ _FULL_CONFIG = (
     ("native_dropout_backward", dropout_backward),
     ("native_group_norm", group_norm),
     ("native_group_norm_backward", group_norm_backward),
-    ("native_layer_norm", layer_norm),
+    ("native_layer_norm", native_layer_norm),
     ("native_layer_norm_backward", layer_norm_backward),
     ("ne.Scalar", ne_scalar),
     ("ne.Tensor", ne),

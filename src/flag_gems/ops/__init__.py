@@ -35,6 +35,7 @@ from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
 )
 from flag_gems.ops._euclidean_dist import _euclidean_dist
+from flag_gems.ops._flash_attention_forward import _flash_attention_forward
 from flag_gems.ops._functional_sym_constrain_range import (
     _functional_sym_constrain_range,
 )
@@ -61,6 +62,9 @@ from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._scaled_dot_product_flash_attention import (
+    _scaled_dot_product_flash_attention,
+)
 from flag_gems.ops._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
@@ -261,6 +265,7 @@ from flag_gems.ops.fill import (
     fill_tensor_out,
 )
 from flag_gems.ops.fix import fix
+from flag_gems.ops.fix_ import fix_
 from flag_gems.ops.flash_attention_backward import (
     efficient_attention_backward,
     flash_attention_backward,
@@ -360,6 +365,7 @@ from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.less_equal_ import less_equal_, less_equal_scalar_
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
 from flag_gems.ops.lift import lift, lift_out
+from flag_gems.ops.lift_fresh import lift_fresh
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
@@ -442,6 +448,7 @@ from flag_gems.ops.nanmedian import (
 from flag_gems.ops.nansum import nansum, nansum_out
 from flag_gems.ops.narrow import narrow
 from flag_gems.ops.narrow_copy import narrow_copy
+from flag_gems.ops.native_layer_norm import native_layer_norm
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
@@ -731,6 +738,7 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
     "_euclidean_dist",
+    "_flash_attention_forward",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adam",
@@ -751,6 +759,7 @@ __all__ = [
     "_reshape_alias",
     "_resize_output",
     "_safe_softmax",
+    "_scaled_dot_product_flash_attention",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
@@ -994,6 +1003,7 @@ __all__ = [
     "fill_tensor_",
     "fill_tensor_out",
     "fix",
+    "fix_",
     "flatten",
     "flash_attention_backward",
     "flash_attention_forward",
@@ -1123,6 +1133,7 @@ __all__ = [
     "lgamma",
     "lgamma_",
     "lift",
+    "lift_fresh",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "lift_out",
@@ -1231,6 +1242,7 @@ __all__ = [
     "nansum_out",
     "narrow",
     "narrow_copy",
+    "native_layer_norm",
     "ne",
     "ne_scalar",
     "neg",
