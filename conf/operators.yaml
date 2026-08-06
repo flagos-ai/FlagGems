@@ -5259,6 +5259,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_inv_ex
+    description: |
+      Computes the inverse of a square matrix and returns a namedtuple (inverse, info).
+    for:
+      - linalg.inv_ex
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_ldl_solve
     description: Triton kernel implementation for linalg_ldl_solve.
     for:
