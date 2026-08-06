@@ -10920,13 +10920,26 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
-  - id: xor__
+  - id: xor
     description: |
-      Computes the bitwise XOR of input tensors or a tensor and a scalar.
+      Computes the bitwise XOR of input tensors or a tensor and a scalar (non-inplace).
     for:
       - __xor__
       - __xor__.Tensor
       - __xor__.Scalar
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: ixor
+    description: |
+      Computes the bitwise XOR of input tensors or a tensor and a scalar (inplace).
+    for:
+      - __ixor__
       - __ixor__.Tensor
       - __ixor__.Scalar
     labels:
