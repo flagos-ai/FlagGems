@@ -148,7 +148,7 @@ def test_native_batch_norm_legit_no_stats(shape, dtype, affine):
     ],
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test__native_batch_norm_legit_out(overload, dtype):
+def test_native_batch_norm_legit_out(overload, dtype):
     shape = (4, 8, 16, 16)
     channels = shape[1]
     stats_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
