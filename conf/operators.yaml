@@ -679,12 +679,34 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: arccosh
+    description: Returns a new tensor with the inverse hyperbolic cosine of the elements of `input`.
+    for:
+      - arccosh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arccosh_
     description: |
       Computes the element-wise inverse hyperbolic cosine of a given input tensor.
       This is an in-place version.
     for:
       - arccosh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: arccosh_out
+    description: A variant of `arccosh` that allows the output to be assigned to the `out` tensor.
+    for:
+      - arccosh.out
     labels:
       - aten
       - KernelGen

@@ -227,6 +227,8 @@ _FULL_CONFIG = (
     ("arange.start_step", arange_start),
     ("arccos", arccos),
     ("arccos_", arccos_),
+    ("arccosh", arccosh),
+    ("arccosh.out", arccosh_out),
     ("arccosh_", arccosh_),
     ("arcsin", arcsin),
     ("arcsin.out", arcsin),
