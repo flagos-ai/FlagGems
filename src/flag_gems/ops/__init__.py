@@ -557,6 +557,11 @@ from flag_gems.ops.select_backward import select_backward
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
+from flag_gems.ops.set_ import (
+    set_default,
+    set_source_tensor,
+    set_source_tensor_storage_offset,
+)
 from flag_gems.ops.sgn import sgn, sgn_out
 from flag_gems.ops.sgn_ import sgn_
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
@@ -1364,6 +1369,9 @@ __all__ = [
     "select_scatter",
     "selu",
     "selu_",
+    "set_default",
+    "set_source_tensor",
+    "set_source_tensor_storage_offset",
     "sgn",
     "sgn_",
     "sgn_out",

@@ -8384,6 +8384,39 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: set_
+    description: Reset tensor to an empty tensor with zero storage.
+    for:
+      - set_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: set_source_Tensor
+    description: Set tensor to share storage, shape, and strides with source tensor.
+    for:
+      - set_.source_Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: set_source_Tensor_storage_offset
+    description: Set tensor storage from another tensor with explicit offset, size, stride.
+    for:
+      - set_.source_Tensor_storage_offset
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: sgn
     description: |
       Computes the sign of each element in the input tensor, element-wise.
