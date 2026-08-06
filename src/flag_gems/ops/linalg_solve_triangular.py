@@ -991,3 +991,11 @@ def linalg_solve_triangular(A, B, *, upper, left=True, unitriangular=False, out=
         out.copy_(B_view)
         return out
     return B_view
+
+
+def linalg_solve_triangular_out(
+    A, B, *, upper, left=True, unitriangular=False, out=None
+):
+    return linalg_solve_triangular(
+        A, B, upper=upper, left=left, unitriangular=unitriangular, out=out
+    )

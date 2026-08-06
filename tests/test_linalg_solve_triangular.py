@@ -169,6 +169,29 @@ def test_out_kwarg(n, k, upper, dtype):
 
 
 @pytest.mark.linalg_solve_triangular
+@pytest.mark.parametrize("n", [16, 64, 128])
+@pytest.mark.parametrize("k", [1, 8])
+@pytest.mark.parametrize("upper", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_linalg_solve_triangular_out(n, k, upper, dtype):
+    A = _make_triangular(
+        (n, n), dtype, flag_gems.device, upper=upper, unitriangular=False
+    )
+    B = torch.randn(n, k, dtype=dtype, device=flag_gems.device)
+    out = torch.empty_like(B)
+
+    ref_A = utils.to_reference(A)
+    ref_B = utils.to_reference(B)
+    ref_out = torch.linalg.solve_triangular(ref_A, ref_B, upper=upper)
+
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.linalg_solve_triangular.out(A, B, upper=upper, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.linalg_solve_triangular
 @pytest.mark.parametrize("n", [16, 64, 128, 256])
 @pytest.mark.parametrize("k", [1, 8])
 @pytest.mark.parametrize("upper", [False, True])
