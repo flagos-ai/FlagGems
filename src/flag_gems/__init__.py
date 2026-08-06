@@ -112,6 +112,12 @@ _FULL_CONFIG = (
     ("_is_all_true", _is_all_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
     ("_linalg_eigvals", _linalg_eigvals),
+    # NOTE: aten::_list_to_tensor is a JIT-only prim op with no c10 dispatcher
+    # kernel (torch._C._dispatch_has_kernel("aten::_list_to_tensor") is False),
+    # so an aten IMPL registration here would be dead code -- use_gems() could
+    # never dispatch to it. The Triton implementation is instead exposed
+    # directly as flag_gems._list_to_tensor (via flag_gems.ops) and must be
+    # called explicitly.
     ("binary_cross_entropy_backward", binary_cross_entropy_backward),
     ("linalg_svdvals", linalg_svdvals),
     ("_log_softmax", log_softmax),
