@@ -650,6 +650,7 @@ _FULL_CONFIG = (
     ("mv", mv),
     ("mvlgamma_", mvlgamma_),
     ("nan_to_num", nan_to_num),
+    ("nan_to_num_", nan_to_num_),
     ("nanmedian", nanmedian),
     ("nanmedian.dim", nanmedian_dim),
     ("nanmedian.dim_values", nanmedian_dim_values),

@@ -6614,6 +6614,19 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: nan_to_num_
+    description: |
+      Replaces NaN, positive infinity, and negative infinity values in input in-place.
+    for:
+      - nan_to_num_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: nanmedian
     description: Returns the median of the values in `input`, ignoring `NaN` values.
     for:
