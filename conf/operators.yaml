@@ -3115,6 +3115,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: expand_copy
+    description: Returns a copy of the input tensor expanded by broadcasting singleton dimensions.
+    for:
+      - expand_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: expm1
     description: Computes the exponential of the elements minus 1 of `input`.
     for:
