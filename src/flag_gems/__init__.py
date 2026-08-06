@@ -190,6 +190,7 @@ _FULL_CONFIG = (
     ("abs_", abs_),
     ("absolute", absolute),
     ("acos", acos),
+    ("acos_", acos_),
     ("acosh", acosh),
     ("acosh_", acosh_),
     ("adaptive_max_pool3d_backward", adaptive_max_pool3d_backward),

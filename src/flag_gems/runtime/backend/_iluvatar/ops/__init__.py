@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
+from .acos_ import acos_
 from .addmm import addmm, addmm_out
 from .arccosh_ import arccosh_
 from .conv_depthwise2d import _conv_depthwise2d
@@ -36,6 +37,7 @@ from .tile import tile
 from .var import var, var_correction, var_dim
 
 __all__ = [
+    "acos_",
     "_conv_depthwise2d",
     "_native_batch_norm_legit_functional",
     "addmm",

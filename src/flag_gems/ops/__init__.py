@@ -94,6 +94,7 @@ from flag_gems.ops._weight_norm import _weight_norm
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute
 from flag_gems.ops.acos import acos
+from flag_gems.ops.acos_ import acos_
 from flag_gems.ops.acosh import acosh, acosh_
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
@@ -801,6 +802,7 @@ __all__ = [
     "abs_",
     "absolute",
     "acos",
+    "acos_",
     "acosh",
     "acosh_",
     "adaptive_avg_pool2d",
