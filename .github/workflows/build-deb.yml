@@ -1,0 +1,56 @@
+name: Build Debian Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'packaging/debian/**'
+      - 'src/**'
+      - 'include/**'
+      - 'lib/**'
+      - 'cmake/**'
+      - 'conf/**'
+      - 'CMakeLists.txt'
+      - 'pyproject.toml'
+      - 'tools/setup_nvidia.sh'
+      - '.github/workflows/build-deb.yml'
+  workflow_dispatch:
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build .deb
+        run: bash packaging/debian/build-helpers/build-flaggems.sh
+
+      # Installing cleanly is not the same as working: a bare `Depends:` can
+      # resolve to a too-old distro version, and a subpackage missing an
+      # __init__.py is dropped by find_packages() without any build error.
+      # Both only surface at import time, long after `dpkg -l` says "ii".
+      - name: Smoke test installed package
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work ubuntu:22.04 bash -euc '
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq ./debian-packages/*.deb
+            python3 packaging/verify-installed-package.py
+          '
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flag-gems-amd64-packages
+          path: debian-packages/*.deb
+          retention-days: 7

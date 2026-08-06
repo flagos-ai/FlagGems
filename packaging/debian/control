@@ -1,0 +1,80 @@
+Source: flag-gems
+Section: python
+Priority: optional
+Maintainer: FlagOS Contributors <contact@flagos.io>
+# Phase 1 (current): the .deb is assembled from a pre-built wheel inside the
+# 2-stage Dockerfile.deb. Stage 1 (wheel-builder) builds the pure-Python
+# wheel with the plain setuptools backend (setuptools + setuptools-scm only);
+# Stage 2 (this dpkg-buildpackage step) only unpacks the wheel via pip and
+# wraps it.
+#
+# Phase 2 (deferred): packaging the C++ operators from the separate cpp/
+# tree (upstream's per-vendor flag-gems-cpp-* scikit-build-core wheels)
+# will need: cmake (>= 3.20), ninja-build, python3-pybind11,
+# libtriton-jit-dev and a vendor toolchain.
+Build-Depends: debhelper-compat (= 13),
+               python3-all,
+               python3-pip,
+               python3-setuptools,
+               python3-wheel,
+               dh-python
+Standards-Version: 4.6.2
+Homepage: https://github.com/flagos-ai/FlagGems
+Vcs-Browser: https://github.com/flagos-ai/FlagGems
+Vcs-Git: https://github.com/flagos-ai/FlagGems.git
+Rules-Requires-Root: no
+X-Build-Environment: This package is built in a container. The wheel is
+ built once via the setuptools backend (pure Python, no native code) and
+ unpacked into the binary package below.
+
+# ---- Phase 1 binary package ----------------------------------------
+# python3-flag-gems ships the pure-Python distribution; the C++ operator
+# runtime lives in the separate cpp/ tree upstream and is deferred to
+# Phase 2.
+
+Package: python3-flag-gems
+Architecture: all
+Provides: python3-flaggems
+Depends: python3:any,
+         ${shlibs:Depends},
+         ${misc:Depends},
+         python3-numpy,
+         python3-yaml,
+         python3-sqlalchemy,
+         python3-packaging
+# python3-torch is intentionally NOT declared. The distro 'python3-torch'
+# is CPU-only and unsuitable for GPU workloads; users install matching
+# CUDA torch via pip — see packaging/INSTALL.md.
+Recommends: python3-flagtree-nvidia
+# The bundled operator test suite (flaggems_tests) needs pytest to run.
+Suggests: python3-pytest
+Description: FlagGems GPU operator library (Python module)
+ FlagGems is a GPU operator library written in Triton, providing a
+ drop-in replacement for many torch.* operations with custom-tuned
+ kernels.
+ .
+ This package contains the Python module: the Triton kernel sources and
+ Python wrappers, plus the bundled operator test (flaggems_tests) and
+ benchmark (flaggems_benchmark) suites. The optional C++ wrapped
+ operators (upstream's per-vendor flag-gems-cpp-* native wheels, built
+ from the cpp/ tree) are not packaged yet — see Phase 2 below.
+
+# ---- Phase 2 binary packages (DECLARED, not yet built) -------------
+# These stanzas ship the C++ side (built from the upstream cpp/ tree)
+# as standalone packages once Phase 2 lands. Until then, debian/rules
+# does NOT produce them — the control file has the names reserved so
+# future PRs are additive.
+#
+# Package: libflaggems
+# Architecture: amd64
+# Depends: ${shlibs:Depends}, ${misc:Depends}, libtriton-jit (>= 0.1.0)
+# Description: FlagGems GPU operator library (runtime)
+#  Standalone C++ runtime for hosts that want to use FlagGems kernels
+#  via cmake/C++ rather than Python.
+#
+# Package: libflaggems-dev
+# Architecture: amd64
+# Depends: libflaggems (= ${binary:Version}), libtriton-jit-dev
+# Description: FlagGems GPU operator library (development files)
+#  Headers and cmake config for downstream C++ projects linking
+#  against libflaggems.
