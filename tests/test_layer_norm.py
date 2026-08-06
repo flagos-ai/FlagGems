@@ -28,6 +28,44 @@ else:
     LAYER_NORM_SHAPES = [(200, 36), (4096, 100), (1, 40999), (100, 40499), (4096, 256)]
 
 
+@pytest.mark.native_layer_norm
+# Cover one-, two-, and three-dimensional normalized suffixes of equal size.
+@pytest.mark.parametrize(
+    "shape, normalized_shape",
+    [((4, 64), (64,)), ((4, 8, 8), (8, 8)), ((4, 4, 4, 4), (4, 4, 4))],
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("affine", [True, False])
+def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = (
+        torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+        if affine
+        else None
+    )
+    bias = torch.randn_like(weight) if affine else None
+    eps = 1e-5
+
+    ref_result = torch.ops.aten.native_layer_norm.default(
+        utils.to_reference(inp, True),
+        normalized_shape,
+        utils.to_reference(weight, True),
+        utils.to_reference(bias, True),
+        eps,
+    )
+
+    with caplog.at_level("DEBUG", logger="flag_gems.ops.native_layer_norm"):
+        with flag_gems.use_gems():
+            result = torch.ops.aten.native_layer_norm.default(
+                inp, normalized_shape, weight, bias, eps
+            )
+
+    assert "GEMS NATIVE_LAYER_NORM" in caplog.text
+    assert len(result) == len(ref_result) == 3
+    for actual, expected in zip(result, ref_result):
+        utils.gems_assert_close(actual, expected, dtype)
+
+
 @pytest.mark.layer_norm
 @pytest.mark.parametrize("shape", LAYER_NORM_SHAPES)
 @pytest.mark.parametrize("wb_none", [False, True])

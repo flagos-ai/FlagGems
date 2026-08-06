@@ -165,6 +165,7 @@ _VENDOR_TORCH_ATTR = {
     "iluvatar": "corex",
     "mthreads": "musa",
     "sunrise": "ptpu",
+    "tsingmicro": "txda",
 }
 
 __all__ = [
