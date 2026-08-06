@@ -81,6 +81,8 @@ def empty(
         device=device,
         pin_memory=pin_memory,
     )
+    if dtype in (torch.complex32, torch.complex64, torch.complex128):
+        return out
     N = volume(shape)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(device):
