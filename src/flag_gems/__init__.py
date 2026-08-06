@@ -109,6 +109,7 @@ _FULL_CONFIG = (
     ),
     ("_fused_adam", _fused_adam),
     ("_fused_adam_", _fused_adam_),
+    ("_fused_rms_norm", _fused_rms_norm),
     ("_grouped_mm", group_mm),
     ("_index_put_impl_", _index_put_impl_),
     ("_is_all_true", _is_all_true),
