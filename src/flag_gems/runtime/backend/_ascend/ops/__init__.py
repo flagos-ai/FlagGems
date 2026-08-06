@@ -82,6 +82,7 @@ from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .select_backward import select_backward
 from .select_scatter import select_scatter
 from .slice_scatter import slice_scatter
@@ -188,6 +189,9 @@ __all__ = [
     "scatter",
     "scatter_",
     "scatter_add_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "ScaleDotProductAttention",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",

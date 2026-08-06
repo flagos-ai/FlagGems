@@ -24,7 +24,9 @@ Vendor compatibility:
 
 Performance notes:
   - Sum/mean use tl.atomic_add with relaxed semantics for throughput
-  - Prod uses CAS loop with NaN detection guard (no tl.atomic_mul exists)
+  - Prod uses a bitwise CAS loop (no tl.atomic_mul exists)
+  - Vendor backends can reuse the deterministic output-centric prod scan
+    when their CAS lowering is not reliable under contention
   - All offset arithmetic uses int64 to avoid overflow for N > 2^31
   - LOOP=4: each program processes LOOP*BLOCK elements to amortize launch overhead
   - 2D fast path: specialized kernels for 2D tensors avoid 5D coordinate decoding
@@ -86,6 +88,305 @@ def _needs_cas_fallback():
     CAS (Compare-And-Swap) loop for amax/amin reduce modes.
     """
     return flag_gems.vendor_name in ["iluvatar"]
+
+
+def _scan_block(args):
+    return 128
+
+
+@triton.jit
+def _multiply(left, right):
+    return left * right
+
+
+@libentry()
+@triton.heuristics({"BLOCK": _scan_block})
+@triton.jit(do_not_specialize=["out_numel"])
+def scatter_reduce_prod_scan_kernel(
+    index_ptr,
+    src_ptr,
+    out_ptr,
+    mask_ptr,
+    out_numel,
+    DIM: tl.constexpr,
+    USE_MASK: tl.constexpr,
+    MATERIALIZE_PRODUCT: tl.constexpr,
+    scan_shape: tl.constexpr,
+    src_stride_0,
+    src_stride_1,
+    src_stride_2,
+    src_stride_3,
+    src_stride_4,
+    idx_shape_0,
+    idx_shape_1,
+    idx_shape_2,
+    idx_shape_3,
+    idx_shape_4,
+    src_shape_0,
+    src_shape_1,
+    src_shape_2,
+    src_shape_3,
+    src_shape_4,
+    idx_stride_0,
+    idx_stride_1,
+    idx_stride_2,
+    idx_stride_3,
+    idx_stride_4,
+    out_shape_0,
+    out_shape_1,
+    out_shape_2,
+    out_shape_3,
+    out_shape_4,
+    out_stride_0,
+    out_stride_1,
+    out_stride_2,
+    out_stride_3,
+    out_stride_4,
+    BLOCK: tl.constexpr,
+):
+    """Assign one program to each output and reduce matching source values."""
+    pid = tl.program_id(axis=0).to(tl.int64)
+    in_bounds = pid < out_numel
+
+    remaining = pid
+    coord0 = remaining // (out_shape_1 * out_shape_2 * out_shape_3 * out_shape_4)
+    remaining %= out_shape_1 * out_shape_2 * out_shape_3 * out_shape_4
+    coord1 = remaining // (out_shape_2 * out_shape_3 * out_shape_4)
+    remaining %= out_shape_2 * out_shape_3 * out_shape_4
+    coord2 = remaining // (out_shape_3 * out_shape_4)
+    remaining %= out_shape_3 * out_shape_4
+    coord3 = remaining // out_shape_4
+    coord4 = remaining % out_shape_4
+
+    out_offset = (
+        coord0 * out_stride_0
+        + coord1 * out_stride_1
+        + coord2 * out_stride_2
+        + coord3 * out_stride_3
+        + coord4 * out_stride_4
+    )
+    idx_full_offset = (
+        coord0 * idx_stride_0
+        + coord1 * idx_stride_1
+        + coord2 * idx_stride_2
+        + coord3 * idx_stride_3
+        + coord4 * idx_stride_4
+    )
+    src_full_offset = (
+        coord0 * src_stride_0
+        + coord1 * src_stride_1
+        + coord2 * src_stride_2
+        + coord3 * src_stride_3
+        + coord4 * src_stride_4
+    )
+
+    if DIM == 0:
+        target = coord0
+        idx_base = idx_full_offset - coord0 * idx_stride_0
+        src_base = src_full_offset - coord0 * src_stride_0
+        idx_scan_stride = idx_stride_0
+        src_scan_stride = src_stride_0
+        valid_other = (
+            (coord1 < idx_shape_1)
+            & (coord2 < idx_shape_2)
+            & (coord3 < idx_shape_3)
+            & (coord4 < idx_shape_4)
+            & (coord1 < src_shape_1)
+            & (coord2 < src_shape_2)
+            & (coord3 < src_shape_3)
+            & (coord4 < src_shape_4)
+        )
+    elif DIM == 1:
+        target = coord1
+        idx_base = idx_full_offset - coord1 * idx_stride_1
+        src_base = src_full_offset - coord1 * src_stride_1
+        idx_scan_stride = idx_stride_1
+        src_scan_stride = src_stride_1
+        valid_other = (
+            (coord0 < idx_shape_0)
+            & (coord2 < idx_shape_2)
+            & (coord3 < idx_shape_3)
+            & (coord4 < idx_shape_4)
+            & (coord0 < src_shape_0)
+            & (coord2 < src_shape_2)
+            & (coord3 < src_shape_3)
+            & (coord4 < src_shape_4)
+        )
+    elif DIM == 2:
+        target = coord2
+        idx_base = idx_full_offset - coord2 * idx_stride_2
+        src_base = src_full_offset - coord2 * src_stride_2
+        idx_scan_stride = idx_stride_2
+        src_scan_stride = src_stride_2
+        valid_other = (
+            (coord0 < idx_shape_0)
+            & (coord1 < idx_shape_1)
+            & (coord3 < idx_shape_3)
+            & (coord4 < idx_shape_4)
+            & (coord0 < src_shape_0)
+            & (coord1 < src_shape_1)
+            & (coord3 < src_shape_3)
+            & (coord4 < src_shape_4)
+        )
+    elif DIM == 3:
+        target = coord3
+        idx_base = idx_full_offset - coord3 * idx_stride_3
+        src_base = src_full_offset - coord3 * src_stride_3
+        idx_scan_stride = idx_stride_3
+        src_scan_stride = src_stride_3
+        valid_other = (
+            (coord0 < idx_shape_0)
+            & (coord1 < idx_shape_1)
+            & (coord2 < idx_shape_2)
+            & (coord4 < idx_shape_4)
+            & (coord0 < src_shape_0)
+            & (coord1 < src_shape_1)
+            & (coord2 < src_shape_2)
+            & (coord4 < src_shape_4)
+        )
+    else:
+        target = coord4
+        idx_base = idx_full_offset - coord4 * idx_stride_4
+        src_base = src_full_offset - coord4 * src_stride_4
+        idx_scan_stride = idx_stride_4
+        src_scan_stride = src_stride_4
+        valid_other = (
+            (coord0 < idx_shape_0)
+            & (coord1 < idx_shape_1)
+            & (coord2 < idx_shape_2)
+            & (coord3 < idx_shape_3)
+            & (coord0 < src_shape_0)
+            & (coord1 < src_shape_1)
+            & (coord2 < src_shape_2)
+            & (coord3 < src_shape_3)
+        )
+
+    lanes = tl.arange(0, BLOCK)
+    if MATERIALIZE_PRODUCT:
+        # Some Ascend runtimes can replay a program. Writing the same factor
+        # is idempotent, while updating the destination would apply it again.
+        acc = 1.0
+    else:
+        acc = tl.load(out_ptr + out_offset, mask=in_bounds, other=1.0).to(tl.float32)
+    has_contribution = False
+
+    for start in range(0, scan_shape, BLOCK):
+        scan = start + lanes
+        valid = in_bounds & valid_other & (scan < scan_shape)
+        index_value = tl.load(
+            index_ptr + idx_base + scan * idx_scan_stride,
+            mask=valid,
+            other=-1,
+        ).to(tl.int64)
+        match = valid & (index_value == target)
+        src_value = tl.load(
+            src_ptr + src_base + scan * src_scan_stride,
+            mask=valid,
+            other=1.0,
+        ).to(tl.float32)
+        factors = tl.where(match, src_value, 1.0)
+        acc *= tl.reduce(factors, axis=0, combine_fn=_multiply)
+        has_contribution |= tl.sum(match.to(tl.int32)) > 0
+
+    tl.store(out_ptr + out_offset, acc, mask=in_bounds)
+    if USE_MASK:
+        tl.store(
+            mask_ptr + out_offset,
+            has_contribution.to(tl.int32),
+            mask=in_bounds,
+        )
+
+
+def _scatter_reduce_prod_scan(
+    inp,
+    dim,
+    index,
+    src,
+    include_self,
+    *,
+    materialize_product=False,
+):
+    if dim < -inp.ndim or dim >= inp.ndim:
+        raise IndexError(
+            "Dimension out of range (expected to be in range of "
+            f"[{-inp.ndim}, {inp.ndim - 1}], but got {dim})"
+        )
+    dim %= inp.ndim
+    padded_dim = dim + (5 - inp.ndim)
+
+    inp_f32 = inp.to(torch.float32).contiguous()
+    if index.numel() == 0:
+        return inp_f32.to(inp.dtype).clone()
+
+    if materialize_product or not include_self:
+        kernel_out = torch.ones_like(inp_f32)
+    else:
+        kernel_out = inp_f32.clone()
+
+    src = src.contiguous()
+    index = index.contiguous()
+    idx_shapes = [int(value) for value in _pad5(list(index.shape), 1)]
+    src_shapes = [int(value) for value in _pad5(list(src.shape), 1)]
+    out_shapes = [int(value) for value in _pad5(list(kernel_out.shape), 1)]
+    src_strides = [int(value) for value in _pad5(list(src.stride()), 0)]
+    idx_strides = [int(value) for value in _pad5(list(index.stride()), 0)]
+    out_strides = [int(value) for value in _pad5(list(kernel_out.stride()), 0)]
+
+    use_mask = not include_self
+    reduced_mask = torch.zeros(kernel_out.shape, dtype=torch.int32, device=inp.device)
+    dummy_mask = torch.empty(1, dtype=torch.int32, device=inp.device)
+    mask_ptr = reduced_mask if use_mask else dummy_mask
+
+    with torch_device_fn.device(inp.device):
+        scatter_reduce_prod_scan_kernel[(kernel_out.numel(),)](
+            index,
+            src,
+            kernel_out,
+            mask_ptr,
+            kernel_out.numel(),
+            padded_dim,
+            use_mask,
+            materialize_product,
+            index.size(dim),
+            src_strides[0],
+            src_strides[1],
+            src_strides[2],
+            src_strides[3],
+            src_strides[4],
+            idx_shapes[0],
+            idx_shapes[1],
+            idx_shapes[2],
+            idx_shapes[3],
+            idx_shapes[4],
+            src_shapes[0],
+            src_shapes[1],
+            src_shapes[2],
+            src_shapes[3],
+            src_shapes[4],
+            idx_strides[0],
+            idx_strides[1],
+            idx_strides[2],
+            idx_strides[3],
+            idx_strides[4],
+            out_shapes[0],
+            out_shapes[1],
+            out_shapes[2],
+            out_shapes[3],
+            out_shapes[4],
+            out_strides[0],
+            out_strides[1],
+            out_strides[2],
+            out_strides[3],
+            out_strides[4],
+        )
+
+    if materialize_product and include_self:
+        out = inp_f32 * kernel_out
+    elif use_mask:
+        out = torch.where(reduced_mask == 0, inp_f32, kernel_out)
+    else:
+        out = kernel_out
+    return out.to(inp.dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -181,18 +482,19 @@ def scatter_reduce_prod_2d_kernel(
 
         src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
 
-        # CAS loop for product
+        # CAS on the raw float32 bit pattern is portable across Triton backends.
         stop = tl.where(mask, 0, 1).to(tl.int1)
         block_stop = False
+        out_ptr_i32 = (out_ptr + out_offsets).to(
+            tl.pointer_type(tl.int32, 1), bitcast=True
+        )
         while not block_stop:
-            cur_val = tl.load(out_ptr + out_offsets, mask=mask, other=0.0)
+            cur_bits = tl.load(out_ptr_i32, mask=mask, other=0)
+            cur_val = cur_bits.to(tl.float32, bitcast=True)
             new_val = tl.where(stop, cur_val, cur_val * src_val)
-            is_nan = new_val != new_val
-            new_val = tl.where(is_nan, src_val, new_val)
-            cas_res = tl.atomic_cas(
-                out_ptr + out_offsets, cur_val, new_val, sem="relaxed"
-            )
-            stop |= (cur_val == cas_res) | is_nan
+            new_bits = new_val.to(tl.int32, bitcast=True)
+            cas_res = tl.atomic_cas(out_ptr_i32, cur_bits, new_bits, sem="acq_rel")
+            stop |= cur_bits == cas_res
             block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
 
         if USE_MASK:
@@ -559,21 +861,20 @@ def scatter_reduce_prod_kernel(
 
         src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
 
-        # CAS loop for product. NaN/Inf guard: if cur_val is NaN, mark as done
-        # to prevent infinite spin (NaN != NaN causes CAS to always fail).
+        # CAS on bits preserves NaNs and avoids floating-point CAS differences
+        # between Triton backends.
         stop = tl.where(mask, 0, 1).to(tl.int1)
         block_stop = False
+        out_ptr_i32 = (out_ptr + out_offsets).to(
+            tl.pointer_type(tl.int32, 1), bitcast=True
+        )
         while not block_stop:
-            cur_val = tl.load(out_ptr + out_offsets, mask=mask, other=0.0)
+            cur_bits = tl.load(out_ptr_i32, mask=mask, other=0)
+            cur_val = cur_bits.to(tl.float32, bitcast=True)
             new_val = tl.where(stop, cur_val, cur_val * src_val)
-            # Detect NaN: if new_val != new_val (NaN check), use src_val directly
-            is_nan = new_val != new_val
-            new_val = tl.where(is_nan, src_val, new_val)
-            cas_res = tl.atomic_cas(
-                out_ptr + out_offsets, cur_val, new_val, sem="relaxed"
-            )
-            # Mark done if CAS succeeded OR if value is NaN (can't recover)
-            stop |= (cur_val == cas_res) | is_nan
+            new_bits = new_val.to(tl.int32, bitcast=True)
+            cas_res = tl.atomic_cas(out_ptr_i32, cur_bits, new_bits, sem="acq_rel")
+            stop |= cur_bits == cas_res
             block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
 
         if USE_MASK:
@@ -881,6 +1182,11 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
     ), f"Unsupported reduce: {reduce}"
     assert inp.ndim <= 5, f"scatter_reduce supports up to 5D tensors, got {inp.ndim}D"
 
+    if dim < -inp.ndim or dim >= inp.ndim:
+        raise IndexError(
+            "Dimension out of range (expected to be in range of "
+            f"[{-inp.ndim}, {inp.ndim - 1}], but got {dim})"
+        )
     dim = dim % inp.ndim
     padded_dim = dim + (5 - inp.ndim)
 
@@ -901,12 +1207,22 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
         elif reduce == "prod":
             out = torch.ones_like(inp_f32)
         elif reduce == "amax":
-            out = torch.full_like(inp_f32, float("-inf"))
+            out = torch.full(
+                inp_f32.shape,
+                float("-inf"),
+                dtype=inp_f32.dtype,
+                device=inp_f32.device,
+            )
         elif reduce == "amin":
-            out = torch.full_like(inp_f32, float("inf"))
+            out = torch.full(
+                inp_f32.shape,
+                float("inf"),
+                dtype=inp_f32.dtype,
+                device=inp_f32.device,
+            )
 
     if N == 0:
-        return out.to(inp.dtype) if not include_self else inp_f32.to(inp.dtype)
+        return inp_f32.to(inp.dtype).clone()
 
     use_mask = not include_self
     if use_mask:
@@ -1175,6 +1491,10 @@ def scatter_reduce_out(inp, dim, index, src, reduce, *, include_self=True, out=N
     """Out-variant of scatter_reduce. Writes result to out tensor if provided."""
     logger.debug("GEMS SCATTER_REDUCE_TWO_OUT")
 
+    if out is not None and out.dtype != inp.dtype:
+        raise RuntimeError(
+            f"Expected out tensor to have dtype {inp.dtype}, but got {out.dtype} instead"
+        )
     result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     if out is not None:
         out.copy_(result)
