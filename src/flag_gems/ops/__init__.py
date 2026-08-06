@@ -35,6 +35,7 @@ from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
 )
 from flag_gems.ops._euclidean_dist import _euclidean_dist
+from flag_gems.ops._flash_attention_forward import _flash_attention_forward
 from flag_gems.ops._functional_sym_constrain_range import (
     _functional_sym_constrain_range,
 )
@@ -731,6 +732,7 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
     "_euclidean_dist",
+    "_flash_attention_forward",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adam",

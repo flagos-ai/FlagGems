@@ -96,7 +96,7 @@ _FULL_CONFIG = (
     ),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_backward", flash_attention_backward),
-    ("_flash_attention_forward", flash_attention_forward),
+    ("_flash_attention_forward", _flash_attention_forward),
     (
         "_functional_sym_constrain_range",
         _functional_sym_constrain_range,

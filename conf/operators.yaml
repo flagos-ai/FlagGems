@@ -3249,9 +3249,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.4'
-  - id: flash_attention_forward
+  - id: _flash_attention_forward
+    description: Run the canonical FlashAttention forward operator.
     for:
       - _flash_attention_forward
+    labels:
+      - aten
+      - NoCPU
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: flash_attention_forward
     labels:
       - aten
       - NoCPU
