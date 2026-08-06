@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -108,6 +110,10 @@ def _input_fn_dtype(b, m, n, k, dtype, device, b_column_major):
     utils.SkipVersion("torch", "<2.8"),
     reason="The operator addmm.dtype was added starting from 2.8.0",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend native torch.addmm benchmark does not support out_dtype.",
+)
 def test_addmm_dtype(monkeypatch):
     bench = base.BlasBenchmark(
         op_name="addmm_dtype",
@@ -135,6 +141,10 @@ def _input_fn_dtype_out(b, m, n, k, dtype, device, b_column_major):
 @pytest.mark.skipif(
     utils.SkipVersion("torch", "<2.8"),
     reason="The operator addmm.dtype_out was added starting from 2.8.0",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend native torch.addmm benchmark does not support out_dtype.",
 )
 def test_addmm_dtype_out(monkeypatch):
     bench = base.BlasBenchmark(
