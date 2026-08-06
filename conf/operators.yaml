@@ -1103,6 +1103,18 @@ ops:
       - BLAS
     stages:
       - stable: '4.1'
+  - id: baddbmm_
+    description: |
+      Performs batched matrix-matrix product with accumulation in-place.
+    for:
+      - baddbmm_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: baddbmm_out
     description: This is a variant of `baddbmm()`.
     for:
