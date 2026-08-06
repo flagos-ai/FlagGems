@@ -5635,6 +5635,19 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: pad_packed_sequence
+    description: |
+      Pads a packed variable-length sequence back into a dense tensor, the
+      inverse of packing a padded batch.
+    for:
+      - _pad_packed_sequence
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: unsafe_chunk
     description: Split a tensor into a specified number of chunks along a given dimension.
     for:
