@@ -847,6 +847,7 @@ _FULL_CONFIG = (
     ("special_erfinv", special_erfinv),
     ("special_erfinv.out", special_erfinv_out),
     ("special_erfinv_", special_erfinv_),
+    ("special_expit", special_expit),
     ("special_gammainc", special_gammainc),
     ("special_gammaln", special_gammaln),
     ("special_gammaln.out", special_gammaln_out),
