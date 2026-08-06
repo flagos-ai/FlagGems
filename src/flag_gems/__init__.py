@@ -643,7 +643,7 @@ _FULL_CONFIG = (
     ("native_dropout_backward", dropout_backward),
     ("native_group_norm", group_norm),
     ("native_group_norm_backward", group_norm_backward),
-    ("native_layer_norm", layer_norm),
+    ("native_layer_norm", native_layer_norm),
     ("native_layer_norm_backward", layer_norm_backward),
     ("ne.Scalar", ne_scalar),
     ("ne.Tensor", ne),

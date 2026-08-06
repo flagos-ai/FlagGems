@@ -4765,8 +4765,6 @@ ops:
       - alpha: '5.4'
   - id: layer_norm
     description: An internal IR for applying Layer Normalization for last certain number of dimensions.
-    for:
-      - native_layer_norm
     labels:
       - aten
     kind:
@@ -6497,6 +6495,17 @@ ops:
       inverse standard deviation, along with updated running estimates.
     for:
       - _native_batch_norm_legit_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: native_layer_norm
+    description: Apply native layer normalization using the existing implementation.
+    for:
+      - native_layer_norm
     labels:
       - aten
       - KernelGen
