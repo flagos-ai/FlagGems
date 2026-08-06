@@ -4357,6 +4357,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: hypot_
+    description: |
+      In-place version of hypot. Given the legs of a right triangle, writes its
+      hypotenuse into `self`. The shape of `other` must be broadcastable to `self`.
+    for:
+      - hypot_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: i0
     description: |
       Computes the modified Bessel function of the first kind of order zero element-wise for a given input tensor.

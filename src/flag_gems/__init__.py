@@ -486,6 +486,7 @@ _FULL_CONFIG = (
     ("histc", histc),
     ("hstack", hstack),
     ("hypot", hypot),
+    ("hypot_", hypot_),
     ("i0", i0),
     ("i0.out", i0_out),
     ("i0_", i0_),
