@@ -122,6 +122,20 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: adaptive_avg_pool2d_backward
+    description: |
+      Computes the gradient of two-dimensional adaptive average pooling with
+      respect to the input tensor.
+    for:
+      - _adaptive_avg_pool2d_backward
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: adaptive_max_pool3d_backward
     description: |
       Computes the gradient for adaptive max pooling 3D.
@@ -679,12 +693,34 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: arccosh
+    description: Returns a new tensor with the inverse hyperbolic cosine of the elements of `input`.
+    for:
+      - arccosh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arccosh_
     description: |
       Computes the element-wise inverse hyperbolic cosine of a given input tensor.
       This is an in-place version.
     for:
       - arccosh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: arccosh_out
+    description: A variant of `arccosh` that allows the output to be assigned to the `out` tensor.
+    for:
+      - arccosh.out
     labels:
       - aten
       - KernelGen
@@ -1663,6 +1699,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: cholesky_inverse
+    description: Compute inverse of symmetric positive-definite matrix from Cholesky factor.
+    for:
+      - cholesky_inverse
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: chunk
     description: Split a tensor into a specific number of chunks along a given dimension.
     for:
@@ -2216,6 +2263,20 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cudnn_attention_forward
+    description: |
+      Forward kernel for cuDNN attention, computing scaled dot-product
+      attention outputs and log-sum-exp statistics.  Uses a Triton
+      FlashAttention-2 kernel in BHSD layout.
+    for:
+      - _cudnn_attention_forward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.5'
   - id: cudnn_batch_norm_backward
     description: Triton kernel implementation for cudnn_batch_norm_backward.
     for:
@@ -3239,6 +3300,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: fix_
+    description: |
+      In-place version of fix. Truncates each element toward zero
+      (floor for non-negative values, ceil for negative values).
+      Integer tensors are left unchanged.
+    for:
+      - fix_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: flatten
     description: Flatten a contiguous range of dimensions into a single dimension (view operation).
     for:
@@ -3262,9 +3337,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.4'
-  - id: flash_attention_forward
+  - id: _flash_attention_forward
+    description: Run the canonical FlashAttention forward operator.
     for:
       - _flash_attention_forward
+    labels:
+      - aten
+      - NoCPU
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: flash_attention_forward
     labels:
       - aten
       - NoCPU
@@ -3728,6 +3813,17 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
+  - id: fused_rms_norm
+    description: Fused RMS normalization returning the normalized output and inverse RMS.
+    for:
+      - _fused_rms_norm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: fused_deepseek_v4_qnorm_rope_kv_rope_insert
     description: |
       Horizontally-fused DeepseekV4-MLA BF16 variant.
@@ -4202,6 +4298,36 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: hardshrink
+    description: |
+      Applies the hard shrinkage function element-wise: returns x if |x| > lambd, else 0.
+    for:
+      - hardshrink
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: hardshrink_out
+    description: |
+      Out-variant of hardshrink. Writes the element-wise result into the `out` tensor.
+    for:
+      - hardshrink.out
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: hardsigmoid
     description: |
       An activation function that provides a piecewise linear approximation of the standard sigmoid function,
@@ -4233,6 +4359,21 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: hardsigmoid_
+    description: |
+      An in-place variant of `hardsigmoid`, an activation function that provides a piecewise
+      linear approximation of the standard sigmoid function, mapping inputs to a range between 0 and 1.
+    for:
+      - hardsigmoid_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+      - Activation
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: hardswish_
     description: |
       Applies the Hard Swish activation function, commonly used in models like MobileNetV3
@@ -4293,6 +4434,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: heaviside_
+    description: |
+      In-place version of heaviside. For each element: 0 if x < 0, 1 if x > 0,
+      and the corresponding `values` element if x == 0.
+    for:
+      - heaviside_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: histc
     description: |
       Computes the histogram of a tensor, binning each element into equal-width bins.
@@ -4317,6 +4471,33 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: huber_loss
+    description: |
+      Computes the Huber loss between input and target. Quadratic for small errors
+      (|x - y| <= delta) and linear for large errors. Supports reduction none/mean/sum.
+    for:
+      - huber_loss
+    labels:
+      - aten
+      - KernelGen
+      - Loss
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: huber_loss_out
+    description: |
+      Out-variant of huber_loss. Writes the computed loss into the `out` tensor.
+    for:
+      - huber_loss.out
+    labels:
+      - aten
+      - KernelGen
+      - Loss
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: hypot
     description: |
       Given the legs of a right triangle, return its hypotenuse.
@@ -4346,6 +4527,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: hypot_
+    description: |
+      In-place version of hypot. Given the legs of a right triangle, writes its
+      hypotenuse into `self`. The shape of `other` must be broadcastable to `self`.
+    for:
+      - hypot_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: i0
     description: |
       Computes the modified Bessel function of the first kind of order zero element-wise for a given input tensor.
@@ -4778,8 +4972,6 @@ ops:
       - alpha: '5.4'
   - id: layer_norm
     description: An internal IR for applying Layer Normalization for last certain number of dimensions.
-    for:
-      - native_layer_norm
     labels:
       - aten
     kind:
@@ -5054,6 +5246,19 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: lift_fresh
+    description: |
+      Returns a fresh tensor holding the same values as the input, used to
+      lift constants into a compiled graph.
+    for:
+      - lift_fresh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: lift_fresh_copy
     description: |
       Creates a new, independent copy of a tensor within a compiled graph.
@@ -5241,6 +5446,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: log_
+    description: The in-place version of `log()`. Computes the natural logarithm of each element in the input tensor in-place.
+    for:
+      - log_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.3'
   - id: log10
     description: Returns a new tensor with the logarithm to the base 10 of the elements of `input`.
     for:
@@ -5436,17 +5652,6 @@ ops:
     description: Split a tensor into a specified number of chunks along a given dimension.
     for:
       - unsafe_chunk
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - beta: '5.4'
-  - id: view_as_complex
-    description: View a real tensor with last dim=2 as a complex tensor.
-    for:
-      - view_as_complex
     labels:
       - aten
       - KernelGen
@@ -5986,6 +6191,19 @@ ops:
       - IR
     stages:
       - stable: '4.0'
+  - id: max_pool2d_with_indices_backward
+    description: |
+      The backward version of `max_pool2d_with_indices()`.
+      This is an IR representation rather than a public API and it is for the backward step.
+    for:
+      - max_pool2d_with_indices_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: max_pool3d_backward
     description: The backward version of `max_pool2d_with_indices()`.
     for:
@@ -6510,6 +6728,17 @@ ops:
       inverse standard deviation, along with updated running estimates.
     for:
       - _native_batch_norm_legit_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: native_layer_norm
+    description: Apply native layer normalization using the existing implementation.
+    for:
+      - native_layer_norm
     labels:
       - aten
       - KernelGen
@@ -7475,6 +7704,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: reflection_pad2d_backward
+    description: Computes the gradient of reflection_pad2d with respect to the input tensor.
+    for:
+      - reflection_pad2d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: reflection_pad3d
     description: |
       Pads the input 5D tensor by reflecting the boundary values at both edges
@@ -7718,6 +7958,28 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.4'
+  - id: replication_pad2d
+    description: Pads the edge of a 2D input tensor by repeating the boundary values.
+    for:
+      - replication_pad2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: replication_pad2d_out
+    description: A variant of `replication_pad2d` that assigns the output to the `out` tensor.
+    for:
+      - replication_pad2d.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: replication_pad3d
     description: Pads the edge of a 3D input tensor by repeating the boundary values.
     for:
@@ -7729,6 +7991,19 @@ ops:
     stages:
       - alpha: '5.0'
       - beta: '5.3'
+  - id: replication_pad3d_backward
+    description: |
+      Accumulates output gradients into the clamped input positions used by
+      three-dimensional replication padding.
+    for:
+      - replication_pad3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: reshape_and_cache
     description: Store the key/value token states into the pre-allcated kv_cache buffers of paged attention.
     for:
@@ -8082,6 +8357,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.4'
+  - id: scaled_dot_product_flash_attention
+    description: Run the scaled dot product FlashAttention forward operation.
+    for:
+      - _scaled_dot_product_flash_attention
+    labels:
+      - aten
+      - NoCPU
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: scaled_dot_product_flash_attention_backward
     description: |
       Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
@@ -9672,6 +9959,33 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: take
+    description: |
+      Returns a new tensor with the elements of `input` at the given flat
+      `index`. The input is treated as a flattened 1-D tensor and the result
+      takes the shape of `index`. Negative indices are supported.
+    for:
+      - take
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: take_out
+    description: |
+      Out-variant of take. Writes the gathered elements into the `out` tensor,
+      resizing it to the shape of `index` if needed.
+    for:
+      - take.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: tan
     description: |
       Returns a new tensor with the tangent of the elements in the `input` tensor,
@@ -10504,6 +10818,21 @@ ops:
       - BLAS
     stages:
       - alpha: '5.3'
+  - id: _weight_norm
+    description: |
+      Reparameterizes a module's weight tensor by decoupling its magnitude (g)
+      from its direction (v). It is a hook that compute the actual weight before
+      each forward pass.
+    for:
+      - _weight_norm
+    labels:
+      - aten
+      - fused
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
   - id: weight_norm
     description: |
       Reparameterizes a module's weight tensor by decoupling its magnitude (g)
