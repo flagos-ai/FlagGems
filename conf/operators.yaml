@@ -5911,6 +5911,20 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: lstm_cell
+    description: >-
+      Computes a single LSTM cell forward pass. Takes input, hidden state tuple
+      (h, c), weight matrices (w_ih, w_hh), and optional biases (b_ih, b_hh).
+      Returns new hidden state and cell state.
+    for:
+      - lstm_cell
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: lt
     description: Computes that `input` is less than `other` element-wise.
     for:
