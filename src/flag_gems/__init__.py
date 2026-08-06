@@ -555,6 +555,7 @@ _FULL_CONFIG = (
     ("lift_fresh", lift_fresh),
     ("lift_fresh_copy", lift_fresh_copy),
     ("linalg_cholesky", linalg_cholesky),
+    ("linalg_eigh", linalg_eigh),
     ("linalg_ldl_factor", ldl_factor),
     ("linalg_ldl_factor_ex", ldl_factor_ex),
     ("linalg_lu_factor", linalg_lu_factor),
