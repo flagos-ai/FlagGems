@@ -114,6 +114,7 @@ _FULL_CONFIG = (
     ("_index_put_impl_", _index_put_impl_),
     ("_is_all_true", _is_all_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
+    ("_linalg_eigh", _linalg_eigh),
     ("_linalg_eigvals", _linalg_eigvals),
     ("binary_cross_entropy_backward", binary_cross_entropy_backward),
     ("linalg_svdvals", linalg_svdvals),
