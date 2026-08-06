@@ -5365,6 +5365,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_lu_solve
+    description: |
+      Solves a linear system AX = B given the LU factorization of A with partial pivoting.
+      Performs pivot permutation, forward substitution (L), and backward substitution (U)
+      in a single fused Triton kernel.
+    for:
+      - linalg_lu_solve
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.

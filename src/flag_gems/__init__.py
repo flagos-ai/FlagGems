@@ -561,6 +561,7 @@ _FULL_CONFIG = (
     ("linalg_ldl_factor_ex", ldl_factor_ex),
     ("linalg_lu_factor", linalg_lu_factor),
     ("linalg_lu_factor.out", linalg_lu_factor_out),
+    ("linalg_lu_solve", linalg_lu_solve),
     ("linalg_ldl_solve", linalg_ldl_solve),
     ("linalg_slogdet", linalg_slogdet),
     ("linalg_vector_norm", vector_norm),
