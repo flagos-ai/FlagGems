@@ -5712,6 +5712,20 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: xlogy_
+    description: |
+      Computes x * log(y) element-wise in-place on x.
+    for:
+      - xlogy_.Tensor
+      - xlogy_.Scalar_Other
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: logaddexp
     description: Computes the element-wise logarithm of the sum of the exponentials of two input tensors.
     for:

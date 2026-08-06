@@ -958,6 +958,8 @@ _FULL_CONFIG = (
     ("xlogy.Scalar_Other", xlogy_tensor_scalar),
     ("xlogy.Scalar_Self", xlogy_scalar_tensor),
     ("xlogy.Tensor", xlogy),
+    ("xlogy_.Scalar_Other", xlogy_tensor_scalar_),
+    ("xlogy_.Tensor", xlogy_),
     ("zero", zero),
     ("zero.out", zero_out),
     ("zero_", zero_),

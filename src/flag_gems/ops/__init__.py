@@ -733,6 +733,7 @@ from flag_gems.ops.xlogy import (
     xlogy_tensor_scalar,
     xlogy_tensor_scalar_out,
 )
+from flag_gems.ops.xlogy_ import xlogy_, xlogy_tensor_scalar_
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
@@ -1209,6 +1210,8 @@ __all__ = [
     "xlogy_tensor_scalar_out",
     "xlogy_scalar_tensor",
     "xlogy_scalar_tensor_out",
+    "xlogy_",
+    "xlogy_tensor_scalar_",
     "logical_and",
     "logical_and_",
     "logical_not",
