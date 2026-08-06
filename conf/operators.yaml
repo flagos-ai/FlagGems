@@ -9614,6 +9614,7 @@ ops:
       - special.gammaln.out
     labels:
       - aten
+      - KernelGen
     kind:
       - Math
     stages:
