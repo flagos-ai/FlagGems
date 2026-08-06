@@ -428,6 +428,7 @@ from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_backward,
     max_pool2d_with_indices,
+    max_pool2d_with_indices_backward,
 )
 from flag_gems.ops.max_pool3d_with_indices import (
     max_pool3d_backward,
@@ -1236,6 +1237,7 @@ __all__ = [
     "max_dim",
     "max_pool2d_backward",
     "max_pool2d_with_indices",
+    "max_pool2d_with_indices_backward",
     "max_pool3d_backward",
     "max_pool3d_with_indices",
     "max_unpool2d",

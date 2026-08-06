@@ -6178,6 +6178,19 @@ ops:
       - IR
     stages:
       - stable: '4.0'
+  - id: max_pool2d_with_indices_backward
+    description: |
+      The backward version of `max_pool2d_with_indices()`.
+      This is an IR representation rather than a public API and it is for the backward step.
+    for:
+      - max_pool2d_with_indices_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: max_pool3d_backward
     description: The backward version of `max_pool2d_with_indices()`.
     for:
