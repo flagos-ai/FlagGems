@@ -73,6 +73,9 @@ from flag_gems.ops._scaled_dot_product_flash_attention import (
 from flag_gems.ops._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
+from flag_gems.ops._sparse_coo_tensor_with_dims_and_tensors import (
+    _sparse_coo_tensor_with_dims_and_tensors,
+)
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
 from flag_gems.ops._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
@@ -467,6 +470,7 @@ from flag_gems.ops.native_layer_norm import native_layer_norm
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
+from flag_gems.ops.negative_ import negative_
 from flag_gems.ops.new_full import new_full
 from flag_gems.ops.new_ones import new_ones
 from flag_gems.ops.nextafter import nextafter, nextafter_
@@ -784,6 +788,7 @@ __all__ = [
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_sparse_coo_tensor_with_dims_and_tensors",
     "_sparse_semi_structured_mm",
     "_thnn_fused_lstm_cell",
     "_thnn_fused_lstm_cell_backward_impl",
@@ -854,9 +859,9 @@ __all__ = [
     "arcsinh_",
     "arcsinh_out",
     "arctan",
+    "arctan_",
     "arctan2",
     "arctan2_",
-    "arctan_",
     "arctanh_",
     "argmax",
     "argmin",
@@ -1282,6 +1287,7 @@ __all__ = [
     "neg",
     "neg_",
     "negative",
+    "negative_",
     "new_full",
     "new_ones",
     "nextafter",

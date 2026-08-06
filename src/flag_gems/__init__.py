@@ -164,6 +164,10 @@ _FULL_CONFIG = (
     ("_softmax.out", softmax_out),
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
+    (
+        "_sparse_coo_tensor_with_dims_and_tensors",
+        _sparse_coo_tensor_with_dims_and_tensors,
+    ),
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
     ("_thnn_fused_lstm_cell", _thnn_fused_lstm_cell),
     ("_thnn_fused_lstm_cell_backward_impl", _thnn_fused_lstm_cell_backward_impl),
@@ -671,6 +675,7 @@ _FULL_CONFIG = (
     ("neg", neg),
     ("neg_", neg_),
     ("negative", negative),
+    ("negative_", negative_),
     ("new_full", new_full),
     ("new_ones", new_ones),
     ("nextafter", nextafter),
