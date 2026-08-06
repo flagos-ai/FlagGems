@@ -116,6 +116,7 @@ _FULL_CONFIG = (
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
     ("_linalg_eigvals", _linalg_eigvals),
     ("binary_cross_entropy_backward", binary_cross_entropy_backward),
+    ("grid_sampler_3d_backward", grid_sampler_3d_backward),
     ("linalg_svdvals", linalg_svdvals),
     ("_log_softmax", log_softmax),
     ("_log_softmax.out", log_softmax_out),
