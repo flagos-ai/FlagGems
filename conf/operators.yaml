@@ -5240,6 +5240,17 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
+  - id: linalg_tensorinv
+    description: Triton kernel implementation for linalg_tensorinv.
+    for:
+      - linalg_tensorinv
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linalg_cholesky
     description: |-
       Computes the Cholesky decomposition of a symmetric positive-definite matrix A
