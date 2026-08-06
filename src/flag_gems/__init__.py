@@ -213,6 +213,7 @@ _FULL_CONFIG = (
     ("affine_grid_generator", affine_grid_generator),
     ("alias", alias),
     ("alias_copy", alias_copy),
+    ("alias_copy.out", alias_copy_out),
     ("all", all),
     ("all.dim", all_dim),
     ("all.dims", all_dims),
