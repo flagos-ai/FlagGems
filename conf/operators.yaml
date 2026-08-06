@@ -6567,6 +6567,20 @@ ops:
       - Distribution
     stages:
       - stable: '2.1'
+  - id: multiply
+    description: |
+      Multiplies input by other element-wise (out-of-place alias for mul).
+    for:
+      - multiply
+      - multiply.Scalar
+      - multiply.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: multiply_
     description: In-place multiplication using Triton kernel (alias for mul_). Supports tensor-tensor and tensor-scalar operations.
     for:
