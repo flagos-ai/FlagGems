@@ -59,6 +59,9 @@ from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._native_batch_norm_legit_functional import (
     _native_batch_norm_legit_functional,
 )
+from flag_gems.ops._nested_tensor_from_tensor_list import (
+    _nested_tensor_from_tensor_list,
+)
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
@@ -772,6 +775,7 @@ __all__ = [
     "_make_dep_token",
     "_masked_scale",
     "_native_batch_norm_legit_functional",
+    "_nested_tensor_from_tensor_list",
     "_nested_view_from_buffer_copy",
     "_pdist_backward",
     "_pdist_forward",
