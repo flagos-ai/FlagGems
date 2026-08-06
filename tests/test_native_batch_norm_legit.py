@@ -109,7 +109,7 @@ def test_native_batch_norm_legit(shape, dtype, affine, training):
 @pytest.mark.parametrize("shape", [(16, 3), (8, 16, 32), (4, 8, 16, 16)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])
-def test__native_batch_norm_legit_no_stats(shape, dtype, affine):
+def test_native_batch_norm_legit_no_stats(shape, dtype, affine):
     channels = shape[1]
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     original = utils.to_reference(inp)
