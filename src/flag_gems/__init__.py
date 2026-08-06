@@ -751,6 +751,8 @@ _FULL_CONFIG = (
     ("repeat_interleave.self_int", repeat_interleave_self_int),
     ("replication_pad1d", replication_pad1d),
     ("replication_pad1d.out", replication_pad1d_out),
+    ("replication_pad2d", replication_pad2d),
+    ("replication_pad2d.out", replication_pad2d_out),
     ("replication_pad3d", replication_pad3d),
     ("replication_pad3d_backward", replication_pad3d_backward),
     ("resize", resize),
