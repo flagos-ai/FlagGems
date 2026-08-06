@@ -5635,6 +5635,34 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: special_modified_bessel_i1
+    description: |
+      Computes the modified Bessel function of the first kind of order 1
+      (I_1(x)) for each element of `input`.
+    for:
+      - special_modified_bessel_i1
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_modified_bessel_i1_out
+    description: |
+      A variant of `special_modified_bessel_i1()` with output saved to
+      provided `out`.
+    for:
+      - special_modified_bessel_i1.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: unsafe_chunk
     description: Split a tensor into a specified number of chunks along a given dimension.
     for:
