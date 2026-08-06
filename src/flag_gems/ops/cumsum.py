@@ -59,7 +59,7 @@ def scan_part_sum_kernel(
     mask = offset < n_elements
 
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=0)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())
@@ -94,7 +94,7 @@ def add_base_sum_kernel(
     mask = offset < n_elements
 
     out_ptrs = out + offset
-    out_vals = tl.load(out_ptrs, mask=mask)
+    out_vals = tl.load(out_ptrs, mask=mask, other=0)
 
     if pid > 0:
         partial_sum_ptrs = partial_sum + pid - 1
@@ -129,7 +129,7 @@ def scan_part_sum_abc_kernel(
 
     mask = b_idx < B
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=0)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())
@@ -175,7 +175,7 @@ def add_base_sum_abc_kernel(
 
     mask = b_idx < B
     out_ptrs = out + offset
-    out_vals = tl.load(out_ptrs, mask=mask)
+    out_vals = tl.load(out_ptrs, mask=mask, other=0)
 
     if pid_b > 0:
         partial_sum_ptrs = partial_sum + last_part_offset
@@ -329,7 +329,9 @@ def reduce_then_scan_block_sum_kernel_row(
     acc = tl.zeros((TILE_SIZE,), dtype=acc_dtype)
     for start in range(block_offset, block_end, TILE_SIZE):
         offsets = start + tl.arange(0, TILE_SIZE)
-        x = tl.load(in_ptr + pid_m * N + offsets, mask=offsets < N).to(acc_dtype)
+        x = tl.load(in_ptr + pid_m * N + offsets, mask=offsets < N, other=0).to(
+            acc_dtype
+        )
         acc += x
     block_sum = tl.sum(acc, 0)
     tl.store(
@@ -371,7 +373,7 @@ def reduce_then_scan_block_scan_kernel_row(
     for start in range(block_offset, block_end, TILE_SIZE):
         offsets = start + tl.arange(0, TILE_SIZE)
         mask = offsets < N
-        x = tl.load(in_ptr + pid_m * N + offsets, mask=mask).to(acc_dtype)
+        x = tl.load(in_ptr + pid_m * N + offsets, mask=mask, other=0).to(acc_dtype)
         tile_scan = prefix + tl.cumsum(x, 0)
         prefix += tl.sum(x, 0)
         tl.store(
