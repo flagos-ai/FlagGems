@@ -6755,6 +6755,20 @@ ops:
       - Math
     stages:
       - stable: '2.0'
+  - id: ne_
+    description: |
+      Computes element-wise not-equal comparison in-place.
+    for:
+      - ne_.Tensor
+      - ne_.Scalar
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: neg
     description: Returns a new tensor with the negative of the elements of `input`.
     for:

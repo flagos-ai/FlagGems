@@ -668,6 +668,8 @@ _FULL_CONFIG = (
     ("native_layer_norm_backward", layer_norm_backward),
     ("ne.Scalar", ne_scalar),
     ("ne.Tensor", ne),
+    ("ne_.Scalar", ne_scalar_),
+    ("ne_.Tensor", ne_),
     ("neg", neg),
     ("neg_", neg_),
     ("negative", negative),
