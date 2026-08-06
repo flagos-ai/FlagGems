@@ -699,6 +699,8 @@ _FULL_CONFIG = (
     ("normed_cumsum", normed_cumsum),
     ("not_equal.Scalar", not_equal_scalar),
     ("not_equal.Tensor", not_equal),
+    ("ne_.Scalar", not_equal_scalar_),
+    ("ne_.Tensor", not_equal_),
     ("one_hot", one_hot),
     ("ones", ones),
     ("ones_like", ones_like),
