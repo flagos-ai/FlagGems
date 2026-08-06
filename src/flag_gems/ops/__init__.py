@@ -15,13 +15,8 @@
 from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops.__irshift__ import __irshift__
 from flag_gems.ops.__lshift__ import __lshift__
-from flag_gems.ops.__xor__ import (  # noqa: F401
-    xor,
-    xor_,
-    xor_scalar,
-    xor_scalar_,
-    xor_scalar_tensor,
-)
+from flag_gems.ops.__xor__ import xor_scalar  # noqa: F401
+from flag_gems.ops.__xor__ import xor, xor_, xor_scalar_, xor_scalar_tensor
 from flag_gems.ops._add_relu import _add_relu
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
@@ -468,6 +463,7 @@ from flag_gems.ops.not_equal import not_equal, not_equal_scalar
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
+from flag_gems.ops.ormqr import ormqr
 from flag_gems.ops.pad import constant_pad_nd, pad
 from flag_gems.ops.pdist import pdist
 from flag_gems.ops.per_token_group_quant_fp8 import (
@@ -1261,6 +1257,7 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
+    "ormqr",
     "pad",
     "pdist",
     "per_token_group_quant_fp8",

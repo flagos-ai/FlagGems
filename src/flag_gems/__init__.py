@@ -681,6 +681,7 @@ _FULL_CONFIG = (
     ("one_hot", one_hot),
     ("ones", ones),
     ("ones_like", ones_like),
+    ("ormqr", ormqr),
     ("pad", pad),
     ("pdist", pdist),
     ("permute_copy", permute_copy),
