@@ -8088,6 +8088,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.4'
+  - id: scaled_dot_product_flash_attention
+    description: Run the scaled dot product FlashAttention forward operation.
+    for:
+      - _scaled_dot_product_flash_attention
+    labels:
+      - aten
+      - NoCPU
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: scaled_dot_product_flash_attention_backward
     description: |
       Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
