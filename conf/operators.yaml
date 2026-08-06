@@ -4421,6 +4421,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: heaviside
+    description: |
+      The heaviside step function. Computes 0 where input < 0, 1 where input > 0,
+      and values where input == 0. Supports tensor values.
+    for:
+      - heaviside
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: heaviside_
     description: |
       In-place version of heaviside. For each element: 0 if x < 0, 1 if x > 0,
