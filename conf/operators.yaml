@@ -4285,6 +4285,36 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: hardshrink
+    description: |
+      Applies the hard shrinkage function element-wise: returns x if |x| > lambd, else 0.
+    for:
+      - hardshrink
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: hardshrink_out
+    description: |
+      Out-variant of hardshrink. Writes the element-wise result into the `out` tensor.
+    for:
+      - hardshrink.out
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: hardsigmoid
     description: |
       An activation function that provides a piecewise linear approximation of the standard sigmoid function,
