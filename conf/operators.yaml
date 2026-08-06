@@ -1650,6 +1650,19 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: cholesky_solve_helper
+    description: |
+      Solves a positive-definite linear system using its lower- or upper-triangular
+      Cholesky factor.
+    for:
+      - _cholesky_solve_helper
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: chunk
     description: Split a tensor into a specific number of chunks along a given dimension.
     for:
