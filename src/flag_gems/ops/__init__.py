@@ -22,6 +22,7 @@ from flag_gems.ops.__xor__ import (  # noqa: F401
     xor_scalar_,
     xor_scalar_tensor,
 )
+from flag_gems.ops._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from flag_gems.ops._add_relu import _add_relu
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
@@ -730,6 +731,7 @@ __all__ = [
     "__ilshift__",
     "__irshift__",
     "__lshift__",
+    "_adaptive_avg_pool2d_backward",
     "_add_relu",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",

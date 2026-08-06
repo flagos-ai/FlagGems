@@ -122,6 +122,20 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: adaptive_avg_pool2d_backward
+    description: |
+      Computes the gradient of two-dimensional adaptive average pooling with
+      respect to the input tensor.
+    for:
+      - _adaptive_avg_pool2d_backward
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: adaptive_max_pool3d_backward
     description: |
       Computes the gradient for adaptive max pooling 3D.
