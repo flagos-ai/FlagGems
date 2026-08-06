@@ -277,6 +277,7 @@ def test_no_tle_fallback(n, upper, dtype, monkeypatch):
     ref_B = utils.to_reference(B)
     ref_out = torch.linalg.solve_triangular(ref_A, ref_B, upper=upper)
 
-    res_out = solve_mod.linalg_solve_triangular(A, B, upper=upper)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.linalg_solve_triangular(A, B, upper=upper)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
