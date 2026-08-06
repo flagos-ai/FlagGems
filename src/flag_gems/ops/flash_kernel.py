@@ -1120,6 +1120,8 @@ def flash_fwd_splitkv_combine_kernel(
     out_s_stride,
     out_h_stride,
     n_splits,
+    seqlen_q,
+    num_heads,
     BLOCK_M: tl.constexpr,
     BLOCK_K: tl.constexpr,
     q_total,
@@ -1129,7 +1131,6 @@ def flash_fwd_splitkv_combine_kernel(
     lse_splits_ptr += pid * BLOCK_M
     lse_ptr += pid * BLOCK_M
     out_splits_ptr += pid * BLOCK_M * head_size
-    out_ptr += pid * BLOCK_M * head_size
 
     # Subtracting maximum from each of the split lse's for better numerical stability
     lse_split_offset = (
@@ -1170,8 +1171,16 @@ def flash_fwd_splitkv_combine_kernel(
     out = tl.sum(Zi_Z[:, :, None] * out_splits, 1)
     out = out.to(out_ptr.type.element_ty)
 
-    # Write back output
-    out_offset = tl.arange(0, BLOCK_M)[:, None] * out_s_stride + tl.arange(0, BLOCK_K)
+    # Write back output. Rows are flat (batch, head, seq) indices, while out may
+    # carry any stride layout (e.g. a contiguous (batch, seq, heads, head_size)
+    # tensor, or the (batch, heads, seq, head_size)-strided view SDPA passes), so
+    # recover the coordinates and address out with its own strides.
+    row_idx = pid * BLOCK_M + tl.arange(0, BLOCK_M)
+    s_idx = row_idx % seqlen_q
+    h_idx = row_idx // seqlen_q % num_heads
+    b_idx = row_idx // (seqlen_q * num_heads)
+    out_row_offset = b_idx * out_b_stride + h_idx * out_h_stride + s_idx * out_s_stride
+    out_offset = out_row_offset[:, None] + tl.arange(0, BLOCK_K)
     dmask = tl.arange(0, BLOCK_K) < head_size
     tl.store(out_ptr + out_offset, out, mask=out_mask[:, None] & dmask[None, :])
 
