@@ -308,6 +308,7 @@ _FULL_CONFIG = (
     ("celu", celu),
     ("celu_", celu_),
     ("channel_shuffle", channel_shuffle),
+    ("cholesky_inverse", cholesky_inverse),
     ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
     ("cholesky_solve.out", cholesky_solve_out, None, (CONJUGATE_DISPATCH_KEY,)),
     ("chunk", chunk),

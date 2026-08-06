@@ -1686,6 +1686,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: cholesky_inverse
+    description: Compute inverse of symmetric positive-definite matrix from Cholesky factor.
+    for:
+      - cholesky_inverse
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: chunk
     description: Split a tensor into a specific number of chunks along a given dimension.
     for:
