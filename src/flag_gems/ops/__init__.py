@@ -452,6 +452,7 @@ from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply_ import multiply_
 from flag_gems.ops.mv import mv
+from flag_gems.ops.mvlgamma import mvlgamma
 from flag_gems.ops.mvlgamma_ import mvlgamma_
 from flag_gems.ops.nan_to_num import nan_to_num
 from flag_gems.ops.nanmedian import (
@@ -1266,6 +1267,7 @@ __all__ = [
     "multinomial",
     "multiply_",
     "mv",
+    "mvlgamma",
     "mvlgamma_",
     "nan_to_num",
     "nanmedian",

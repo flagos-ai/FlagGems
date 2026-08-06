@@ -648,6 +648,7 @@ _FULL_CONFIG = (
     ("multiply_.Scalar", multiply_),
     ("multiply_.Tensor", multiply_),
     ("mv", mv),
+    ("mvlgamma", mvlgamma),
     ("mvlgamma_", mvlgamma_),
     ("nan_to_num", nan_to_num),
     ("nanmedian", nanmedian),

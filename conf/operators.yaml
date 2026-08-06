@@ -6590,6 +6590,18 @@ ops:
       - BLAS
     stages:
       - stable: '2.0'
+  - id: mvlgamma
+    description: |
+      Computes the multivariate log-gamma function element-wise (out-of-place).
+    for:
+      - mvlgamma
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: mvlgamma_
     description: Computes the multivariate log-gamma function in-place for each element of the input tensor.
     for:
