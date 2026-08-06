@@ -18,6 +18,16 @@ import torch
 from . import base, consts
 
 
+@pytest.mark.special_exp2
+def test_special_exp2():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="special_exp2",
+        torch_op=torch.special.exp2,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.exp2
 def test_exp2():
     bench = base.UnaryPointwiseBenchmark(
