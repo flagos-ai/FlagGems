@@ -12,13 +12,18 @@ if QUICK_MODE:
     # Reduced shapes for CI quick mode
     MNK_SHAPES = [
         (1, 1, 32),
+        (16, 16, 64),
     ]
 else:
-    # Standard test shapes covering small, medium and non-aligned dimensions
+    # Standard test shapes covering small, medium, large and non-aligned dimensions
     MNK_SHAPES = [
         (1, 1, 32),
+        (16, 16, 64),
         (15, 160, 1024),
+        (128, 256, 512),
+        (256, 256, 256),
         (495, 5333, 71),
+        (1024, 1024, 128),
     ]
 
 
