@@ -5431,6 +5431,19 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: linalg_solve_triangular_out
+    description: |-
+      Out-of-place variant of linalg_solve_triangular: solves a triangular system
+      of linear equations and writes the result into the provided out tensor.
+    for:
+      - linalg_solve_triangular.out
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linalg_svdvals
     description: Computes the singular values of a matrix.
     for:
