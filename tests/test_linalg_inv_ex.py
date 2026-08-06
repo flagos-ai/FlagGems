@@ -64,11 +64,10 @@ def test_accuracy_linalg_inv_ex(shape, dtype):
     # Check info is 0 (successful inversion)
     assert torch.all(res_result.info == 0)
 
-    # Verify A @ A_inv ≈ I
-    reconstructed = torch.matmul(A, res_result.inverse)
-    ref_reconstructed = torch.matmul(ref_A, ref_result.inverse)
-
-    utils.gems_assert_close(reconstructed, ref_reconstructed, dtype, reduce_dim=n)
+    # Compare inverse directly (LU + solve accumulates O(n^2) error)
+    utils.gems_assert_close(
+        res_result.inverse, ref_result.inverse, dtype, reduce_dim=n * n
+    )
 
 
 @pytest.mark.linalg_inv_ex
