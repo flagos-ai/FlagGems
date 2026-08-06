@@ -5229,6 +5229,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_householder_product
+    description: Compute the matrix product of Householder matrices from QR decomposition.
+    for:
+      - linalg_householder_product
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linalg_ldl_solve
     description: Triton kernel implementation for linalg_ldl_solve.
     for:
