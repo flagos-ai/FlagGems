@@ -29,8 +29,10 @@ from . import conftest as cfg
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 
-# Shape configs for QUICK_MODE
+# Representative dense configs cover square/non-square inputs and 64/128 head sizes.
+# Other shape families below keep their existing QUICK_MODE reductions.
 if cfg.QUICK_MODE:
+    FLASH_ATTENTION_FORWARD_CONFIGS = [(1, 2, 128, 128, 64)]
     SPARSE_ATTN_CONFIGS = [
         (64, 1, 128, 128, 16, 512, 2025),
     ]
@@ -44,6 +46,10 @@ if cfg.QUICK_MODE:
     SWA_HEAD_SIZES = [128]
     SWA_WINDOW_SIZES = [(256, 0)]
 else:
+    FLASH_ATTENTION_FORWARD_CONFIGS = [
+        (1, 2, 128, 128, 64),
+        (2, 4, 64, 96, 128),
+    ]
     SPARSE_ATTN_CONFIGS = [
         (64, 1, 128, 128, 16, 512, 2025),
         (64, 1, 400, 392, 16, 512, 2026),
@@ -156,6 +162,97 @@ def gems_flash_fwd(
     )
 
     return out, lse, seed, offset, debug_softmax
+
+
+def dense_flash_attention_ref(q, k, v, scale, is_causal):
+    scores = torch.einsum("bqhd,bkhd->bhqk", q.float(), k.float()) * scale
+    if is_causal:
+        q_index = torch.arange(q.shape[1], device=q.device)[:, None]
+        k_index = torch.arange(k.shape[1], device=k.device)
+        causal_mask = k_index > q_index + k.shape[1] - q.shape[1]
+        scores.masked_fill_(causal_mask, float("-inf"))
+    softmax_lse = torch.logsumexp(scores, dim=-1)
+    attention = torch.softmax(scores, dim=-1)
+    output = torch.einsum("bhqk,bkhd->bqhd", attention, v.float())
+    return output.to(q.dtype), softmax_lse
+
+
+@pytest.mark.underscore_flash_attention_forward
+@pytest.mark.parametrize(
+    "batch,num_head,q_seq_len,kv_seq_len,head_size",
+    FLASH_ATTENTION_FORWARD_CONFIGS,
+)
+@pytest.mark.parametrize("is_causal", [False, True])
+# FlashAttention supports CUDA float16 and bfloat16 inputs.
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test__flash_attention_forward(
+    batch,
+    num_head,
+    q_seq_len,
+    kv_seq_len,
+    head_size,
+    is_causal,
+    dtype,
+    caplog,
+):
+    current_device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch,
+        num_head,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        current_device,
+    )
+    q = q.transpose(1, 2)
+    k = k.transpose(1, 2)
+    v = v.transpose(1, 2)
+    scale = float(1.0 / np.sqrt(head_size))
+
+    ref_q = utils.to_reference(q, False)
+    ref_k = utils.to_reference(k, False)
+    ref_v = utils.to_reference(v, False)
+    if cfg.TO_CPU:
+        ref_out, ref_lse = dense_flash_attention_ref(
+            ref_q, ref_k, ref_v, scale, is_causal
+        )
+    else:
+        ref_result = torch.ops.aten._flash_attention_forward.default(
+            ref_q,
+            ref_k,
+            ref_v,
+            None,
+            None,
+            ref_q.shape[-3],
+            ref_k.shape[-3],
+            0.0,
+            is_causal,
+            False,
+            scale=scale,
+        )
+        ref_out, ref_lse = ref_result[0], ref_result[1]
+    with caplog.at_level("DEBUG", logger="flag_gems.ops._flash_attention_forward"):
+        with flag_gems.use_gems():
+            result = torch.ops.aten._flash_attention_forward.default(
+                q,
+                k,
+                v,
+                None,
+                None,
+                q.shape[-3],
+                k.shape[-3],
+                0.0,
+                is_causal,
+                False,
+                scale=scale,
+            )
+
+    assert "GEMS _FLASH_ATTENTION_FORWARD" in caplog.text
+    assert len(result) == 5
+    utils.gems_assert_close(result[0], ref_out, dtype)
+    utils.gems_assert_close(result[1], ref_lse, torch.float)
 
 
 def sparse_attention_ref(q, kv, attn_sink, topk_idxs, scale):
