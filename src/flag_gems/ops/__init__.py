@@ -326,6 +326,7 @@ from flag_gems.ops.hadamard_transform import (
     hadamard_transform_40N,
 )
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
+from flag_gems.ops.hardsigmoid_ import hardsigmoid_
 from flag_gems.ops.hardswish_ import hardswish_
 from flag_gems.ops.hardtanh_ import hardtanh_
 from flag_gems.ops.heaviside_ import heaviside_
@@ -1078,6 +1079,7 @@ __all__ = [
     "hadamard_transform_40N",
     "hardsigmoid",
     "hardsigmoid_out",
+    "hardsigmoid_",
     "hardswish_",
     "hardtanh_",
     "heaviside_",

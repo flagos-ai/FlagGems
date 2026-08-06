@@ -4266,6 +4266,21 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: hardsigmoid_
+    description: |
+      An in-place variant of `hardsigmoid`, an activation function that provides a piecewise
+      linear approximation of the standard sigmoid function, mapping inputs to a range between 0 and 1.
+    for:
+      - hardsigmoid_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+      - Activation
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: hardswish_
     description: |
       Applies the Hard Swish activation function, commonly used in models like MobileNetV3
