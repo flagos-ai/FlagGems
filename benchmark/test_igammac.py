@@ -16,6 +16,8 @@ import math
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 
@@ -61,6 +63,7 @@ def test_igammac():
     bench = IgammacBenchmark(
         op_name="igammac",
         torch_op=torch.special.gammaincc,
+        gems_op=flag_gems.igammac,
         input_fn=_igammac_input,
         dtypes=[torch.float32, torch.float64],
     )
@@ -73,6 +76,7 @@ def test_igammac_out():
         op_name="igammac_out",
         input_fn=_igammac_input_out,
         torch_op=torch.ops.aten.special_gammaincc.out,
+        gems_op=flag_gems.igammac_out,
         dtypes=[torch.float32, torch.float64],
     )
     bench.run()
