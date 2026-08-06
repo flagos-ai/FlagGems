@@ -80,21 +80,9 @@ def i0_kernel_(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(x_ptr + offsets, result_cast, mask=mask)
 
 
-def i0_(*args, **kwargs):
+def i0_(self):
     logger.debug("GEMS I0_")
-    x = None
-    if len(args) > 0:
-        x = args[0]
-    else:
-        # Try common keyword names
-        for k in ("input", "self", "x"):
-            if k in kwargs:
-                x = kwargs[k]
-                break
-    if x is None:
-        raise ValueError(
-            "i0_ expects a tensor as the first positional argument or in keyword 'input'/'self'/'x'."
-        )
+    x = self
 
     if x.device.type != flag_gems.device:
         raise AssertionError(f"Input tensor must be on a {flag_gems.device} device.")

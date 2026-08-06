@@ -54,35 +54,12 @@ def _launch_zero_kernel(tensor: torch.Tensor):
     return tensor
 
 
-def zero(*args, **kwargs):
+def zero(self):
     logger.debug("GEMS ZERO")
-    # Accept common conventions: first positional as target, or 'self'/'input'/'out' in kwargs
-    target = None
-    if len(args) >= 1 and isinstance(args[0], torch.Tensor):
-        target = args[0]
-    elif "self" in kwargs and isinstance(kwargs["self"], torch.Tensor):
-        target = kwargs["self"]
-    elif "input" in kwargs and isinstance(kwargs["input"], torch.Tensor):
-        target = kwargs["input"]
-    elif "out" in kwargs and isinstance(kwargs["out"], torch.Tensor):
-        target = kwargs["out"]
-    else:
-        raise ValueError(
-            "zero expects a Tensor as the first argument or in kwargs as 'self', 'input', or 'out'"
-        )
+    target = self
     return _launch_zero_kernel(target)
 
 
-def zero_out(*args, **kwargs):
+def zero_out(self, *, out):
     logger.debug("GEMS ZERO_OUT")
-    # Out variant: prefer 'out' kwarg; else first positional
-    out = None
-    if "out" in kwargs and isinstance(kwargs["out"], torch.Tensor):
-        out = kwargs["out"]
-    elif len(args) >= 1 and isinstance(args[0], torch.Tensor):
-        out = args[0]
-    else:
-        raise ValueError(
-            "zero_out expects an output Tensor as the first positional argument or 'out' kwarg"
-        )
     return _launch_zero_kernel(out)

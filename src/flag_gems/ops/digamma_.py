@@ -76,10 +76,8 @@ def digamma_kernel_(
     tl.store(x_ptr + offsets, result, mask=mask)
 
 
-def digamma_(*args, **kwargs):
-    x = args[0]
-    if not isinstance(x, torch.Tensor):
-        raise TypeError("digamma_ expects a torch.Tensor as the first argument")
+def digamma_(self):
+    x = self
 
     # Handle non-contiguous tensors by operating on a contiguous copy and copying back
     if not x.is_contiguous():
