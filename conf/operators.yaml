@@ -1012,6 +1012,19 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: atan2_
+    description: |
+      Computes the element-wise arctangent of input/other in-place.
+    for:
+      - atan2_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: atan_
     description: The in-place version of `atan()`.
     for:
