@@ -7626,6 +7626,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: reflection_pad2d_backward
+    description: Computes the gradient of reflection_pad2d with respect to the input tensor.
+    for:
+      - reflection_pad2d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: reflection_pad3d
     description: |
       Pads the input 5D tensor by reflecting the boundary values at both edges

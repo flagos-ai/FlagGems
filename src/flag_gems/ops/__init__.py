@@ -517,6 +517,7 @@ from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
 from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_out
+from flag_gems.ops.reflection_pad2d_backward import reflection_pad2d_backward
 from flag_gems.ops.reflection_pad3d import reflection_pad3d, reflection_pad3d_out
 from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
@@ -1327,6 +1328,7 @@ __all__ = [
     "reflection_pad1d_backward",
     "reflection_pad1d_out",
     "reflection_pad2d",
+    "reflection_pad2d_backward",
     "reflection_pad2d_out",
     "reflection_pad3d",
     "reflection_pad3d_backward",
