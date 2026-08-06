@@ -6722,6 +6722,20 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: native_batch_norm_legit_no_training
+    description: >
+      Inference-only batch normalization using precomputed running_mean and
+      running_var without updating them; returns the normalized output plus two
+      empty save_mean/save_var tensors matching the aten schema.
+    for:
+      - _native_batch_norm_legit_no_training
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: native_layer_norm
     description: Apply native layer normalization using the existing implementation.
     for:
