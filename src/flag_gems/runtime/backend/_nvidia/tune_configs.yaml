@@ -1365,6 +1365,42 @@ replication_pad3d:
       BLOCK_H: 8
       BLOCK_W: 128
     num_warps: 8
+reflection_pad2d_backward:
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 16
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 16
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 32
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_stages: 2
+    num_warps: 8
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 16
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 8
+    num_stages: 5
+    num_warps: 2
 vstack:
   - gen: true
     param_map:
@@ -2437,6 +2473,29 @@ diff:
   - 16
   - 256
   - 1024
+
+_adaptive_avg_pool2d_backward:
+  - META: {BLOCK_H: 16, BLOCK_W: 16}
+    num_warps: 4
+    num_stages: 4
+  - META: {BLOCK_H: 32, BLOCK_W: 16}
+    num_warps: 4
+    num_stages: 3
+  - META: {BLOCK_H: 16, BLOCK_W: 32}
+    num_warps: 4
+    num_stages: 3
+  - META: {BLOCK_H: 32, BLOCK_W: 32}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_H: 8, BLOCK_W: 8}
+    num_warps: 2
+    num_stages: 5
+  - META: {BLOCK_H: 8, BLOCK_W: 16}
+    num_warps: 2
+    num_stages: 5
+  - META: {BLOCK_H: 16, BLOCK_W: 8}
+    num_warps: 2
+    num_stages: 5
 
 adaptive_max_pool3d_backward:
   - META:
