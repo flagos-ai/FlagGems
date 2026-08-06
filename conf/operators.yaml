@@ -4304,6 +4304,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: heaviside_
+    description: |
+      In-place version of heaviside. For each element: 0 if x < 0, 1 if x > 0,
+      and the corresponding `values` element if x == 0.
+    for:
+      - heaviside_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: histc
     description: |
       Computes the histogram of a tensor, binning each element into equal-width bins.
