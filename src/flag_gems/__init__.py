@@ -486,6 +486,8 @@ _FULL_CONFIG = (
     ("hardtanh_", hardtanh_),
     ("histc", histc),
     ("hstack", hstack),
+    ("huber_loss", huber_loss),
+    ("huber_loss.out", huber_loss_out),
     ("hypot", hypot),
     ("hypot_", hypot_),
     ("i0", i0),

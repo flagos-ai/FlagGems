@@ -4341,6 +4341,33 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: huber_loss
+    description: |
+      Computes the Huber loss between input and target. Quadratic for small errors
+      (|x - y| <= delta) and linear for large errors. Supports reduction none/mean/sum.
+    for:
+      - huber_loss
+    labels:
+      - aten
+      - KernelGen
+      - Loss
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: huber_loss_out
+    description: |
+      Out-variant of huber_loss. Writes the computed loss into the `out` tensor.
+    for:
+      - huber_loss.out
+    labels:
+      - aten
+      - KernelGen
+      - Loss
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: hypot
     description: |
       Given the legs of a right triangle, return its hypotenuse.
