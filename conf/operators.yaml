@@ -3810,6 +3810,19 @@ ops:
     stages:
       - alpha: '5.0'
       - beta: '5.3'
+  - id: fused_rms_norm_backward
+    description: |
+      Computes input and weight gradients for fused RMS normalization using the
+      saved reciprocal root-mean-square values.
+    for:
+      - _fused_rms_norm_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: gather
     description: Gathers values along an axis specified by `dim`.
     for:
