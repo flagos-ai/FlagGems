@@ -134,6 +134,7 @@ _FULL_CONFIG = (
     ("_prelu_kernel_backward", _prelu_kernel_backward),
     ("_reshape_alias", _reshape_alias),
     ("_resize_output", _resize_output),
+    ("_resize_output_", _resize_output_),
     ("_safe_softmax", _safe_softmax),
     (
         "_scaled_dot_product_cudnn_attention_backward",
