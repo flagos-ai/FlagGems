@@ -32,6 +32,23 @@ The cuSPARSELt compressed blob is ``[ values | metadata ]``:
 This module decodes the blob back to a dense ``A`` with a Triton kernel and
 then performs a dense Triton matmul, applying the optional ``bias``, ``alpha``
 and ``transpose_result`` semantics of the native op.
+
+.. important::
+   The cuSPARSELt compressed layout is an opaque, vendor-internal format that
+   is **not** stable across GPU architectures: the sparse tensor cores of
+   different architectures consume the metadata in different orders, so
+   ``torch._cslt_compress`` emits a different nibble swizzle per architecture.
+
+   The swizzle decoded here was reverse-engineered on Hopper (compute
+   capability 9.x) and verified against the native op there. It does **not**
+   describe the Ampere (8.x) layout -- applying it to an Ampere-compressed blob
+   decodes the wrong positions and produces numerically wrong results.
+
+   This implementation therefore only claims correctness on Hopper. Elsewhere
+   :func:`_cslt_sparse_mm_enabled` returns ``False`` so the op is never
+   registered into the ATen dispatch table, and ``use_gems()`` leaves
+   ``torch._cslt_sparse_mm`` pointing at the native cuSPARSELt kernel rather
+   than silently returning wrong values.
 """
 
 import logging
@@ -41,6 +58,24 @@ import triton
 import triton.language as tl
 
 logger = logging.getLogger(__name__)
+
+# Compute-capability major version whose cuSPARSELt metadata swizzle this
+# implementation decodes. See the module docstring: the layout is architecture
+# specific, so the Triton path must stay disabled elsewhere.
+_SUPPORTED_CC_MAJOR = 9
+
+
+def _cslt_sparse_mm_enabled():
+    """Registration predicate: only claim the op where the swizzle is correct.
+
+    Returning ``False`` keeps the Triton path out of the ATen dispatch table so
+    ``torch._cslt_sparse_mm`` continues to resolve to the native cuSPARSELt
+    kernel on architectures this decoder does not model.
+    """
+    if not torch.cuda.is_available():
+        return False
+    major, _ = torch.cuda.get_device_capability()
+    return major == _SUPPORTED_CC_MAJOR
 
 
 @triton.jit
@@ -235,6 +270,10 @@ def _cslt_sparse_mm(
     ``compressed_A`` is the cuSPARSELt-compressed representation of an ``M x K``
     matrix; ``dense_B`` is ``K x N``. Returns ``M x N`` (or ``N x M`` when
     ``transpose_result`` is set).
+
+    Only correct on architectures whose cuSPARSELt metadata swizzle this
+    decoder implements; :func:`_cslt_sparse_mm_enabled` gates registration so
+    other architectures keep using the native op. See the module docstring.
     """
     logger.debug("GEMS _CSLT_SPARSE_MM")
 

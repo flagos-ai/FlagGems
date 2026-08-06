@@ -24,6 +24,8 @@ benchmark harness via ``flag_gems.use_gems()``.
 import pytest
 import torch
 
+from flag_gems.ops._cslt_sparse_mm import _cslt_sparse_mm_enabled
+
 from . import base
 
 # cuSPARSELt sparse MM shapes (M, K, N)
@@ -57,6 +59,13 @@ class CsltSparseMMBenchmark(base.Benchmark):
             yield compressed_A, B
 
 
+@pytest.mark.skipif(
+    not _cslt_sparse_mm_enabled(),
+    reason=(
+        "the Triton _cslt_sparse_mm decoder models the Hopper cuSPARSELt "
+        "metadata layout; not registered on this architecture"
+    ),
+)
 @pytest.mark.cslt_sparse_mm
 def test_cslt_sparse_mm_perf():
     """Benchmark native cuSPARSELt vs the FlagGems Triton _cslt_sparse_mm."""
