@@ -23,7 +23,7 @@ from . import accuracy_utils as utils
 
 @pytest.mark.igammac
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac(shape, dtype):
     x = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
     y = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
@@ -40,7 +40,7 @@ def test_igammac(shape, dtype):
 
 @pytest.mark.igammac_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_out(shape, dtype):
     x = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
     y = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
@@ -58,7 +58,7 @@ def test_igammac_out(shape, dtype):
 
 
 @pytest.mark.igammac
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_boundary_x_zero(dtype):
     """Q(a, 0) = 1 for all a > 0."""
     a_vals = torch.tensor(
@@ -77,7 +77,7 @@ def test_igammac_boundary_x_zero(dtype):
 
 
 @pytest.mark.igammac
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_boundary_a_one(dtype):
     """Q(1, x) = exp(-x)."""
     x = torch.linspace(0.1, 20.0, 100, dtype=dtype, device=flag_gems.device)
@@ -94,7 +94,7 @@ def test_igammac_boundary_a_one(dtype):
 
 
 @pytest.mark.igammac
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_boundary_large_x(dtype):
     """Q(a, x) -> 0 as x >> a."""
     a = torch.tensor([0.5, 1.0, 2.0], dtype=dtype, device=flag_gems.device)
@@ -111,7 +111,7 @@ def test_igammac_boundary_large_x(dtype):
 
 
 @pytest.mark.igammac
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_extreme_asym(dtype):
     """a≈x critical region — uses asymptotic expansion for a>20."""
     pairs = [
@@ -131,7 +131,7 @@ def test_igammac_extreme_asym(dtype):
 
 
 @pytest.mark.igammac
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_extreme_asym_large(dtype):
     """a≈x with a>20 (asymptotic expansion needed). Precision bound by algorithm diff."""
     pairs = [
@@ -155,7 +155,7 @@ def test_igammac_extreme_asym_large(dtype):
 
 
 @pytest.mark.igammac
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_inf_nan(dtype):
     """Infinity and NaN boundary handling."""
     import math
@@ -191,7 +191,7 @@ def test_igammac_inf_nan(dtype):
 
 
 @pytest.mark.igammac
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_extreme_ratios(dtype):
     """Extreme a/x or x/a ratios."""
     pairs = [
@@ -214,7 +214,7 @@ def test_igammac_extreme_ratios(dtype):
 
 
 @pytest.mark.igammac
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_large_a_small_x(dtype):
     """Large a with very small x (P≈1, 1−P subtraction zone)."""
     pairs = [
@@ -237,7 +237,7 @@ def test_igammac_large_a_small_x(dtype):
 
 
 @pytest.mark.igammac
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_series_cf_boundary(dtype):
     """x ≈ a+1 — the switchover between the series and continued-fraction paths."""
     pairs = []
@@ -256,7 +256,7 @@ def test_igammac_series_cf_boundary(dtype):
 
 
 @pytest.mark.igammac
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_asym_threshold(dtype):
     """Both sides of the asymptotic-expansion activation thresholds (a=20, a=200)."""
     pairs = [
@@ -289,7 +289,7 @@ def test_igammac_asym_threshold(dtype):
 
 
 @pytest.mark.igammac
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_large_a_moderate_x(dtype):
     """Large a with x moderately above a — outside the asymptotic region."""
     pairs = [
@@ -316,7 +316,7 @@ def test_igammac_large_a_moderate_x(dtype):
 
 
 @pytest.mark.igammac
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igammac_log_uniform(dtype):
     """Random a, x spanning several orders of magnitude."""
     torch.manual_seed(0)
