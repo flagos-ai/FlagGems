@@ -16,8 +16,9 @@ import logging
 
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from flag_gems.utils import pointwise_dynamic
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -38,23 +39,38 @@ def _get_sign_bit_mask(num_bits):
     return 1 << (num_bits - 1)
 
 
-@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
+# Reduced buffer_size_limit: the bf16 path widens `other` to fp32 (doubling the
+# temp footprint) and additionally allocates a uint32 view + mask, which
+# overflows XPU uni_sram at larger shapes under the default pointwise config.
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=2048,
+    isCloseVectorization=True,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True],
+    promotion_methods=[(0, 1, "DEFAULT")],
+    config=config_,
+)
 @triton.jit
 def copysign_func(input, other):
-    # Magnitude of input, sign of other
-    abs_val = tl.abs(input)
-    if tl.constexpr(input.dtype.is_bf16()):
-        other_f32 = other.to(tl.float32)
-        other_u = other_f32.to(tl.int32, bitcast=True)
-        sign_bit_mask: tl.constexpr = 1 << 31
-    else:
-        # Check sign bit of other (bitcast to unsigned int and check MSB)
-        num_bits: tl.constexpr = input.dtype.primitive_bitwidth
-        uint_dtype = _get_uint_dtype(num_bits)
-        sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
-        other_u = other.to(uint_dtype, bitcast=True)
-    # Extract sign bit and check if it's set
-    return tl.where((other_u & sign_bit_mask) != 0, -abs_val, abs_val)
+    # Compute magnitude of input, apply sign of other. Do all work in fp32:
+    # bf16 in-place output otherwise miscompiles under TritonXPUDtypeConvert
+    # (both the bitcast path and native-bf16 arithmetic + tl.where + negate
+    # trip the pass). fp32 intermediate + explicit final cast mirrors log2_.
+    inp_f32 = input.to(tl.float32)
+    oth_f32 = other.to(tl.float32)
+    abs_val = tl.abs(inp_f32)
+    signed = tl.where(oth_f32 < 0.0, -abs_val, abs_val)
+    return signed.to(input.dtype)
 
 
 def copysign(input, other, *, out=None):
@@ -68,3 +84,9 @@ def copysign_out(input, other, *, out=None):
         return copysign_func(input, other)
     copysign_func(input, other, out0=out)
     return out
+
+
+def copysign_(input, other):
+    logger.debug("GEMS_KUNLUNXIN COPYSIGN_")
+    copysign_func(input, other, out0=input)
+    return input

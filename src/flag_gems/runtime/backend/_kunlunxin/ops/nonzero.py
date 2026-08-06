@@ -23,6 +23,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from .cumsum import cumsum
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,12 +73,10 @@ def nonzero_kernel(
 
 
 def _dense_block_size(n):
-    # bounded tile -> stride-1 contiguous store (avoids unbounded-BLOCK explosion)
-    if n <= 4096:
+    # Keep the dense coordinate tile small enough for XPU LLVM lowering.
+    if n <= 2048:
         return triton.next_power_of_2(n)
-    if n <= 65536:
-        return 65536
-    return 65536
+    return 2048
 
 
 @libentry()
@@ -124,12 +124,26 @@ def nonzero_dense_dimmajor_kernel(
         tl.store(out + dim * n_elements + offset, remainder, mask=mask)
 
 
+@libentry()
+@triton.jit
+def _metadata_kernel(out, value: tl.constexpr, index: tl.constexpr):
+    tl.store(out + index, value)
+
+
+def _device_int_tensor(values, dtype, device):
+    out = torch.empty(len(values), dtype=dtype, device=device)
+    with torch_device_fn.device(device):
+        for index, value in enumerate(values):
+            _metadata_kernel[(1,)](out, value=value, index=index)
+    return out
+
+
 def _row_major_strides(shape, device):
     ndim = len(shape)
     strides = [1] * ndim
     for k in range(ndim - 2, -1, -1):
         strides[k] = strides[k + 1] * shape[k + 1]
-    return torch.tensor(strides, dtype=torch.int64, device=device)
+    return _device_int_tensor(strides, torch.int64, device)
 
 
 def _is_dense(inp):
@@ -140,7 +154,7 @@ def _is_dense(inp):
     inp_bool = inp_view
     if inp_view.dtype != torch.bool:
         inp_bool = inp_view != 0
-    prefix_sum = inp_bool.cumsum(axis=0)
+    prefix_sum = cumsum(inp_bool, dim=0)
     num_nonzeros = int(prefix_sum[n_elements - 1].item()) if n_elements > 0 else 0
     return inp, inp_bool, prefix_sum, num_nonzeros
 
@@ -160,7 +174,7 @@ def nonzero(inp, *, as_tuple=False):
         out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
         if n_out > 0:
             strides_t = _row_major_strides(inp.shape, inp.device)
-            shape_t = torch.tensor(inp.shape, dtype=torch.int64, device=inp.device)
+            shape_t = _device_int_tensor(inp.shape, torch.int64, inp.device)
             block = _dense_block_size(n_out)
             grid = (triton.cdiv(n_out, block),)
             with torch_device_fn.device(inp.device):
@@ -179,7 +193,7 @@ def nonzero(inp, *, as_tuple=False):
         return out
 
     # SPARSE path: data-dependent scatter via prefix sum.
-    shape = torch.tensor(inp.shape, dtype=torch.int32, device=inp.device)
+    shape = _device_int_tensor(inp.shape, torch.int32, inp.device)
     out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)

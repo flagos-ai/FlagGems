@@ -24,17 +24,11 @@ from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
 
-# XPU tl.sum correctness ceilings (verified in isolation, see solution doc):
-#   * WITHOUT buffer_size_limit a 1D tile reduction is complete only for
-#     BLOCK <= 8192; beyond that tl.sum silently drops the tail lanes.
-#   * WITH buffer_size_limit=2048 BLOCK == 32768 is complete, but an
-#     intermediate single-program BLOCK such as 16384 still miscompiles
-#     (~1e-3 relative error).
-# Therefore the single-program path is restricted to BLOCK <= 8192 (no buffer,
-# fastest for small N) and everything larger goes through a two-stage split
-# with a fixed BLOCK == 32768 tile launched with buffer_size_limit=2048.
-SINGLE_BLOCK = 8192
-SPLIT_BLOCK = 32768
+# XPU wide tl.sum can either lose lanes or miscompile particular fp32 inputs.
+# Keep every reduction tile at or below the empirically reliable 512-lane
+# boundary and recursively reduce partial sums for large vectors.
+SINGLE_BLOCK = 512
+SPLIT_BLOCK = 512
 
 
 @libentry()
@@ -60,6 +54,15 @@ def dot_kernel_1(x_ptr, y_ptr, mid_ptr, N, BLOCK_SIZE: tl.constexpr):
 
 @libentry()
 @triton.jit
+def dot_sum_kernel(in_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr):
+    pid = ext.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    values = tl.load(in_ptr + offsets, mask=offsets < N, other=0.0)
+    tl.store(out_ptr + pid, tl.sum(values))
+
+
+@libentry()
+@triton.jit
 def dot_kernel_2(mid_ptr, out_ptr, M, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mask = offset < M
@@ -76,9 +79,7 @@ def dot(x, y):
     N = x.shape[0]
 
     if N <= SINGLE_BLOCK:
-        # One program reduces the whole vector in a single tl.sum. No
-        # buffer_size_limit (block <= 8192 is already complete) which is the
-        # fastest option for small N.
+        # One program reduces the whole vector in a single reliable tile.
         block_size = triton.next_power_of_2(N)
         out = torch.empty([], dtype=torch.float32, device=x.device)
         with torch_device_fn.device(x.device):
@@ -86,21 +87,27 @@ def dot(x, y):
             out = out.to(x.dtype)
         return out
 
-    # Two-stage split reduction. Fixed block=32768 (fastest large-N tile in
-    # isolation, and the max block that keeps tl.sum correct with
-    # buffer_size_limit=2048). mid is sized to EXACTLY the grid so
-    # dot_kernel_2 never sums uninitialized entries. For N up to ~1e9,
-    # mid_size <= 32768, so dot_kernel_2's tile also stays correct.
+    # Reduce in a tree whose every tile stays within XPU's reliable 512-lane
+    # tl.sum limit. The first level multiplies the inputs; later levels sum
+    # the partials until the final scalar reduction.
     block_size = SPLIT_BLOCK
     mid_size = triton.cdiv(N, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
-    grid_1 = (mid_size,)
-
     mid = torch.empty((mid_size,), dtype=torch.float32, device=x.device)
     out = torch.empty([], dtype=x.dtype, device=x.device)
 
     with torch_device_fn.device(x.device):
-        dot_kernel_1[grid_1](x, y, mid, N, block_size, buffer_size_limit=2048)
-        dot_kernel_2[(1,)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
+        dot_kernel_1[(mid_size,)](x, y, mid, N, block_size)
+        while mid_size > SINGLE_BLOCK:
+            next_size = triton.cdiv(mid_size, block_size)
+            next_mid = torch.empty((next_size,), dtype=torch.float32, device=x.device)
+            dot_sum_kernel[(next_size,)](mid, next_mid, mid_size, block_size)
+            mid = next_mid
+            mid_size = next_size
+        dot_kernel_2[(1,)](
+            mid,
+            out,
+            mid_size,
+            triton.next_power_of_2(mid_size),
+        )
 
     return out

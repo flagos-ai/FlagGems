@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import struct
 
 import torch
 import triton
@@ -58,6 +59,7 @@ def true_div_func_tensor_scalar(x, y):
 @triton.jit
 def true_div_func_scalar_tensor(x, y):
     return x / y
+
 
 
 def true_divide(A, B):
@@ -222,28 +224,51 @@ def _float_floordiv(x, y):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
-        return _float_floordiv(x, y)
+        return _float_floordiv(x.to(tl.float32), y.to(tl.float32))
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def floor_div_func_tensor_scalar(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
-        return _float_floordiv(x, y)
+        return _float_floordiv(x.to(tl.float32), y.to(tl.float32))
+
+
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def floor_div_lowp_tensor_scalar_func(x, y):
+    y = tl.full(x.shape, y, x.dtype)
+    x = x.to(tl.float32)
+    y = y.to(tl.float32)
+    quotient = tl.floor(div_rn(x, y))
+    quotient = tl.where(y == 1.0, tl.floor(x), quotient)
+    return tl.where(y == -1.0, tl.floor(-x), quotient)
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_scalar_tensor(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
-        return _float_floordiv(x, y)
+        return _float_floordiv(x.to(tl.float32), y.to(tl.float32))
+
+
+def _as_bfloat16_scalar(value):
+    bits = struct.unpack(">I", struct.pack(">f", float(value)))[0]
+    exponent = bits & 0x7F800000
+    mantissa = bits & 0x007FFFFF
+    if exponent != 0x7F800000:
+        bits += 0x7FFF + ((bits >> 16) & 1)
+    elif mantissa:
+        bits |= 0x00400000
+    bits &= 0xFFFF0000
+    return struct.unpack(">f", struct.pack(">I", bits))[0]
 
 
 def floor_divide(A, B):
@@ -251,6 +276,10 @@ def floor_divide(A, B):
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return floor_div_func(A, B)
     elif isinstance(A, torch.Tensor):
+        if A.dtype in (torch.float16, torch.bfloat16):
+            if A.dtype == torch.bfloat16:
+                B = _as_bfloat16_scalar(B)
+            return floor_div_lowp_tensor_scalar_func(A, B)
         return floor_div_func_tensor_scalar(A, B)
     elif isinstance(B, torch.Tensor):
         return floor_div_func_scalar_tensor(A, B)
@@ -264,6 +293,10 @@ def floor_divide_(A, B):
     if isinstance(B, torch.Tensor):
         return floor_div_func(A, B, out0=A)
     else:
+        if A.dtype in (torch.float16, torch.bfloat16):
+            if A.dtype == torch.bfloat16:
+                B = _as_bfloat16_scalar(B)
+            return floor_div_lowp_tensor_scalar_func(A, B, out0=A)
         return floor_div_func_tensor_scalar(A, B, out0=A)
 
 

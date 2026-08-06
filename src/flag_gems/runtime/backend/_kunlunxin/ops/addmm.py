@@ -126,8 +126,9 @@ def addmm_kernel(
     bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
 
     accumulator = accumulator * alpha + bias * beta
-    c = accumulator.to(bias.dtype)
-    tl.store(c_ptrs, c, mask=c_mask)
+    # Let tl.store convert to the output pointer dtype. The dtype-out variant
+    # may use fp32 output with fp16/bf16 inputs and an input-dtype bias.
+    tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
 def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
@@ -187,6 +188,71 @@ def addmm_out(bias, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
     mat1 = mat1.contiguous()
     bias = bias.broadcast_to(out.shape)
 
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_SIZE_M"]),
+        triton.cdiv(N, META["BLOCK_SIZE_N"]),
+    )
+    with torch_device_fn.device(mat1.device):
+        addmm_kernel[grid](
+            mat1,
+            mat2,
+            bias,
+            out,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+            mat1.stride(0),
+            mat1.stride(1),
+            mat2.stride(0),
+            mat2.stride(1),
+            bias.stride(0),
+            bias.stride(1),
+            out.stride(0),
+            out.stride(1),
+        )
+    return out
+
+
+def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
+    logger.debug("GEMS_KUNLUNXIN ADDMM_DTYPE")
+    out = torch.empty(
+        (mat1.shape[0], mat2.shape[1]), device=mat1.device, dtype=out_dtype
+    )
+    return addmm_dtype_out(
+        bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha, out=out
+    )
+
+
+def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
+    logger.debug("GEMS_KUNLUNXIN ADDMM_DTYPE_OUT")
+    if mat1.dtype != mat2.dtype:
+        raise RuntimeError(
+            f"mat1 and mat2 must have the same dtype, but got {mat1.dtype} and {mat2.dtype}"
+        )
+    if out.dtype != out_dtype:
+        raise RuntimeError("out_dtype must be the same as the provided out tensor dtype")
+    if not (
+        out_dtype == mat1.dtype
+        or (out_dtype == torch.float32 and mat1.dtype in (torch.float16, torch.bfloat16))
+    ):
+        raise RuntimeError(
+            "out_dtype must be the input dtype or fp32 for fp16/bf16 inputs"
+        )
+    if bias.dtype != out_dtype and bias.dtype != mat1.dtype:
+        raise RuntimeError("self dtype must match either out_dtype or mat1 dtype")
+    if mat1.shape[1] != mat2.shape[0]:
+        raise RuntimeError("mat1 and mat2 shapes cannot be multiplied")
+    if not broadcastable_to(bias.shape, (mat1.shape[0], mat2.shape[1])):
+        raise RuntimeError("self is not broadcastable to the result shape")
+    if out.shape != (mat1.shape[0], mat2.shape[1]):
+        raise RuntimeError("out has an incompatible shape")
+
+    M, K = mat1.shape
+    _, N = mat2.shape
+    mat1 = mat1.contiguous()
+    bias = bias.broadcast_to(out.shape)
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
         triton.cdiv(N, META["BLOCK_SIZE_N"]),

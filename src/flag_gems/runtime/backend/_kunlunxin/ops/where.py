@@ -40,12 +40,7 @@ def where_self_out(condition, self, other, out=None):
             out.dtype == result_type
         ), f"Expected out type to be {result_type}, but got {out.dtype}."
 
-    c, a, b = list(
-        map(
-            lambda x: x if isinstance(x, torch.Tensor) else torch.tensor(x),
-            (condition, self, other),
-        )
-    )
+    c, a, b = condition, self, other
 
     if a.dtype != result_type:
         a = a.to(result_type)

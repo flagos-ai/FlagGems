@@ -47,11 +47,9 @@ def aminmax_kernel_1(
 
     min_fill = get_dtype_max(inp.type.element_ty)
     max_fill = get_dtype_min(inp.type.element_ty)
-    min_val = tl.load(inp_ptrs, mask=mask, other=min_fill).to(acc_type)
-    max_val = tl.load(inp_ptrs, mask=mask, other=max_fill).to(acc_type)
-
-    min_val = tl.min(min_val)
-    max_val = tl.max(max_val)
+    value = tl.load(inp_ptrs, mask=mask, other=0.0).to(acc_type)
+    min_val = tl.min(tl.where(mask, value, min_fill))
+    max_val = tl.max(tl.where(mask, value, max_fill))
 
     min_ptr = min_out + pid
     max_ptr = max_out + pid
@@ -74,11 +72,10 @@ def aminmax_kernel_2(
 
     min_fill = get_dtype_max(min_inp.type.element_ty)
     max_fill = get_dtype_min(max_inp.type.element_ty)
-    min_val = tl.load(min_ptrs, mask=mask, other=min_fill).to(acc_type)
-    max_val = tl.load(max_ptrs, mask=mask, other=max_fill).to(acc_type)
-
-    min_val = tl.min(min_val)
-    max_val = tl.max(max_val)
+    min_value = tl.load(min_ptrs, mask=mask, other=0.0).to(acc_type)
+    max_value = tl.load(max_ptrs, mask=mask, other=0.0).to(acc_type)
+    min_val = tl.min(tl.where(mask, min_value, min_fill))
+    max_val = tl.max(tl.where(mask, max_value, max_fill))
 
     tl.store(min_out, min_val.to(dtype))
     tl.store(max_out, max_val.to(dtype))

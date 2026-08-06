@@ -23,10 +23,6 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
-
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -51,25 +47,13 @@ def copy_slice(src):
     return src
 
 
-@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
-@triton.jit
-def _copy_kernel(src):
-    return src
-
-
-def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
+def _validate_triton_copy(dst: torch.Tensor, src: torch.Tensor) -> None:
     if dst.layout != torch.strided or src.layout != torch.strided:
-        return False
-    if dst.device != src.device:
-        return False
+        raise NotImplementedError("copy_ only supports strided tensors on Kunlunxin")
     if dst.is_quantized or src.is_quantized:
-        return False
+        raise NotImplementedError("copy_ for quantized tensors is not supported on Kunlunxin")
     if src.is_complex() or dst.is_complex():
-        # Triton on kunlunxin does not support complex dtypes; fall back to PyTorch.
-        return False
-    if not src.is_contiguous():
-        return False
-    return True
+        raise NotImplementedError("copy_ for complex tensors is not supported on Kunlunxin")
 
 
 def _expand_like(src: torch.Tensor, target_shape: torch.Size) -> torch.Tensor:
@@ -99,34 +83,22 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
     if src._is_zerotensor():
         return dst.zero_()
 
-    if torch._C._is_alias_of(dst, src):
-        # Align with PyTorch: if metadata fully matches, this is a no-op.
-        if (
-            dst.storage_offset() == src.storage_offset()
-            and dst.stride() == src.stride()
-            and dst.size() == src.size()
-            and dst.dtype == src.dtype
-            and dst.device == src.device
-            and dst.is_conj() == src.is_conj()
-            and dst.is_neg() == src.is_neg()
-        ):
-            return dst
-        # Otherwise defer to PyTorch for well-defined semantics on overlapping writes.
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
+    aliases = torch._C._is_alias_of(dst, src)
+    if aliases and (
+        dst.storage_offset() == src.storage_offset()
+        and dst.stride() == src.stride()
+        and dst.size() == src.size()
+        and dst.dtype == src.dtype
+        and dst.device == src.device
+        and dst.is_conj() == src.is_conj()
+        and dst.is_neg() == src.is_neg()
+    ):
+        return dst
 
-    if not _can_use_triton(dst, src):
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
+    if dst.device != src.device:
+        raise NotImplementedError("copy_ across devices is not supported on Kunlunxin")
 
-    if dst.numel() == 0:
-        # Respect PyTorch behaviour: empty tensors should still validate broadcast.
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
-
+    _validate_triton_copy(dst, src)
     logger.debug("GEMS_KUNLUNXIN COPY_")
 
     try:
@@ -138,9 +110,14 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         raise RuntimeError(
             f"The broadcast shape {broadcast_shape} does not match destination shape {tuple(dst.shape)}"
         )
+    if dst.numel() == 0:
+        return dst
 
     expanded_src = _expand_like(src, dst.shape)
-
-    overload = _copy_kernel.instantiate(expanded_src.ndim)
+    overload = copy_slice.instantiate(expanded_src.ndim)
+    if aliases:
+        snapshot = torch.empty(dst.shape, dtype=src.dtype, device=src.device)
+        overload(expanded_src, out0=snapshot)
+        expanded_src = snapshot
     overload(expanded_src, out0=dst)
     return dst

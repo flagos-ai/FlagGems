@@ -1597,20 +1597,18 @@ def _unique2(
         inverse_indices.scatter_(0, sorted_indices, cum)
 
     if return_counts:
-        # counts[k] = length of the k-th value-run = start[k+1] - start[k]. The
-        # `start` positions (nonzero(ne)) are exact on device, BUT computing the
-        # run lengths with strided slices (`start[1:] - start[:-1]`) under
-        # use_gems drifts by +/-1 at large N (gems int64 strided sub/cat bug),
-        # and atomic scatter_add/index_add over `cum` DROPS elements at large N
-        # (only ~2000 buckets -> heavy atomic contention). `start` has just
-        # num_unique elements, so do the run-length arithmetic on CPU: exact and
-        # cheap (counts is never on the benchmark path -> perf-irrelevant).
-        start_cpu = start.cpu()
-        end_cpu = torch.empty_like(start_cpu)
-        if start_cpu.numel() > 1:
-            end_cpu[:-1] = start_cpu[1:]
-        end_cpu[-1] = N
-        counts = (end_cpu - start_cpu).to(device=flat.device, dtype=torch.int64)
+        # Adjacent starts delimit each value-run; the final run ends at N.
+        num_unique = start.numel()
+        counts = torch.empty_like(start, dtype=torch.int64)
+        tile_size = 1024
+        output_counts_flat_kernel[(triton.cdiv(num_unique, tile_size),)](
+            start,
+            N,
+            counts,
+            num_unique,
+            1,
+            tile_size=tile_size,
+        )
 
     return (
         data_out,

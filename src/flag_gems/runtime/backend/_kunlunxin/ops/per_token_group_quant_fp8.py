@@ -58,7 +58,8 @@ def _per_token_group_quant_fp8(
     if scale_ue8m0:
         y_s = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s), 1e-10))))
 
-    y_q = tl.clamp(y / y_s, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+    y_q = y / y_s
+    y_q = tl.minimum(tl.maximum(y_q, fp8_min), fp8_max).to(y_q_ptr.dtype.element_ty)
 
     tl.store(y_q_ptr + cols, y_q, mask=mask)
     tl.store(y_s_ptr, y_s)
@@ -99,7 +100,8 @@ def _per_token_group_quant_fp8_colmajor(
     if scale_ue8m0:
         y_s = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s), 1e-10))))
 
-    y_q = tl.clamp(y / y_s, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+    y_q = y / y_s
+    y_q = tl.minimum(tl.maximum(y_q, fp8_min), fp8_max).to(y_q_ptr.dtype.element_ty)
 
     tl.store(y_q_ptr + cols, y_q, mask=mask)
     tl.store(y_s_ptr, y_s)

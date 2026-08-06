@@ -13,6 +13,7 @@
 # limitations under the License.
 
 # ruff: noqa: F405
+import sys
 import warnings
 
 import torch
@@ -50,6 +51,31 @@ aten_lib = torch.library.Library("aten", "IMPL")
 # Register all ops in the current backend with SpecOpRegistrar to support architecture-specialized implementations
 SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
 
+if vendor_name == "kunlunxin":
+    import flag_gems.fused as _fused
+    from flag_gems.runtime.backend._kunlunxin.ops._masked_scale import (
+        _masked_scale as _kunlunxin_masked_scale,
+    )
+    from flag_gems.runtime.backend._kunlunxin.fused.top_k_per_row_prefill import (
+        top_k_per_row_prefill as _kunlunxin_top_k_per_row_prefill,
+    )
+    from flag_gems.runtime.backend._kunlunxin.fused.topk_softplus_sqrt import (
+        topk_softplus_sqrt as _kunlunxin_topk_softplus_sqrt,
+    )
+    from flag_gems.runtime.backend._kunlunxin.fused.unpack_seq import (
+        unpack_seq_triton as _kunlunxin_unpack_seq_triton,
+    )
+
+    _masked_scale = _kunlunxin_masked_scale
+    top_k_per_row_prefill = _kunlunxin_top_k_per_row_prefill
+    sys.modules["flag_gems.fused"].top_k_per_row_prefill = (
+        _kunlunxin_top_k_per_row_prefill
+    )
+    topk_softplus_sqrt = _kunlunxin_topk_softplus_sqrt
+    _fused.topk_softplus_sqrt = _kunlunxin_topk_softplus_sqrt
+    unpack_seq_triton = _kunlunxin_unpack_seq_triton
+    _fused.unpack_seq_triton = _kunlunxin_unpack_seq_triton
+
 registrar = GeneralOpRegistrar
 current_work_registrar = None
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
@@ -67,7 +93,7 @@ _FULL_CONFIG = (
     ("__ior__.Scalar", bitwise_or_scalar_),
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__irshift__.Tensor", __irshift__),
-    ("__lshift__", __lshift__),
+    ("__lshift__.Tensor", __lshift__),
     ("__ixor__.Scalar", xor_scalar_),
     ("__ixor__.Tensor", xor_),
     ("__or__.Scalar", bitwise_or_scalar),
@@ -260,6 +286,7 @@ _FULL_CONFIG = (
     ("atan2.out", atan2_out),
     ("atan_", atan_),
     ("atanh", atanh),
+    ("atanh_", atanh_),
     ("avg_pool2d", avg_pool2d),
     ("avg_pool2d_backward", avg_pool2d_backward),
     ("avg_pool3d", avg_pool3d),
@@ -277,8 +304,8 @@ _FULL_CONFIG = (
     ("bitwise_and.Tensor", bitwise_and_tensor),
     ("bitwise_and_.Scalar", bitwise_and_scalar_),
     ("bitwise_and_.Tensor", bitwise_and_tensor_),
-    ("bitwise_left_shift", bitwise_left_shift),
-    ("bitwise_left_shift_", bitwise_left_shift_),
+    ("bitwise_left_shift.Tensor", bitwise_left_shift),
+    ("bitwise_left_shift_.Tensor", bitwise_left_shift_),
     ("bitwise_not", bitwise_not),
     ("bitwise_not_", bitwise_not_),
     ("bitwise_or.Scalar", bitwise_or_scalar),
@@ -319,7 +346,9 @@ _FULL_CONFIG = (
     ("clamp_max", clamp_max),
     ("clamp_max_", clamp_max_),
     ("clamp_min", clamp_min),
+    ("clamp_min.Tensor", clamp_tensor),
     ("clamp_min_", clamp_min_),
+    ("clamp_min_.Tensor", clamp_tensor_),
     ("clip", clip),
     ("clip_", clip_),
     ("col2im", col2im),
@@ -500,6 +529,7 @@ _FULL_CONFIG = (
     ("huber_loss.out", huber_loss_out),
     ("hypot", hypot),
     ("hypot_", hypot_),
+    ("hypot.out", hypot_out),
     ("i0", i0),
     ("i0.out", i0_out),
     ("i0_", i0_),
@@ -674,6 +704,7 @@ _FULL_CONFIG = (
     ("new_full", new_full),
     ("new_ones", new_ones),
     ("nextafter", nextafter),
+    ("nextafter.out", nextafter),
     ("nextafter_", nextafter_),
     ("nll_loss2d_backward", nll_loss2d_backward),
     ("nll_loss2d_forward", nll_loss2d_forward),

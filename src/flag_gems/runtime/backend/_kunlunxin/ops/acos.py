@@ -25,7 +25,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-_acos = tl_extra_shim.acos
+_atan2 = tl_extra_shim.atan2
 
 # Without an explicit CodeGenConfig, pointwise_dynamic specializes the kernel
 # per input shape on XPU -> per-shape recompile -> IR explosion
@@ -39,7 +39,7 @@ config_ = CodeGenConfig(
     True,
     prefer_1d_tile=True,
     buffer_size_limit=4096,
-    isCloseVectorization=False,
+    isCloseVectorization=True,
     kunlunAutoGrid=True,
     unroll_num=8,
 )
@@ -48,8 +48,12 @@ config_ = CodeGenConfig(
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
 @triton.jit()
 def acos_kernel(x):
-    # TODO: use flag_gems.utils.tl_extra_shim help apis
-    return _acos(x.to(tl.float32))
+    # atan2 is more accurate than the XPU acos intrinsic for fp16/bf16 inputs.
+    x_f32 = x.to(tl.float32)
+    inside = (x_f32 >= -1.0) & (x_f32 <= 1.0)
+    sine = tl.sqrt(tl.maximum(1.0 - x_f32 * x_f32, 0.0))
+    result = _atan2(sine, x_f32)
+    return tl.where(inside, result, float("nan"))
 
 
 def acos(x):
