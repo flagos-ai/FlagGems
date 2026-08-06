@@ -362,6 +362,18 @@ ops:
       - BLAS
     stages:
       - stable: '4.0'
+  - id: addmv_
+    description: |
+      Performs matrix-vector product with accumulation in-place.
+    for:
+      - addmv_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: addr
     description: |
       Performs the outer-product of vectors `vec1` and `vec2`
