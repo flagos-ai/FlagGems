@@ -2094,6 +2094,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: convolution
+    description: |
+      General convolution dispatcher matching aten::convolution. Routes to the
+      1D/2D/3D convolution and transposed convolution Triton kernels based on
+      the input dimensionality and the transposed flag.
+    for:
+      - convolution
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - alpha: '5.4'
   - id: copy
     description: |
       As a wrapper of `copy_`, this operator copies elements from `src` to `out`
