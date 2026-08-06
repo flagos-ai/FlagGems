@@ -2225,6 +2225,20 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cudnn_attention_forward
+    description: |
+      Forward kernel for cuDNN attention, computing scaled dot-product
+      attention outputs and log-sum-exp statistics.  Uses a Triton
+      FlashAttention-2 kernel in BHSD layout.
+    for:
+      - _cudnn_attention_forward
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.5'
   - id: cudnn_batch_norm_backward
     description: Triton kernel implementation for cudnn_batch_norm_backward.
     for:
