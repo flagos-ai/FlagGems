@@ -2287,6 +2287,20 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: cudnn_rnn_backward
+    description: |
+      Backward pass of a single-layer unidirectional cuDNN LSTM. Reimplements the
+      RNN forward in pure PyTorch and applies autograd to compute gradients,
+      avoiding the opaque cuDNN reserve tensor.
+    for:
+      - _cudnn_rnn_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cummax
     description: |
       Returns a named tuple `(values, indices)` where `values` is the cumulative maximum of elements
