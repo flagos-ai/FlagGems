@@ -6788,6 +6788,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: negative_
+    description: |
+      Computes the negative of input in-place.
+    for:
+      - negative_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: nested_view_from_buffer_copy
     description: |
       Creates a nested tensor from a flat buffer using component sizes, strides,

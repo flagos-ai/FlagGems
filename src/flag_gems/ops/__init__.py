@@ -467,6 +467,7 @@ from flag_gems.ops.native_layer_norm import native_layer_norm
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
+from flag_gems.ops.negative_ import negative_
 from flag_gems.ops.new_full import new_full
 from flag_gems.ops.new_ones import new_ones
 from flag_gems.ops.nextafter import nextafter, nextafter_
@@ -1282,6 +1283,7 @@ __all__ = [
     "neg",
     "neg_",
     "negative",
+    "negative_",
     "new_full",
     "new_ones",
     "nextafter",

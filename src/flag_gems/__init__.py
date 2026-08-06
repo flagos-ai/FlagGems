@@ -671,6 +671,7 @@ _FULL_CONFIG = (
     ("neg", neg),
     ("neg_", neg_),
     ("negative", negative),
+    ("negative_", negative_),
     ("new_full", new_full),
     ("new_ones", new_ones),
     ("nextafter", nextafter),
