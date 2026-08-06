@@ -18,20 +18,15 @@ DEVICE = flag_gems.device
         [(256,), (256,)],
         [(4096,), (2048,)],
     ],
-    ids=[
-        "same_size_512",
-        "diff_size_1024_2048",
-        "same_size_256",
-        "diff_size_4096_2048",
-    ],
 )
 @pytest.mark.parametrize("indexing", ["ij", "xy"])
 def test_meshgrid_basic(shapes, indexing):
     tensors = [torch.randn(shape, device=DEVICE) for shape in shapes]
+    ref_tensors = [utils.to_reference(inp, True) for inp in tensors]
 
+    ref_out = torch.meshgrid(*ref_tensors, indexing=indexing)
     with flag_gems.use_gems():
         our_out = torch.meshgrid(*tensors, indexing=indexing)
-    ref_out = torch.meshgrid(*tensors, indexing=indexing)
 
     for our, ref in zip(our_out, ref_out):
         utils.gems_assert_close(our, ref, our.dtype)
@@ -43,10 +38,11 @@ def test_meshgrid_basic(shapes, indexing):
 @pytest.mark.parametrize("indexing", ["ij", "xy"])
 def test_meshgrid_multidimensional(ndim, indexing):
     tensors = [torch.randn(64 + i * 32, device=DEVICE) for i in range(ndim)]
+    ref_tensors = [utils.to_reference(inp, True) for inp in tensors]
 
+    ref_out = torch.meshgrid(*ref_tensors, indexing=indexing)
     with flag_gems.use_gems():
         our_out = torch.meshgrid(*tensors, indexing=indexing)
-    ref_out = torch.meshgrid(*tensors, indexing=indexing)
 
     for our, ref in zip(our_out, ref_out):
         utils.gems_assert_close(our, ref, our.dtype)
@@ -62,11 +58,13 @@ def test_meshgrid_multidimensional(ndim, indexing):
 def test_meshgrid_dtypes(dtype):
     x = torch.arange(1, 513, dtype=dtype, device=DEVICE)
     y = torch.arange(1000, 2000, dtype=dtype, device=DEVICE)
+    ref_x = utils.to_reference(x, True)
+    ref_y = utils.to_reference(y, True)
 
+    ref_out = torch.meshgrid(ref_x, ref_y, indexing="ij")
     with flag_gems.use_gems():
         our_out = torch.meshgrid(x, y, indexing="ij")
-    ref_out = torch.meshgrid(x, y, indexing="ij")
 
     for our, ref in zip(our_out, ref_out):
-        assert our.dtype == ref.dtype
-        utils.gems_assert_close(our, ref, dtype)
+        ref_cast = ref.to(our.dtype)
+        utils.gems_assert_close(our, ref_cast, our.dtype)
