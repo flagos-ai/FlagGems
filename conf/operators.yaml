@@ -5049,6 +5049,19 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: lift_fresh
+    description: |
+      Returns a fresh tensor holding the same values as the input, used to
+      lift constants into a compiled graph.
+    for:
+      - lift_fresh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: lift_fresh_copy
     description: |
       Creates a new, independent copy of a tensor within a compiled graph.
