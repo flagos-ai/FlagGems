@@ -128,6 +128,58 @@ def _fallback_j1(x):
 
 
 @triton.jit
+def _fallback_j0(x):
+    ax = tl.math.abs(x)
+    ax_safe = tl.where((ax != ax) | (ax == float("inf")), 1.0, ax)
+    y = ax_safe * ax_safe * 0.25
+    c1 = -1.0
+    c2 = -c1 / 4.0
+    c3 = -c2 / 9.0
+    c4 = -c3 / 16.0
+    c5 = -c4 / 25.0
+    c6 = -c5 / 36.0
+    c7 = -c6 / 49.0
+    c8 = -c7 / 64.0
+    c9 = -c8 / 81.0
+    c10 = -c9 / 100.0
+    c11 = -c10 / 121.0
+    c12 = -c11 / 144.0
+    c13 = -c12 / 169.0
+    c14 = -c13 / 196.0
+    c15 = -c14 / 225.0
+    c16 = -c15 / 256.0
+    c17 = -c16 / 289.0
+    c18 = -c17 / 324.0
+    c19 = -c18 / 361.0
+    t = c19
+    t = c18 + t * y
+    t = c17 + t * y
+    t = c16 + t * y
+    t = c15 + t * y
+    t = c14 + t * y
+    t = c13 + t * y
+    t = c12 + t * y
+    t = c11 + t * y
+    t = c10 + t * y
+    t = c9 + t * y
+    t = c8 + t * y
+    t = c7 + t * y
+    t = c6 + t * y
+    t = c5 + t * y
+    t = c4 + t * y
+    t = c3 + t * y
+    t = c2 + t * y
+    t = c1 + t * y
+    small_val = 1.0 + t * y
+    pi = 3.141592653589793
+    ax_nonzero = tl.where(ax_safe > 1.0e-6, ax_safe, 1.0e-6)
+    large_val = tl.math.sqrt(2.0 / (pi * ax_nonzero)) * tl.math.cos(ax_safe - pi / 4.0)
+    value = tl.where(ax <= 8.0, small_val, large_val)
+    value = tl.where(ax == float("inf"), 0.0, value)
+    return tl.where(ax != ax, x, value)
+
+
+@triton.jit
 def _fallback_nextafter(input, other):
     # IEEE 754 nextafter for float32 via uint32 bit manipulation.  Mirrors the
     # fp16/bf16 bit-manipulation path in ops/nextafter.py; used when a backend's
@@ -189,6 +241,7 @@ _FALLBACK_SYMBOLS = {
     "erfinv": _fallback_erfinv,
     "floor": _fallback_floor,
     "j1": _fallback_j1,
+    "j0": _fallback_j0,
     "nextafter": _fallback_nextafter,
     "sinpi": _fallback_sinpi,
 }
@@ -236,6 +289,7 @@ tl_extra_shim = _patch_missing_symbols(
         "finitef",
         "fmod",
         "floor",
+        "j0",
         "gelu_none",
         "gelu_tanh",
         "isfinited",
