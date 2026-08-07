@@ -457,6 +457,7 @@ _FULL_CONFIG = (
     ("frac_", frac_),
     ("fractional_max_pool2d", fractional_max_pool2d),
     ("fractional_max_pool2d_backward", fractional_max_pool2d_backward),
+    ("frexp", frexp),
     ("full", full),
     ("full_like", full_like),
     ("gather", gather),
