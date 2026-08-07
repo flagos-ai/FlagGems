@@ -30,10 +30,17 @@ from flag_gems.utils.triton_version_utils import HAS_TLE, HAS_TLE_DEVICE_MESH
 
 logger = logging.getLogger(__name__)
 CACHE_USAGE_THRESHOLD = 0.8
+_MM_DEVICE_TMA_ENV = "FLAGGEMS_NVIDIA_MM_DEVICE_TMA"
+_TRUE_ENV_VALUES = frozenset(("1", "true", "yes", "on"))
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
 )
 _SHARED_MEM_SAFETY_MARGIN_BYTES = 1024
+
+
+def _use_mm_device_tma():
+    """Return whether the experimental device-side TMA path is enabled."""
+    return os.environ.get(_MM_DEVICE_TMA_ENV, "0").strip().lower() in _TRUE_ENV_VALUES
 
 
 def _get_shared_memory_limit_bytes():
@@ -105,6 +112,36 @@ def is_tma_compatible(a, b, N, K):
         and N % 4 == 0
         and K % 4 == 0
     )
+
+
+def _is_device_tma_layout_compatible(a, b, c):
+    """Check the stride constraints used by the device-created descriptors."""
+
+    def has_aligned_contiguous_dimension(tensor, allow_transpose):
+        tensor_type = type(tensor).__name__
+        if tensor_type not in ("FakeTensor", "FunctionalTensor"):
+            if tensor.data_ptr() % 16 != 0:
+                return False
+        if tensor.stride(1) == 1:
+            leading_stride = tensor.stride(0)
+        elif allow_transpose and tensor.stride(0) == 1:
+            leading_stride = tensor.stride(1)
+        else:
+            return False
+        return leading_stride > 0 and (leading_stride * tensor.element_size()) % 16 == 0
+
+    return (
+        has_aligned_contiguous_dimension(a, allow_transpose=True)
+        and has_aligned_contiguous_dimension(b, allow_transpose=True)
+        and has_aligned_contiguous_dimension(c, allow_transpose=False)
+    )
+
+
+def _set_tma_allocator(device):
+    def alloc_fn(size: int, align: int, stream: Optional[int]):
+        return torch.empty(size, dtype=torch.int8, device=device)
+
+    triton.set_allocator(alloc_fn)
 
 
 @triton.jit
@@ -391,6 +428,115 @@ def mm_kernel_general_host_tma(
     c_desc.store([offset_am, offset_bn], c)
 
 
+@libentry()
+@libtuner(
+    configs=matmul_get_configs(pre_hook=None),
+    key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    strategy=["align32", "align32", "align32", "align32", "align32", "default"],
+    warmup=5,
+    rep=5,
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="mm_general_tma",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=None,
+)
+@triton.jit
+def mm_kernel_general_device_tma(
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+    A_ROW_MAJOR: tl.constexpr,
+    B_ROW_MAJOR: tl.constexpr,
+    dtype: tl.constexpr,
+):
+    if A_ROW_MAJOR:
+        a_desc = tl.make_tensor_descriptor(
+            base=A,
+            shape=[M, K],
+            strides=[stride_am, 1],
+            block_shape=[BLOCK_M, BLOCK_K],
+        )
+    else:
+        a_desc = tl.make_tensor_descriptor(
+            base=A,
+            shape=[K, M],
+            strides=[stride_ak, 1],
+            block_shape=[BLOCK_K, BLOCK_M],
+        )
+
+    if B_ROW_MAJOR:
+        b_desc = tl.make_tensor_descriptor(
+            base=B,
+            shape=[K, N],
+            strides=[stride_bk, 1],
+            block_shape=[BLOCK_K, BLOCK_N],
+        )
+    else:
+        b_desc = tl.make_tensor_descriptor(
+            base=B,
+            shape=[N, K],
+            strides=[stride_bn, 1],
+            block_shape=[BLOCK_N, BLOCK_K],
+        )
+
+    c_desc = tl.make_tensor_descriptor(
+        base=C,
+        shape=[M, N],
+        strides=[stride_cm, 1],
+        block_shape=[BLOCK_M, BLOCK_N],
+    )
+
+    pid = tl.program_id(0)
+    grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
+
+    width = GROUP_M * grid_n
+    group_id = pid // width
+    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+    pid_m = group_id * GROUP_M + (pid % group_size)
+    pid_n = (pid % width) // group_size
+
+    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    offset_am = (pid_m * BLOCK_M).to(tl.int32)
+    offset_bn = (pid_n * BLOCK_N).to(tl.int32)
+    iters = tl.cdiv(K, BLOCK_K)
+    for k in range(iters):
+        offset_ak = (k * BLOCK_K).to(tl.int32)
+
+        if A_ROW_MAJOR:
+            a = a_desc.load([offset_am, offset_ak])
+        else:
+            a_t = a_desc.load([offset_ak, offset_am])
+            a = tl.trans(a_t)
+
+        if B_ROW_MAJOR:
+            b = b_desc.load([offset_ak, offset_bn])
+        else:
+            b_t = b_desc.load([offset_bn, offset_ak])
+            b = tl.trans(b_t)
+
+        if A.dtype.element_ty == tl.float16 or A.dtype.element_ty == tl.bfloat16:
+            accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
+        else:
+            accumulator = tl.dot(a, b, acc=accumulator, input_precision="tf32x3")
+
+    c = accumulator.to(C.dtype.element_ty)
+    c_desc.store([offset_am, offset_bn], c)
+
+
 def _sync_mm_host_tma_descriptor_block_shapes(args, kwargs):
     if len(args) < 3:
         return
@@ -465,11 +611,52 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
-    if hasattr(
-        triton.tools.tensor_descriptor, "TensorDescriptor"
-    ) and is_tma_compatible(a, b, N, K):
-        a_row_major = a.stride(1) == 1
-        b_row_major = b.stride(1) == 1
+    tma_compatible = is_tma_compatible(a, b, N, K)
+    a_row_major = a.stride(1) == 1
+    b_row_major = b.stride(1) == 1
+    dtype_str = str(a.dtype).split(".")[-1]
+    device_tma_requested = _use_mm_device_tma()
+    use_device_tma = (
+        device_tma_requested
+        and hasattr(tl, "make_tensor_descriptor")
+        and tma_compatible
+        and M > 0
+        and N > 0
+        and K > 0
+        and a.dtype == b.dtype
+        and _is_device_tma_layout_compatible(a, b, c)
+    )
+    has_host_tma = (
+        hasattr(triton.tools.tensor_descriptor, "TensorDescriptor") and tma_compatible
+    )
+
+    if use_device_tma:
+        logger.debug("GEMS_NVIDIA MM_HOPPER using device-created TMA descriptors")
+        _set_tma_allocator(a.device)
+        with torch_device_fn.device(a.device):
+            mm_kernel_general_device_tma[grid](
+                a,
+                b,
+                c,
+                M,
+                N,
+                K,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                b.stride(1),
+                c.stride(0),
+                c.stride(1),
+                A_ROW_MAJOR=a_row_major,
+                B_ROW_MAJOR=b_row_major,
+                dtype=dtype_str,
+            )
+    elif has_host_tma:
+        if device_tma_requested:
+            logger.debug(
+                "GEMS_NVIDIA MM_HOPPER device TMA request is incompatible; "
+                "falling back to host-created descriptors"
+            )
         dummy_block = [1, 1]
         # triton 3.5.0
         from triton.tools.tensor_descriptor import TensorDescriptor
@@ -483,9 +670,6 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
         else:
             b_desc = TensorDescriptor(b, b.T.shape, b.T.stride(), dummy_block)
         c_desc = TensorDescriptor(c, c.shape, c.stride(), dummy_block)
-
-        input_dtype = a.dtype
-        dtype_str = str(input_dtype).split(".")[-1]
 
         with torch_device_fn.device(a.device):
             mm_kernel_general_host_tma[grid](
@@ -506,12 +690,12 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
                 dtype=dtype_str,
             )
     else:
-
-        def alloc_fn(size: int, align: int, stream: Optional[int]):
-            return torch.empty(size, dtype=torch.int8, device=a.device)
-
-        triton.set_allocator(alloc_fn)
-
+        if device_tma_requested:
+            logger.debug(
+                "GEMS_NVIDIA MM_HOPPER device TMA request is incompatible; "
+                "falling back to the general kernel"
+            )
+        _set_tma_allocator(a.device)
         with torch_device_fn.device(a.device):
             mm_kernel_general[grid](
                 a,
