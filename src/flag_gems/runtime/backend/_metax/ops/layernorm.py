@@ -20,6 +20,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.layernorm import _launch_fused_layer_norm_backward
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -358,24 +359,8 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     rstd = torch.empty(M, dtype=input.dtype, device=input.device)
 
     with torch_device_fn.device(input.device):
-        if N <= 128:
-            TILE_N = triton.next_power_of_2(N)
-            TILE_M = triton.cdiv(1024, TILE_N)
-            grid = (triton.cdiv(M, TILE_M), 1, 1)
-            layer_norm_persistent_kernel_multiline[grid](
-                input,
-                y,
-                weight,
-                bias,
-                mean,
-                rstd,
-                M,
-                N,
-                eps,
-                TILE_M,
-                TILE_N,
-            )
-        elif N <= 4096:
+        # MetaX lowers the resident one-row layout reliably across this range.
+        if N <= 4096:
             TILE_N = triton.next_power_of_2(N)
             grid = (M, 1, 1)
             layer_norm_persistent_kernel[grid](
@@ -425,8 +410,22 @@ def layer_norm_backward(
     weight = None if weight is None else weight.contiguous()
     bias = None if bias is None else bias.contiguous()
 
-    M = input.shape[0]
-    N = input.numel() // M
+    N = math.prod(normalized_shape)
+    M = input.numel() // N
+
+    fused_grads = _launch_fused_layer_norm_backward(
+        grad_out,
+        input,
+        mean,
+        rstd,
+        weight,
+        bias,
+        output_mask,
+        M,
+        N,
+    )
+    if fused_grads is not None:
+        return fused_grads
 
     if output_mask[0]:
         in_grad = torch.empty_like(input)
@@ -441,9 +440,9 @@ def layer_norm_backward(
     if output_mask[1] is False and output_mask[2] is False:
         return in_grad, None, None
 
-    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
     weight_grad = torch.empty_like(weight) if output_mask[1] else None
     bias_grad = torch.empty_like(bias) if output_mask[2] else None
+    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
     with torch_device_fn.device(input.device):
         weight_bias_backward_kernel[grid](
             grad_out, input, mean, rstd, weight_grad, bias_grad, M, N
