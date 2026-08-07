@@ -2633,7 +2633,6 @@ ops:
       is an alias of `torch.div()` with `rounding_mode=None`.
     for:
       - div.Tensor
-      - divide.Tensor
       - true_divide.Tensor
     labels:
       - aten
@@ -2654,6 +2653,18 @@ ops:
       - Math
     stages:
       - stable: '2.1'
+  - id: divide
+    description: An alias of `div()` for element-wise division.
+    for:
+      - divide.Tensor
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dot
     description: Computes the dot product of two 1D tensors.
     for:
