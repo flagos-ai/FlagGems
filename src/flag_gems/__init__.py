@@ -493,6 +493,7 @@ _FULL_CONFIG = (
     ("hardsigmoid", hardsigmoid),
     ("hardsigmoid.out", hardsigmoid_out),
     ("hardsigmoid_", hardsigmoid_),
+    ("hardsigmoid_backward", hardsigmoid_backward),
     ("hardswish_", hardswish_),
     ("heaviside_", heaviside_),
     ("hardtanh_", hardtanh_),
