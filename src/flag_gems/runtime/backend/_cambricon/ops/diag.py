@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -107,6 +111,7 @@ def diag_2d_to_1d(x, diagonal=0):
 
 
 def diag(x, diagonal=0):
+    logger.debug("GEMS_CAMBRICON DIAG")
     if x.dim() == 1:
         return diag_1d_to_2d(x, diagonal)
     elif x.dim() == 2:
