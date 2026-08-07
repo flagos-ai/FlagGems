@@ -123,6 +123,13 @@ _FULL_CONFIG = (
     ("_log_softmax_backward_data.out", log_softmax_backward_out),
     ("_make_dep_token", _make_dep_token),
     ("_masked_scale", _masked_scale),
+    ("_native_batch_norm_legit", _native_batch_norm_legit),
+    ("_native_batch_norm_legit.no_stats", _native_batch_norm_legit_no_stats),
+    (
+        "_native_batch_norm_legit.no_stats_out",
+        _native_batch_norm_legit_no_stats_out,
+    ),
+    ("_native_batch_norm_legit.out", _native_batch_norm_legit_out),
     (
         "_native_batch_norm_legit_functional",
         _native_batch_norm_legit_functional,
