@@ -20,6 +20,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+# Temporary marker to trigger CI; it will be removed in the final change.
+
 FLOAT_DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.ALL_FLOAT_DTYPES
 REDUCTIONS = ("sum", "mean", "max", "min", "prod")
 INITIALS = (None, 0.5)
