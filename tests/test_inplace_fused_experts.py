@@ -81,9 +81,6 @@ def torch_fused_moe_reference(
 @pytest.mark.inplace_fused_experts
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
 def test_inplace_fused_experts_accuracy(config, dtype):
     """Test inplace_fused_experts writes correct results into hidden_states."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
@@ -119,6 +116,8 @@ def test_inplace_fused_experts_accuracy(config, dtype):
         torch.npu.synchronize()
     elif flag_gems.vendor_name == "sunrise":
         torch.ptpu.synchronize()
+    elif flag_gems.vendor_name == "tsingmicro":
+        torch.txda.synchronize()
     else:
         torch.cuda.synchronize()
 
@@ -130,9 +129,6 @@ def test_inplace_fused_experts_accuracy(config, dtype):
 @pytest.mark.inplace_fused_experts
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
 def test_inplace_fused_experts_matches_outplace(config, dtype):
     """Test that inplace_fused_experts produces the same result as outplace_fused_experts."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
@@ -176,6 +172,8 @@ def test_inplace_fused_experts_matches_outplace(config, dtype):
         torch.npu.synchronize()
     elif flag_gems.vendor_name == "sunrise":
         torch.ptpu.synchronize()
+    elif flag_gems.vendor_name == "tsingmicro":
+        torch.txda.synchronize()
     else:
         torch.cuda.synchronize()
 

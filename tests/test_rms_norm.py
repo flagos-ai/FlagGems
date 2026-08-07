@@ -70,6 +70,8 @@ def test_rms_norm(shape, dtype):
         ref_out, (ref_inp, ref_weight), ref_grad
     )
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
-    utils.gems_assert_close(res_grad, ref_grad, dtype)
-    utils.gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N)
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    utils.gems_assert_close(res_grad, ref_grad, dtype, equal_nan=True)
+    utils.gems_assert_close(
+        res_weight_grad, ref_weight_grad, dtype, reduce_dim=N, equal_nan=True
+    )

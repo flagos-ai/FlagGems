@@ -215,10 +215,6 @@ def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
 )
 @pytest.mark.parametrize("is_causal", CAUSAL_CHOICES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro",
-    reason="Issues #3861: some ops hang in op tests",
-)
 def test_scaled_dot_product_attention_legacy(
     monkeypatch,
     batch,
@@ -298,10 +294,6 @@ def test_scaled_dot_product_attention_legacy(
 )
 @pytest.mark.parametrize("is_causal", CAUSAL_CHOICES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro",
-    reason="Issues #3861: some ops hang in op tests",
-)
 def test_scaled_dot_product_attention_legacy_backward(
     batch,
     num_q_head,
@@ -406,10 +398,6 @@ def test_scaled_dot_product_attention_legacy_backward(
 @pytest.mark.parametrize("head_size", HEAD_SIZES)
 @pytest.mark.parametrize("is_causal", CAUSAL_CHOICES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro",
-    reason="Issues #3861: some ops hang in op tests",
-)
 def test_scaled_dot_product_attention_square_qk_even_mn(
     monkeypatch, batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
@@ -425,7 +413,14 @@ def test_scaled_dot_product_attention_square_qk_even_mn(
     torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal)
 
     with flag_gems.use_gems():
-        gems_result = torch_sdpa(q, k, v, scale, is_causal)
+        gems_result = flag_gems.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            is_causal=is_causal,
+            scale=scale,
+        )
 
     utils.gems_assert_close(gems_result, torch_result, dtype)
 
@@ -438,10 +433,6 @@ def test_scaled_dot_product_attention_square_qk_even_mn(
 @pytest.mark.parametrize("head_size", HEAD_SIZES)
 @pytest.mark.parametrize("is_causal", [False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro",
-    reason="Issues #3861: some ops hang in op tests",
-)
 def test_scaled_dot_product_attention_nonsquare_qk(
     monkeypatch, batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
@@ -461,6 +452,13 @@ def test_scaled_dot_product_attention_nonsquare_qk(
     torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal)
 
     with flag_gems.use_gems():
-        gems_result = torch_sdpa(q, k, v, scale, is_causal)
+        gems_result = flag_gems.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            is_causal=is_causal,
+            scale=scale,
+        )
 
     utils.gems_assert_close(gems_result, torch_result, dtype)

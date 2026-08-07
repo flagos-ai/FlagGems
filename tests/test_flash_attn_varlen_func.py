@@ -174,9 +174,6 @@ def ref_paged_attn(
 @pytest.mark.parametrize("soft_cap", SOFT_CAPS)
 @pytest.mark.parametrize("num_blocks", NUM_BLOCKS)
 @pytest.mark.parametrize("optimize_init", OPTIMIZE_INIT)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
 @torch.inference_mode()
 def test_flash_attn_varlen_func(
     monkeypatch,
@@ -191,6 +188,9 @@ def test_flash_attn_varlen_func(
     num_blocks: int,
     optimize_init: bool,
 ) -> None:
+    if flag_gems.vendor_name == "tsingmicro" and optimize_init:
+        pytest.skip("Issue #4131: not working")
+
     # (Issue) numerical stability concern
     if alibi is True and soft_cap is not None:
         return
@@ -344,6 +344,9 @@ def test_flash_attn_varlen_func_noncontiguous_kv_cache(
     dtype: torch.dtype,
     optimize_init: bool,
 ) -> None:
+    if flag_gems.vendor_name == "tsingmicro" and optimize_init:
+        pytest.skip("Issue #4131: not working")
+
     with torch.device(flag_gems.device):
         utils.init_seed(1234567890)
 
@@ -432,9 +435,6 @@ def test_flash_attn_varlen_func_noncontiguous_kv_cache(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("soft_cap", SWAP_SOFT_CAPS)
 @pytest.mark.parametrize("num_blocks", [2048])
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
 @torch.inference_mode()
 def test_flash_attn_varlen_func_swap_qg(
     monkeypatch,

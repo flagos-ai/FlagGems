@@ -132,9 +132,6 @@ def test_floor_divide_float_(shape, dtype):
 @pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="Issue #3025")
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
 def test_floor_divide_int(shape, dtype):
     inp1 = torch.randint(
         torch.iinfo(dtype).min,
