@@ -111,6 +111,10 @@ def test_copy_inplace_dtype_fallback():
     flag_gems.vendor_name == "mthreads",
     reason="mthreads does not support float8_e8m0fnu dtype",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "metax",
+    reason="MetaX does not support float8_e8m0fnu dtype",
+)
 @pytest.mark.parametrize("shape", [(8,), (4, 4), (2, 3, 4)])
 def test_copy_inplace_float8_e8m0fnu(shape):
     """Test that copy_ works correctly with float8_e8m0fnu (e8m0) dtype tensors.
@@ -163,6 +167,10 @@ def test_copy_inplace_float8_e8m0fnu(shape):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "mthreads",
     reason="mthreads does not support float8_e8m0fnu dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "metax",
+    reason="MetaX does not support float8_e8m0fnu dtype",
 )
 def test_copy_inplace_float8_e8m0fnu_to_float32():
     """Test copy_ from float8_e8m0fnu to float32."""
