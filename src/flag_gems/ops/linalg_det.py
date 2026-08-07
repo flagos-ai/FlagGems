@@ -5,6 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -315,6 +316,10 @@ def _linalg_det_impl(A):
     A_work = A.clone(memory_format=torch.contiguous_format).reshape(batch_count, n, n)
     out = torch.empty(batch_count, dtype=A.dtype, device=A.device)
 
+    use_panel = n > _DET_BLOCK_MAX and not (
+        A.dtype == torch.float64 and runtime_device.vendor_name == "metax"
+    )
+
     grid = (batch_count,)
     with torch_device_fn.device(A.device):
         if A.dtype == torch.float32 and n <= _DET_BLOCK_MAX:
@@ -323,7 +328,7 @@ def _linalg_det_impl(A):
             _det_register_kernel[grid](
                 A_work, out, n, BLOCK_N=block_n, num_warps=num_warps
             )
-        elif n > _DET_BLOCK_MAX:
+        elif use_panel:
             _det_panel_kernel[grid](A_work, out, n, PANEL=32, BLOCK=64, num_warps=4)
         else:
             block = min(64, max(8, triton.next_power_of_2(n)))
