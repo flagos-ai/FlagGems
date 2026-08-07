@@ -22,6 +22,15 @@ from .argmin import argmin
 from .batch_norm import batch_norm, batch_norm_backward
 from .celu import celu
 from .conv2d import conv2d
+from .div import (
+    div_mode,
+    div_mode_,
+    floor_divide,
+    floor_divide_,
+    true_divide,
+    true_divide_,
+    true_divide_out,
+)
 from .dropout import dropout, dropout_backward
 from .flip import flip
 from .gather import gather, gather_backward
@@ -122,6 +131,13 @@ __all__ = [
     "sort",
     "sort_stable",
     "tile",
+    "true_divide",
+    "true_divide_",
+    "true_divide_out",
+    "div_mode",
+    "div_mode_",
+    "floor_divide",
+    "floor_divide_",
     "_unique2",
     "w8a8_block_fp8_matmul",
     "zero_",
