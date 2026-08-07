@@ -387,7 +387,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
     next_power_global_ctas_num = triton.next_power_of_2(global_ctas_num)
     ctas_num = global_ctas_num if global_ctas_num < 65536 else 2048
     tiles_per_cta = triton.cdiv(num_tasks, tile_size * ctas_num)
-    num_warps = 8 if tiles_per_cta == 1 else 16  # maca support up to 16
+    num_warps = 8  # MetaX C550: max 512 threads = 8 warps × 64
     grid = (ctas_num, 1, 1)
 
     # allocate tensor
@@ -668,7 +668,7 @@ def sorted_indices_unique_flat(
     next_power_global_ctas_num = triton.next_power_of_2(global_ctas_num)
     ctas_num = global_ctas_num if global_ctas_num < 32768 else 8192
     tiles_per_cta = triton.cdiv(num_tasks, tile_size * ctas_num)
-    num_warps = 8 if tiles_per_cta == 1 else 16  # maca support up to 16
+    num_warps = 8  # MetaX C550: max 512 threads = 8 warps × 64
     grid = (ctas_num, 1, 1)
 
     # allocate tensor

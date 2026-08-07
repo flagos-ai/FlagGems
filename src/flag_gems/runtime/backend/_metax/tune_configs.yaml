@@ -43,7 +43,6 @@ bmm:
     TILE_N: 32
     TILE_K: 32
     GROUP_M: 1
-    pipeline: "null"
   num_warps: 4
   num_stages: 2
 - META:
@@ -51,7 +50,13 @@ bmm:
     TILE_N: 32
     TILE_K: 32
     GROUP_M: 2
-    pipeline: "null"
+  num_warps: 4
+  num_stages: 2
+- META:
+    TILE_M: 32
+    TILE_N: 64
+    TILE_K: 32
+    GROUP_M: 2
   num_warps: 4
   num_stages: 2
 - META:
@@ -59,31 +64,6 @@ bmm:
     TILE_N: 64
     TILE_K: 32
     GROUP_M: 2
-    pipeline: "null"
-  num_warps: 4
-  num_stages: 2
-- META:
-    TILE_M: 128
-    TILE_N: 32
-    TILE_K: 32
-    GROUP_M: 2
-    pipeline: "null"
-  num_warps: 4
-  num_stages: 2
-- META:
-    TILE_M: 128
-    TILE_N: 64
-    TILE_K: 32
-    GROUP_M: 2
-    pipeline: "null"
-  num_warps: 4
-  num_stages: 2
-- META:
-    TILE_M: 128
-    TILE_N: 128
-    TILE_K: 32
-    GROUP_M: 2
-    pipeline: "null"
   num_warps: 4
   num_stages: 2
 - META:
@@ -91,7 +71,6 @@ bmm:
     TILE_N: 32
     TILE_K: 32
     GROUP_M: 1
-    pipeline: "null"
   num_warps: 4
   num_stages: 3
 - META:
@@ -99,7 +78,13 @@ bmm:
     TILE_N: 32
     TILE_K: 32
     GROUP_M: 2
-    pipeline: "null"
+  num_warps: 4
+  num_stages: 3
+- META:
+    TILE_M: 32
+    TILE_N: 64
+    TILE_K: 32
+    GROUP_M: 2
   num_warps: 4
   num_stages: 3
 - META:
@@ -107,41 +92,37 @@ bmm:
     TILE_N: 64
     TILE_K: 32
     GROUP_M: 2
-    pipeline: "null"
   num_warps: 4
   num_stages: 3
+baddbmm:
 - META:
-    TILE_M: 128
+    TILE_M: 32
+    TILE_N: 32
+    TILE_K: 32
+    GROUP_M: 1
+  num_warps: 4
+  num_stages: 2
+- META:
+    TILE_M: 64
     TILE_N: 32
     TILE_K: 32
     GROUP_M: 2
-    pipeline: "null"
   num_warps: 4
-  num_stages: 3
+  num_stages: 2
 - META:
-    TILE_M: 128
+    TILE_M: 32
     TILE_N: 64
     TILE_K: 32
     GROUP_M: 2
-    pipeline: "null"
   num_warps: 4
-  num_stages: 3
+  num_stages: 2
 - META:
-    TILE_M: 128
-    TILE_N: 128
+    TILE_M: 64
+    TILE_N: 64
     TILE_K: 32
     GROUP_M: 2
-    pipeline: "null"
   num_warps: 4
-  num_stages: 3
-- META:
-    TILE_M: 128
-    TILE_N: 128
-    TILE_K: 128
-    GROUP_M: 32
-    pipeline: "cpasync"
-  num_warps: 4
-  num_stages: 4
+  num_stages: 2
 argmax:
 - META:
     BLOCK_M: 8
@@ -187,217 +168,100 @@ argmin_split_k:
 log_softmax:
 - META:
     BLOCK_M: 1
-    BLOCK_N: 256
 - META:
     BLOCK_M: 2
-    BLOCK_N: 512
 - META:
     BLOCK_M: 4
-    BLOCK_N: 512
 - META:
     BLOCK_M: 8
-    BLOCK_N: 512
 mm:
 - META:
-    BLOCK_M: 128
-    BLOCK_N: 128
-    BLOCK_K: 16
-    SPLIT_K: 1
-    pipeline: "cpasync"
-    scenario: "unroll"
-  num_stages: 8
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 256
-    BLOCK_K: 32
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 128
-    BLOCK_K: 32
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 64
-    BLOCK_K: 32
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 256
-    BLOCK_K: 32
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 128
-    BLOCK_K: 32
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 128
-    BLOCK_K: 32
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 32
-    BLOCK_K: 32
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 32
-    BLOCK_K: 32
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 5
-  num_warps: 2
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 256
-    BLOCK_K: 32
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 128
-    BLOCK_K: 128
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 64
-    BLOCK_K: 128
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 256
-    BLOCK_K: 128
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 128
-    BLOCK_K: 128
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 64
-    BLOCK_K: 64
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 128
-    BLOCK_K: 64
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 32
-    BLOCK_K: 64
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 32
-    BLOCK_K: 64
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 5
-  num_warps: 2
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 128
-    BLOCK_K: 32
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 8
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 256
-    BLOCK_K: 32
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 8
-- META:
     BLOCK_M: 32
     BLOCK_N: 32
-    BLOCK_K: 64
+    BLOCK_K: 32
     SPLIT_K: 1
-    pipeline: "null"
+    pipeline: "basic"
   num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 32
+    SPLIT_K: 1
+    pipeline: "basic"
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 32
+    SPLIT_K: 1
+    pipeline: "basic"
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 128
+    BLOCK_K: 32
+    SPLIT_K: 1
+    pipeline: "basic"
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 64
+    BLOCK_K: 32
+    SPLIT_K: 1
+    pipeline: "basic"
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 32
+    SPLIT_K: 1
+    pipeline: "basic"
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 128
+    BLOCK_K: 32
+    SPLIT_K: 1
+    pipeline: "basic"
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 32
+    BLOCK_K: 32
+    SPLIT_K: 1
+    pipeline: "basic"
+  num_stages: 3
   num_warps: 4
 - META:
     BLOCK_M: 32
     BLOCK_N: 64
-    BLOCK_K: 64
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 8
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 32
     BLOCK_K: 32
     SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 8
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 64
-    BLOCK_K: 32
-    SPLIT_K: 1
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 8
+    pipeline: "basic"
+  num_stages: 3
+  num_warps: 4
 - META:
     BLOCK_M: 128
     BLOCK_N: 128
-    BLOCK_K: 128
+    BLOCK_K: 64
     SPLIT_K: 1
-    pipeline: "cpasync"
-  num_stages: 4
+    pipeline: "basic"
+  num_stages: 3
+  num_warps: 4
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 64
+    SPLIT_K: 1
+    pipeline: "basic"
+  num_stages: 3
   num_warps: 4
 softmax_non_inner:
 - META:
@@ -469,116 +333,58 @@ max:
   num_warps: 8
 addmm:
 - META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 256
+    BLOCK_SIZE_M: 32
+    BLOCK_SIZE_N: 32
+    BLOCK_SIZE_K: 32
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_SIZE_M: 64
+    BLOCK_SIZE_N: 32
+    BLOCK_SIZE_K: 32
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_SIZE_M: 32
+    BLOCK_SIZE_N: 64
+    BLOCK_SIZE_K: 32
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_SIZE_M: 64
+    BLOCK_SIZE_N: 64
+    BLOCK_SIZE_K: 32
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_SIZE_M: 64
+    BLOCK_SIZE_N: 64
     BLOCK_SIZE_K: 64
-    pipeline: "null"
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_SIZE_M: 32
+    BLOCK_SIZE_N: 32
+    BLOCK_SIZE_K: 64
+  num_stages: 2
+  num_warps: 4
+- META:
+    BLOCK_SIZE_M: 64
+    BLOCK_SIZE_N: 32
+    BLOCK_SIZE_K: 32
   num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 32
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 32
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 64
-    BLOCK_SIZE_K: 32
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 32
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 32
-    BLOCK_SIZE_K: 32
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 32
-    BLOCK_SIZE_K: 32
-    pipeline: "null"
-  num_stages: 5
-  num_warps: 2
-- META:
-    BLOCK_SIZE_M: 32
-    BLOCK_SIZE_N: 64
-    BLOCK_SIZE_K: 32
-    pipeline: "null"
-  num_stages: 5
-  num_warps: 2
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 128
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 256
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 32
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 32
-    BLOCK_SIZE_N: 32
-    BLOCK_SIZE_K: 64
-    pipeline: "null"
-  num_stages: 2
   num_warps: 4
 - META:
     BLOCK_SIZE_M: 32
     BLOCK_SIZE_N: 64
-    BLOCK_SIZE_K: 64
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 32
     BLOCK_SIZE_K: 32
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 32
-    BLOCK_SIZE_K: 32
-    pipeline: "null"
-  num_stages: 4
-  num_warps: 8
+  num_stages: 3
+  num_warps: 4
 - META:
     BLOCK_SIZE_M: 64
     BLOCK_SIZE_N: 64
     BLOCK_SIZE_K: 32
-    pipeline: "null"
-  num_stages: 2
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 128
-    pipeline: "cpasync"
-  num_stages: 4
+  num_stages: 3
   num_warps: 4
 cross_entropy_loss:
 - META:
@@ -1071,7 +877,6 @@ weight_norm_kernel_last:
   block_m:
   - 512
   - 1024
-  - 2048
   block_n:
   - 1
   - 2
@@ -1098,7 +903,6 @@ weight_norm_kernel_first:
   block_n:
   - 512
   - 1024
-  - 2048
 weight_norm_kernel:
 - gen: true
   param_map:
@@ -1120,7 +924,6 @@ weight_norm_kernel:
   - 256
   - 512
   - 1024
-  - 2048
 vector_norm:
 - gen: true
   param_map:
@@ -1413,3 +1216,27 @@ diff:
   - 16
   - 256
   - 1024
+rms_norm_loop:
+  - gen: true
+    param_map:
+      META:
+        TILE_N: tile_n
+      num_warps: warps
+    warps:
+      - 4
+      - 8
+    tile_n:
+      - 512
+      - 1024
+add_rms_norm_loop:
+  - gen: true
+    param_map:
+      META:
+        TILE_N: tile_n
+      num_warps: warps
+    warps:
+      - 4
+      - 8
+    tile_n:
+      - 512
+      - 1024
