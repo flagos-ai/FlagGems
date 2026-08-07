@@ -24,6 +24,7 @@ from flag_gems.ops.__xor__ import (  # noqa: F401
 )
 from flag_gems.ops._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from flag_gems.ops._add_relu import _add_relu
+from flag_gems.ops._addmm_activation import _addmm_activation, _addmm_activation_out
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -752,6 +753,8 @@ __all__ = [
     "__lshift__",
     "_adaptive_avg_pool2d_backward",
     "_add_relu",
+    "_addmm_activation",
+    "_addmm_activation_out",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_no_update",
