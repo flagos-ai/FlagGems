@@ -10639,6 +10639,30 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: unsqueeze_copy
+    description: |
+      Returns a copy of the input tensor with a dimension of size 1
+      inserted at the specified position.
+    for:
+      - unsqueeze_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: unsqueeze_copy_out
+    description: A variant of `unsqueeze_copy()` that assigns the output to the `out` tensor.
+    for:
+      - unsqueeze_copy.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: upsample_bicubic2d
     description: A variant of `upsample()` that has `mode` set to `bicubic`.
     for:
