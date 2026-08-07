@@ -5686,6 +5686,21 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: weight_int4pack_mm
+    description: |
+      Int4 packed weight matrix multiplication. Computes C = A @ dequant(W).T
+      where W is a byte-pair int4 packed uint8 tensor of shape (N, K//2).
+      Weights are pre-dequantized into float32 and then processed by a Triton
+      GEMM kernel.
+    for:
+      - _weight_int4pack_mm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - beta: '1.0'
   - id: xlogy
     description: Computes `input * log(other)` element-wise, returning zero where `input` is zero (following PyTorch's `xlogy` semantics).
     for:
