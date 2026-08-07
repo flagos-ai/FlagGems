@@ -10683,6 +10683,19 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.1'
+  - id: upsample_bilinear2d
+    description: |
+      Upsamples the input, using bilinear mode.
+      The input has to be 4 dimensional, and the `output_size` is a tuple of 2 ints.
+    for:
+      - upsample_bilinear2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: upsample_linear1d
     description: |
       Upsamples the `input`, using linear mode.

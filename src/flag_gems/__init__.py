@@ -945,6 +945,7 @@ _FULL_CONFIG = (
     ("unsqueeze", unsqueeze),
     ("unsqueeze_", unsqueeze_),
     ("upsample_bicubic2d", upsample_bicubic2d),
+    ("upsample_bilinear2d", upsample_bilinear2d),
     ("upsample_linear1d", upsample_linear1d),
     ("upsample_linear1d_backward", upsample_linear1d_backward),
     ("upsample_nearest1d", upsample_nearest1d),
