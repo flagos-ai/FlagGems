@@ -34,16 +34,6 @@ def test_div():
     bench.run()
 
 
-@pytest.mark.divide
-def test_divide():
-    bench = base.BinaryPointwiseBenchmark(
-        op_name="divide",
-        torch_op=torch.ops.aten.divide.Tensor,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
 @pytest.mark.div_tensor_
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

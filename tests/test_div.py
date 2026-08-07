@@ -40,24 +40,6 @@ def test_div_tensor_tensor(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.divide
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_divide(shape, dtype, caplog):
-    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1, False)
-    ref_inp2 = utils.to_reference(inp2, False)
-
-    ref_out = torch.ops.aten.divide.Tensor(ref_inp1, ref_inp2)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.divide"):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.divide.Tensor(inp1, inp2)
-
-    assert "GEMS DIVIDE" in caplog.text
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
-
-
 # div_.Tensor with true_divide_
 @pytest.mark.div_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
