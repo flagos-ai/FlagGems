@@ -645,6 +645,7 @@ from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
 from flag_gems.ops.special_legendre_polynomial_p import special_legendre_polynomial_p
 from flag_gems.ops.special_log1p import special_log1p, special_log1p_out
+from flag_gems.ops.special_log_ndtr import special_log_ndtr
 from flag_gems.ops.special_log_softmax import special_log_softmax
 from flag_gems.ops.special_logsumexp import special_logsumexp
 from flag_gems.ops.special_modified_bessel_k0 import (
@@ -1500,6 +1501,7 @@ __all__ = [
     "special_i1",
     "special_i1_out",
     "special_legendre_polynomial_p",
+    "special_log_ndtr",
     "special_log_softmax",
     "special_log1p",
     "special_log1p_out",
