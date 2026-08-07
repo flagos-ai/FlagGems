@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from .abs import abs, abs_
 from .acos import acos
 from .add import add, add_
@@ -197,6 +198,7 @@ from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_nested_view_from_buffer_copy",
     "_unique2",
     "abs",
     "abs_",
