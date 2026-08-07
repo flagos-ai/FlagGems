@@ -1,20 +1,5 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
@@ -36,15 +21,6 @@ def log_sigmoid_backward_kernel(grad_output, self):
     self_fp32 = self.to(tl.float32)
     z = tl.exp(-tl.abs(self_fp32))
     derivative = tl.where(self_fp32 < 0.0, 1.0 / (1.0 + z), z / (1.0 + z))
-    return grad_output * derivative
-
-
-@pointwise_dynamic(is_tensor=[True, True, True], promotion_methods=[(0, 1, "DEFAULT")])
-@triton.jit
-def log_sigmoid_backward_buffer_kernel(grad_output, self, buffer):
-    self_fp32 = self.to(tl.float32)
-    z = buffer.to(tl.float32)
-    derivative = tl.where(self_fp32 < 0.0, 1.0, z) / (1.0 + z)
     return grad_output * derivative
 
 
@@ -88,13 +64,9 @@ def _launch_contiguous_kernel(grad_output, self, buffer, grad_input):
 
     block_size = 1024
     grid = (triton.cdiv(n_elements, block_size),)
-    # For FP32 the extra buffer read costs more than fused sigmoid recomputation.
-    has_buffer = (
-        buffer.numel() == n_elements
-        and buffer.dtype == self.dtype
-        and buffer.is_contiguous()
-        and self.dtype != torch.float32
-    )
+    # On T-Head PPU, recomputing sigmoid is faster than the extra buffer read
+    # for every supported floating-point dtype.
+    has_buffer = False
     with torch_device_fn.device(self.device):
         log_sigmoid_backward_contiguous_kernel[grid](
             grad_output,
@@ -117,13 +89,7 @@ def log_sigmoid(x):
 def log_sigmoid_backward(grad_output, self, buffer):
     logger.debug("GEMS LOG_SIGMOID BACKWARD")
 
-    if (
-        buffer.shape == self.shape
-        and buffer.dtype == self.dtype
-        and buffer.is_contiguous()
-        and self.dtype != torch.float32
-    ):
-        return log_sigmoid_backward_buffer_kernel(grad_output, self, buffer)
+    del buffer
     return log_sigmoid_backward_kernel(grad_output, self)
 
 

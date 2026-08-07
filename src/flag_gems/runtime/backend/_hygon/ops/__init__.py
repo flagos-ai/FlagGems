@@ -47,6 +47,7 @@ from .gelu import gelu, gelu_
 from .hadamard_transform import hadamard_transform
 from .index_add import index_add, index_add_
 from .isin import isin
+from .log_sigmoid import log_sigmoid_backward, log_sigmoid_backward_out
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .mm import mm
@@ -92,6 +93,8 @@ __all__ = [
     "index_add",
     "index_add_",
     "isin",
+    "log_sigmoid_backward",
+    "log_sigmoid_backward_out",
     "matmul_bf16",
     "matmul_int8",
     "mul",
