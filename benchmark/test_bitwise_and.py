@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -86,7 +88,12 @@ def scalar_tensor_input_fn(shape, cur_dtype, device):
 def test_bitwise_and_scalar_tensor():
     bench = base.GenericBenchmark(
         op_name="bitwise_and_scalar_tensor",
-        torch_op=torch.bitwise_and,
+        # Kunlunxin's native Scalar_Tensor overload cannot materialize the
+        # Python scalar.  AND is commutative, so use Tensor_Scalar for the
+        # vendor baseline while benchmarking the real FlagGems scalar-first
+        # implementation explicitly.
+        torch_op=lambda scalar, tensor: torch.bitwise_and(tensor, scalar),
+        gems_op=flag_gems.bitwise_and_scalar_tensor,
         input_fn=scalar_tensor_input_fn,
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
     )

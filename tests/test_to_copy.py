@@ -20,13 +20,56 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+
+def _to_copy_dtypes(dtypes):
+    return [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "kunlunxin"
+                and not cfg.TO_CPU
+                and dtype.is_complex,
+                reason=(
+                    "Kunlunxin PyTorch baseline does not implement real-to-complex "
+                    "casts"
+                ),
+            ),
+            id=str(dtype),
+        )
+        for dtype in dtypes
+    ]
+
+
+def _to_copy_pairs(src_dtypes, dst_dtypes):
+    unsupported_xpu_baselines = {
+        (torch.bfloat16, torch.int16),
+        (torch.int16, torch.bfloat16),
+    }
+    return [
+        pytest.param(
+            src_dtype,
+            dst_dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "kunlunxin"
+                and not cfg.TO_CPU
+                and (src_dtype, dst_dtype) in unsupported_xpu_baselines,
+                reason=("Kunlunxin XDNN baseline does not implement this dtype cast"),
+            ),
+            id=f"{src_dtype}-{dst_dtype}",
+        )
+        for src_dtype, dst_dtype in itertools.product(src_dtypes, dst_dtypes)
+    ]
 
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    utils.ALL_FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.COMPLEX_DTYPES,
+    _to_copy_dtypes(
+        utils.ALL_FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.COMPLEX_DTYPES
+    ),
 )
 def test_to_dtype(shape, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype in utils.COMPLEX_DTYPES:
@@ -43,7 +86,9 @@ def test_to_dtype(shape, dtype):
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("target_dtype", utils.ALL_FLOAT_DTYPES + utils.COMPLEX_DTYPES)
+@pytest.mark.parametrize(
+    "target_dtype", _to_copy_dtypes(utils.ALL_FLOAT_DTYPES + utils.COMPLEX_DTYPES)
+)
 def test_to_copy_dtype_cast(shape, target_dtype):
     if flag_gems.vendor_name == "tsingmicro" and target_dtype in utils.COMPLEX_DTYPES:
         pytest.skip("#2855: Skiping complex to_copy test on tsingmicro platform")
@@ -64,6 +109,15 @@ def test_to_copy_dtype_cast(shape, target_dtype):
     [torch.preserve_format, torch.contiguous_format],
 )
 def test_to_copy_preserve_strides(memory_format):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and cfg.TO_CPU
+        and memory_format is torch.preserve_format
+    ):
+        pytest.skip(
+            "Kunlunxin and CPU baselines choose different suggested layouts "
+            "for non-dense preserve_format inputs"
+        )
     base = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
     x = base.transpose(0, 1)[::2]
     ref_x = utils.to_reference(x)
@@ -111,8 +165,13 @@ def test_to_copy_float_to_float(shape, src_dtype, dst_dtype):
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("src_dtype", utils.ALL_FLOAT_DTYPES)
-@pytest.mark.parametrize("dst_dtype", [torch.int8, torch.int16, torch.int32])
+@pytest.mark.parametrize(
+    "src_dtype,dst_dtype",
+    _to_copy_pairs(
+        utils.ALL_FLOAT_DTYPES,
+        [torch.int8, torch.int16, torch.int32],
+    ),
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -129,8 +188,13 @@ def test_to_copy_float_to_int(shape, src_dtype, dst_dtype):
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("src_dtype", [torch.int8, torch.int16, torch.int32])
-@pytest.mark.parametrize("dst_dtype", utils.ALL_FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "src_dtype,dst_dtype",
+    _to_copy_pairs(
+        [torch.int8, torch.int16, torch.int32],
+        utils.ALL_FLOAT_DTYPES,
+    ),
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )

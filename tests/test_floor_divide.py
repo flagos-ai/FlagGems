@@ -25,6 +25,21 @@ from . import conftest as cfg
 
 device = flag_gems.device
 
+FLOOR_DIV_INT_DTYPES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "kunlunxin" and not cfg.TO_CPU,
+            reason=(
+                "Kunlunxin PyTorch baseline does not implement scalar-first "
+                "integer floor_divide"
+            ),
+        ),
+        id=str(dtype),
+    )
+    for dtype in utils.INT_DTYPES
+]
+
 
 def replace_zeros(inp):
     return torch.where(inp == 0, 1, inp)
@@ -131,7 +146,7 @@ def test_floor_divide_float_(shape, dtype):
 @pytest.mark.floor_divide_tensor
 @pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="Issue #3025")
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOOR_DIV_INT_DTYPES)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )

@@ -58,6 +58,22 @@ def where_self_out(condition, self, other, out=None):
     assert len(devices), "CPU only. There seems a mistake to dispatch to here."
 
     device = devices[0]
+
+    # PyTorch permits CPU scalar tensors to participate in an operation whose
+    # non-scalar operands live on a device.  Passing those mixed-device scalar
+    # arguments through pointwise_dynamic triggers an XPU concat/NOC failure on
+    # P800.  Evaluate this uncommon scalar-mixing path on CPU and move the
+    # result back; the all-device path below remains the fast implementation.
+    has_cpu_scalar = any(
+        value.device.type == "cpu" and value.ndim == 0 for value in (c, a, b)
+    )
+    if has_cpu_scalar:
+        cpu_result = torch.where(c.cpu(), a.cpu(), b.cpu()).to(device)
+        if out is not None:
+            out.copy_(cpu_result)
+            return out
+        return cpu_result
+
     if c.device != device and c.ndim == 0:
         c = c.to(device)
     if a.device != device and a.ndim == 0:

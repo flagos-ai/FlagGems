@@ -165,6 +165,44 @@ def all_kernel_dim(
     tl.store(out, all[:, None], row_mask)
 
 
+@libentry()
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
+)
+@triton.jit
+def all_kernel_dim_contiguous(
+    inp,
+    out,
+    M,
+    N,
+    INNER: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Reduce one axis of a contiguous input without transposing it."""
+    pid = ext.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    cols0 = tl.arange(0, BLOCK_N)[None, :]
+    row_mask = rows < M
+    outer = rows // INNER
+    inner = rows % INNER
+    row_offsets = outer * N * INNER + inner
+
+    _all = tl.full([BLOCK_M, BLOCK_N], value=1, dtype=tl.int1)
+    for off in range(0, N, BLOCK_N):
+        cols = off + cols0
+        col_mask = cols < N
+        mask = row_mask and col_mask
+        a = tl.load(inp + row_offsets + cols * INNER, mask=mask, other=1.0)
+        _all = _all and (a != 0)
+
+    result = tl.reduce(_all, axis=1, combine_fn=reduce_all)
+    tl.store(out + rows, result[:, None], row_mask)
+
+
 def all(inp):
     logger.debug("GEMS_KUNLUNXIN ALL")
     n_elements = inp.numel()
@@ -218,17 +256,26 @@ def all_dim(inp, dim=None, keepdim=False):
     assert dim >= -orig_ndim and dim < orig_ndim, "Invalid dim"
     dim = dim % orig_ndim
     N = shape[dim]
-    inp = dim_compress(inp, dim)
+    is_contiguous = inp.is_contiguous()
+    if not is_contiguous:
+        inp = dim_compress(inp, dim)
     shape[dim] = 1
     M = inp.numel() // N
-
-    if inp.dtype != torch.bool and M * N <= 64:
-        inp = inp != 0
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
     grid = lambda meta: (max(triton.cdiv(M, meta["BLOCK_M"]), 1),)
     with torch_device_fn.device(inp.device):
-        all_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
+        if is_contiguous:
+            # Product of dimensions after the reduced axis.  Keeping it a
+            # constexpr lets XPU recognize the regular strided load pattern.
+            inner = 1
+            for size in inp.shape[dim + 1 :]:
+                inner *= size
+            all_kernel_dim_contiguous[grid](
+                inp, out, M, N, inner, buffer_size_limit=2048
+            )
+        else:
+            all_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
 
     if not keepdim and out.ndim > 0:
         out = out.squeeze(dim) if dim < out.ndim else out
@@ -243,22 +290,12 @@ def all_dims(inp, dim=None, keepdim=False):
     orig_ndim = inp.ndim
     assert ((i >= -orig_ndim and i < orig_ndim) for i in dim), "Invalid dim"
 
-    shape = list(inp.shape)
     dim = [d % orig_ndim for d in dim]
-    inp = dim_compress(inp, dim)
-    N = 1
-    for i in dim:
-        N *= shape[i]
-        shape[i] = 1
-    M = inp.numel() // N
-
-    if inp.dtype != torch.bool and M * N <= 64:
-        inp = inp != 0
-
-    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
-    grid = lambda meta: (max(triton.cdiv(M, meta["BLOCK_M"]), 1),)
-    with torch_device_fn.device(inp.device):
-        all_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
+    out = inp
+    # Keep axes during each pass so the original dimension numbers remain
+    # stable.  This also avoids dim_compress for arbitrary multi-axis sets.
+    for d in dim:
+        out = all_dim(out, dim=d, keepdim=True)
 
     if not keepdim:
         # Squeeze reduced axes from highest to lowest. Removing a low axis first

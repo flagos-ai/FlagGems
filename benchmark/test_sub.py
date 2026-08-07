@@ -24,11 +24,25 @@ from . import base, consts
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-def test_sub():
+@pytest.mark.parametrize(
+    "dtypes",
+    [
+        pytest.param(
+            consts.COMPLEX_DTYPES,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "kunlunxin",
+                reason="Kunlunxin PyTorch baseline does not implement complex sub",
+            ),
+            id="complex",
+        ),
+        pytest.param(consts.FLOAT_DTYPES, id="real"),
+    ],
+)
+def test_sub(dtypes):
     bench = base.BinaryPointwiseBenchmark(
         op_name="sub",
         torch_op=torch.sub,
-        dtypes=consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES,
+        dtypes=dtypes,
     )
     bench.run()
 

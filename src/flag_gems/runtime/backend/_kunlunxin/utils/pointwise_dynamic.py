@@ -346,7 +346,7 @@ class KernelGenerator:
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
-                code.writeline("tiles_per_cta: tl.constexpr,")
+                code.writeline("tiles_per_cta: int,")
                 tile_sizes = _cs(f"tile_size{i}: tl.constexpr" for i in range(ndim))
                 code.writeline(f"{tile_sizes},")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
@@ -409,7 +409,7 @@ class KernelGenerator:
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
-                code.writeline("tiles_per_cta: tl.constexpr,")
+                code.writeline("tiles_per_cta: int,")
                 code.writeline("tile_size: tl.constexpr,")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
         code.writeline("):")
@@ -873,40 +873,54 @@ class WrapperGenerator:
             code.writeline("if num_tasks == 0:")
             with code.indent():
                 self.gen_return(code)
-            max_tile_size = self.config.max_tile_size
-            code.writeline(
-                f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"
-            )
-            code.writeline("tile_size = tile_sizes[0]")
-            code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
-            # max_grid_size0 = self.config.max_grid_size[0]
-            # code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
-            determine_num_ctas_and_tiles = [
-                "if sum(out0.shape) <= 2048*64:",
-                "   num_ctas = 1 # XPU BLOCK_NUM",
-                "   num_tiles = 1 # XPU BLOCK_NUM",
-                "else:",
-                "   num_ctas = 12 # XPU BLOCK_NUM",
-                "   num_tiles = 12 # XPU BLOCK_NUM",
+            tensor_names = [f"in{i}" for i in range(self.fx.num_input_tensors())] + [
+                f"out{i}" for i in range(self.fx.num_output_tensors())
             ]
-            if self.config.kunlunAutoGrid is True:
-                code.writelines(determine_num_ctas_and_tiles)
+            element_sizes = ", ".join(f"{name}.element_size()" for name in tensor_names)
+            code.writeline(f"element_size = max({element_sizes})")
+            # A cluster owns 64 cores.  Keep a tile within the same per-core
+            # buffer limit passed to the compiler below; cat/scatter kernels use
+            # a smaller limit and must therefore use a smaller tile as well.
+            if self.config.is_scatter_slice or self.config.is_cat:
+                effective_buffer_size = 512
+            elif self.config.buffer_size_limit:
+                effective_buffer_size = self.config.buffer_size_limit
             else:
-                code.writeline("num_ctas = 12 # XPU BLOCK_NUM")
-                code.writeline("num_tiles = 12 # XPU BLOCK_NUM")
+                effective_buffer_size = 2048
+            # Rank-6 strided kernels need six div/mod index decompositions per
+            # lane. A 32K-lane tile makes the XPU compiler spend minutes in
+            # make_elf (and can corrupt its heap), while 8K produces the same
+            # masked grid-stride kernel in a few seconds. Lower ranks retain the
+            # wider tile because their address expressions compile cheaply.
+            lane_limit = 8 * 1024 if ndim >= 6 else 32 * 1024
             code.writeline(
-                "tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_tiles)) # XPU BLOCK_NUM"
+                f"max_tile_size = min({lane_limit}, "
+                f"triton.cdiv({effective_buffer_size} * 64, element_size))"
             )
-
-            # code.writeline("element_size = get_element_size(in0.dtype)")
-            # code.writeline(
-            #     "tile_size = min("
-            #     "triton.next_power_of_2(triton.cdiv(num_tasks, 12)), "
-            #     "triton.cdiv(2048 * 64, element_size)"
-            #     ")"
-            # )
-            # code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
-            # code.writeline("num_ctas = num_tiles")
+            if self.config.kunlunAutoGrid is True:
+                code.writeline(
+                    "target_ctas = 1 if num_tasks <= "
+                    f"{effective_buffer_size} * 64 else 12"
+                )
+            else:
+                code.writeline("target_ctas = 12")
+            code.writeline(
+                "tile_size = min("
+                "triton.next_power_of_2(triton.cdiv(num_tasks, target_ctas)), "
+                "max_tile_size"
+                ")"
+            )
+            code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
+            # P800 schedules pointwise work over 12 clusters.  A partial final
+            # cluster can occasionally leave a CTA unscheduled, which showed up
+            # as nondeterministic tail values on small add tensors.  Round the
+            # grid up to a complete cluster while retaining one CTA per tile for
+            # large bandwidth-bound tensors.
+            max_grid_size0 = self.config.max_grid_size[0]
+            code.writeline(
+                f"num_ctas = min({max_grid_size0}, target_ctas * "
+                "triton.cdiv(num_tiles, target_ctas))"
+            )
 
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
@@ -1004,7 +1018,9 @@ class WrapperGenerator:
                     code.writeline("isCloseDtypeConvert=True,")
                 if not self.config.isCloseMemoryAsync:
                     code.writeline("isCloseMemoryAsync=False,")
-                if os.getenv("XPU_cmp_nan") == "1":
+                if ndim > 0:
+                    code.writeline("isCloseUnrollControl=tiles_per_cta > 1,")
+                if self.config.isOpenCmpNan:
                     code.writeline("isOpenCmpNan=True,")
                 if self.config.unroll_num:
                     code.writeline(f"unroll_num={self.config.unroll_num},")
@@ -1073,7 +1089,9 @@ class WrapperGenerator:
                     code.writeline("isCloseDtypeConvert=True,")
                 if not self.config.isCloseMemoryAsync:
                     code.writeline("isCloseMemoryAsync=False,")
-                if os.getenv("XPU_cmp_nan") == "1":
+                if ndim > 0:
+                    code.writeline("isCloseUnrollControl=tiles_per_cta > 1,")
+                if self.config.isOpenCmpNan:
                     code.writeline("isOpenCmpNan=True,")
                 if self.config.unroll_num:
                     code.writeline(f"unroll_num={self.config.unroll_num},")
@@ -1143,7 +1161,6 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.utils import triton_lang_extension as ext")
         code.writeline("from flag_gems.runtime import torch_device_fn")
-        # code.writeline("from _kunlunxin.utils.block_size_utils import get_element_size")
         code.newline()
         code.newline()
         return code

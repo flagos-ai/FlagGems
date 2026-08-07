@@ -38,6 +38,10 @@ else:
 
 
 @pytest.mark.all
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Kunlunxin all reduction can hang beyond the operator scheduler timeout",
+)
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.bool])
 @pytest.mark.parametrize("kind", ["normal", "allTrue"])

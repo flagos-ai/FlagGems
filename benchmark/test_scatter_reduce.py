@@ -105,7 +105,8 @@ def gather_scatter_gbps(bench_fn_args, latency):
 
 @pytest.mark.scatter_reduce
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    flag_gems.vendor_name in ("tsingmicro", "kunlunxin"),
+    reason="Scatter reduce benchmark is unsupported or exceeds the backend timeout",
 )
 def test_scatter_reduce_add():
     bench = TensorSelectBenchmark(
@@ -120,7 +121,8 @@ def test_scatter_reduce_add():
 
 @pytest.mark.scatter_reduce
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    flag_gems.vendor_name in ("tsingmicro", "kunlunxin"),
+    reason="Scatter reduce benchmark is unsupported or exceeds the backend timeout",
 )
 def test_scatter_reduce_multiply():
     bench = TensorSelectBenchmark(

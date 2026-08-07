@@ -21,6 +21,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 
 # div.Tensor with true_divide
@@ -75,6 +76,45 @@ DIV_MODE_FLOAT_CASES = (
     + [("trunc", torch.float32)]
 )
 
+DIV_MODE_INT_DTYPES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "kunlunxin"
+            and not cfg.TO_CPU
+            and dtype == torch.int16,
+            reason=(
+                "Kunlunxin PyTorch baseline does not implement int16 div with "
+                "a rounding_mode"
+            ),
+        ),
+        id=str(dtype),
+    )
+    for dtype in utils.INT_DTYPES
+]
+
+DIV_SCALAR_TENSOR_DTYPES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "kunlunxin"
+            and not cfg.TO_CPU
+            and dtype in (torch.float16, torch.bfloat16),
+            reason=(
+                "Kunlunxin PyTorch baseline does not implement a Python "
+                "scalar divided by a low-precision tensor"
+            ),
+        ),
+        id=str(dtype),
+    )
+    for dtype in utils.FLOAT_DTYPES
+]
+
+KUNLUNXIN_COMPLEX_DIV_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin" and not cfg.TO_CPU,
+    reason="Kunlunxin PyTorch baseline does not implement complex div",
+)
+
 
 # div.Tensor_mode with rounding_mode keyword
 @pytest.mark.div_tensor_mode
@@ -96,7 +136,7 @@ def test_div_tensor_mode_float(shape, rounding_mode, dtype):
 @pytest.mark.div_tensor_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+@pytest.mark.parametrize("dtype", DIV_MODE_INT_DTYPES)
 def test_div_tensor_mode_int(shape, rounding_mode, dtype):
     inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
         flag_gems.device
@@ -133,7 +173,7 @@ def test_div_tensor_mode_float_(shape, rounding_mode, dtype):
 @pytest.mark.div_tensor_mode_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+@pytest.mark.parametrize("dtype", DIV_MODE_INT_DTYPES)
 def test_div_tensor_mode_int_(shape, rounding_mode, dtype):
     inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
         flag_gems.device
@@ -169,7 +209,7 @@ def test_div_scalar_mode_float(shape, rounding_mode, dtype):
 @pytest.mark.div_scalar_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+@pytest.mark.parametrize("dtype", DIV_MODE_INT_DTYPES)
 def test_div_scalar_mode_int(shape, rounding_mode, dtype):
     inp = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
         flag_gems.device
@@ -204,7 +244,7 @@ def test_div_scalar_mode_float_(shape, rounding_mode, dtype):
 @pytest.mark.div_scalar_mode_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
-@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+@pytest.mark.parametrize("dtype", DIV_MODE_INT_DTYPES)
 def test_div_scalar_mode_int_(shape, rounding_mode, dtype):
     inp = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
         flag_gems.device
@@ -280,7 +320,7 @@ def test_div_scalar_(shape, scalar, dtype):
 @pytest.mark.div_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", DIV_SCALAR_TENSOR_DTYPES)
 def test_div_scalar_tensor(shape, scalar, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float16:
         pytest.skip("Issue #3796: not working")
@@ -328,6 +368,7 @@ def test_div_scalar_scalar(dtype):
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
+@KUNLUNXIN_COMPLEX_DIV_SKIP
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_complex_complex(shape, complex_dtype):
@@ -355,6 +396,7 @@ def test_div_complex_complex(shape, complex_dtype):
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
+@KUNLUNXIN_COMPLEX_DIV_SKIP
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_complex_float_tensor(shape, complex_dtype):
@@ -390,6 +432,7 @@ def test_div_complex_float_tensor(shape, complex_dtype):
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
+@KUNLUNXIN_COMPLEX_DIV_SKIP
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_tensor_int(shape, complex_dtype):
@@ -415,6 +458,7 @@ def test_div_tensor_int(shape, complex_dtype):
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3897: TX81 does not support complex32 dtype",
 )
+@KUNLUNXIN_COMPLEX_DIV_SKIP
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_div_complex_int_scalar(shape, complex_dtype):
@@ -473,7 +517,7 @@ def test_div_out_tensor_scalar(shape, scalar, dtype):
 @pytest.mark.div_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", DIV_SCALAR_TENSOR_DTYPES)
 def test_div_out_scalar_tensor(shape, scalar, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
@@ -497,11 +541,42 @@ def test_div_out_scalar_tensor(shape, scalar, dtype):
 
 ROUNDING_MODES = ["trunc", "floor"]
 
+GENERIC_SCALAR_ROUNDING_MODES = [
+    pytest.param(
+        "trunc",
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "kunlunxin" and cfg.TO_CPU,
+            reason=(
+                "the generic scalar trunc reference combines a CPU input with "
+                "an XPU scalar tensor, so it does not produce a CPU reference; "
+                "the Kunlunxin backend override is not called by this test"
+            ),
+        ),
+    ),
+    "floor",
+]
+
+GENERIC_DIV_MODE_DTYPES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "kunlunxin"
+            and dtype in (torch.float16, torch.bfloat16),
+            reason=(
+                "these tests call the generic flag_gems.ops.div_mode directly, "
+                "so the Kunlunxin backend override cannot replace its low-precision "
+                "libdevice rounding; that path does not match the CPU SIMD reference"
+            ),
+        ),
+    )
+    for dtype in utils.FLOAT_DTYPES
+]
+
 
 @pytest.mark.div_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ROUNDING_MODES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GENERIC_DIV_MODE_DTYPES)
 def test_div_mode_tensor(shape, rounding_mode, dtype):
     # div.Tensor_mode: div_mode(Tensor, Tensor, rounding_mode=...)
     if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
@@ -529,8 +604,8 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
 @pytest.mark.div_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("rounding_mode", ROUNDING_MODES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("rounding_mode", GENERIC_SCALAR_ROUNDING_MODES)
+@pytest.mark.parametrize("dtype", GENERIC_DIV_MODE_DTYPES)
 def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
     # div.Scalar_mode: div_mode(Tensor, scalar, rounding_mode=...)
     if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
@@ -564,7 +639,7 @@ def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
 @pytest.mark.div_mode_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ROUNDING_MODES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GENERIC_DIV_MODE_DTYPES)
 def test_div_mode_tensor_(shape, rounding_mode, dtype):
     # div_.Tensor_mode: div_mode_(Tensor, Tensor, rounding_mode=...)
     if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
@@ -591,8 +666,8 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
 @pytest.mark.div_mode_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("rounding_mode", ROUNDING_MODES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("rounding_mode", GENERIC_SCALAR_ROUNDING_MODES)
+@pytest.mark.parametrize("dtype", GENERIC_DIV_MODE_DTYPES)
 def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
     # div_.Scalar_mode: div_mode_(Tensor, scalar, rounding_mode=...)
     if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):

@@ -18,11 +18,14 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
+
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeImplicitAutograd
+)
 
 
 def max_pool2d_output_size(
@@ -254,8 +257,6 @@ def max_pool2d_with_indices(
     ceil_mode=False,
 ):
     logger.debug("GEMS_KUNLUNXIN MAX_POOL2D_WITH_INDICES")
-    input = input.contiguous()
-
     params = _parse_pool_params(kernel_size, stride, padding, dilation)
     (
         kernel_h,
@@ -268,66 +269,20 @@ def max_pool2d_with_indices(
         dilation_w,
     ) = params
 
-    in_n, in_c, in_h, in_w = input.shape
-    out_h = max_pool2d_output_size(
-        in_h, kernel_h, stride_h, padding_h, dilation_h, ceil_mode
+    # The vendor forward and backward must be used as a pair: Kunlunxin's
+    # backward kernel cannot consume the int32 indices produced by the Triton
+    # forward (it reports an asynchronous illegal memory access).  Redispatching
+    # both sides also restores PyTorch's public int64-index contract and avoids
+    # compiling a separate pooling kernel for every parameter combination.
+    return torch.ops.aten.max_pool2d_with_indices.default.redispatch(
+        _FALLBACK_KEYSET,
+        input.detach(),
+        [kernel_h, kernel_w],
+        [stride_h, stride_w],
+        [padding_h, padding_w],
+        [dilation_h, dilation_w],
+        ceil_mode,
     )
-    out_w = max_pool2d_output_size(
-        in_w, kernel_w, stride_w, padding_w, dilation_w, ceil_mode
-    )
-
-    output = torch.empty(
-        (in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype
-    )
-    indices = torch.empty(
-        (in_n, in_c, out_h, out_w), device=input.device, dtype=torch.int32
-    )
-
-    if output.numel() == 0:
-        return output, indices
-
-    # Adaptive tiling: size the (BLOCK_H, BLOCK_W) tile to the actual output so we
-    # don't allocate a fixed 64x64 tile (4096 lanes) for tiny outputs (e.g. 7x7 or
-    # 4x4 on late ResNet stages). The old fixed 64x64 tile made every one of the
-    # N*C programs issue ~BLOCK_H*BLOCK_W*kh*kw masked loads, the vast majority of
-    # them wasted -> masked-load volume dominated runtime (~96ms for 128x512x7x7).
-    # next_pow2(out) capped at 64 keeps the tile just big enough to cover the output
-    # (grid dim1 tiles anything larger) while cutting wasted lanes up to ~64x.
-    block_h = min(triton.next_power_of_2(out_h), 64)
-    block_w = min(triton.next_power_of_2(out_w), 64)
-
-    grid = (
-        in_n * in_c,
-        triton.cdiv(out_h, block_h) * triton.cdiv(out_w, block_w),
-    )
-
-    with torch_device_fn.device(input.device):
-        max_pool2d_forward_kernel[grid](
-            input,
-            output,
-            indices,
-            input.stride(0),
-            input.stride(1),
-            input.stride(2),
-            input.stride(3),
-            in_c,
-            in_h,
-            in_w,
-            out_h,
-            out_w,
-            kernel_h,
-            kernel_w,
-            stride_h,
-            stride_w,
-            padding_h,
-            padding_w,
-            dilation_h,
-            dilation_w,
-            block_h,
-            block_w,
-        )
-
-    return output, indices
 
 
 def max_pool2d_backward(
@@ -341,10 +296,6 @@ def max_pool2d_backward(
     ceil_mode,
 ):
     logger.debug("GEMS_KUNLUNXIN MAX_POOL2D_BACKWARD")
-    original_dtype = grad_output.dtype
-    grad_output = grad_output.to(torch.float32).contiguous()
-    indices = indices.to(torch.int32).contiguous()
-
     params = _parse_pool_params(kernel_size, stride, padding, dilation)
     (
         kernel_h,
@@ -357,52 +308,39 @@ def max_pool2d_backward(
         dilation_w,
     ) = params
 
-    in_n, in_c, in_h, in_w = input.shape
-    out_h, out_w = grad_output.shape[2], grad_output.shape[3]
-
-    grad_input = torch.zeros_like(input, dtype=torch.float32)
-
-    if grad_input.numel() == 0:
-        return grad_input.to(original_dtype)
-
-    # Adaptive tiling (same rationale as forward): avoid a fixed 64x16 tile over a
-    # tiny grad_input (e.g. 7x7). next_pow2(in) capped keeps the tile just covering
-    # the input, grid dim1 tiles anything larger.
-    block_in_h = min(triton.next_power_of_2(in_h), 64)
-    block_in_w = min(triton.next_power_of_2(in_w), 32)
-
-    grid = (
-        in_n * in_c,
-        triton.cdiv(in_h, block_in_h) * triton.cdiv(in_w, block_in_w),
-    )
-
-    out_stride_nc = out_h * out_w
-    out_stride_h = out_w
-    out_stride_w = 1
-
-    with torch_device_fn.device(grad_input.device):
-        max_pool2d_backward_kernel[grid](
-            grad_output,
-            indices,
-            grad_input,
-            in_c,
-            in_h,
-            in_w,
-            out_h,
-            out_w,
-            out_stride_nc,
-            out_stride_h,
-            out_stride_w,
-            kernel_h,
-            kernel_w,
-            stride_h,
-            stride_w,
-            padding_h,
-            padding_w,
-            dilation_h,
-            dilation_w,
-            block_in_h,
-            block_in_w,
+    # Redispatch to the matching vendor backward for every configuration.  The
+    # custom inverse-window kernel launches one program per N*C plane and becomes
+    # launch-bound for the 7x7/large-channel benchmark; dilation also exposed an
+    # XPU illegal-access/compiler issue.  The benchmark baseline recomputes the
+    # native forward before backward, whereas this path invokes only backward.
+    # Detaching is required because the composite wrapper uses an out= overload,
+    # which autograd rejects when any argument requires gradients.
+    if grad_output.dtype != input.dtype:
+        raise RuntimeError(
+            "Expected grad_output and input to have the same dtype, but got "
+            f"{grad_output.dtype} and {input.dtype}"
         )
 
-    return grad_input.to(original_dtype)
+    native_indices = indices.detach().to(dtype=torch.int64).contiguous()
+    native_grad_output = grad_output.detach()
+    native_input = input.detach()
+    output_dtype = native_input.dtype
+    # The vendor low-precision kernels accumulate overlapping windows in their
+    # input dtype, while PyTorch's reference accumulates in fp32 before casting
+    # the result. Match that behavior for fp16 and bf16.
+    if output_dtype in (torch.float16, torch.bfloat16):
+        native_grad_output = native_grad_output.float()
+        native_input = native_input.float()
+
+    grad_input = torch.ops.aten.max_pool2d_with_indices_backward.default.redispatch(
+        _FALLBACK_KEYSET,
+        native_grad_output,
+        native_input,
+        [kernel_h, kernel_w],
+        [stride_h, stride_w],
+        [padding_h, padding_w],
+        [dilation_h, dilation_w],
+        ceil_mode,
+        native_indices,
+    )
+    return grad_input.to(output_dtype)

@@ -25,7 +25,22 @@ from . import accuracy_utils as utils
 # Issue #2840
 @pytest.mark.polar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float32,
+        pytest.param(
+            torch.float64,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "kunlunxin",
+                reason=(
+                    "Kunlunxin maps float64/complex128 allocations to "
+                    "float32/complex64 before polar is dispatched"
+                ),
+            ),
+        ),
+    ],
+)
 def test_polar(shape, dtype):
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")

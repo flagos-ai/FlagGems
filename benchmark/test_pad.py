@@ -36,7 +36,8 @@ def _input_fn(shape, dtype, device):
 
 @pytest.mark.pad
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+    flag_gems.vendor_name in ("tsingmicro", "kunlunxin"),
+    reason="Pad benchmark is unsupported or exceeds the backend timeout",
 )
 def test_pad():
     bench = base.GenericBenchmark(

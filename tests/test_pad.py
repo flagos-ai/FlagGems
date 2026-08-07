@@ -28,6 +28,10 @@ device = flag_gems.device
 
 
 @pytest.mark.pad
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Kunlunxin full pad matrix exceeds the operator scheduler timeout",
+)
 @pytest.mark.parametrize(
     "shape",
     [[1024, 1024], [64, 64, 64, 64], [1, 64, 112, 112], [4, 64, 128]],

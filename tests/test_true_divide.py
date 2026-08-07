@@ -18,6 +18,24 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+TRUE_DIV_SCALAR_TENSOR_DTYPES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "kunlunxin"
+            and not cfg.TO_CPU
+            and dtype in (torch.float16, torch.bfloat16),
+            reason=(
+                "Kunlunxin PyTorch baseline does not implement a Python "
+                "scalar divided by a low-precision tensor"
+            ),
+        ),
+        id=str(dtype),
+    )
+    for dtype in utils.FLOAT_DTYPES
+]
 
 
 @pytest.mark.div_tensor
@@ -106,7 +124,7 @@ def test_true_divide_tensor_scalar_(shape, scalar, dtype):
 @pytest.mark.div_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", TRUE_DIV_SCALAR_TENSOR_DTYPES)
 def test_true_divide_scalar_tensor(shape, scalar, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)

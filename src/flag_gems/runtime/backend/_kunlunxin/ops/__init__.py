@@ -318,6 +318,7 @@ from .vdot import vdot
 from .vector_norm import vector_norm
 from .view_copy import view_copy
 from .vstack import vstack
+from .weight_norm import weight_norm as _weight_norm
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .xlogy import (
@@ -764,6 +765,7 @@ __all__ = [
     "vector_norm",
     "view_copy",
     "vstack",
+    "_weight_norm",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",

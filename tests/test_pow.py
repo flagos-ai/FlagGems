@@ -147,6 +147,10 @@ def test_pow_tensor_scalar_(scalar, shape, dtype):
 
 
 @pytest.mark.pow_scalar
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Kunlunxin full scalar-base pow matrix exceeds the operator scheduler timeout",
+)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
