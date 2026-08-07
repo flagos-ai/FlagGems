@@ -189,6 +189,7 @@ _FULL_CONFIG = (
     ("abs", abs),
     ("abs_", abs_),
     ("absolute", absolute),
+    ("absolute_", absolute_),
     ("acos", acos),
     ("acosh", acosh),
     ("acosh_", acosh_),

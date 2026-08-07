@@ -66,6 +66,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: absolute_
+    description: The in-place version of `absolute()`.
+    for:
+      - absolute_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: acos
     description: Returns a new tensor with the arccosine (in radians) of each element in `input`.
     for:
