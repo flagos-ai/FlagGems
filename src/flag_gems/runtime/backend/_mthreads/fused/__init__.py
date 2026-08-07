@@ -13,9 +13,11 @@
 # limitations under the License.
 
 from .cross_entropy_loss import cross_entropy_loss
+from .rotary_embedding import apply_rotary_pos_emb
 from .sparse_attention import sparse_attn_triton
 
 __all__ = [
+    "apply_rotary_pos_emb",
     "cross_entropy_loss",
     "sparse_attn_triton",
 ]
