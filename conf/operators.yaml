@@ -9579,6 +9579,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_multigammaln
+    description: |
+      Computes the multivariate log-gamma function for each element of the input.
+      Out-of-place counterpart of mvlgamma_; delegates to the mvlgamma kernel,
+      which supports orders p up to 12.
+    for:
+      - special_multigammaln
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_round
     description: |
       Rounds a tensor to the nearest integer, with ties rounding to the nearest
