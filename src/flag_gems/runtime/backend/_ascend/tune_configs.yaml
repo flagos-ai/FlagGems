@@ -281,6 +281,16 @@ any:
   block_n:
   - 1024
 
+complex:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: blocks
+  blocks:
+    - 1024
+    - 2048
+    - 4096
+
 index_select:
 - gen: true
   param_map:
