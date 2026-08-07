@@ -293,6 +293,7 @@ _FULL_CONFIG = (
     ("bitwise_xor.Tensor", bitwise_xor_tensor),
     ("bitwise_xor_.Scalar", bitwise_xor_scalar_),
     ("bitwise_xor_.Tensor", bitwise_xor_tensor_),
+    ("block_diag", block_diag),
     ("bmm", bmm),
     ("bmm.out", bmm_out),
     ("broadcast_tensors", broadcast_tensors),
