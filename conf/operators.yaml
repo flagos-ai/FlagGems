@@ -9547,8 +9547,8 @@ ops:
       - aten
       - pointwise
       - KernelGen
-      - Math
     kind:
+      - Math
     stages:
       - beta: '5.0'
       - stable: '5.3'
@@ -9594,8 +9594,8 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
-    description: |
   - id: special_legendre_polynomial_p
+    description: |
       Computes the Legendre polynomial P_n(x) of degree n for each element in the input tensor,
       designed for special mathematical functions.
     for:
