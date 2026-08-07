@@ -919,6 +919,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: as_strided_scatter
+    description: |
+      Returns a clone of the input storage with source values written through a
+      view defined by the requested size, stride, and storage offset.
+    for:
+      - as_strided_scatter
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: asin
     description: Returns a new tensor with the arcsine of the elements of input.
     for:

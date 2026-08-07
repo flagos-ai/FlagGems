@@ -250,6 +250,7 @@ _FULL_CONFIG = (
     ("argsort", argsort),
     ("as_strided_copy", as_strided_copy),
     ("as_strided_copy.out", as_strided_copy_out),
+    ("as_strided_scatter", as_strided_scatter),
     ("asin", asin),
     ("asin_", asin_),
     ("asinh", asinh),
