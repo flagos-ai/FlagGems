@@ -2132,12 +2132,12 @@ def fused_experts_impl(
                 gemm_stage="gemm2",
                 enable_gemm_fast_path=True,
             )
-        # use_direct_sum = (
-        #     not is_embedded_config
-        #     and direct_sum_supported
-        #     and expert_map is None
-        #     and not apply_router_weight_on_input
-        # )
+        use_direct_sum = (
+            not is_embedded_config
+            and direct_sum_supported
+            and expert_map is None
+            and not apply_router_weight_on_input
+        )
         use_direct_sum = True
         if use_direct_sum:
             gemm2_output = out_hidden_states[begin_chunk_idx:end_chunk_idx].view(
