@@ -61,6 +61,7 @@ from .pow import (
     pow_tensor_tensor_,
 )
 from .randperm import randperm
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .silu import silu, silu_, silu_backward
 from .sort import sort, sort_stable
 from .unique import _unique2
@@ -108,6 +109,9 @@ __all__ = [
     "randperm",
     "remainder",
     "remainder_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",

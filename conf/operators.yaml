@@ -8636,6 +8636,32 @@ ops:
       - Tensor
     stages:
       - stable: '3.0'
+  - id: scatter_reduce_two
+    description: |
+      Applies a reduction to source values scattered at the indices specified by `index`.
+      This entry covers the functional `scatter_reduce.two` ATen overload.
+    for:
+      - scatter_reduce.two
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.3'
+  - id: scatter_reduce_two_out
+    description: |
+      Applies a scatter reduction and writes the result to the provided `out` tensor.
+      This entry covers the `scatter_reduce.two_out` ATen overload.
+    for:
+      - scatter_reduce.two_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.3'
   - id: scatter_reduce_two_
     description: |
       A specific low-level ATen operator primarily encountered during model compilation
