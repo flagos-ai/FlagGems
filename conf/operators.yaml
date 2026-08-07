@@ -197,6 +197,20 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: addbmm
+    description: |
+      Performs a batch matrix-matrix product of matrices in `batch1` and `batch2`,
+      with a reduced add step (sum over batch dimension), and adds `input` to the result.
+      Formula: out = beta * input + alpha * (sum_i batch1_i @ batch2_i).
+    for:
+      - addbmm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: addcdiv
     description: |
       Performs the element-wise division of `tensor1` by `tensor2`, multiplies the result
@@ -1474,6 +1488,19 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: block_diag
+    description: |
+      Creates a block diagonal matrix from provided tensors. Each input tensor
+      forms a diagonal block in the output, with zeros elsewhere.
+    for:
+      - block_diag
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
     stages:
       - alpha: '5.4'
   - id: bmm
@@ -5695,6 +5722,28 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: lu_unpack
+    description: Unpacks the LU decomposition returned by `lu_factor` into separate permutation matrix P, lower triangular L, and upper triangular U.
+    for:
+      - lu_unpack
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: lu_unpack_out
+    description: Out-of-place variant of lu_unpack that writes results into pre-allocated output tensors.
+    for:
+      - lu_unpack.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: unsafe_chunk
     description: Split a tensor into a specified number of chunks along a given dimension.
     for:
@@ -8550,6 +8599,20 @@ ops:
       - Reduction
     stages:
       - stable: '4.2'
+  - id: scatter_add
+    description: |
+      Out-of-place version of scatter_add_: adds all values from the tensor `src`
+      into `inp` at the indices specified in the `index` tensor along dimension
+      `dim` and returns the result without modifying the input.
+    for:
+      - scatter_add
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: scatter_add_
     description: |
       Adds all values from the tensor `src` into `self` at the indices specified
