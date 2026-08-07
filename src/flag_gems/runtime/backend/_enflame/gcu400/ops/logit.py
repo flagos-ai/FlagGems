@@ -159,10 +159,12 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
 
 
 def logit(input, eps=None):
+    logger.debug("GEMS_ENFLAME LOGIT")
     return _logit_impl(input, eps=eps, out=None)
 
 
 def logit_out(input, eps=None, out=None):
+    logger.debug("GEMS_ENFLAME LOGIT_OUT")
     if out is None:
         raise TypeError("logit_out requires an 'out' tensor.")
     return _logit_impl(input, eps=eps, out=out)
