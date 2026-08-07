@@ -2135,7 +2135,6 @@ def fused_experts_impl(
         use_direct_sum = (
             not is_embedded_config
             and direct_sum_supported
-            and tokens_in_chunk >= MOE_DIRECT_SUM_MIN_TOKENS
             and expert_map is None
             and not apply_router_weight_on_input
         )
