@@ -365,6 +365,7 @@ from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_ldl_solve import linalg_ldl_solve
 from flag_gems.ops.linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
+from flag_gems.ops.linalg_solve_ex import linalg_solve_ex
 from flag_gems.ops.linalg_svdvals import linalg_svdvals
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linear_backward import linear_backward
@@ -1129,6 +1130,7 @@ __all__ = [
     "linalg_lu_factor",
     "linalg_lu_factor_out",
     "linalg_slogdet",
+    "linalg_solve_ex",
     "linalg_svdvals",
     "linear",
     "linear_backward",
