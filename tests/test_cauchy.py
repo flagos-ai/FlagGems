@@ -35,7 +35,7 @@ else:
 
 def _to_numpy(tensor):
     tensor = tensor.cpu()
-    if tensor.dtype == torch.bfloat16:
+    if tensor.dtype in (torch.float16, torch.bfloat16):
         tensor = tensor.float()
     return tensor.numpy().flatten()
 
