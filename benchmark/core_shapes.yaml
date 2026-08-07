@@ -386,6 +386,34 @@ TensorRepeatBenchmark:
     - [512, 2048]
   shape_desc: "(B), M, N"
 
+weight_norm:
+  shapes:
+    - [64, 64]
+    - [512, 512]
+    - [1024, 1024]
+
+# MetaX C550: reduced shapes to avoid 32-bit pointer limitation in MacaLauncher
+group_norm:
+  shapes:
+    - [4, 16, 64, 4]
+    - [16, 16, 8, 48]
+    - [16, 16, 8, 88]
+    - [16, 16, 128]
+  shape_desc: "N, C, *"
+
+argmin:
+  shapes:
+    - [65536]
+    - [64, 64]
+    - [512, 512]
+    - [64, 64, 64]
+
+log_softmax:
+  shapes:
+    - [64, 64]
+    - [256, 256]
+    - [1024, 1024]
+
 GenericBenchmarkExcluse1D:
   shapes:
     - [64, 64]
