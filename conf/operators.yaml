@@ -2647,7 +2647,6 @@ ops:
     for:
       - div_.Tensor
       - divide_.Tensor
-      - true_divide_.Tensor
     labels:
       - aten
     kind:
@@ -10421,6 +10420,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: true_divide_
+    description: Performs element-wise true division in-place between two tensors.
+    for:
+      - true_divide_.Tensor
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: trunc
     description: Rounds each element of the input tensor to the nearest integer towards zero.
     for:

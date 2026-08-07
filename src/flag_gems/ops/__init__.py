@@ -242,7 +242,6 @@ from flag_gems.ops.div import (
     floor_divide,
     floor_divide_,
     true_divide,
-    true_divide_,
     true_divide_out,
 )
 from flag_gems.ops.dot import dot
@@ -695,6 +694,7 @@ from flag_gems.ops.trace import trace
 from flag_gems.ops.transpose import transpose
 from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.triu import triu, triu_
+from flag_gems.ops.true_divide_ import true_divide_, true_divide_tensor_
 from flag_gems.ops.trunc_ import trunc, trunc_
 from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
@@ -1555,6 +1555,7 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
+    "true_divide_tensor_",
     "trunc",
     "trunc_",
     "unbind",
