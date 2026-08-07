@@ -146,6 +146,7 @@ backends:
       - torch==2.7.1+corex.4.4.0
       - torchaudio==2.7.1+corex.4.4.0
       - torchvision==0.22.1+corex.4.4.0
+      - numpy<2
 
   kunlunxin:
     python: "3.10"
@@ -221,8 +222,8 @@ backends:
 
   sunrise:
     python: "3.10"
-    triton: triton==3.4.0.6+gite4f6d6e4
-    # flagtree==0.4.0+sunrise3.4 — requires GLIBC_2.39, unavailable on current system
+    triton: triton==3.6.0.1+git0a5cfb35
+    # flagtree==0.6.0+sunrise3.6 — requires GLIBC_2.39, unavailable on current runner
     env:
       LD_LIBRARY_PATH: /usr/local/tangrt/targets/linux-x86_64/lib:$LD_LIBRARY_PATH
     deps:

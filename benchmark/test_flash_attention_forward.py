@@ -251,6 +251,45 @@ def flash_attention_forward_input_fn(config, dtype, device):
     yield q, k, v, scale, is_causal, dropout_p, return_debug_mask, extra_kwargs
 
 
+def _flash_attention_forward_input_fn(config, dtype, device):
+    for (
+        q,
+        k,
+        v,
+        scale,
+        is_causal,
+        dropout_p,
+        return_debug_mask,
+        kwargs,
+    ) in flash_attention_forward_input_fn(config, dtype, device):
+        kwargs["scale"] = scale
+        yield (
+            q,
+            k,
+            v,
+            None,
+            None,
+            q.shape[-3],
+            k.shape[-3],
+            dropout_p,
+            is_causal,
+            return_debug_mask,
+            kwargs,
+        )
+
+
+@pytest.mark.underscore_flash_attention_forward
+def test__flash_attention_forward():
+    bench = FlashAttentionForwardBenchmark(
+        op_name="_flash_attention_forward",
+        input_fn=_flash_attention_forward_input_fn,
+        torch_op=torch.ops.aten._flash_attention_forward.default,
+        # FlashAttention supports CUDA float16 and bfloat16 inputs.
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.run()
+
+
 @pytest.mark.skipif(utils.SkipVersion("torch", "<2.4"), reason="Low Pytorch Version.")
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(flag_gems.device == "cpu", reason="Unsupported in CPU mode")
