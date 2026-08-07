@@ -5343,6 +5343,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_lstsq
+    description: |-
+      Computes the least-squares solution (gels driver) to A X = B for full-rank
+      over- or underdetermined systems, including batches, via Householder TSQR.
+    for:
+      - linalg_lstsq
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+      - BLAS
   - id: linalg_lu_factor
     description: |
       Computes a compact representation of the LU factorization with partial pivoting of a matrix.
