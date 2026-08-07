@@ -1115,8 +1115,6 @@ ops:
       - beta: '5.3'
   - id: batch_norm
     description: An internal operator used for implementing the `BatchNorm` functionality.
-    for:
-      - native_batch_norm
     labels:
       - aten
     kind:
@@ -6747,6 +6745,17 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: native_batch_norm
+    description: Apply native batch normalization using the existing implementation.
+    for:
+      - native_batch_norm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
     stages:
       - alpha: '5.4'
   - id: native_batch_norm_legit_functional

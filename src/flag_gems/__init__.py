@@ -661,7 +661,7 @@ _FULL_CONFIG = (
     ("nansum.out", nansum_out),
     ("narrow", narrow),
     ("narrow_copy", narrow_copy),
-    ("native_batch_norm", batch_norm),
+    ("native_batch_norm", native_batch_norm),
     ("native_batch_norm_backward", batch_norm_backward),
     ("native_dropout", dropout),
     ("native_dropout_backward", dropout_backward),
