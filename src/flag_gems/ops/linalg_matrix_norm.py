@@ -1421,14 +1421,28 @@ def _svdvals_hybrid(input):
                 torch_device_fn.synchronize()
                 a_work = a_work.clone()
 
-        # Extract singular values: after convergence, column norms = σᵢ.
-        # We use norm(dim=-1) instead of torch.bmm + diagonal + sqrt
-        # because torch.bmm (cuBLAS) is non-deterministic across GPU
-        # architectures — a few ULPs difference can cause spurious
-        # fallback to DBDSQR on some devices (~3% of calls).
-        col_norms = a_work.norm(dim=-1)
-        s_sorted = col_norms.topk(k, dim=-1, largest=True).values
-        return s_sorted.reshape(*input.shape[:-2], k).to(input.dtype)
+        # Convergence check: row orthogonality via Gram matrix.
+        # The Jacobi kernel rotates ROWS of a_work (row-major layout),
+        # so convergence ⇔ rows become orthogonal ⇔ G = a_work @ a_workᵀ
+        # is diagonal.  Row norms ≈ singular values.
+        gram = a_work @ a_work.transpose(1, 2)  # (batch, k, k), fp64
+        k_idx = torch.arange(k, device=device)
+        diag = gram[:, k_idx, k_idx]  # (batch, k)  = σᵢ²
+        off_mask = ~torch.eye(k, dtype=torch.bool, device=device)
+        max_off = gram[:, off_mask].abs().max(dim=-1).values  # (batch,)
+        max_diag = diag.abs().max(dim=-1).values  # (batch,)
+        # a_work is always fp64 for Jacobi (k ≥ 4).  Well-converged rows
+        # give off-diagonals < 1e-15 × max_diag.  tol=1e-6 is 1e9× above
+        # the noise floor and tight enough that SV error from residual
+        # non-orthogonality stays well below the 2e-3 atol floor.
+        rel_tol = 1e-6
+        jacobi_ok = bool((max_off <= rel_tol * max_diag).all().item())
+
+        if jacobi_ok:
+            col_norms = a_work.norm(dim=-1)
+            s_sorted = col_norms.topk(k, dim=-1, largest=True).values
+            return s_sorted.reshape(*input.shape[:-2], k).to(input.dtype)
+        # Jacobi didn't converge → fall through to DBDSQR
 
     # 3. DBDSQR: QR + bidiag + Golub-Kahan iteration.
     #    Used for: k=3, and fp64 with k ≤ 128.

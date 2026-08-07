@@ -166,7 +166,7 @@ def _compute_ref(A, ord, dim=(-2, -1), keepdim=False):
     ref = utils.to_reference(A)
     if _is_svd(ord):
         k = min(A.shape[-2], A.shape[-1])
-        if k >= 8:
+        if k >= 64:
             # Use CPU fp64 as gold standard for k >= 64: cuSOLVER GESDD
             # on GPU uses fp32 accumulation for fp32 inputs, so the
             # nuclear norm (sum of k singular values) accumulates k×ε
