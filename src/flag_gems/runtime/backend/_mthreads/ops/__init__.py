@@ -55,6 +55,7 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .resolve_conj import resolve_conj
+from .scaled_grouped_mm import scaled_grouped_mm
 from .sort import sort, sort_stable
 from .tile import tile
 from .unique import _unique2
@@ -117,6 +118,7 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "resolve_conj",
+    "scaled_grouped_mm",
     "sort",
     "sort_stable",
     "tile",

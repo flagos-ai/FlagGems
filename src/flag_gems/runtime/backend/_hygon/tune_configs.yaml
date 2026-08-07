@@ -390,7 +390,6 @@ mm:
     BLOCK_K: 64
   num_stages: 5
   num_warps: 2
-
 nansum_dim:
 - META:
     BLOCK_M: 8
@@ -445,6 +444,14 @@ nansum_final_reduce:
     BLOCK_SIZE: 4096
   num_warps: 8
 
+scaled_grouped_mm:
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_stages: 1
+  num_warps: 4
+  num_ldmatrixes: 0
 softmax_non_inner:
 - META:
     TILE_K: 32
