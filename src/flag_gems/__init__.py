@@ -26,6 +26,7 @@ from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
+from flag_gems.ops import imag
 from flag_gems.ops import range as range_op
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
@@ -68,6 +69,7 @@ _FULL_CONFIG = (
     ("__ior__.Tensor", bitwise_or_tensor_),
     ("__irshift__.Tensor", __irshift__),
     ("__lshift__", __lshift__),
+    ("imag", imag),
     ("__ixor__.Scalar", xor_scalar_),
     ("__ixor__.Tensor", xor_),
     ("__or__.Scalar", bitwise_or_scalar),
