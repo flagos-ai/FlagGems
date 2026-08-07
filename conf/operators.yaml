@@ -5172,6 +5172,19 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
+  - id: linalg_solve
+    description: |
+      Solves a linear system AX = B via fused LU decomposition with partial pivoting
+      and forward/backward substitution in a single Triton kernel.
+    for:
+      - linalg_solve
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_svdvals
     description: Computes the singular values of a matrix.
     for:
