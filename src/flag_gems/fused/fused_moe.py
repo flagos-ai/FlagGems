@@ -2052,6 +2052,7 @@ def fused_experts_impl(
 
         # 1. Extract a unified boolean flag for GEMM1 fusion and select config
         do_fuse_silu = can_use_fused_silu and not naive_block_assignment
+        do_fuse_silu = True
         use_half_gemm_fast_paths = not is_embedded_config and is_plain_half_config
 
         gemm1_config = base_config
