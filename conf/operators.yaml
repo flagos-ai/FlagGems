@@ -5675,6 +5675,28 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: lu_unpack
+    description: Unpacks the LU decomposition returned by `lu_factor` into separate permutation matrix P, lower triangular L, and upper triangular U.
+    for:
+      - lu_unpack
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: lu_unpack_out
+    description: Out-of-place variant of lu_unpack that writes results into pre-allocated output tensors.
+    for:
+      - lu_unpack.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: unsafe_chunk
     description: Split a tensor into a specified number of chunks along a given dimension.
     for:

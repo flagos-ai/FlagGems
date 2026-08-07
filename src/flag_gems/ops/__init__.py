@@ -425,6 +425,7 @@ from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lstm import lstm
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.lt_ import lt_, lt_scalar_
+from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_out
 from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
@@ -1238,6 +1239,8 @@ __all__ = [
     "lt_",
     "lt_scalar",
     "lt_scalar_",
+    "lu_unpack",
+    "lu_unpack_out",
     "margin_ranking_loss",
     "masked_fill",
     "masked_fill_",
