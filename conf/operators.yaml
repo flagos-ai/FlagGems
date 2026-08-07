@@ -2374,6 +2374,17 @@ ops:
       - LinearAlg
     stages:
       - stable: '1.0'
+  - id: cumsum_
+    description: In-place version of cumsum.
+    for:
+      - cumsum_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: cumsum_out
     destination: |
       Returns the cumulative sum of elements of `input` in the dimension `dim`.
