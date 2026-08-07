@@ -31,6 +31,7 @@ add_library(operators
             contiguous.cpp
             cat.cpp
             bmm.cpp
+            linalg_matrix_norm.cpp
             embedding.cpp
             argmax.cpp
             softmax.cpp

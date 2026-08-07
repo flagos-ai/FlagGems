@@ -140,6 +140,34 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("copy_", &flag_gems::copy_);
   m.def("to_copy", &flag_gems::to_copy);
   m.def(
+      "linalg_matrix_norm_str",
+      [](const at::Tensor& A,
+         const std::string& ord,
+         const std::vector<int64_t>& dim,
+         bool keepdim,
+         const std::optional<at::ScalarType>& dtype) {
+        return flag_gems::linalg_matrix_norm_str(A, c10::string_view(ord), dim, keepdim, dtype);
+      },
+      py::arg("A"),
+      py::arg("ord"),
+      py::arg("dim"),
+      py::arg("keepdim"),
+      py::arg("dtype") = py::none());
+  m.def(
+      "linalg_matrix_norm",
+      [](const at::Tensor& A,
+         double ord,
+         const std::vector<int64_t>& dim,
+         bool keepdim,
+         const std::optional<at::ScalarType>& dtype) {
+        return flag_gems::linalg_matrix_norm(A, c10::Scalar(ord), dim, keepdim, dtype);
+      },
+      py::arg("A"),
+      py::arg("ord"),
+      py::arg("dim"),
+      py::arg("keepdim"),
+      py::arg("dtype") = py::none());
+  m.def(
       "fp8_matmul",
       [](const at::Tensor& a,
          const at::Tensor& a_s,
@@ -201,6 +229,12 @@ TORCH_LIBRARY(flag_gems, m) {
 #endif
   m.def("exponential_(Tensor(a!) x, float  lambd = 1.0, *,Generator? gen = None) -> Tensor(a!)");
   // blas
+  m.def(
+      "linalg_matrix_norm.str_ord(Tensor A, str ord, int[2] dim, bool keepdim, ScalarType? dtype=None) -> "
+      "Tensor");
+  m.def(
+      "linalg_matrix_norm(Tensor A, Scalar ord, int[2] dim, bool keepdim, ScalarType? dtype=None) -> Tensor");
+
   m.def("addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor");
   m.def("mm(Tensor self, Tensor mat2) -> Tensor");
 
@@ -381,5 +415,7 @@ TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
   m.impl("rwkv_ka_fusion", TORCH_FN(rwkv_ka_fusion));
   m.impl("to_copy", TORCH_FN(to_copy));
   m.impl("copy_", TORCH_FN(copy_));
+  m.impl("linalg_matrix_norm.str_ord", TORCH_FN(linalg_matrix_norm_str));
+  m.impl("linalg_matrix_norm", TORCH_FN(linalg_matrix_norm));
 }
 }  // namespace flag_gems

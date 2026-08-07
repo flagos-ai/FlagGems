@@ -271,4 +271,16 @@ at::Tensor to_copy(const at::Tensor &self,
 
 at::Tensor &copy_(at::Tensor &dst, const at::Tensor &src, bool non_blocking = false);
 
+// linalg_matrix_norm
+at::Tensor linalg_matrix_norm_str(const at::Tensor &A,
+                                  c10::string_view ord,
+                                  at::IntArrayRef dim,
+                                  bool keepdim,
+                                  std::optional<at::ScalarType> dtype);
+at::Tensor linalg_matrix_norm(const at::Tensor &A,
+                              const c10::Scalar &ord,
+                              at::IntArrayRef dim,
+                              bool keepdim,
+                              std::optional<at::ScalarType> dtype = std::nullopt);
+
 }  // namespace flag_gems
