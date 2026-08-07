@@ -26,8 +26,12 @@ using namespace triton_jit;
 
 namespace {
 
-  constexpr int64_t ROPE_BLOCKED_WORK_LIMIT = 256 * 1024;
-
+  // The Python entry autotunes the same search space on the target device.
+  // libtriton_jit does not execute Python decorators, so the C++ entry uses a
+  // purely shape-driven heuristic. To stay device-independent it never
+  // guesses from bandwidth or SM counts: it runs the serial baseline (the
+  // pre-existing behaviour) unless the token axis is so small that head
+  // splitting is needed to occupy the device at all.
   struct RopeLaunchConfig {
     int head_block_size;
     unsigned int num_warps;
@@ -36,33 +40,17 @@ namespace {
 
   RopeLaunchConfig get_rope_launch_config(int64_t n_tokens_bucket,
                                           int64_t q_heads,
-                                          int64_t k_heads,
-                                          int64_t padded_head_dim,
-                                          bool is_float32,
-                                          bool inplace) {
-    // The Python entry autotunes this same search space. libtriton_jit does not
-    // execute Python decorators, so the C++ entry uses a conservative shape
-    // heuristic and returns to the serial baseline once token work saturates
-    // the device.
+                                          int64_t k_heads) {
     const int64_t max_heads = std::max(q_heads, k_heads);
-    const bool work_is_large =
-        padded_head_dim > 0 && n_tokens_bucket >= ROPE_BLOCKED_WORK_LIMIT / padded_head_dim;
-    if (max_heads < 2 || work_is_large) {
-      // The in-place kernel assigns a complete rotary pair to one logical
-      // element, so its serial tile is half as wide and needs fewer warps.
-      if (inplace) {
-        return {/* head_block_size = */ 0, /* num_warps = */ 1, /* num_stages = */ 3};
-      }
-      if (is_float32) {
-        return {/* head_block_size = */ 0, /* num_warps = */ 8, /* num_stages = */ 1};
-      }
-      return {/* head_block_size = */ 0, /* num_warps = */ 4, /* num_stages = */ 3};
+    // Heads are only worth splitting for decode-like launches where the
+    // number of token programs alone cannot fill the device. Beyond that,
+    // serial (one program per token) is the conservative, well-tested path.
+    if (max_heads < 2 || n_tokens_bucket > 8) {
+      // Both kernels assign a complete rotary pair to one logical element, so
+      // the serial tile is half as wide and needs few warps.
+      return {/* head_block_size = */ 0, /* num_warps = */ 1, /* num_stages = */ 3};
     }
-
     if (max_heads <= 2) {
-      return {/* head_block_size = */ 1, /* num_warps = */ 4, /* num_stages = */ 3};
-    }
-    if (n_tokens_bucket <= 8) {
       return {/* head_block_size = */ 1, /* num_warps = */ 4, /* num_stages = */ 3};
     }
     return {/* head_block_size = */ 4, /* num_warps = */ 4, /* num_stages = */ 3};
@@ -187,10 +175,7 @@ void rotary_embedding_inplace(
   int64_t padded_head_dim = std::max(utils::next_power_of_2(head_dim), int64_t(16));
   const RopeLaunchConfig config = get_rope_launch_config(n_tokens_bucket,
                                                          q_heads,
-                                                         k_heads,
-                                                         padded_head_dim,
-                                                         q.scalar_type() == at::kFloat,
-                                                         /* inplace = */ true);
+                                                         k_heads);
   const unsigned int grid_y =
       config.head_block_size > 0
           ? static_cast<unsigned int>(
@@ -303,10 +288,7 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
   int64_t padded_head_dim = std::max(utils::next_power_of_2(head_dim), int64_t(16));
   const RopeLaunchConfig config = get_rope_launch_config(n_tokens_bucket,
                                                          q_heads,
-                                                         k_heads,
-                                                         padded_head_dim,
-                                                         q.scalar_type() == at::kFloat,
-                                                         /* inplace = */ false);
+                                                         k_heads);
   const unsigned int grid_y =
       config.head_block_size > 0
           ? static_cast<unsigned int>(
