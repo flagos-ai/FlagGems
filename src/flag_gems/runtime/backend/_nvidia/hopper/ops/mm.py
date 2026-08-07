@@ -30,17 +30,11 @@ from flag_gems.utils.triton_version_utils import HAS_TLE, HAS_TLE_DEVICE_MESH
 
 logger = logging.getLogger(__name__)
 CACHE_USAGE_THRESHOLD = 0.8
-_MM_DEVICE_TMA_ENV = "FLAGGEMS_NVIDIA_MM_DEVICE_TMA"
 _TRUE_ENV_VALUES = frozenset(("1", "true", "yes", "on"))
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "mm_hopper_expand.yaml")
 )
 _SHARED_MEM_SAFETY_MARGIN_BYTES = 1024
-
-
-def _use_mm_device_tma():
-    """Return whether the experimental device-side TMA path is enabled."""
-    return os.environ.get(_MM_DEVICE_TMA_ENV, "0").strip().lower() in _TRUE_ENV_VALUES
 
 
 def _get_shared_memory_limit_bytes():
@@ -615,10 +609,8 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
     a_row_major = a.stride(1) == 1
     b_row_major = b.stride(1) == 1
     dtype_str = str(a.dtype).split(".")[-1]
-    device_tma_requested = _use_mm_device_tma()
     use_device_tma = (
-        device_tma_requested
-        and hasattr(tl, "make_tensor_descriptor")
+        hasattr(tl, "make_tensor_descriptor")
         and tma_compatible
         and M > 0
         and N > 0
@@ -652,11 +644,6 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
                 dtype=dtype_str,
             )
     elif has_host_tma:
-        if device_tma_requested:
-            logger.debug(
-                "GEMS_NVIDIA MM_HOPPER device TMA request is incompatible; "
-                "falling back to host-created descriptors"
-            )
         dummy_block = [1, 1]
         # triton 3.5.0
         from triton.tools.tensor_descriptor import TensorDescriptor
@@ -690,11 +677,6 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
                 dtype=dtype_str,
             )
     else:
-        if device_tma_requested:
-            logger.debug(
-                "GEMS_NVIDIA MM_HOPPER device TMA request is incompatible; "
-                "falling back to the general kernel"
-            )
         _set_tma_allocator(a.device)
         with torch_device_fn.device(a.device):
             mm_kernel_general[grid](
