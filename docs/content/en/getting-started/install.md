@@ -65,6 +65,64 @@ pip install flag_gems
 > If a prebuilt wheel is not available for your platform, see
 > [Build and install from source](#install-from-source).
 
+### 2.1. Set up backend dependencies with `flaggems-setup` {#flaggems-setup}
+
+`pip install flag_gems` installs the pure-Python operator library, but it does
+**not** pull in PyTorch or the vendor-specific runtime packages for your
+accelerator. The `flaggems-setup` console script — installed alongside FlagGems
+— completes the environment by installing the PyTorch stack and vendor packages
+for a chosen backend from the flagOS PyPI index.
+
+This is the recommended follow-up when you installed FlagGems from PyPI (as
+opposed to installing from source with `setup.sh`, which already performs these
+steps for you).
+
+List the available backends:
+
+```shell
+flaggems-setup --list
+```
+
+Install the dependencies for your backend (the backend keys are the same ones
+`setup.sh` accepts):
+
+```shell
+# NVIDIA CUDA 12.8
+flaggems-setup nvidia-cuda128
+
+# Huawei Ascend CANN 9.0.0
+flaggems-setup ascend-cann900
+
+# MetaX MACA
+flaggems-setup metax
+```
+
+Preview the exact commands without running them:
+
+```shell
+flaggems-setup nvidia-cuda128 --dry-run
+```
+
+By default the script uses `uv pip` when `uv` is on your `PATH`, and falls back
+to `pip` otherwise. Override the installer explicitly with `--pip`:
+
+```shell
+flaggems-setup nvidia-cuda128 --pip "pip"
+```
+
+`flaggems-setup` also installs a Triton-family compiler for you. By default it
+selects **FlagTree** when the backend provides one, and falls back to **Triton**
+otherwise — the same policy as `setup.sh`. Override the choice with the
+`--compiler` flag or the `COMPILER` environment variable:
+
+```shell
+# Force vanilla Triton instead of the auto-selected FlagTree
+flaggems-setup nvidia-cuda128 --compiler triton
+COMPILER=triton flaggems-setup nvidia-cuda128
+```
+
+See [Environment variables](#env-vars) for the full `COMPILER` behavior.
+
 ## 3. Build and install from source {#install-from-source}
 
 ### 3.1. Clone the source
