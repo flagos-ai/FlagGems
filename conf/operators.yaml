@@ -13,6 +13,17 @@
 # limitations under the License.
 
 ops:
+  - id: batch_norm_impl_index
+    description: Applies Batch Normalization and returns the normalized output along with saved statistics, a reserve tensor, and the backend implementation index.
+    for:
+      - _batch_norm_impl_index
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: _reshape_alias
     description: |
       Creates a view of the input tensor with the given size and stride,
