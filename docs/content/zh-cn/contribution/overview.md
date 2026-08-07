@@ -118,7 +118,7 @@ yaml 文件示例如下：
 
 ## 4. 算子交付件 {#operator-deliverables}
 
-开发新算子时，需要提交以下内容：
+开发新算子前，需要浏览`conf/operators.yaml` 中的`for`字段，避免开发重复算子。新算子需要提交以下内容：
 
 <!--
 - For each aten operator registered in `src/flag_gems/__init__.py`, there must be a distinct
@@ -140,6 +140,8 @@ yaml 文件示例如下：
 Using `pre-commit` git hooks with FlagGems, you can format source Python code
 and perform basic code pre-checks when calling the `git commit` command.
 -->
+
+> **注意**：FlagGems仓库是一个 triton 算子库，不接受无直接或间接设备端调用的算子。
 
 ## 5. 算子 Host 函数规范 {#operator-host-function-conventions}
 

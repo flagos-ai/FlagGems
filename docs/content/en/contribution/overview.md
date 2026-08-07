@@ -91,7 +91,7 @@ Example yaml file entry:
 
 ## 4. Operator deliverables {#operator-deliverables}
 
-When developing a new operator, you need to submit the following:
+Before developing a new operator, check the `for` field in `conf/operators.yaml` to avoid duplicating an existing operator. New operators must include the following:
 
 - Fill in operator metadata in `conf/operators.yaml`;
 - Add the Triton operator implementation in `src/flag_gems/ops`, `src/flag_gems/fused`, or `src/flag_gems/experimental_ops`;
@@ -99,6 +99,8 @@ When developing a new operator, you need to submit the following:
 - Register the ATen operator in `_FULL_CONFIG` in `src/flag_gems/__init__.py`; if there are backend-specific implementations, place them under `src/flag_gems/runtime/backend`;
 - Add unit tests in the `tests` directory;
 - Add performance tests in the `benchmark` directory.
+
+> **Note**: FlagGems is a Triton operator library. Operators with no direct or indirect device-side calls are not accepted.
 
 ## 5. Operator host function conventions {#operator-host-function-conventions}
 
