@@ -267,6 +267,7 @@ from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.fft import fft
+from flag_gems.ops.fft_irfftn import fft_irfftn
 from flag_gems.ops.fill import (
     fill_scalar,
     fill_scalar_,
@@ -1035,6 +1036,8 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fft",
+    "fft_irfftn",
+    "fix",
     "fill_scalar",
     "fill_scalar_",
     "fill_scalar_out",
