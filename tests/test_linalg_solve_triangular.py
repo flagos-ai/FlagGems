@@ -162,7 +162,7 @@ def test_out_kwarg(n, k, upper, dtype):
     ref_out = torch.linalg.solve_triangular(ref_A, ref_B, upper=upper)
 
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.linalg_solve_triangular(A, B, upper=upper, out=out)
+        res_out = torch.linalg.solve_triangular(A, B, upper=upper, out=out)
 
     assert res_out is out
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -185,7 +185,7 @@ def test_linalg_solve_triangular_out(n, k, upper, dtype):
     ref_out = torch.linalg.solve_triangular(ref_A, ref_B, upper=upper)
 
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.linalg_solve_triangular.out(A, B, upper=upper, out=out)
+        res_out = torch.linalg.solve_triangular(A, B, upper=upper, out=out)
 
     assert res_out is out
     utils.gems_assert_close(res_out, ref_out, dtype)
