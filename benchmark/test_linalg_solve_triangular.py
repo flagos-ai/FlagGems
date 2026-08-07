@@ -63,10 +63,10 @@ class SolveTriBenchmark(base.Benchmark):
 def test_linalg_solve_triangular(monkeypatch):
     bench = SolveTriBenchmark(
         op_name="linalg_solve_triangular",
-        torch_op=torch.ops.aten.linalg_solve_triangular,
-        gems_op=flag_gems.linalg_solve_triangular,
+        torch_op=torch.linalg.solve_triangular,
         dtypes=[torch.float32, torch.float64],
     )
+    bench.set_gems(flag_gems.linalg_solve_triangular)
     bench.run()
 
 
@@ -88,8 +88,8 @@ class SolveTriOutBenchmark(base.Benchmark):
 def test_linalg_solve_triangular_out(monkeypatch):
     bench = SolveTriOutBenchmark(
         op_name="linalg_solve_triangular_out",
-        torch_op=torch.ops.aten.linalg_solve_triangular.out,
-        gems_op=flag_gems.linalg_solve_triangular_out,
+        torch_op=torch.linalg.solve_triangular,
         dtypes=[torch.float32, torch.float64],
     )
+    bench.set_gems(flag_gems.linalg_solve_triangular_out)
     bench.run()
