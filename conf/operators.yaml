@@ -5354,6 +5354,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_lstsq
+    description: |-
+      Computes the least-squares solution (gels driver) to A X = B for full-rank
+      over- or underdetermined systems, including batches, via Householder TSQR.
+    for:
+      - linalg_lstsq
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+      - BLAS
   - id: linalg_lu_factor
     description: |
       Computes a compact representation of the LU factorization with partial pivoting of a matrix.
@@ -5370,6 +5381,35 @@ ops:
       Out-of-place version of linalg_lu_factor. Supports calling torch.linalg.lu_factor(A, *, pivot=True, out=(LU, pivots)). The out parameter provides pre-allocated output tensors.
     for:
       - linalg.lu_factor.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_lu_factor_ex
+    description: |
+      Computes a compact representation of the LU factorization with partial
+      pivoting of a matrix and returns an info tensor indicating whether the
+      factorization was successful (info == 0) or the position of the first zero
+      pivot (1-indexed). This is the "expert" version of linalg_lu_factor,
+      equivalent to LAPACK's getrf.
+    for:
+      - linalg.lu_factor_ex
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_lu_factor_ex_out
+    description: |
+      Out-of-place version of linalg_lu_factor_ex. Supports calling
+      torch.linalg.lu_factor_ex(A, *, pivot=True, check_errors=False,
+      out=(LU, pivots, info)). The out parameter provides pre-allocated output
+      tensors for in-place writing.
+    for:
+      - linalg.lu_factor_ex.out
     labels:
       - aten
     kind:
@@ -7219,6 +7259,20 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.1'
+  - id: pairwise_distance
+    description: |
+      Computes the pairwise distance between input vectors, or between columns of input matrices.
+      Distances are computed using p-norm, with constant eps added to avoid division
+      by zero if p is negative.
+    for:
+      - pairwise_distance
+    labels:
+      - aten
+      - nn.functional
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: pdist
     description: |
       Computes the p-norm distance between every pair of row vectors in the input.
@@ -7344,6 +7398,38 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: polygamma
+    description: |
+      Computes the n-th derivative of the digamma function of the input (the polygamma function),
+      dispatching to dedicated digamma (n=0), trigamma (n=1), or Hurwitz-zeta (n>=2) Triton kernels.
+    for:
+      - polygamma
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: polygamma_
+    description: The in-place version of `polygamma()`.
+    for:
+      - polygamma_
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: polygamma_out
+    description: A variant of `polygamma` that allows the output to be assigned to the `out` tensor.
+    for:
+      - polygamma.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: pow_scalar
     description: |
       Takes the power of each element in `input` with `exponent` and returns a tensor with the result.
@@ -9253,6 +9339,20 @@ ops:
       A variant of `special_airy_ai` with output saved to provided `out`.
     for:
       - special_airy_ai.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_bessel_j0
+    description: |
+      Computes the Bessel function of the first kind of order 0 for each element
+      of `input`.
+    for:
+      - special.bessel_j0
     labels:
       - aten
       - pointwise
