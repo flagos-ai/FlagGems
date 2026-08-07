@@ -139,6 +139,8 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
   m.def("copy_", &flag_gems::copy_);
   m.def("to_copy", &flag_gems::to_copy);
+  m.def("index_fill_scalar", &flag_gems::index_fill_scalar);
+  m.def("index_fill_scalar_", &flag_gems::index_fill_scalar_);
   m.def(
       "fp8_matmul",
       [](const at::Tensor& a,
