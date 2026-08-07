@@ -12,16 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
+
 import pytest
 import torch
 
 import flag_gems
+from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert import (
+    fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert as _generic_impl,
+)
 from flag_gems.utils.device_info import get_device_capability
 
 from .conftest import QUICK_MODE
 
+# NVIDIA gates FP8 E4M3 on sm_89+, and this check has historically been spelled
+# `get_device_capability() >= (8, 9)`. That number only means "Ada or newer" on
+# NVIDIA; other vendors report their own major/minor on a different scale, so
+# applying the threshold to them is a false negative that skips this whole file
+# on hardware that supports the dtype. Add a vendor here only after verifying
+# on it that a Triton `tl.float8e4nv` conversion matches `torch.float8_e4m3fn`
+# bit-for-bit -- MetaX C550 reports (8, 0) and does (verified 2026-08-05).
+_FP8E4NV_CAPABLE_VENDORS = frozenset({"metax"})
+
 
 def is_support_fp8e4nv():
+    if not hasattr(torch, "float8_e4m3fn"):
+        return False
+    if flag_gems.vendor_name in _FP8E4NV_CAPABLE_VENDORS:
+        return True
     major, minor = get_device_capability()
     return major * 10 + minor >= 89
 
@@ -38,6 +56,71 @@ TOKEN_DATA_BYTES = NOPE_DIM + ROPE_DIM * 2  # 576
 NUM_QUANT_BLOCKS = NOPE_DIM // QUANT_BLOCK  # 7
 SCALE_BYTES_PER_TOKEN = NUM_QUANT_BLOCKS + 1  # 8
 HEAD_BYTES = TOKEN_DATA_BYTES + SCALE_BYTES_PER_TOKEN  # 584
+
+# Bytes of device memory the fp32 reference needs per element of
+# [num_tokens, n_heads, HEAD_DIM]. The op itself is cheap; the reference is what
+# blows up, because it upcasts q to fp32: q (bf16, 2B) + q_ref (bf16, 2B) + the
+# fp32 upcast (4B) + the fp32 result (4B) = 12 B/elem live at once, plus
+# allocator headroom. Two observations bracket the real figure:
+#   > 13.2 -- 98304 x 128 OOMs on an 80GB H800 (the shape the old hardcoded
+#             exclusion list was written for)
+#   <=15.5 -- 65536 x 128, an identical element count, passes on a 63.59GB
+#             MetaX C550
+REF_BYTES_PER_ELEM = 14
+
+
+def _free_device_memory():
+    """Free device bytes, or None if the backend cannot report it.
+
+    Two corrections matter, and both were found by getting them wrong on a
+    MetaX C550:
+
+    1. Collect before measuring. The previous parametrized case's tensors are
+       still reachable from its frame, so without this a 64GB card reports
+       ~38GB free and the guard skips shapes that in fact pass.
+    2. Count PyTorch's cached-but-unused blocks as available instead of calling
+       `empty_cache` to release them. Releasing hands them back to the driver,
+       and a marginal allocation then has to be re-served from possibly
+       fragmented driver memory rather than reusing blocks already in hand --
+       which is enough to turn 65536 x 128, a shape that otherwise passes,
+       into an OutOfMemoryError.
+    """
+    try:
+        gc.collect()  # drop the previous case's tensors before measuring
+        driver_free = torch.cuda.mem_get_info()[0]
+        cached = torch.cuda.memory_reserved() - torch.cuda.memory_allocated()
+        return driver_free + cached
+    except Exception:
+        pass
+    try:
+        return torch.cuda.get_device_properties(0).total_memory
+    except Exception:
+        return None
+
+
+def _skip_if_reference_wont_fit(num_tokens: int, n_heads: int):
+    """Skip shapes whose fp32 reference exceeds device memory.
+
+    Replaces a hardcoded exclusion list tuned for an 80GB H800, which still
+    OOMs on 64GB cards -- MetaX C550 died at num_tokens=131072, n_heads=64,
+    inside the reference and before the op was ever called. At
+    REF_BYTES_PER_ELEM the rule reproduces the old H800 exclusion list exactly
+    on an 80GB card, and on a 64GB C550 leaves 131072 x 64 to the
+    OutOfMemoryError handler below rather than pre-skipping it.
+
+    This is a cheap pre-check that avoids allocating tens of GiB only to fail.
+    It is deliberately not the whole story: whether a marginal shape fits also
+    depends on allocator fragmentation (65536 x 128 passes on a C550 while
+    131072 x 64, an identical element count, does not), so the reference call
+    itself also catches OutOfMemoryError.
+    """
+    needed = num_tokens * n_heads * HEAD_DIM * REF_BYTES_PER_ELEM
+    free = _free_device_memory()
+    if free is not None and needed > free:
+        pytest.skip(
+            f"reference needs ~{needed / 2**30:.0f}GiB for num_tokens={num_tokens}, "
+            f"n_heads={n_heads}; only {free / 2**30:.0f}GiB free"
+        )
 
 
 # ─── pytorch reference implementation from vllm ───
@@ -266,9 +349,7 @@ def fused_impl(q, kv, k_cache, slot_mapping, positions, cos_sin_cache, eps, bs):
 
 
 @pytest.mark.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
-@pytest.mark.skipif(
-    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
-)
+@pytest.mark.skipif(not is_support_fp8e4nv(), reason="Device does not support fp8e4nv")
 @pytest.mark.parametrize("num_tokens", [1, 4, 17, 64])
 @pytest.mark.parametrize("n_heads", [8, 64])
 def test_q_path_matches_reference(num_tokens: int, n_heads: int):
@@ -326,9 +407,7 @@ def _ue8m0_per_block_scales(kv_roped_nope_f32: torch.Tensor, qblock: int):
 
 
 @pytest.mark.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
-@pytest.mark.skipif(
-    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
-)
+@pytest.mark.skipif(not is_support_fp8e4nv(), reason="Device does not support fp8e4nv")
 @pytest.mark.parametrize("num_tokens", [1, 4, 17, 64])
 @pytest.mark.parametrize("block_size", [16, 64])
 def test_kv_path_matches_reference(num_tokens: int, block_size: int):
@@ -374,9 +453,7 @@ def test_kv_path_matches_reference(num_tokens: int, block_size: int):
 
 
 @pytest.mark.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
-@pytest.mark.skipif(
-    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
-)
+@pytest.mark.skipif(not is_support_fp8e4nv(), reason="Device does not support fp8e4nv")
 @pytest.mark.parametrize("num_tokens", [4, 17])
 @pytest.mark.parametrize("pad", [1, 5])
 @pytest.mark.parametrize("block_size", [16, 64])
@@ -426,9 +503,7 @@ def test_kv_path_with_dp_padding(num_tokens: int, pad: int, block_size: int):
 
 
 @pytest.mark.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
-@pytest.mark.skipif(
-    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
-)
+@pytest.mark.skipif(not is_support_fp8e4nv(), reason="Device does not support fp8e4nv")
 @pytest.mark.parametrize(
     "num_tokens",
     [1, 4, 17, 64] if QUICK_MODE else [1, 4, 17, 64, 8192, 32768, 65536, 98304, 131072],
@@ -436,9 +511,7 @@ def test_kv_path_with_dp_padding(num_tokens: int, pad: int, block_size: int):
 @pytest.mark.parametrize("n_heads", [64, 128])
 @pytest.mark.parametrize("block_size", [16, 64])
 def test_combined_q_and_kv(num_tokens: int, n_heads: int, block_size: int):
-    # out of memory for huge shape on H800
-    if (num_tokens == 98304 or num_tokens == 131072) and n_heads == 128:
-        return
+    _skip_if_reference_wont_fit(num_tokens, n_heads)
 
     torch.manual_seed(2)
     device = "cuda"
@@ -462,17 +535,96 @@ def test_combined_q_and_kv(num_tokens: int, n_heads: int, block_size: int):
     cos_sin_cache_ref = cos_sin_cache.clone()
     slot_mapping_ref = slot_mapping.clone()
 
-    ref_impl(
-        q_ref,
-        kv_ref,
-        k_cache_ref,
-        slot_mapping_ref,
-        positions_ref,
-        cos_sin_cache_ref,
-        eps,
-        block_size,
-    )
+    try:
+        ref_impl(
+            q_ref,
+            kv_ref,
+            k_cache_ref,
+            slot_mapping_ref,
+            positions_ref,
+            cos_sin_cache_ref,
+            eps,
+            block_size,
+        )
+    except torch.OutOfMemoryError:
+        # The reference is scaffolding, not the code under test, so its running
+        # out of room says nothing about the op -- skip rather than fail.
+        #
+        # Dropping the tensors here is what keeps this from cascading. A failed
+        # case's traceback is retained by pytest, the traceback references this
+        # frame, and the frame keeps q/q_ref/... alive for the rest of the
+        # session: one OOM at num_tokens=131072 pinned 32GiB on a 64GB C550 and
+        # took out an unrelated case 20 tests later. Rebinding to None empties
+        # the frame slots before the exception is raised, so nothing is held.
+        # (`del` would do the same, but leaves the names undefined for the rest
+        # of the scope as far as static analysis is concerned.)
+        q = kv = k_cache = q_ref = kv_ref = k_cache_ref = None
+        positions = positions_ref = cos_sin_cache = cos_sin_cache_ref = None
+        slot_mapping = slot_mapping_ref = None
+        torch.cuda.empty_cache()
+        pytest.skip(
+            f"reference ran out of memory at num_tokens={num_tokens}, "
+            f"n_heads={n_heads}"
+        )
     fused_impl(q, kv, k_cache, slot_mapping, positions, cos_sin_cache, eps, block_size)
 
     torch.testing.assert_close(q, q_ref, rtol=1e-2, atol=1e-2)
     k_cache_compare(k_cache, k_cache_ref, block_size, rtol=1e-2, atol=1e-2)
+
+
+# ── Test 5: a backend override must not change results ───────────────────────
+# A vendor override is a performance change. It runs only where one is
+# registered, so nothing below executes on the generic path.
+_OVERRIDE_ACTIVE = (
+    flag_gems.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert is not _generic_impl
+)
+
+
+@pytest.mark.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
+@pytest.mark.skipif(not is_support_fp8e4nv(), reason="Device does not support fp8e4nv")
+@pytest.mark.skipif(
+    not _OVERRIDE_ACTIVE,
+    reason="No backend override registered; the generic kernel is in use",
+)
+@pytest.mark.parametrize(
+    "num_tokens",
+    [1, 17, 513] if QUICK_MODE else [1, 17, 64, 511, 512, 777, 1000, 4096],
+)
+@pytest.mark.parametrize("n_heads", [64, 128])
+@pytest.mark.parametrize("block_size", [16, 64])
+def test_backend_override_matches_generic(
+    num_tokens: int, n_heads: int, block_size: int
+):
+    torch.manual_seed(3)
+    device = "cuda"
+    eps = 1e-6
+    max_pos = max(4096, num_tokens)
+    num_blocks = (num_tokens + block_size - 1) // block_size + 1
+
+    q = torch.randn(num_tokens, n_heads, HEAD_DIM, dtype=torch.bfloat16, device=device)
+    kv = torch.randn(num_tokens, HEAD_DIM, dtype=torch.bfloat16, device=device)
+    k_cache = torch.zeros(
+        num_blocks, block_size * HEAD_BYTES, dtype=torch.uint8, device=device
+    )
+    slot_mapping = torch.arange(num_tokens, dtype=torch.int64, device=device)
+    positions = torch.arange(num_tokens, dtype=torch.int64, device=device)
+    cos_sin_cache = make_cos_sin_cache(max_pos, ROPE_DIM, torch.float32, device)
+
+    q_gen, k_cache_gen = q.clone(), k_cache.clone()
+    _generic_impl(
+        q_gen, kv, k_cache_gen, slot_mapping, positions, cos_sin_cache, eps, block_size
+    )
+    fused_impl(q, kv, k_cache, slot_mapping, positions, cos_sin_cache, eps, block_size)
+
+    # The cache is derived from kv through per-64-element reductions, identical
+    # in any sane decomposition, so it must match byte for byte -- an override
+    # that quantizes differently has changed behaviour.
+    assert torch.equal(k_cache, k_cache_gen), (
+        f"override wrote a different FP8 cache at num_tokens={num_tokens}, "
+        f"n_heads={n_heads}, block_size={block_size}: "
+        f"{int((k_cache != k_cache_gen).sum().item())} of {k_cache.numel()} "
+        "bytes differ"
+    )
+    # q goes through a 512-element RMSNorm reduction whose tree may legitimately
+    # differ between decompositions, so allow a bf16 ULP there.
+    torch.testing.assert_close(q, q_gen, rtol=1e-3, atol=1e-3)
