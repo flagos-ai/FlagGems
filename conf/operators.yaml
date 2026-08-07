@@ -9403,6 +9403,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_gammaincc
+    description: |
+      Computes the regularized upper incomplete gamma function Q(a, x) element-wise.
+      Out-of-place counterpart of igammac_; delegates to the igammac kernel.
+    for:
+      - special_gammaincc
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_gammaln
     description: Computes the logarithm of the absolute value of the Gamma function on input.
     for:
