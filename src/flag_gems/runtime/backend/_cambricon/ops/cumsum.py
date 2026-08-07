@@ -136,7 +136,6 @@ def config_prune(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config(
@@ -174,6 +173,7 @@ def config_prune(configs, named_args, **kwargs):
         ),
     },
 )
+@libentry()
 @triton.jit
 def cumsum_blelloch(
     inp,
@@ -261,7 +261,6 @@ def config_prune_mid(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config(
@@ -300,6 +299,7 @@ def config_prune_mid(configs, named_args, **kwargs):
         ),
     },
 )
+@libentry()
 @triton.jit
 def cumsum_kernel_mid(
     inp,
@@ -353,7 +353,23 @@ def cumsum_kernel_mid(
     tl.store(prefix_sum_ptrs, x_block[:, BLOCK_N - 1, :], prefix_sum_mask)
 
 
-@libentry()
+def config_prune_result(configs, named_args, **kwargs):
+    M = named_args["M"]
+    K = named_args["K"]
+    BLOCK_N = named_args["BLOCK_N"]
+    pruned_configs = []
+    for config in configs:
+        kw = config.kwargs
+        BLOCK_M = kw["BLOCK_M"]
+        BLOCK_K = kw["BLOCK_K"]
+        if BLOCK_M > M or BLOCK_K > K:
+            continue
+        if BLOCK_N * BLOCK_K * BLOCK_M > MAX_C_MLU_SPILT_CUMSUM:
+            continue
+        pruned_configs.append(config)
+    return pruned_configs
+
+
 @libtuner(
     configs=[
         triton.Config(
@@ -375,7 +391,9 @@ def cumsum_kernel_mid(
         "BLOCK_N",
     ],
     strategy=["log", "log", "log", "log"],
+    prune_configs_by={"early_config_prune": config_prune_result},
 )
+@libentry()
 @triton.jit
 def cumsum_kernel_result(
     inp,
@@ -692,7 +710,7 @@ def normed_cumsum(inp, dim=-1):
 
         if inp.dtype != torch.float64:
             acc_dtype = torch.float32
-        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device.name)
+        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device)
         cumsums = torch.empty_like(sums)
         block_cumsum_kernel[grid](
             inp,
