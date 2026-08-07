@@ -196,6 +196,7 @@ _FULL_CONFIG = (
     ("add.Tensor", add),
     ("add_.Tensor", add_),
     ("add_rms_norm", add_rms_norm),
+    ("addbmm", addbmm),
     ("addcdiv", addcdiv),
     ("addcdiv.out", addcdiv_out),
     ("addcdiv_", addcdiv_),

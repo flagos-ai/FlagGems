@@ -197,6 +197,20 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: addbmm
+    description: |
+      Performs a batch matrix-matrix product of matrices in `batch1` and `batch2`,
+      with a reduced add step (sum over batch dimension), and adds `input` to the result.
+      Formula: out = beta * input + alpha * (sum_i batch1_i @ batch2_i).
+    for:
+      - addbmm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: addcdiv
     description: |
       Performs the element-wise division of `tensor1` by `tensor2`, multiplies the result
