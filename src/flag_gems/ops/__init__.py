@@ -62,6 +62,7 @@ from flag_gems.ops._native_batch_norm_legit_functional import (
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
+from flag_gems.ops._pin_memory import _pin_memory
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._reshape_alias import _reshape_alias
@@ -504,6 +505,7 @@ from flag_gems.ops.per_token_group_quant_fp8 import (
     per_token_group_quant_fp8,
 )
 from flag_gems.ops.permute_copy import permute_copy
+from flag_gems.ops.pin_memory import pin_memory
 from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from flag_gems.ops.poisson import poisson
@@ -783,6 +785,7 @@ __all__ = [
     "_nested_view_from_buffer_copy",
     "_pdist_backward",
     "_pdist_forward",
+    "_pin_memory",
     "_prelu_kernel",
     "_prelu_kernel_backward",
     "_reshape_alias",
@@ -1325,6 +1328,7 @@ __all__ = [
     "pdist",
     "per_token_group_quant_fp8",
     "permute_copy",
+    "pin_memory",
     "pixel_shuffle",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
