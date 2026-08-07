@@ -10804,6 +10804,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: value_selecting_reduction_backward
+    description: |
+      Computes the gradient of a value-selecting reduction (such as `max.dim`
+      or `min.dim`) by scattering the upstream gradient to the positions
+      given by the indices of the selected values in the original input.
+    for:
+      - value_selecting_reduction_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: var
     description: Calculates the variance over all dimensions.
     for:
