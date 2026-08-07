@@ -1,3 +1,4 @@
+from ._make_dep_token import _make_dep_token
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from .addmm import addmm
 from .amax import amax
@@ -31,6 +32,7 @@ from .prod import prod, prod_dim
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
 from .sigmoid import sigmoid
+from .special_bessel_j0 import special_bessel_j0, special_bessel_j0_out
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
@@ -41,6 +43,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_make_dep_token",
     "_nested_view_from_buffer_copy",
     "_unique2",
     "addmm",
@@ -84,6 +87,8 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "resolve_conj",
     "sigmoid",
+    "special_bessel_j0",
+    "special_bessel_j0_out",
     "special_shifted_chebyshev_polynomial_w",
     "tanh",
     "upsample_nearest2d",
