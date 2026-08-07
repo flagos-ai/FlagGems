@@ -386,6 +386,10 @@ from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_ldl_solve import linalg_ldl_solve
 from flag_gems.ops.linalg_lstsq import linalg_lstsq
 from flag_gems.ops.linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
+from flag_gems.ops.linalg_lu_factor_ex import (
+    linalg_lu_factor_ex,
+    linalg_lu_factor_ex_out,
+)
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linalg_svdvals import linalg_svdvals
 from flag_gems.ops.linear import linear
@@ -1177,6 +1181,8 @@ __all__ = [
     "linalg_ldl_solve",
     "linalg_lstsq",
     "linalg_lu_factor",
+    "linalg_lu_factor_ex",
+    "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_slogdet",
     "linalg_svdvals",

@@ -5376,6 +5376,35 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_lu_factor_ex
+    description: |
+      Computes a compact representation of the LU factorization with partial
+      pivoting of a matrix and returns an info tensor indicating whether the
+      factorization was successful (info == 0) or the position of the first zero
+      pivot (1-indexed). This is the "expert" version of linalg_lu_factor,
+      equivalent to LAPACK's getrf.
+    for:
+      - linalg.lu_factor_ex
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_lu_factor_ex_out
+    description: |
+      Out-of-place version of linalg_lu_factor_ex. Supports calling
+      torch.linalg.lu_factor_ex(A, *, pivot=True, check_errors=False,
+      out=(LU, pivots, info)). The out parameter provides pre-allocated output
+      tensors for in-place writing.
+    for:
+      - linalg.lu_factor_ex.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
