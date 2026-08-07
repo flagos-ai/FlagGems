@@ -398,6 +398,7 @@ _FULL_CONFIG = (
     ("embedding_backward", embedding_backward),
     ("embedding_dense_backward", embedding_dense_backward),
     ("empty.memory_format", empty),
+    ("empty_permuted", empty_permuted),
     ("eq.Scalar", eq_scalar),
     ("eq.Tensor", eq),
     ("eq_.Scalar", eq_scalar_),

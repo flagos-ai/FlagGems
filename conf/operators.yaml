@@ -2889,6 +2889,20 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: empty_permuted
+    description: |
+      Tensor factory operator — allocates an uninitialized tensor whose memory
+      follows the given physical layout.
+    for:
+      - empty_permuted
+    labels:
+      - aten
+      - KernelGen
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: eq
     description: Computes element-wise equality.
     for:
