@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import dataclasses
+import importlib
+import logging
 import random
 
 import pytest
@@ -23,15 +25,67 @@ from flag_gems.utils.device_info import get_device_capability
 
 from . import base
 
+logger = logging.getLogger(__name__)
+
+
+# NVIDIA gates FP8 E4M3 on sm_89+, and this check has historically been spelled
+# `get_device_capability() >= (8, 9)`. That number only means "Ada or newer" on
+# NVIDIA; other vendors report their own major/minor on a different scale, so
+# applying the threshold to them is a false negative that skips this whole file
+# on hardware that supports the dtype. Add a vendor here only after verifying
+# on it that a Triton `tl.float8e4nv` conversion matches `torch.float8_e4m3fn`
+# bit-for-bit -- MetaX C550 reports (8, 0) and does (verified 2026-08-05).
+_FP8E4NV_CAPABLE_VENDORS = frozenset({"metax"})
+
 
 def is_support_fp8e4nv():
+    if not hasattr(torch, "float8_e4m3fn"):
+        return False
+    if flag_gems.vendor_name in _FP8E4NV_CAPABLE_VENDORS:
+        return True
     major, minor = get_device_capability()
     return major * 10 + minor >= 89
 
 
-VLLM_REF_AVAILABLE = hasattr(
-    torch.ops._C, "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert"
-)
+# The reference is registered under `torch.ops._C` by whichever compiled op
+# library the platform ships, and probing that namespace does not import it --
+# so where the reference IS installed, a bare hasattr() reports it missing and
+# no comparison runs. The provider is not always vLLM's own: on MetaX it is
+# `mcoplib._C`, while the `vllm` wheel there fails to load. Note importing the
+# top-level package is not enough; the compiled submodule must be imported
+# before the schemas register.
+VENDOR_OP_LIBS = ("vllm._C", "mcoplib._C")
+
+
+def _load_vendor_ref(op_name):
+    """Return `torch.ops._C.<op_name>`, importing vendor libraries as needed.
+
+    Returns None if no library provides it. Import failures are logged rather
+    than swallowed -- a silent `except: pass` is what makes a missing baseline
+    indistinguishable from an unimportable one.
+    """
+    fn = getattr(torch.ops._C, op_name, None)
+    if callable(fn):
+        return fn
+    for lib in VENDOR_OP_LIBS:
+        try:
+            importlib.import_module(lib)
+        except Exception as e:
+            logger.info("vendor op library %s unavailable: %s", lib, e)
+            continue
+        fn = getattr(torch.ops._C, op_name, None)
+        if callable(fn):
+            logger.info("found %s in %s", op_name, lib)
+            return fn
+        logger.info("%s loaded but does not provide %s", lib, op_name)
+    logger.info(
+        "no vendor kernel for %s (tried %s)", op_name, ", ".join(VENDOR_OP_LIBS)
+    )
+    return None
+
+
+_VENDOR_REF = _load_vendor_ref("fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert")
+VLLM_REF_AVAILABLE = _VENDOR_REF is not None
 HEAD_DIM = 512
 ROPE_DIM = 64
 HEAD_BYTES = 584
@@ -59,7 +113,7 @@ class FusedDeepseekV4QnormRopeKVRopeQuantInsertBenchmark(base.Benchmark):
     def __init__(self):
         super().__init__(
             "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
-            torch.ops._C.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert,
+            _VENDOR_REF,
             [torch.bfloat16],
         )
         self.set_gems(flag_gems.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert)
@@ -170,11 +224,11 @@ class FusedDeepseekV4QnormRopeKVRopeQuantInsertBenchmark(base.Benchmark):
 
 @pytest.mark.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
 @pytest.mark.skipif(
-    not VLLM_REF_AVAILABLE, reason="The referenced vLLM implementation is not installed"
+    not VLLM_REF_AVAILABLE,
+    reason="No vendor kernel found for this operator (tried %s)"
+    % ", ".join(VENDOR_OP_LIBS),
 )
-@pytest.mark.skipif(
-    not is_support_fp8e4nv(), reason="Do not support fp8e4nv when capability < 89"
-)
+@pytest.mark.skipif(not is_support_fp8e4nv(), reason="Device does not support fp8e4nv")
 def test_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert():
     bench = FusedDeepseekV4QnormRopeKVRopeQuantInsertBenchmark()
     bench.run()
