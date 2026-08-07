@@ -26,53 +26,49 @@ from flag_gems.utils.libentry import LibTuner
 
 logger = logging.getLogger(__name__)
 
+# All work limits below are expressed in units of tokens * padded head dim,
+# the total number of rotary elements processed per launch.
+# A blocked (head-parallel) config must beat the serial baseline by at least
+# this relative margin before it is selected, to avoid churning tiny gains.
 _AUTOTUNE_SPEEDUP_MARGIN = 0.03
+# Below this work level the element count is small, so the full candidate set
+# can be autotuned with negligible first-use overhead.
 _FULL_AUTOTUNE_WORK_LIMIT = 8 * 1024
+# Above this work level benchmark only the serial baseline plus one
+# conservative blocked candidate to bound first-use tuning cost.
+#
+# The pruning limits only control how many candidates are measured; the final
+# configuration is always picked by on-device benchmarking, so no limit
+# hard-codes a device-specific choice.
 _MULTI_BLOCK_AUTOTUNE_WORK_LIMIT = 64 * 1024
-_AUTOTUNE_WORK_LIMIT = 512 * 1024
+
+
+# Both kernels assign a complete rotary pair to one logical element, so their
+# serial tiles are half as wide as the head dim and need fewer warps than a
+# full-width kernel. HEAD_BLOCK_SIZE splits the head axis across programs.
+WARP_CANDIDATES = {
+    0: (1, 2, 4),
+    1: (1, 2, 4),
+    2: (2, 4),
+    4: (4, 8),
+    8: (4, 8),
+}
 
 
 def _get_rope_autotune_configs():
-    configs = [
-        # Keep the original implementation as the baseline so autotuning can
-        # always fall back to its performance for every shape.
-        triton.Config(
-            {"HEAD_BLOCK_SIZE": 0},
-            num_warps=4,
-            num_stages=3,
-        ),
-    ]
-    for head_block_size in (1, 2, 4, 8):
-        for num_warps in (4, 8):
-            configs.append(
-                triton.Config(
-                    {"HEAD_BLOCK_SIZE": head_block_size},
-                    num_warps=num_warps,
-                    num_stages=3,
-                )
-            )
-    return configs
-
-
-def _get_rope_inplace_autotune_configs():
-    # One logical element handles a complete rotary pair in the in-place
-    # kernel, so it needs fewer warps than the full-width out-of-place kernel.
-    warp_candidates = {
-        0: (1, 2, 4),
-        1: (1, 2, 4),
-        2: (2, 4),
-        4: (4, 8),
-        8: (4, 8),
-    }
     return [
         triton.Config(
             {"HEAD_BLOCK_SIZE": head_block_size},
             num_warps=num_warps,
             num_stages=3,
         )
-        for head_block_size, num_warps_list in warp_candidates.items()
+        for head_block_size, num_warps_list in WARP_CANDIDATES.items()
         for num_warps in num_warps_list
     ]
+
+
+def _get_rope_inplace_autotune_configs():
+    return _get_rope_autotune_configs()
 
 
 def _is_baseline_config(config):
@@ -88,9 +84,7 @@ def _prune_rope_configs(configs, named_args, **_):
     max_heads = max(named_args["NUM_Q_HEADS"], named_args["NUM_K_HEADS"])
     n_tokens_bucket = named_args["n_tokens_bucket"]
     work = n_tokens_bucket * named_args["PADDED_HEAD_DIM"]
-    # Once the token axis alone provides enough work, splitting heads only
-    # duplicates cos/sin traffic. Keep the exact serial baseline in that case.
-    if max_heads < 2 or work >= _AUTOTUNE_WORK_LIMIT:
+    if max_heads < 2:
         return [baseline]
 
     max_head_block_size = min(8, triton.next_power_of_2(max_heads))
@@ -147,8 +141,6 @@ def _prune_rope_inplace_configs(configs, named_args, **_):
         return [
             config for config in valid_configs if config.kwargs["HEAD_BLOCK_SIZE"] <= 1
         ]
-    if work >= _AUTOTUNE_WORK_LIMIT:
-        return serial_configs
     if work >= _MULTI_BLOCK_AUTOTUNE_WORK_LIMIT:
         return serial_configs + [
             config
@@ -315,21 +307,21 @@ def apply_rotary_pos_emb_kernel(
     # note: set TRITON_DEBUG=1 to enable this check
     tl.device_assert(pos_id < MAX_POSITION_EMBEDDINGS, "position id out of bound")
 
-    ordered_block = tl.arange(0, PADDED_HEAD_DIM)
-    mask = ordered_block < HEAD_DIM
+    # Assign both values of a rotary pair to the same logical lane, mirroring
+    # the in-place kernel. Each input value is loaded exactly once (instead of
+    # once here and again as the partner's rotated element), halves cos/sin
+    # traffic, and keeps the same code shape shared by both entry points.
+    pair_block = tl.arange(0, PADDED_HEAD_DIM // 2)
+    pair_mask = pair_block < HEAD_DIM // 2
     if ROTARY_INTERLEAVED:
-        odd_mask = ordered_block % 2 == 0
-        rotated_block = tl.where(odd_mask, ordered_block + 1, ordered_block - 1)
-        sin_cos_block = ordered_block // 2
-        cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.where(odd_mask, -sin, sin)
+        first_dim = pair_block * 2
+        second_dim = first_dim + 1
     else:
-        rotated_block = (ordered_block + HEAD_DIM // 2) % HEAD_DIM
-        sin_cos_block = ordered_block % (HEAD_DIM // 2)
-        cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
-        sin = tl.where(rotated_block < HEAD_DIM // 2, sin, -sin)
+        first_dim = pair_block
+        second_dim = pair_block + HEAD_DIM // 2
+
+    cos = tl.load(cos_ptr + pair_block, mask=pair_mask, other=0.0).to(tl.float32)
+    sin = tl.load(sin_ptr + pair_block, mask=pair_mask, other=0.0).to(tl.float32)
 
     oq_ptr += s_id * oq_stride_s
     q_ptr += s_id * q_stride_s
@@ -344,64 +336,96 @@ def apply_rotary_pos_emb_kernel(
         head_offsets = head_block_start + tl.arange(0, HEAD_BLOCK_SIZE)
 
         if head_block_start < NUM_Q_HEADS:
-            q_mask = (head_offsets[:, None] < NUM_Q_HEADS) & mask[None, :]
-            q_ordered_cols = (
-                head_offsets[:, None] * q_stride_h + ordered_block[None, :] * q_stride_d
+            q_mask = (head_offsets[:, None] < NUM_Q_HEADS) & pair_mask[None, :]
+            q_first_cols = (
+                head_offsets[:, None] * q_stride_h + first_dim[None, :] * q_stride_d
             )
-            q_rotated_cols = (
-                head_offsets[:, None] * q_stride_h + rotated_block[None, :] * q_stride_d
+            q_second_cols = (
+                head_offsets[:, None] * q_stride_h + second_dim[None, :] * q_stride_d
             )
-            q_output_offs = (
-                head_offsets[:, None] * oq_stride_h
-                + ordered_block[None, :] * oq_stride_d
+            oq_first_cols = (
+                head_offsets[:, None] * oq_stride_h + first_dim[None, :] * oq_stride_d
             )
-            q = tl.load(q_ptr + q_ordered_cols, mask=q_mask, other=0.0)
-            rotated_q = tl.load(q_ptr + q_rotated_cols, mask=q_mask, other=0.0)
+            oq_second_cols = (
+                head_offsets[:, None] * oq_stride_h + second_dim[None, :] * oq_stride_d
+            )
+            x0 = tl.load(q_ptr + q_first_cols, mask=q_mask, other=0.0)
+            x1 = tl.load(q_ptr + q_second_cols, mask=q_mask, other=0.0)
             tl.store(
-                oq_ptr + q_output_offs,
-                q * cos[None, :] + rotated_q * sin[None, :],
+                oq_ptr + oq_first_cols,
+                x0 * cos[None, :] - x1 * sin[None, :],
+                mask=q_mask,
+            )
+            tl.store(
+                oq_ptr + oq_second_cols,
+                x1 * cos[None, :] + x0 * sin[None, :],
                 mask=q_mask,
             )
 
         if head_block_start < NUM_K_HEADS:
-            k_mask = (head_offsets[:, None] < NUM_K_HEADS) & mask[None, :]
-            k_ordered_cols = (
-                head_offsets[:, None] * k_stride_h + ordered_block[None, :] * k_stride_d
+            k_mask = (head_offsets[:, None] < NUM_K_HEADS) & pair_mask[None, :]
+            k_first_cols = (
+                head_offsets[:, None] * k_stride_h + first_dim[None, :] * k_stride_d
             )
-            k_rotated_cols = (
-                head_offsets[:, None] * k_stride_h + rotated_block[None, :] * k_stride_d
+            k_second_cols = (
+                head_offsets[:, None] * k_stride_h + second_dim[None, :] * k_stride_d
             )
-            k_output_offs = (
-                head_offsets[:, None] * ok_stride_h
-                + ordered_block[None, :] * ok_stride_d
+            ok_first_cols = (
+                head_offsets[:, None] * ok_stride_h + first_dim[None, :] * ok_stride_d
             )
-            k = tl.load(k_ptr + k_ordered_cols, mask=k_mask, other=0.0)
-            rotated_k = tl.load(k_ptr + k_rotated_cols, mask=k_mask, other=0.0)
+            ok_second_cols = (
+                head_offsets[:, None] * ok_stride_h + second_dim[None, :] * ok_stride_d
+            )
+            k_first = tl.load(k_ptr + k_first_cols, mask=k_mask, other=0.0)
+            k_second = tl.load(k_ptr + k_second_cols, mask=k_mask, other=0.0)
             tl.store(
-                ok_ptr + k_output_offs,
-                k * cos[None, :] + rotated_k * sin[None, :],
+                ok_ptr + ok_first_cols,
+                k_first * cos[None, :] - k_second * sin[None, :],
+                mask=k_mask,
+            )
+            tl.store(
+                ok_ptr + ok_second_cols,
+                k_second * cos[None, :] + k_first * sin[None, :],
                 mask=k_mask,
             )
     else:
         for off_h in range(0, NUM_Q_HEADS):
-            ordered_cols = off_h * q_stride_h + (ordered_block * q_stride_d)
-            rotated_cols = off_h * q_stride_h + (rotated_block * q_stride_d)
-            output_offs = off_h * oq_stride_h + (ordered_block * oq_stride_d)
+            first_cols = off_h * q_stride_h + (first_dim * q_stride_d)
+            second_cols = off_h * q_stride_h + (second_dim * q_stride_d)
+            o_first_cols = off_h * oq_stride_h + (first_dim * oq_stride_d)
+            o_second_cols = off_h * oq_stride_h + (second_dim * oq_stride_d)
 
-            q = tl.load(q_ptr + ordered_cols, mask=mask, other=0.0)
-            rotated_q = tl.load(q_ptr + rotated_cols, mask=mask, other=0.0)
-            y = q * cos + rotated_q * sin
-            tl.store(oq_ptr + output_offs, y, mask=mask)
+            x0 = tl.load(q_ptr + first_cols, mask=pair_mask, other=0.0)
+            x1 = tl.load(q_ptr + second_cols, mask=pair_mask, other=0.0)
+            tl.store(
+                oq_ptr + o_first_cols,
+                x0 * cos - x1 * sin,
+                mask=pair_mask,
+            )
+            tl.store(
+                oq_ptr + o_second_cols,
+                x1 * cos + x0 * sin,
+                mask=pair_mask,
+            )
 
         for off_h in range(0, NUM_K_HEADS):
-            ordered_cols = off_h * k_stride_h + (ordered_block * k_stride_d)
-            rotated_cols = off_h * k_stride_h + (rotated_block * k_stride_d)
-            output_offs = off_h * ok_stride_h + (ordered_block * ok_stride_d)
+            first_cols = off_h * k_stride_h + (first_dim * k_stride_d)
+            second_cols = off_h * k_stride_h + (second_dim * k_stride_d)
+            o_first_cols = off_h * ok_stride_h + (first_dim * ok_stride_d)
+            o_second_cols = off_h * ok_stride_h + (second_dim * ok_stride_d)
 
-            k = tl.load(k_ptr + ordered_cols, mask=mask, other=0.0)
-            rotated_k = tl.load(k_ptr + rotated_cols, mask=mask, other=0.0)
-            y = k * cos + rotated_k * sin
-            tl.store(ok_ptr + output_offs, y, mask=mask)
+            x0 = tl.load(k_ptr + first_cols, mask=pair_mask, other=0.0)
+            x1 = tl.load(k_ptr + second_cols, mask=pair_mask, other=0.0)
+            tl.store(
+                ok_ptr + o_first_cols,
+                x0 * cos - x1 * sin,
+                mask=pair_mask,
+            )
+            tl.store(
+                ok_ptr + o_second_cols,
+                x1 * cos + x0 * sin,
+                mask=pair_mask,
+            )
 
 
 @libentry()
