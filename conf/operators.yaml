@@ -13,6 +13,20 @@
 # limitations under the License.
 
 ops:
+  - id: _assert_tensor_metadata
+    description: |
+      Asserts that the input tensor's metadata (size, stride, dtype, device,
+      layout) matches the provided expected values. Raises a RuntimeError on
+      any mismatch and returns nothing. Arguments left as None are not checked.
+    for:
+      - _assert_tensor_metadata
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: _reshape_alias
     description: |
       Creates a view of the input tensor with the given size and stride,
