@@ -211,6 +211,20 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
+  - id: addbmm_
+    description: |
+      Inplace variant of addbmm. Performs a batch matrix-matrix product of matrices in
+      `batch1` and `batch2`, with a reduced add step, and stores the result in `self`.
+      Formula: self = beta * self + alpha * (sum_i batch1_i @ batch2_i).
+    for:
+      - addbmm_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: addcdiv
     description: |
       Performs the element-wise division of `tensor1` by `tensor2`, multiplies the result
