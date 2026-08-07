@@ -126,14 +126,35 @@ def igammac_kernel(
     #            * sum_{k=0}^{ASYM_K-1} c_k(eta) / a^k,
     # with sigma = (x-a)/a, eta = sgn(x-a) sqrt(-2(log(1+sigma)-sigma)).
     # log1p keeps relative precision where log(1+sigma) - sigma cancels for
-    # small |sigma|.
+    # small |sigma| in float32. In float64, the Taylor series
+    # log(1+s)-s = sum_{n>=2} (-1)^(n+1) s^n / n converges quickly in the
+    # asym activation region (|s| < 0.3) and avoids the log(1+s) rounding
+    # that flips the sign of log(1+s)-s for tiny |s|, plus any fp64 log1p
+    # backend issue.
     sigma = (x_f - a_f) / a_f
     lam = x_f / a_f
-    log1p_sigma = tl_extra_shim.log1p(sigma)
+    if COMPUTE_DTYPE == tl.float64:
+        # Taylor series for log(1+s)-s = sum_{n>=2} (-1)^(n+1) s^n / n,
+        # which converges quickly in the asym activation region (|s| < 0.3)
+        # and avoids the log(1+s) rounding that flips the sign of
+        # log(1+s)-s for tiny |s|, plus any fp64 log1p backend issue.
+        sigma_pow = sigma * sigma
+        log1p_minus_sigma = sigma * 0.0
+        for n in range(2, 32):
+            if n % 2 == 0:
+                log1p_minus_sigma = log1p_minus_sigma - sigma_pow / n
+            else:
+                log1p_minus_sigma = log1p_minus_sigma + sigma_pow / n
+            sigma_pow = sigma_pow * sigma
+        eta2 = -2.0 * log1p_minus_sigma
+    else:
+        # log1p keeps relative precision where log(1+sigma)-sigma cancels
+        # for small |sigma| in float32.
+        eta2 = -2.0 * (tl_extra_shim.log1p(sigma) - sigma)
     eta = tl.where(
         lam > 1.0,
-        tl.sqrt(-2.0 * (log1p_sigma - sigma)),
-        tl.where(lam < 1.0, -tl.sqrt(-2.0 * (log1p_sigma - sigma)), 0.0),
+        tl.sqrt(eta2),
+        tl.where(lam < 1.0, -tl.sqrt(eta2), 0.0),
     )
 
     q_asym = 0.5 * (1.0 - tl.math.erf(eta * tl.sqrt(a_f * 0.5)))
