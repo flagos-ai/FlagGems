@@ -570,3 +570,61 @@ def test_combined_q_and_kv(num_tokens: int, n_heads: int, block_size: int):
 
     torch.testing.assert_close(q, q_ref, rtol=1e-2, atol=1e-2)
     k_cache_compare(k_cache, k_cache_ref, block_size, rtol=1e-2, atol=1e-2)
+
+
+# ── Test 5: a backend override must not change results ───────────────────────
+# A vendor override is a performance change. It runs only where one is
+# registered, so nothing below executes on the generic path.
+_OVERRIDE_ACTIVE = (
+    flag_gems.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert is not _generic_impl
+)
+
+
+@pytest.mark.fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert
+@pytest.mark.skipif(not is_support_fp8e4nv(), reason="Device does not support fp8e4nv")
+@pytest.mark.skipif(
+    not _OVERRIDE_ACTIVE,
+    reason="No backend override registered; the generic kernel is in use",
+)
+@pytest.mark.parametrize(
+    "num_tokens",
+    [1, 17, 513] if QUICK_MODE else [1, 17, 64, 511, 512, 777, 1000, 4096],
+)
+@pytest.mark.parametrize("n_heads", [64, 128])
+@pytest.mark.parametrize("block_size", [16, 64])
+def test_backend_override_matches_generic(
+    num_tokens: int, n_heads: int, block_size: int
+):
+    torch.manual_seed(3)
+    device = "cuda"
+    eps = 1e-6
+    max_pos = max(4096, num_tokens)
+    num_blocks = (num_tokens + block_size - 1) // block_size + 1
+
+    q = torch.randn(num_tokens, n_heads, HEAD_DIM, dtype=torch.bfloat16, device=device)
+    kv = torch.randn(num_tokens, HEAD_DIM, dtype=torch.bfloat16, device=device)
+    k_cache = torch.zeros(
+        num_blocks, block_size * HEAD_BYTES, dtype=torch.uint8, device=device
+    )
+    slot_mapping = torch.arange(num_tokens, dtype=torch.int64, device=device)
+    positions = torch.arange(num_tokens, dtype=torch.int64, device=device)
+    cos_sin_cache = make_cos_sin_cache(max_pos, ROPE_DIM, torch.float32, device)
+
+    q_gen, k_cache_gen = q.clone(), k_cache.clone()
+    _generic_impl(
+        q_gen, kv, k_cache_gen, slot_mapping, positions, cos_sin_cache, eps, block_size
+    )
+    fused_impl(q, kv, k_cache, slot_mapping, positions, cos_sin_cache, eps, block_size)
+
+    # The cache is derived from kv through per-64-element reductions, identical
+    # in any sane decomposition, so it must match byte for byte -- an override
+    # that quantizes differently has changed behaviour.
+    assert torch.equal(k_cache, k_cache_gen), (
+        f"override wrote a different FP8 cache at num_tokens={num_tokens}, "
+        f"n_heads={n_heads}, block_size={block_size}: "
+        f"{int((k_cache != k_cache_gen).sum().item())} of {k_cache.numel()} "
+        "bytes differ"
+    )
+    # q goes through a 512-element RMSNorm reduction whose tree may legitimately
+    # differ between decompositions, so allow a bf16 ULP there.
+    torch.testing.assert_close(q, q_gen, rtol=1e-3, atol=1e-3)
