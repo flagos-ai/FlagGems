@@ -27,10 +27,10 @@ from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @libtuner(
     configs=cfggen_reduce_op(), key=["M"], strategy=["log"], reset_to_zero=["out"]
 )
+@libentry()
 @triton.jit
 def mean_kernel_1(
     inp,
@@ -68,12 +68,12 @@ def mean(inp, *, dtype=None):
     return out.to(dtype)
 
 
-@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mean"),
     key=["M", "N"],
     strategy=["log", "log"],
 )
+@libentry()
 @triton.jit
 def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     # Map the program id to the row of X it should compute.
@@ -107,6 +107,10 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
 
     if dtype is None:
         dtype = x.dtype
+    if dim == [] or dim == ():
+        if not keepdim:
+            return mean(x, dtype=dtype)
+        return mean(x, dtype=dtype).reshape([1] * x.ndim)
     if dim is None:
         out = mean(x, dtype=dtype)
         if not keepdim:

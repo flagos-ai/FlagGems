@@ -127,12 +127,70 @@ def _fallback_j1(x):
     return tl.where(ax <= 5.0, small_val, large_val)
 
 
+@triton.jit
+def _fallback_nextafter(input, other):
+    # IEEE 754 nextafter for float32 via uint32 bit manipulation.  Mirrors the
+    # fp16/bf16 bit-manipulation path in ops/nextafter.py; used when a backend's
+    # libdevice lacks a native nextafter (e.g. cambricon mlu / sunrise tang forks).
+    x_int = input.to(tl.uint32, bitcast=True)
+    y_int = other.to(tl.uint32, bitcast=True)
+
+    exp_mask = 0x7F800000  # 8 exponent bits
+    frac_mask = 0x007FFFFF  # 23 mantissa bits
+
+    # uint32 constants via bitwise ops / shifts.  A Python int literal 0x80000000
+    # would promote to a wider signed type and break the uint32 arithmetic/bitcast.
+    uint_zero = x_int & 0
+    uint_one = uint_zero | 1
+    uint_neg_one = ~uint_zero  # 0xFFFFFFFF = -1 in uint32 arithmetic
+    sign_bit = uint_one << 31  # 0x80000000
+    cross_const = sign_bit | uint_one  # 0x80000001
+
+    x_is_nan = ((x_int & exp_mask) == exp_mask) & ((x_int & frac_mask) != 0)
+    y_is_nan = ((y_int & exp_mask) == exp_mask) & ((y_int & frac_mask) != 0)
+    is_nan = x_is_nan | y_is_nan
+
+    is_equal = input == other
+    is_positive = (x_int & sign_bit) == 0
+    is_going_up = input < other
+
+    # Normal increment (IEEE 754 sign-magnitude): for positive floats a larger
+    # uint is a larger value, for negative floats a larger uint is more negative.
+    normal_inc = tl.where(
+        is_positive,
+        tl.where(is_going_up, uint_one, uint_neg_one),
+        tl.where(is_going_up, uint_neg_one, uint_one),
+    )
+
+    # Zero-crossing: +0 going down -> 0x80000001, -0 going up -> 0x00000001.
+    # x_int + 0x80000001 gives the correct uint32 result in both cases.
+    pos_zero_down = is_positive & ~is_going_up & (x_int == uint_zero)
+    neg_zero_up = ~is_positive & is_going_up & (x_int == sign_bit)
+    is_zero_cross = pos_zero_down | neg_zero_up
+
+    result_int = tl.where(
+        is_nan | is_equal,
+        x_int,  # return input bits as-is (NaN or self)
+        tl.where(is_zero_cross, x_int + cross_const, x_int + normal_inc),
+    )
+    return result_int.to(input.dtype, bitcast=True)
+
+
+@triton.jit
+def _fallback_sinpi(x):
+    # sinpi(x) == sin(pi * x); used when a backend's libdevice lacks a native
+    # sinpi (e.g. the sunrise tang fork, which does provide sin).
+    return tl.sin(3.141592653589793 * x)
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "tanh": _fallback_tanh,
     "erfinv": _fallback_erfinv,
     "floor": _fallback_floor,
     "j1": _fallback_j1,
+    "nextafter": _fallback_nextafter,
+    "sinpi": _fallback_sinpi,
 }
 
 
@@ -140,14 +198,21 @@ def _patch_missing_symbols(module, names):
     for name in names:
         if hasattr(module, name):
             continue
+        # Prefer the pure-triton fallback over borrowing from another backend's
+        # libdevice.  This loop only runs for symbols the vendor's own libdevice
+        # lacks, so a candidate match necessarily comes from a *foreign* module
+        # (e.g. the generic CUDA libdevice).  Such a symbol may exist at the
+        # Python level yet fail to lower on this backend -- CUDA's nextafter
+        # compiles to None on the cambricon mlu / sunrise tang triton forks.
+        # A pure-triton fallback lowers on every backend, so it wins when present.
+        fallback = _FALLBACK_SYMBOLS.get(name)
+        if fallback is not None:
+            setattr(module, name, fallback)
+            continue
         for candidate in _tl_extra_candidates():
             if hasattr(candidate, name):
                 setattr(module, name, getattr(candidate, name))
                 break
-        else:
-            fallback = _FALLBACK_SYMBOLS.get(name)
-            if fallback is not None:
-                setattr(module, name, fallback)
     return module
 
 
@@ -178,10 +243,12 @@ tl_extra_shim = _patch_missing_symbols(
         "isnan",
         "lgamma",
         "log",
+        "nextafter",
         "pow",
         "rint",
         "rsqrt",
         "silu",
+        "sinpi",
         "tan",
         "tanh",
         "trunc",
