@@ -442,6 +442,24 @@ GenericBenchmark2DOnly:
     - [4096, 4096]
     - [1024, 65536]
 
+# huber_loss is a reduction op: small tensors are dominated by launch/dispatch
+# overhead, so its per-op shape set keeps the default 2D shapes and additionally
+# covers larger reduction workloads where the Triton kernel is representative.
+huber_loss:
+  shapes:
+    - [64, 64]
+    - [256, 256]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [1024, 65536]
+    - [2048, 32768]
+    - [2048, 65536]
+    - [4096, 32768]
+    - [4096, 65536]
+    - [3072, 49152]
+    - [3072, 65536]
+  shape_desc: "M, N"
+
 # default 4d-only shapes
 GenericBenchmark4DOnly:
   shapes:
