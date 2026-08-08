@@ -22,8 +22,14 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils.triton_version_utils import HAS_TLE
 
 logger = logging.getLogger(__name__)
+
+if HAS_TLE:
+    import triton.experimental.tle.language as tle
+else:
+    tle = None
 
 
 @libentry()
@@ -192,6 +198,213 @@ def apply_rotary_pos_emb_inplace_kernel(
         tl.store(k_ptr + ordered_cols, y, mask=mask)  # In-place update
 
 
+if HAS_TLE:
+
+    @triton.jit
+    def apply_rotary_pos_emb_kernel_tle(
+        oq_ptr,
+        ok_ptr,
+        q_ptr,
+        k_ptr,
+        cos_ptr,
+        sin_ptr,
+        pos_ptr,
+        q_stride_s,
+        q_stride_h,
+        q_stride_d,
+        k_stride_s,
+        k_stride_h,
+        k_stride_d,
+        oq_stride_s,
+        oq_stride_h,
+        oq_stride_d,
+        ok_stride_s,
+        ok_stride_h,
+        ok_stride_d,
+        p_stride_s,
+        cos_stride_s,
+        sin_stride_s,
+        seq_len,
+        NUM_Q_HEADS: tl.constexpr,
+        NUM_K_HEADS: tl.constexpr,
+        HEAD_DIM: tl.constexpr,
+        PADDED_HEAD_DIM: tl.constexpr,
+        ROTARY_INTERLEAVED: tl.constexpr,
+        MAX_POSITION_EMBEDDINGS: tl.constexpr,
+        PADDED_NUM_Q_HEADS: tl.constexpr,  # next_power_of_2(NUM_Q_HEADS)
+        PADDED_NUM_K_HEADS: tl.constexpr,  # next_power_of_2(NUM_K_HEADS)
+    ):
+        s_id = tl.program_id(0)
+
+        if pos_ptr is None:
+            pos_id = s_id % seq_len
+        else:
+            pos_ptr += s_id * p_stride_s
+            pos_id = tl.load(pos_ptr)
+        cos_ptr += pos_id * cos_stride_s
+        sin_ptr += pos_id * sin_stride_s
+
+        tl.device_assert(pos_id < MAX_POSITION_EMBEDDINGS, "position id out of bound")
+
+        ordered_block = tl.arange(0, PADDED_HEAD_DIM)
+        mask = ordered_block < HEAD_DIM
+        if ROTARY_INTERLEAVED:
+            odd_mask = ordered_block % 2 == 0
+            rotated_block = tl.where(odd_mask, ordered_block + 1, ordered_block - 1)
+            sin_cos_block = ordered_block // 2
+            cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+            sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+            sin = tl.where(odd_mask, -sin, sin)
+        else:
+            rotated_block = (ordered_block + HEAD_DIM // 2) % HEAD_DIM
+            sin_cos_block = ordered_block % (HEAD_DIM // 2)
+            cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+            sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+            sin = tl.where(rotated_block < HEAD_DIM // 2, sin, -sin)
+
+        oq_ptr += s_id * oq_stride_s
+        q_ptr += s_id * q_stride_s
+        # head-count dim must be a power of 2 for tl.arange / block shapes: pad and mask
+        q_head_ids = tl.arange(0, PADDED_NUM_Q_HEADS)
+        q_block = tl.load(
+            q_ptr
+            + q_head_ids[:, None] * q_stride_h
+            + ordered_block[None, :] * q_stride_d,
+            mask=(q_head_ids < NUM_Q_HEADS)[:, None] & mask[None, :],
+            other=0.0,
+        )
+
+        for off_h in range(0, NUM_Q_HEADS):
+            q = tle.extract_tile(
+                q_block, index=[off_h, 0], tile_shape=[1, PADDED_HEAD_DIM]
+            ).reshape((PADDED_HEAD_DIM,))
+            rotated_cols = off_h * q_stride_h + (rotated_block * q_stride_d)
+            rotated_q = tl.load(q_ptr + rotated_cols, mask=mask, other=0.0)
+            y = q * cos + rotated_q * sin
+            tl.store(
+                oq_ptr + off_h * oq_stride_h + ordered_block * oq_stride_d, y, mask=mask
+            )
+
+        ok_ptr += s_id * ok_stride_s
+        k_ptr += s_id * k_stride_s
+        k_head_ids = tl.arange(0, PADDED_NUM_K_HEADS)
+        k_block = tl.load(
+            k_ptr
+            + k_head_ids[:, None] * k_stride_h
+            + ordered_block[None, :] * k_stride_d,
+            mask=(k_head_ids < NUM_K_HEADS)[:, None] & mask[None, :],
+            other=0.0,
+        )
+
+        for off_h in range(0, NUM_K_HEADS):
+            k = tle.extract_tile(
+                k_block, index=[off_h, 0], tile_shape=[1, PADDED_HEAD_DIM]
+            ).reshape((PADDED_HEAD_DIM,))
+            rotated_cols = off_h * k_stride_h + (rotated_block * k_stride_d)
+            rotated_k = tl.load(k_ptr + rotated_cols, mask=mask, other=0.0)
+            y = k * cos + rotated_k * sin
+            tl.store(
+                ok_ptr + off_h * ok_stride_h + ordered_block * ok_stride_d, y, mask=mask
+            )
+
+    @triton.jit
+    def apply_rotary_pos_emb_inplace_kernel_tle(
+        q_ptr,
+        k_ptr,
+        cos_ptr,
+        sin_ptr,
+        pos_ptr,
+        q_stride_s,
+        q_stride_h,
+        q_stride_d,
+        k_stride_s,
+        k_stride_h,
+        k_stride_d,
+        p_stride_s,
+        cos_stride_s,
+        sin_stride_s,
+        seq_len,
+        NUM_Q_HEADS: tl.constexpr,
+        NUM_K_HEADS: tl.constexpr,
+        HEAD_DIM: tl.constexpr,
+        PADDED_HEAD_DIM: tl.constexpr,
+        ROTARY_INTERLEAVED: tl.constexpr,
+        MAX_POSITION_EMBEDDINGS: tl.constexpr,
+        PADDED_NUM_Q_HEADS: tl.constexpr,  # next_power_of_2(NUM_Q_HEADS)
+        PADDED_NUM_K_HEADS: tl.constexpr,  # next_power_of_2(NUM_K_HEADS)
+    ):
+        s_id = tl.program_id(0)
+
+        if pos_ptr is None:
+            pos_id = s_id % seq_len
+        else:
+            pos_ptr += s_id * p_stride_s
+            pos_id = tl.load(pos_ptr)
+        cos_ptr += pos_id * cos_stride_s
+        sin_ptr += pos_id * sin_stride_s
+
+        tl.device_assert(pos_id < MAX_POSITION_EMBEDDINGS, "position id out of bound")
+
+        ordered_block = tl.arange(0, PADDED_HEAD_DIM)
+        mask = ordered_block < HEAD_DIM
+        if ROTARY_INTERLEAVED:
+            odd_mask = ordered_block % 2 == 0
+            rotated_block = tl.where(odd_mask, ordered_block + 1, ordered_block - 1)
+            sin_cos_block = ordered_block // 2
+            cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+            sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+            sin = tl.where(odd_mask, -sin, sin)
+        else:
+            rotated_block = (ordered_block + HEAD_DIM // 2) % HEAD_DIM
+            sin_cos_block = ordered_block % (HEAD_DIM // 2)
+            cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+            sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+            sin = tl.where(rotated_block < HEAD_DIM // 2, sin, -sin)
+
+        q_ptr += s_id * q_stride_s
+        # head-count dim must be a power of 2 for tl.arange / block shapes: pad and mask
+        q_head_ids = tl.arange(0, PADDED_NUM_Q_HEADS)
+        q_block = tl.load(
+            q_ptr
+            + q_head_ids[:, None] * q_stride_h
+            + ordered_block[None, :] * q_stride_d,
+            mask=(q_head_ids < NUM_Q_HEADS)[:, None] & mask[None, :],
+            other=0.0,
+        )
+
+        for off_h in range(0, NUM_Q_HEADS):
+            q = tle.extract_tile(
+                q_block, index=[off_h, 0], tile_shape=[1, PADDED_HEAD_DIM]
+            ).reshape((PADDED_HEAD_DIM,))
+            rotated_cols = off_h * q_stride_h + (rotated_block * q_stride_d)
+            rotated_q = tl.load(q_ptr + rotated_cols, mask=mask, other=0.0)
+            y = q * cos + rotated_q * sin
+            tl.store(
+                q_ptr + off_h * q_stride_h + ordered_block * q_stride_d, y, mask=mask
+            )
+
+        k_ptr += s_id * k_stride_s
+        k_head_ids = tl.arange(0, PADDED_NUM_K_HEADS)
+        k_block = tl.load(
+            k_ptr
+            + k_head_ids[:, None] * k_stride_h
+            + ordered_block[None, :] * k_stride_d,
+            mask=(k_head_ids < NUM_K_HEADS)[:, None] & mask[None, :],
+            other=0.0,
+        )
+
+        for off_h in range(0, NUM_K_HEADS):
+            k = tle.extract_tile(
+                k_block, index=[off_h, 0], tile_shape=[1, PADDED_HEAD_DIM]
+            ).reshape((PADDED_HEAD_DIM,))
+            rotated_cols = off_h * k_stride_h + (rotated_block * k_stride_d)
+            rotated_k = tl.load(k_ptr + rotated_cols, mask=mask, other=0.0)
+            y = k * cos + rotated_k * sin
+            tl.store(
+                k_ptr + off_h * k_stride_h + ordered_block * k_stride_d, y, mask=mask
+            )
+
+
 def apply_rotary_pos_emb(
     q,
     k,
@@ -256,10 +469,26 @@ def apply_rotary_pos_emb(
     # The block size must be the next power of two, sometimes we need to pad it.
     padded_head_dim = max(triton.next_power_of_2(head_dim), 16)
 
+    # The TLE kernels bulk-load a [heads, head_dim] block, so the head-count
+    # dim must also be a power of 2 (tl.arange / block shapes); pad and mask.
+    tle_kwargs = {}
+    if HAS_TLE:
+        tle_kwargs = dict(
+            PADDED_NUM_Q_HEADS=triton.next_power_of_2(q_heads),
+            PADDED_NUM_K_HEADS=triton.next_power_of_2(k.shape[-2]),
+        )
+
     if inplace:
         grid = (n_tokens,)
+        if HAS_TLE:
+            logger.debug("GEMS ROTARY_POS_EMBEDDING (TLE extract_tile path)")
         with torch_device_fn.device(q.device):
-            apply_rotary_pos_emb_inplace_kernel[grid](
+            kernel = (
+                apply_rotary_pos_emb_inplace_kernel_tle
+                if HAS_TLE
+                else apply_rotary_pos_emb_inplace_kernel
+            )
+            kernel[grid](
                 q,
                 k,
                 cos,
@@ -281,16 +510,23 @@ def apply_rotary_pos_emb(
                 padded_head_dim,
                 rotary_interleaved,
                 MAX_POSITION_EMBEDDINGS=cos.shape[0],
+                **tle_kwargs,
             )
         return q.view(q_shape), k.view(k_shape)
-    # If not inplace, we need to create new tensors for q_embed and k_embed
     else:
         q_embed = torch.empty_like(q)
         k_embed = torch.empty_like(k)
 
         grid = (n_tokens,)
+        if HAS_TLE:
+            logger.debug("GEMS ROTARY_POS_EMBEDDING (TLE extract_tile path)")
         with torch_device_fn.device(q_embed.device):
-            apply_rotary_pos_emb_kernel[grid](
+            kernel = (
+                apply_rotary_pos_emb_kernel_tle
+                if HAS_TLE
+                else apply_rotary_pos_emb_kernel
+            )
+            kernel[grid](
                 q_embed,
                 k_embed,
                 q,
@@ -320,6 +556,7 @@ def apply_rotary_pos_emb(
                 padded_head_dim,
                 rotary_interleaved,
                 MAX_POSITION_EMBEDDINGS=cos.shape[0],
+                **tle_kwargs,
             )
         q_embed = q_embed.view(q_shape)
         k_embed = k_embed.view(k_shape)
