@@ -3,6 +3,7 @@ from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
+from .baddbmm import baddbmm, baddbmm_out
 from .batch_norm import batch_norm, batch_norm_backward
 from .bmm import bmm
 from .exponential_ import exponential_
@@ -50,6 +51,8 @@ __all__ = [
     "amax",
     "arange",
     "arange_start",
+    "baddbmm",
+    "baddbmm_out",
     "batch_norm",
     "batch_norm_backward",
     "bmm",
