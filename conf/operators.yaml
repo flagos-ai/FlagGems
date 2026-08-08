@@ -2314,6 +2314,22 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: cudnn_rnn
+    description: |
+      Vendor-agnostic RNN forward pass using Triton kernels that
+      replaces the cuDNN-backed _cudnn_rnn operator.  Supports
+      RNN_RELU, RNN_TANH, LSTM and GRU modes with multi-layer,
+      bidirectional, LSTM projection (proj_size > 0), dropout
+      during training, and packed variable-length sequences.
+    for:
+      - _cudnn_rnn
+    labels:
+      - aten
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.5'
   - id: cummax
     description: |
       Returns a named tuple `(values, indices)` where `values` is the cumulative maximum of elements
