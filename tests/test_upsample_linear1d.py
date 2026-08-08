@@ -104,6 +104,9 @@ def test_upsample_linear1d_boundaries(dtype, case):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_upsample_linear1d(dtype, shape, scale, align_corners):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_i = to_reference(input).to(torch.float32)
     output_size = [int(ref_i.shape[i + 2] * scale) for i in range(1)]

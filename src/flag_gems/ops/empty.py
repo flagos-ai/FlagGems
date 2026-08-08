@@ -81,6 +81,11 @@ def empty(
         device=device,
         pin_memory=pin_memory,
     )
+    # Skip triton kernel for complex dtypes — triton cannot canonicalize complex
+    # pointer types on some backends, and empty() returns uninitialized memory
+    # anyway so skipping the store is functionally safe for all backends.
+    if dtype.is_complex:
+        return out
     N = volume(shape)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(device):
