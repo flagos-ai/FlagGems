@@ -147,6 +147,7 @@ from flag_gems.ops.attention import (
 )
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.avg_pool3d import avg_pool3d, avg_pool3d_backward
+from flag_gems.ops.awq_gemm import awq_gemm, pack_awq_weight  # noqa: F401
 from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bernoulli import bernoulli
@@ -886,6 +887,7 @@ __all__ = [
     "atan_",
     "atanh",
     "atanh_",
+    "awq_gemm",
     "avg_pool2d",
     "avg_pool2d_backward",
     "avg_pool3d",
