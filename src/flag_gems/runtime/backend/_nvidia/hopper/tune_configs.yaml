@@ -194,3 +194,164 @@ sqrt:
       BLOCK_SIZE: 2048
     num_stages: 4
     num_warps: 1
+
+flash_attn_varlen_fa3_direct:
+  - gen: true
+    param_map: &direct_param_map
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+      num_warps: warps
+      num_stages: stages
+    block_m: [16]
+    block_n: [16, 32]
+    warps: [4]
+    stages: [1, 2, 3]
+  - gen: true
+    param_map: *direct_param_map
+    block_m: [16]
+    block_n: [64, 128]
+    warps: [4, 8]
+    stages: [1, 2, 3]
+  - gen: true
+    param_map: *direct_param_map
+    block_m: [16]
+    block_n: [256]
+    warps: [4, 8]
+    stages: [3]
+  - gen: true
+    param_map: *direct_param_map
+    block_m: [32, 64, 128]
+    block_n: [16, 32]
+    warps: [4]
+    stages: [2, 3]
+  - gen: true
+    param_map: *direct_param_map
+    block_m: [32, 64, 128]
+    block_n: [64, 128]
+    warps: [4, 8]
+    stages: [2, 3]
+  - gen: true
+    param_map: *direct_param_map
+    block_m: [32, 64, 128]
+    block_n: [256]
+    warps: [4, 8]
+    stages: [3]
+
+flash_attn_varlen_fa3_persistent:
+  - &persistent_group2
+    META:
+      BLOCK_M: 128
+      BLOCK_N: 128
+      NUM_BUFFERS_Q: 1
+      NUM_BUFFERS_KV: 2
+      NUM_MMA_WARPS: 8
+      NUM_MMA_GROUPS: 2
+      Q_STAGE_CAPACITY: 2
+      USE_TMA_QO: true
+      Q_PIPE_ASYNC: true
+      REUSE_Q_SMEM_O: true
+      USE_TMA_KV: true
+      PAGED_PIPE_ASYNC: true
+    num_warps: 4
+    num_stages: 3
+  - <<: *persistent_group2
+    META:
+      BLOCK_M: 128
+      BLOCK_N: 128
+      NUM_BUFFERS_Q: 1
+      NUM_BUFFERS_KV: 2
+      NUM_MMA_WARPS: 8
+      NUM_MMA_GROUPS: 2
+      Q_STAGE_CAPACITY: 2
+      USE_TMA_QO: true
+      Q_PIPE_ASYNC: true
+      REUSE_Q_SMEM_O: true
+      USE_TMA_KV: false
+      PAGED_PIPE_ASYNC: true
+  - <<: *persistent_group2
+    META:
+      BLOCK_M: 128
+      BLOCK_N: 64
+      NUM_BUFFERS_Q: 1
+      NUM_BUFFERS_KV: 2
+      NUM_MMA_WARPS: 8
+      NUM_MMA_GROUPS: 2
+      Q_STAGE_CAPACITY: 2
+      USE_TMA_QO: true
+      Q_PIPE_ASYNC: true
+      REUSE_Q_SMEM_O: true
+      USE_TMA_KV: true
+      PAGED_PIPE_ASYNC: true
+  - <<: *persistent_group2
+    META:
+      BLOCK_M: 128
+      BLOCK_N: 64
+      NUM_BUFFERS_Q: 1
+      NUM_BUFFERS_KV: 2
+      NUM_MMA_WARPS: 8
+      NUM_MMA_GROUPS: 2
+      Q_STAGE_CAPACITY: 2
+      USE_TMA_QO: true
+      Q_PIPE_ASYNC: true
+      REUSE_Q_SMEM_O: true
+      USE_TMA_KV: false
+      PAGED_PIPE_ASYNC: true
+  - &persistent_group1
+    META:
+      BLOCK_M: 64
+      BLOCK_N: 64
+      NUM_BUFFERS_Q: 1
+      NUM_BUFFERS_KV: 2
+      NUM_MMA_WARPS: 4
+      NUM_MMA_GROUPS: 1
+      Q_STAGE_CAPACITY: 1
+      USE_TMA_QO: false
+      Q_PIPE_ASYNC: true
+      REUSE_Q_SMEM_O: true
+      USE_TMA_KV: true
+      PAGED_PIPE_ASYNC: true
+    num_warps: 4
+    num_stages: 3
+  - <<: *persistent_group1
+    META:
+      BLOCK_M: 64
+      BLOCK_N: 64
+      NUM_BUFFERS_Q: 1
+      NUM_BUFFERS_KV: 2
+      NUM_MMA_WARPS: 4
+      NUM_MMA_GROUPS: 1
+      Q_STAGE_CAPACITY: 1
+      USE_TMA_QO: false
+      Q_PIPE_ASYNC: true
+      REUSE_Q_SMEM_O: true
+      USE_TMA_KV: false
+      PAGED_PIPE_ASYNC: true
+  - <<: *persistent_group1
+    META:
+      BLOCK_M: 64
+      BLOCK_N: 128
+      NUM_BUFFERS_Q: 1
+      NUM_BUFFERS_KV: 2
+      NUM_MMA_WARPS: 4
+      NUM_MMA_GROUPS: 1
+      Q_STAGE_CAPACITY: 1
+      USE_TMA_QO: false
+      Q_PIPE_ASYNC: true
+      REUSE_Q_SMEM_O: true
+      USE_TMA_KV: true
+      PAGED_PIPE_ASYNC: true
+  - <<: *persistent_group1
+    META:
+      BLOCK_M: 64
+      BLOCK_N: 128
+      NUM_BUFFERS_Q: 1
+      NUM_BUFFERS_KV: 2
+      NUM_MMA_WARPS: 4
+      NUM_MMA_GROUPS: 1
+      Q_STAGE_CAPACITY: 1
+      USE_TMA_QO: false
+      Q_PIPE_ASYNC: true
+      REUSE_Q_SMEM_O: true
+      USE_TMA_KV: false
+      PAGED_PIPE_ASYNC: true
