@@ -1,5 +1,5 @@
 # Copyright 2026 FlagOS Contributors
-#
+# cev
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -63,6 +63,7 @@ from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .max import max, max_dim
 from .mean import mean, mean_dim
+from .meshgrid import meshgrid
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .multinomial import multinomial
@@ -168,6 +169,7 @@ __all__ = [
     "max_dim",
     "mean",
     "mean_dim",
+    "meshgrid",
     "min",
     "min_dim",
     "mm",

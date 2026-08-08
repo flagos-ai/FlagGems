@@ -1,5 +1,5 @@
 # Copyright 2026 FlagOS Contributors
-#
+# sac
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 
 from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops.__irshift__ import __irshift__
@@ -447,6 +448,7 @@ from flag_gems.ops.max_unpool3d import max_unpool3d
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
+from flag_gems.ops.meshgrid import meshgrid
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.miopen_batch_norm_backward import miopen_batch_norm_backward
@@ -1285,6 +1287,7 @@ __all__ = [
     "multiply_",
     "mv",
     "mvlgamma_",
+    "meshgrid",
     "nan_to_num",
     "nanmedian",
     "nanmedian_dim",
