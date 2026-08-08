@@ -20,6 +20,36 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.hardswish
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_hardswish(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(res_inp, True)
+
+    ref_out = torch.ops.aten.hardswish(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.hardswish(res_inp)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.hardswish
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_hardswish_out(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(res_inp, True)
+    ref_out = torch.empty_like(ref_inp)
+    res_out = torch.empty_like(res_inp)
+
+    torch.ops.aten.hardswish.out(ref_inp, out=ref_out)
+    with flag_gems.use_gems():
+        torch.ops.aten.hardswish.out(res_inp, out=res_out)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.hardswish_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
