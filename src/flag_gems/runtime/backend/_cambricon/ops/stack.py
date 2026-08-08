@@ -275,7 +275,6 @@ class StackKernelCode(IndentedBuffer):
             {load_and_store_code}
                 tl.store(output_ptr+buffer_offset, buffer)
 
-            @libentry()
             @triton.autotune(configs=cfggen(), key=performance_related_keys)
             @triton.heuristics(
                 {{
@@ -284,6 +283,7 @@ class StackKernelCode(IndentedBuffer):
                 "TASK_LAST_CORE_REMAIN": lambda args: stack_heuristics(args, "TASK_LAST_CORE_REMAIN"),
                 }}
             )
+            @libentry()
             @triton.jit()
             def {kernel_name}(
                 output,

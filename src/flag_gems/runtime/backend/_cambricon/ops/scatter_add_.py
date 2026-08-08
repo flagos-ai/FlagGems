@@ -23,9 +23,9 @@ import triton.language as tl
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
-from flag_gems.utils.shape_utils import restride_dim
+from flag_gems.utils.shape_utils import dim_compress, restride_dim
 
-from ..utils import dim_compress
+from ..utils import TOTAL_CORE_NUM
 
 logger = logging.getLogger(__name__)
 
@@ -42,17 +42,19 @@ def scatter_add_kernel_1(
     LOOP: tl.constexpr,
 ):
     pid = tl.program_id(0)
+    num_jobs = tl.num_programs(0)
     block_start = pid * BLOCK_SIZE * LOOP
+    grid_stride = num_jobs * BLOCK_SIZE * LOOP
     arange = tl.arange(0, BLOCK_SIZE)
-    offsets = block_start + arange
-    mask = offsets < n_elements
-    for loop_iter in tl.static_range(LOOP):
-        src_index_offsets = block_start + arange
-        src_tensor = tl.load(src_ptr + src_index_offsets, mask=mask, other=0)
-        index_tensor = tl.load(index_ptr + src_index_offsets, mask=mask, other=0)
-        out_offsets = src_index_offsets // index_dim_n * inp_dim_n + index_tensor
-        tl.atomic_add(out_ptr + out_offsets, src_tensor, mask=mask, sem="relaxed")
-        block_start += BLOCK_SIZE
+    while block_start < n_elements:
+        for loop_iter in tl.static_range(LOOP):
+            src_index_offsets = block_start + loop_iter * BLOCK_SIZE + arange
+            mask = src_index_offsets < n_elements
+            src_tensor = tl.load(src_ptr + src_index_offsets, mask=mask, other=0)
+            index_tensor = tl.load(index_ptr + src_index_offsets, mask=mask, other=0)
+            out_offsets = src_index_offsets // index_dim_n * inp_dim_n + index_tensor
+            tl.atomic_add(out_ptr + out_offsets, src_tensor, mask=mask, sem="relaxed")
+        block_start += grid_stride
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -62,6 +64,9 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems import runtime")
+    code.writeline(
+        "from flag_gems.runtime.backend._cambricon.utils import TOTAL_CORE_NUM"
+    )
     code.writeline("import flag_gems")
     code.newline()
     code.newline()
@@ -93,7 +98,6 @@ def generate_scatter_kernel(
     code.newline()
 
     # the decorators
-    code.writeline("@libentry()")
     code.writeline("@triton.heuristics(")
     with code.indent():
         code.writeline("{")
@@ -106,6 +110,7 @@ def generate_scatter_kernel(
     index_stride_vars = ",".join(f"'index_stride_{i}'" for i in range(rank))
     src_stride_vars = ",".join(f"'src_stride_{i}'" for i in range(rank))
     shape_vars = ",".join(f"'shape_{i}'" for i in range(rank))
+    code.writeline("@libentry()")
     code.writeline(
         f"@triton.jit(do_not_specialize=['N','stride_dim','inp_size_dim',"
         f"{inp_stride_vars},{index_stride_vars},{src_stride_vars},{shape_vars}])"
@@ -142,38 +147,44 @@ def generate_scatter_kernel(
     # Kernel Code
     with code.indent():
         code.writeline("pid = tl.program_id(0)")
-        code.writeline("offsets = pid * LOOP * BLOCK + tl.arange(0, BLOCK)")
+        code.writeline("num_jobs = tl.num_programs(0)")
+        code.writeline("base_offsets = pid * LOOP * BLOCK")
+        code.writeline("grid_stride = num_jobs * LOOP * BLOCK")
 
         #   1. Calculate inp_offsets and idx_offsets
-        code.writeline("for loop_iter in tl.static_range(LOOP):")
+        code.writeline("while base_offsets < N:")
         with code.indent():
-            code.writeline("mask = offsets < N")
-            code.writeline("cur_idx = offsets")
-            code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-            code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-            code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-            for i in range(rank)[::-1]:
-                code.writeline(f"mod = cur_idx % shape_{i}")
-                code.writeline(f"inp_offsets += mod * inp_stride_{i}")
-                code.writeline(f"idx_offsets += mod * index_stride_{i}")
-                code.writeline(f"src_offsets += mod * src_stride_{i}")
-                if i != 0:
-                    code.writeline(f"cur_idx = cur_idx // shape_{i}")
+            code.writeline("offsets = base_offsets + tl.arange(0, BLOCK)")
+            code.writeline("for loop_iter in tl.static_range(LOOP):")
+            with code.indent():
+                code.writeline("mask = offsets < N")
+                code.writeline("cur_idx = offsets")
+                code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                for i in range(rank)[::-1]:
+                    code.writeline(f"mod = cur_idx % shape_{i}")
+                    code.writeline(f"inp_offsets += mod * inp_stride_{i}")
+                    code.writeline(f"idx_offsets += mod * index_stride_{i}")
+                    code.writeline(f"src_offsets += mod * src_stride_{i}")
+                    if i != 0:
+                        code.writeline(f"cur_idx = cur_idx // shape_{i}")
 
-            #   2. Use offsets to scatter
-            code.writeline(
-                "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
-            )
-            code.writeline(
-                "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
-            )
-            code.writeline("dim_offsets = cur_index * stride_dim")
-            code.writeline("inp_offsets += dim_offsets")
-            code.newline()
-            code.writeline(
-                "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
-            )
-            code.writeline("offsets += BLOCK")
+                #   2. Use offsets to scatter
+                code.writeline(
+                    "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
+                )
+                code.writeline(
+                    "cur_index = tl.load(index + idx_offsets, mask=mask, other=0)"
+                )
+                code.writeline("dim_offsets = cur_index * stride_dim")
+                code.writeline("inp_offsets += dim_offsets")
+                code.newline()
+                code.writeline(
+                    "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
+                )
+                code.writeline("offsets += BLOCK")
+            code.writeline("base_offsets += grid_stride")
 
     code.newline()
     code.newline()
@@ -216,7 +227,9 @@ def generate_destination_passing_wrapper(
         # kernel launch
         code.writeline("grid = lambda meta: (")
         with code.indent():
-            code.writeline('triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]), ')
+            code.writeline(
+                'min(triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]), TOTAL_CORE_NUM), '
+            )
         code.writeline(")")
         kernel_launch: str = f"{kernel_name}[grid]("
         code.writeline(kernel_launch)
@@ -307,7 +320,7 @@ _scatter_func = ScatterFunction()
 
 
 def scatter_add_0(inp, dim, index, src):
-    logger.debug("GEMS SCATTER_ADD_0")
+    logger.debug("GEMS_CAMBRICON SCATTER_ADD_0")
     dtype_convert = False
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
         out = inp.to(torch.float32)
@@ -345,7 +358,7 @@ def clip_tensor_to_shape(b, a):
 
 
 def scatter_add_1(x, dim, index, src):
-    logger.debug("GEMS SCATTER_ADD_1")
+    logger.debug("GEMS_CAMBRICON SCATTER_ADD_1")
     index_dim_n = index.size(dim)
     inp_dim_n = x.size(dim)
     origin = x
@@ -357,7 +370,9 @@ def scatter_add_1(x, dim, index, src):
         index = dim_compress(index, dim)
 
     all_elem = max(x.numel(), index.numel())
-    grid = lambda meta: (triton.cdiv(all_elem, meta["BLOCK_SIZE"] * meta["LOOP"]),)
+    grid = lambda meta: (
+        min(triton.cdiv(all_elem, meta["BLOCK_SIZE"] * meta["LOOP"]), TOTAL_CORE_NUM),
+    )
 
     dtype_convert = False
     if x.dtype == torch.float16 or x.dtype == torch.bfloat16:

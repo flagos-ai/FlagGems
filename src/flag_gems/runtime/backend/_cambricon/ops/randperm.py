@@ -275,11 +275,11 @@ def digit_hist_kernel(
         bit_offset += bits_per_pass
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("randperm"),
     key=["n_elements"],
 )
+@libentry()
 @triton.jit
 def radix_sortbykey_scatter_kernel(
     key_out,

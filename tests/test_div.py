@@ -509,9 +509,12 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
             "trunc_divide uses libdevice.div_rn which only supports float32/float64"
         )
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    # avoid divide-by-zero for floor/trunc modes
-    inp2 = inp2 + torch.sign(inp2).clamp(min=1) * 1e-3
+    if flag_gems.vendor_name == "cambricon":
+        inp2 = _make_nonzero_float_tensor(shape, dtype)
+    else:
+        inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        # avoid divide-by-zero for floor/trunc modes
+        inp2 = inp2 + torch.sign(inp2).clamp(min=1) * 1e-3
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
 
@@ -542,7 +545,10 @@ def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
     # differ from both CPU and f64 references. Casting the scalar to the same
     # dtype gives the correct IEEE 754 result that our kernel matches.
     if rounding_mode == "trunc" and isinstance(scalar, float):
-        scalar_tensor = torch.tensor(scalar, dtype=dtype, device=flag_gems.device)
+        scalar_device = (
+            ref_inp.device if flag_gems.vendor_name == "cambricon" else flag_gems.device
+        )
+        scalar_tensor = torch.tensor(scalar, dtype=dtype, device=scalar_device)
         ref_out = torch.ops.aten.div.Tensor_mode(
             ref_inp, scalar_tensor, rounding_mode=rounding_mode
         )
@@ -566,8 +572,11 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
             "trunc_divide uses libdevice.div_rn which only supports float32/float64"
         )
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp2 = inp2 + torch.sign(inp2).clamp(min=1) * 1e-3
+    if flag_gems.vendor_name == "cambricon":
+        inp2 = _make_nonzero_float_tensor(shape, dtype)
+    else:
+        inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        inp2 = inp2 + torch.sign(inp2).clamp(min=1) * 1e-3
     ref_inp1 = utils.to_reference(inp1.clone(), False)
     ref_inp2 = utils.to_reference(inp2, False)
 
@@ -596,7 +605,10 @@ def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
     # float scalars in trunc mode to avoid aten CUDA's approximate-division
     # inaccuracy on the Scalar_mode path.
     if rounding_mode == "trunc" and isinstance(scalar, float):
-        scalar_tensor = torch.tensor(scalar, dtype=dtype, device=flag_gems.device)
+        scalar_device = (
+            ref_inp.device if flag_gems.vendor_name == "cambricon" else flag_gems.device
+        )
+        scalar_tensor = torch.tensor(scalar, dtype=dtype, device=scalar_device)
         ref_out = torch.ops.aten.div.Tensor_mode(
             ref_inp, scalar_tensor, rounding_mode=rounding_mode
         )

@@ -31,11 +31,11 @@ MAX_C_MLU_LAYERNORM_FORWARD = 8192
 MAX_C_MLU_LAYERNORM_BACKWARD = 5120
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("layer_norm_persistent"),
     key=["M", "N"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_kernel_middle_n(
     X,
@@ -113,12 +113,12 @@ def cfggen():
     return configs
 
 
-@libentry()
 @triton.autotune(
     configs=cfggen(),
     key=["M", "N"],
     prune_configs_by={"early_config_prune": config_prune},
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_kernel_non_inner(
     X,
@@ -178,12 +178,12 @@ def layer_norm_kernel_non_inner(
     tl.store(Y + cols, y, mask=mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("layer_norm_loop"),
     key=["M", "N"],
     prune_configs_by={"early_config_prune": config_prune},
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_kernel_inner(
     X,
@@ -260,12 +260,12 @@ def prune_in_wb_config(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("weight_bias_backward"),
     prune_configs_by={"early_config_prune": prune_in_wb_config},
     key=["M", "N"],
 )
+@libentry()
 @triton.jit
 def input_backward_kernel(
     dY,
@@ -339,12 +339,12 @@ def input_backward_kernel(
             tl.store(new_DX + cols, dx.to(x.dtype), mask=mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("weight_bias_backward"),
     prune_configs_by={"early_config_prune": prune_in_wb_config},
     key=["M", "N"],
 )
+@libentry()
 @triton.jit
 def weight_bias_backward_kernel(
     dY,
@@ -424,12 +424,12 @@ def pre_hook(args, reset_only=True):
             args[i].zero_()
 
 
-@libentry()
 @triton.autotune(
     configs=cfggen_bw_middle_n(),
     key=["M", "N"],
     pre_hook=pre_hook,
 )
+@libentry()
 @triton.jit
 def layer_norm_backward_kernel_middle_n(
     DX,  # pointer to the input gradient

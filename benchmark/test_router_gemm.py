@@ -45,6 +45,14 @@ except Exception:
     router_gemm = None
     ROUTER_GEMM_AVAILABLE = False
 
+if base.vendor_name == "cambricon":
+    try:
+        from flag_gems.runtime.backend._cambricon.ops.mm import router_gemm
+
+        ROUTER_GEMM_AVAILABLE = True
+    except Exception:
+        pass
+
 
 class RouterGemmBenchmark(base.Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
@@ -73,7 +81,7 @@ class RouterGemmBenchmark(base.Benchmark):
 @pytest.mark.router_gemm
 @pytest.mark.skipif(
     not ROUTER_GEMM_AVAILABLE,
-    reason="router_gemm benchmark requires NVIDIA Hopper backend",
+    reason="router_gemm benchmark requires Cambricon or NVIDIA Hopper backend",
 )
 def test_perf_router_gemm():
     bench = RouterGemmBenchmark(
