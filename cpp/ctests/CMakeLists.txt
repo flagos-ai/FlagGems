@@ -59,6 +59,11 @@ target_link_libraries(test_triton_addmm
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_addmm COMMAND test_triton_addmm)
 
+add_executable(test_triton_wgrad_gemm_accum test_triton_wgrad_gemm_accum.cpp)
+target_link_libraries(test_triton_wgrad_gemm_accum
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_wgrad_gemm_accum COMMAND test_triton_wgrad_gemm_accum)
+
 add_executable(test_triton_bmm test_triton_bmm.cpp)
 target_link_libraries(test_triton_bmm
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
