@@ -23,8 +23,21 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils.device_info import get_device_capability
+from flag_gems.utils.triton_version_utils import HAS_TLE
 
 logger = logging.getLogger(__name__)
+
+if HAS_TLE:
+    import triton.experimental.tle.language as tle
+else:
+    tle = None
+
+_TLE_MIN_CAPABILITY = 9
+
+_DW_ROW_BLOCK_SIZE = 16
+_DW_COL_BLOCK_SIZE = 256
+_DW_TLE_NUM_WARPS = 4
 
 
 @triton.jit
@@ -98,7 +111,6 @@ def rms_norm_loop_kernel(
 
     pid = ext.program_id(0)
 
-    # Pass 1: compute sum(x^2) in chunks
     acc = tl.zeros((TILE_N,), dtype=tl.float32)
     num_steps = tl.cdiv(N, TILE_N)
 
@@ -108,7 +120,6 @@ def rms_norm_loop_kernel(
         x = tl.load(in_ptr + pid * N + n_offsets).to(tl.float32)
         acc += x * x
 
-    # last step with mask
     start_n = (num_steps - 1) * TILE_N
     n_offsets = start_n + tl.arange(0, TILE_N)
     mask = n_offsets < N
@@ -119,10 +130,8 @@ def rms_norm_loop_kernel(
     rrms = 1 / tl.sqrt(var + eps)
     tl.store(INV_RMS + pid, rrms)
 
-    # Pass 2: normalize in reverse order (better L2 cache reuse)
     prev_multiple = prev_multiple_of(N, TILE_N)
 
-    # first reverse step with mask
     for start_n in range(0, TILE_N, TILE_N):
         n_offsets = (prev_multiple - start_n) + tl.arange(0, TILE_N)
         mask = n_offsets < N
@@ -237,8 +246,6 @@ def rms_norm_grad_dw_kernel(
     ).to(tl.float32)
 
     d_weight = x * dy * inv_rms[:, None]
-    # Sum over rows (axis=0) - masked rows are 0 (from other=0.0 in load), so sum is correct
-    # The mask ensures invalid rows contribute 0 to the sum
     partial_dweight_sum = tl.sum(d_weight, axis=0)
 
     tl.store(
@@ -246,6 +253,94 @@ def rms_norm_grad_dw_kernel(
         partial_dweight_sum,
         mask=col_mask,
     )
+
+
+if HAS_TLE:
+
+    @triton.jit
+    def rms_norm_grad_dw_kernel_tle(
+        X,
+        DY,
+        INV_RMS,
+        DW,
+        dx_stride_r,
+        dx_stride_c,
+        x_stride_r,
+        x_stride_c,
+        M,
+        N,
+        ROW_BLOCK_SIZE: tl.constexpr,
+        COL_BLOCK_SIZE: tl.constexpr,
+        TARGET_LAYOUT: tl.constexpr,
+    ):
+        row_pid = tl.program_id(0)
+        col_pid = tl.program_id(1)
+
+        row_start = row_pid * ROW_BLOCK_SIZE
+        col_start = col_pid * COL_BLOCK_SIZE
+
+        offset = row_start * x_stride_r + col_start * x_stride_c
+        X += offset
+        DY += offset
+        INV_RMS += row_start
+
+        rows = tl.arange(0, ROW_BLOCK_SIZE)
+        cols = tl.arange(0, COL_BLOCK_SIZE)
+
+        row_mask = (row_start + rows) < M
+        col_mask = (col_start + cols) < N
+
+        x = tl.load(
+            X + rows[:, None] * x_stride_r + cols[None, :] * x_stride_c,
+            row_mask[:, None] & col_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        inv_rms = tl.load(INV_RMS + rows, row_mask, other=0.0).to(tl.float32)
+        dy = tl.load(
+            DY + rows[:, None] * x_stride_r + cols[None, :] * x_stride_c,
+            row_mask[:, None] & col_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+
+        d_weight = x * dy * inv_rms[:, None]
+        d_weight = tle.gpu.set_layout(d_weight, TARGET_LAYOUT)
+        partial_dweight_sum = tl.sum(d_weight, axis=0)
+
+        tl.store(
+            DW + row_pid * N + col_start + cols,
+            partial_dweight_sum,
+            mask=col_mask,
+        )
+
+    def _build_dw_set_layout(row_block_size, col_block_size, num_warps):
+        denom = 32 * num_warps
+        assert col_block_size % denom == 0, (
+            f"col_block_size={col_block_size} must be divisible by "
+            f"32*num_warps={denom}"
+        )
+        size_per_thread_col = col_block_size // denom
+        return tle.gpu.BlockEncoding(
+            size_per_thread=[row_block_size, size_per_thread_col],
+            threads_per_warp=[1, 32],
+            warps_per_cta=[1, num_warps],
+            order=[1, 0],
+        )
+
+    _DW_TARGET_LAYOUT = _build_dw_set_layout(
+        _DW_ROW_BLOCK_SIZE, _DW_COL_BLOCK_SIZE, _DW_TLE_NUM_WARPS
+    )
+
+else:
+    rms_norm_grad_dw_kernel_tle = None
+    _DW_TARGET_LAYOUT = None
+
+
+def _dw_tle_available(x: torch.Tensor) -> bool:
+    if not HAS_TLE:
+        return False
+    if x.device.type != "cuda":
+        return False
+    return get_device_capability()[0] >= _TLE_MIN_CAPABILITY
 
 
 def rms_norm_out(result, x, normalized_shape, weight, eps=1e-5):
@@ -292,8 +387,8 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
             x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
         )
 
-    ROW_BLOCK_SIZE = 16
-    COL_BLOCK_SIZE = 256
+    ROW_BLOCK_SIZE = _DW_ROW_BLOCK_SIZE
+    COL_BLOCK_SIZE = _DW_COL_BLOCK_SIZE
     row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
     col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
 
@@ -302,20 +397,38 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
     )
 
     with torch_device_fn.device(x.device):
-        rms_norm_grad_dw_kernel[row_block_num, col_block_num](
-            x,
-            dy,
-            inv_rms,
-            partial_buffer,
-            N,
-            1,
-            N,
-            1,
-            M,
-            N,
-            ROW_BLOCK_SIZE,
-            COL_BLOCK_SIZE,
-        )
+        if _dw_tle_available(x):
+            rms_norm_grad_dw_kernel_tle[row_block_num, col_block_num](
+                x,
+                dy,
+                inv_rms,
+                partial_buffer,
+                N,
+                1,
+                N,
+                1,
+                M,
+                N,
+                ROW_BLOCK_SIZE,
+                COL_BLOCK_SIZE,
+                TARGET_LAYOUT=_DW_TARGET_LAYOUT,
+                num_warps=_DW_TLE_NUM_WARPS,
+            )
+        else:
+            rms_norm_grad_dw_kernel[row_block_num, col_block_num](
+                x,
+                dy,
+                inv_rms,
+                partial_buffer,
+                N,
+                1,
+                N,
+                1,
+                M,
+                N,
+                ROW_BLOCK_SIZE,
+                COL_BLOCK_SIZE,
+            )
         dw = (
             torch.sum(partial_buffer, dim=0, dtype=torch.float32)
             .to(x.dtype)
