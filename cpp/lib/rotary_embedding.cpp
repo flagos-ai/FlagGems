@@ -16,12 +16,47 @@
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 
+#include <algorithm>
 #include <iostream>
 #include <optional>
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
 using namespace triton_jit;
+
+namespace {
+
+  // The Python entry autotunes the same search space on the target device.
+  // libtriton_jit does not execute Python decorators, so the C++ entry uses a
+  // purely shape-driven heuristic. To stay device-independent it never
+  // guesses from bandwidth or SM counts: it runs the serial baseline (the
+  // pre-existing behaviour) unless the token axis is so small that head
+  // splitting is needed to occupy the device at all.
+  struct RopeLaunchConfig {
+    int head_block_size;
+    unsigned int num_warps;
+    unsigned int num_stages;
+  };
+
+  RopeLaunchConfig get_rope_launch_config(int64_t n_tokens_bucket,
+                                          int64_t q_heads,
+                                          int64_t k_heads) {
+    const int64_t max_heads = std::max(q_heads, k_heads);
+    // Heads are only worth splitting for decode-like launches where the
+    // number of token programs alone cannot fill the device. Beyond that,
+    // serial (one program per token) is the conservative, well-tested path.
+    if (max_heads < 2 || n_tokens_bucket > 8) {
+      // Both kernels assign a complete rotary pair to one logical element, so
+      // the serial tile is half as wide and needs few warps.
+      return {/* head_block_size = */ 0, /* num_warps = */ 1, /* num_stages = */ 3};
+    }
+    if (max_heads <= 2) {
+      return {/* head_block_size = */ 1, /* num_warps = */ 4, /* num_stages = */ 3};
+    }
+    return {/* head_block_size = */ 4, /* num_warps = */ 4, /* num_stages = */ 3};
+  }
+
+}  // namespace
 
 void check_rotary_embedding_inputs(
     const at::Tensor& q,    // [batch_size, seq_len, q_heads, head_dim] or [num_tokens, q_heads, head_dim]
@@ -133,9 +168,19 @@ void rotary_embedding_inplace(
 
   int64_t n_tokens = q.size(0);
   int64_t q_heads = q.size(1);
+  int64_t k_heads = k.size(1);
   int64_t head_dim = q.size(2);
+  int64_t n_tokens_bucket = utils::next_power_of_2(n_tokens);
 
   int64_t padded_head_dim = std::max(utils::next_power_of_2(head_dim), int64_t(16));
+  const RopeLaunchConfig config = get_rope_launch_config(n_tokens_bucket,
+                                                         q_heads,
+                                                         k_heads);
+  const unsigned int grid_y =
+      config.head_block_size > 0
+          ? static_cast<unsigned int>(
+                utils::cdiv(static_cast<int>(std::max(q_heads, k_heads)), config.head_block_size))
+          : 1u;
 
   const TritonJITFunction& f = TritonJITFunction::get_instance(
       std::string(utils::get_flag_gems_src_path() / "fused" / "rotary_embedding.py"),
@@ -163,19 +208,21 @@ def apply_rotary_pos_emb_inplace_kernel(
     cos_stride_s,
     sin_stride_s,
     seq_len,
+    n_tokens_bucket,  // tuning/cache key only; the grid uses the exact token count
     NUM_Q_HEADS: tl.constexpr,
     NUM_K_HEADS: tl.constexpr,
     HEAD_DIM: tl.constexpr,
     PADDED_HEAD_DIM: tl.constexpr,
+    HEAD_BLOCK_SIZE: tl.constexpr,
     ROTARY_INTERLEAVED: tl.constexpr,
     MAX_POSITION_EMBEDDINGS: tl.constexpr,
   ) */
   f(raw_stream,
     n_tokens,
+    grid_y,
     1,
-    1,
-    /* num_warps */ 8,
-    /* num_stages */ 1,
+    /* num_warps */ config.num_warps,
+    /* num_stages */ config.num_stages,
     q,
     k,
     cos,
@@ -191,11 +238,13 @@ def apply_rotary_pos_emb_inplace_kernel(
                                   : 0,  // 0 if flat_position_ids is not defined
     cos.stride(0),
     sin.stride(0),
-    seq_len,     // std::optional<long int>
-    q.size(-2),  // q_heads
-    k.size(-2),  // k_heads
+    seq_len,  // std::optional<long int>
+    n_tokens_bucket,
+    q_heads,
+    k_heads,
     head_dim,
     padded_head_dim,
+    config.head_block_size,
     rotary_interleaved,
     cos.size(0)  // max_seq_len
   );
@@ -232,9 +281,19 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
 
   int64_t n_tokens = q_view.size(0);
   int64_t q_heads = q_view.size(1);
+  int64_t k_heads = k_view.size(1);
   int64_t head_dim = q_view.size(2);
+  int64_t n_tokens_bucket = utils::next_power_of_2(n_tokens);
 
   int64_t padded_head_dim = std::max(utils::next_power_of_2(head_dim), int64_t(16));
+  const RopeLaunchConfig config = get_rope_launch_config(n_tokens_bucket,
+                                                         q_heads,
+                                                         k_heads);
+  const unsigned int grid_y =
+      config.head_block_size > 0
+          ? static_cast<unsigned int>(
+                utils::cdiv(static_cast<int>(std::max(q_heads, k_heads)), config.head_block_size))
+          : 1u;
 
   auto q_embed = at::empty_like(q_view);
   auto k_embed = at::empty_like(k_view);
@@ -251,10 +310,10 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
 
   f(raw_stream,
     n_tokens,
+    grid_y,
     1,
-    1,
-    /* num_warps */ 8,
-    /* num_stages */ 1,
+    /* num_warps */ config.num_warps,
+    /* num_stages */ config.num_stages,
     q_embed,
     k_embed,
     q_view,
@@ -278,11 +337,13 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
                                   : 0,  // 0 if flat_position_ids is not defined
     cos.stride(0),
     sin.stride(0),
-    seq_len,          // std::optional<long int>
-    q_view.size(-2),  // q_heads
-    k_view.size(-2),  // k_heads
+    seq_len,  // std::optional<long int>
+    n_tokens_bucket,
+    q_heads,
+    k_heads,
     head_dim,
     padded_head_dim,
+    config.head_block_size,
     rotary_interleaved,
     cos.size(0)  // max_seq_len
   );
