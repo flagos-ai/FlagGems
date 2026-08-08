@@ -15,6 +15,7 @@ from .index_put import index_put, index_put_
 from .index_select import index_select
 from .isin import isin
 from .layernorm import layer_norm, layer_norm_backward
+from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_svdvals import linalg_svdvals
 from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import log_softmax, log_softmax_backward
@@ -65,6 +66,8 @@ __all__ = [
     "isin",
     "layer_norm",
     "layer_norm_backward",
+    "linalg_cross",
+    "linalg_cross_out",
     "linalg_svdvals",
     "log_sigmoid_forward",
     "log_softmax",
