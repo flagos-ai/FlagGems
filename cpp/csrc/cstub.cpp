@@ -77,6 +77,23 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("fill.Tensor", &flag_gems::fill_tensor);
   m.def("fill_.Scalar", &flag_gems::fill_scalar_);
   m.def("fill_.Tensor", &flag_gems::fill_tensor_);
+  // unary elementwise
+  m.def("abs", &flag_gems::abs);
+  m.def("neg", &flag_gems::neg);
+  m.def("exp", &flag_gems::exp);
+  m.def("sqrt", &flag_gems::sqrt);
+  m.def("rsqrt", &flag_gems::rsqrt);
+  m.def("tanh", &flag_gems::tanh);
+  m.def("sigmoid", &flag_gems::sigmoid);
+  m.def("silu", &flag_gems::silu);
+  m.def("relu", &flag_gems::relu);
+  m.def(
+      "gelu",
+      [](const at::Tensor& self, const std::string& approximate) {
+        return flag_gems::gelu(self, approximate);
+      },
+      py::arg("self"),
+      py::arg("approximate") = "none");
 #endif
   m.def("act_quant",
         &flag_gems::act_quant_triton,
@@ -198,6 +215,17 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("fill.Tensor(Tensor self, Tensor value) -> Tensor");
   m.def("fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
   m.def("fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
+  // unary elementwise
+  m.def("abs(Tensor self) -> Tensor");
+  m.def("neg(Tensor self) -> Tensor");
+  m.def("exp(Tensor self) -> Tensor");
+  m.def("sqrt(Tensor self) -> Tensor");
+  m.def("rsqrt(Tensor self) -> Tensor");
+  m.def("tanh(Tensor self) -> Tensor");
+  m.def("sigmoid(Tensor self) -> Tensor");
+  m.def("silu(Tensor self) -> Tensor");
+  m.def("relu(Tensor self) -> Tensor");
+  m.def("gelu(Tensor self, *, str approximate='none') -> Tensor");
 #endif
   m.def("exponential_(Tensor(a!) x, float  lambd = 1.0, *,Generator? gen = None) -> Tensor(a!)");
   // blas
@@ -344,6 +372,17 @@ TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
   m.impl("fill.Tensor", TORCH_FN(fill_tensor));
   m.impl("fill_.Scalar", TORCH_FN(fill_scalar_));
   m.impl("fill_.Tensor", TORCH_FN(fill_tensor_));
+  // unary elementwise
+  m.impl("abs", TORCH_FN(abs));
+  m.impl("neg", TORCH_FN(neg));
+  m.impl("exp", TORCH_FN(exp));
+  m.impl("sqrt", TORCH_FN(sqrt));
+  m.impl("rsqrt", TORCH_FN(rsqrt));
+  m.impl("tanh", TORCH_FN(tanh));
+  m.impl("sigmoid", TORCH_FN(sigmoid));
+  m.impl("silu", TORCH_FN(silu));
+  m.impl("relu", TORCH_FN(relu));
+  m.impl("gelu", TORCH_FN(gelu));
 #endif
 
   m.impl("exponential_", TORCH_FN(exponential_));

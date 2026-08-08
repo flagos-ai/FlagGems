@@ -55,6 +55,28 @@ at::Tensor fill_scalar(const at::Tensor &input, const c10::Scalar &value);
 at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
 at::Tensor &fill_scalar_(at::Tensor &input, const c10::Scalar &value);
 at::Tensor &fill_tensor_(at::Tensor &input, const at::Tensor &value);
+
+// Unary elementwise ops (pointwise_dynamic).
+// abs(Tensor self) -> Tensor
+at::Tensor abs(const at::Tensor &self);
+// neg(Tensor self) -> Tensor
+at::Tensor neg(const at::Tensor &self);
+// exp(Tensor self) -> Tensor
+at::Tensor exp(const at::Tensor &self);
+// sqrt(Tensor self) -> Tensor
+at::Tensor sqrt(const at::Tensor &self);
+// rsqrt(Tensor self) -> Tensor
+at::Tensor rsqrt(const at::Tensor &self);
+// tanh(Tensor self) -> Tensor
+at::Tensor tanh(const at::Tensor &self);
+// sigmoid(Tensor self) -> Tensor
+at::Tensor sigmoid(const at::Tensor &self);
+// silu(Tensor self) -> Tensor
+at::Tensor silu(const at::Tensor &self);
+// relu(Tensor self) -> Tensor
+at::Tensor relu(const at::Tensor &self);
+// gelu(Tensor self, *, str approximate='none') -> Tensor
+at::Tensor gelu(const at::Tensor &self, c10::string_view approximate = "none");
 #endif
 std::vector<at::Tensor> act_quant_triton(const at::Tensor &x,
                                          int block_size = 128,
