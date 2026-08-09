@@ -21,8 +21,8 @@ from flag_gems.ops.segment_reduce import (
     _check_index_tensor,
     _check_reduce_and_dtype,
     _get_uniform_segment_length,
+    _wrap_axis,
 )
-from flag_gems.ops.segment_reduce import _wrap_axis
 from flag_gems.ops.segment_reduce import segment_reduce as _generic_segment_reduce
 
 logger = logging.getLogger(__name__)

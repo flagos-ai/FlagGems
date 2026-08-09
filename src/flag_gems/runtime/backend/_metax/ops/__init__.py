@@ -31,10 +31,7 @@ from .polar import polar
 from .prod import prod, prod_dim
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
-from .segment_reduce import (
-    segment_reduce,
-    segment_reduce_out,
-)
+from .segment_reduce import segment_reduce, segment_reduce_out
 from .sigmoid import sigmoid
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
