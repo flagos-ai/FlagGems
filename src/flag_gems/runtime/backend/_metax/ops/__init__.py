@@ -32,8 +32,6 @@ from .prod import prod, prod_dim
 from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
 from .segment_reduce import (
-    _segment_reduce_backward,
-    _segment_reduce_backward_out,
     segment_reduce,
     segment_reduce_out,
 )
@@ -50,8 +48,6 @@ from .zeros_like import zeros_like
 __all__ = [
     "_make_dep_token",
     "_nested_view_from_buffer_copy",
-    "_segment_reduce_backward",
-    "_segment_reduce_backward_out",
     "_unique2",
     "addmm",
     "amax",

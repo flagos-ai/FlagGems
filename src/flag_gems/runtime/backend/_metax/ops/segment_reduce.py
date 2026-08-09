@@ -22,9 +22,6 @@ from flag_gems.ops.segment_reduce import (
     _check_reduce_and_dtype,
     _get_uniform_segment_length,
 )
-from flag_gems.ops.segment_reduce import (
-    _segment_reduce_backward as _generic_segment_reduce_backward,
-)
 from flag_gems.ops.segment_reduce import _wrap_axis
 from flag_gems.ops.segment_reduce import segment_reduce as _generic_segment_reduce
 
@@ -114,59 +111,6 @@ def segment_reduce_out(
         offsets=offsets,
         axis=axis,
         unsafe=unsafe,
-        initial=initial,
-    )
-    if out.shape != result.shape:
-        out.resize_(result.shape)
-    out.copy_(result)
-    return out
-
-
-def _segment_reduce_backward(
-    grad,
-    output,
-    data,
-    reduce,
-    *,
-    lengths=None,
-    offsets=None,
-    axis=0,
-    initial=None,
-):
-    logger.debug("GEMS_METAX _SEGMENT_REDUCE_BACKWARD")
-    return _generic_segment_reduce_backward(
-        grad,
-        output,
-        data,
-        reduce,
-        lengths=lengths,
-        offsets=offsets,
-        axis=axis,
-        initial=initial,
-    )
-
-
-def _segment_reduce_backward_out(
-    grad,
-    output,
-    data,
-    reduce,
-    *,
-    lengths=None,
-    offsets=None,
-    axis=0,
-    initial=None,
-    out,
-):
-    logger.debug("GEMS_METAX _SEGMENT_REDUCE_BACKWARD_OUT")
-    result = _segment_reduce_backward(
-        grad,
-        output,
-        data,
-        reduce,
-        lengths=lengths,
-        offsets=offsets,
-        axis=axis,
         initial=initial,
     )
     if out.shape != result.shape:
