@@ -34,7 +34,21 @@ from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
 try:
+    from flag_gems._version import commit_id as _commit_id
     from flag_gems._version import version as __version__
+
+    # Daily builds are versioned by date (e.g. 5.3.4.dev20260809) so the wheel
+    # filename and package metadata stay short and readable. That date alone
+    # can't be traced back to a commit, so for dev builds we append the commit
+    # to the *runtime* __version__ only (the string a bug report pastes):
+    #
+    #   >>> flag_gems.__version__
+    #   '5.3.4.dev20260809+g90eed79f3'
+    #
+    # Release builds (no ".dev") are left untouched. This does not change the
+    # filename or metadata version, which stay bound to `version` above.
+    if ".dev" in __version__ and _commit_id:
+        __version__ = f"{__version__}+{_commit_id}"
 except ImportError:
     try:
         from importlib.metadata import version as _meta_version
