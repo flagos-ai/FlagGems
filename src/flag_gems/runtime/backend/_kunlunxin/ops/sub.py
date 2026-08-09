@@ -44,7 +44,18 @@ def sub_func_scalar_tensor(x, y, alpha):
     return x - y * alpha
 
 
-def sub(A, B, *, alpha=1.0):
+def sub(A, B, *, alpha=1):
+    # NOTE(kunlunxin): `alpha` MUST default to the *integer* 1 -- that is the
+    # aten::sub.Tensor schema default and what src/flag_gems/ops/sub.py uses.
+    # The dispatcher does not pass `alpha` when the caller omits it, so a float
+    # default silently turned `x - y * alpha` into an fp32 expression for integer
+    # inputs: exact below 2**24, then wrong by one fp32 ULP.  Measured on int32
+    # and int64 with 4096 random values (harness/results/performance/
+    # unique2_xpu2_20260830): magnitude 2^24 -> 2505/4096 elements off by up to
+    # 2, 2^26 -> 3575/4096 off by up to 8, 2^30 -> 4066/4096 off by up to 127;
+    # passing alpha=1 explicitly gives 0 bad at every magnitude.  This corrupted
+    # every index/offset subtraction above 16.7M elements, e.g. the radix-sort
+    # prefix offsets behind torch.sort / torch.unique.
     logger.debug("GEMS_KUNLUNXIN SUB")
     A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
         A, complex

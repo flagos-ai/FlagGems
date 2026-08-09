@@ -16,12 +16,15 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.runtime import device as runtime_device
 
 from . import accuracy_utils as utils
 
-# Kernel uses generic int bitcast based on input dtype bitwidth;
-# supports fp16, bf16, fp32, and fp64.
-NEXTAFTER_DTYPES = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+# Kunlunxin declares fp64 unsupported; requesting fp64 tensors on that backend
+# silently creates fp32 tensors and cannot validate fp64 nextafter semantics.
+NEXTAFTER_DTYPES = [torch.float16, torch.bfloat16, torch.float32]
+if runtime_device.support_fp64:
+    NEXTAFTER_DTYPES.append(torch.float64)
 
 
 @pytest.mark.nextafter_

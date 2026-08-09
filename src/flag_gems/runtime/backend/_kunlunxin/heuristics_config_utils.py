@@ -90,13 +90,49 @@ def gather_heur_block_n(args):
     return min(2048, triton.next_power_of_2(args["N"]))
 
 
+# XPU5 2026-08-31 single-variable probe (/tmp/gbq_x5/probe_perf.py):
+#   PROBE A -- the nvidia default `min(2048, next_power_of_2(args["N"]))` returns 0
+#   whenever args["N"] == 0, and `tl.arange(0, 0)` is a hard CompilationError
+#   ("arange's end argument must be greater than the start argument").
+#   Two live call sites hit N == 0 on every backend:
+#     * gather_block_quantized(..., indices=not None): the wrapper passes the literal
+#       0 for N (ops/gather_block_quantized.py:161 "Not used in this kernel"), so the
+#       whole indices path is dead -- 6/6 probe configs raised CompilationError.
+#     * gather_block_quantized(empty_tensor, ...): N = numel() = 0.
+#   `max(64, ...)` repairs both without touching the generic implementation.
+#
+#   PROBE B -- BLOCK_SIZE_N sweep, standalone kernel, min-of-3 do_bench median.
+#   Inside the official matrix (N <= 16384) the nvidia 2048 cap is already optimal,
+#   so this function returns exactly `min(2048, next_power_of_2(N))` there and the
+#   official benchmark cells stay bit-identical to HEAD. Beyond it the cap costs
+#   1.12x-1.81x:
+#     N=  32768  2048 0.00940 ms  8192 0.00838 ms  (1.12x)
+#     N=  65536  2048 0.01073 ms  8192 0.00826 ms  (1.30x)
+#     N= 262144  2048 0.02382 ms  8192 0.01502 ms  (1.59x)
+#     N=1048576  2048 0.07591 ms  8192 0.04183 ms  (1.81x)
+#     N=16777216 2048 1.09375 ms  8192 0.57240 ms  (1.91x)
+#   8192 is also the elementwise BLOCK sweet spot already established on this
+#   backend (dequantize 2026-08-29: 209.6 GB/s at BLOCK=8192).
+def gather_block_quantized_heur_block_size_n(args):
+    # gather_block_quantized_with_indices_kernel drives its trip count from
+    # `index_len`, not from `N` (the wrapper hard-codes N = 0 there), so read the
+    # real length when it is present.
+    n = args.get("index_len", None)
+    if n is None:
+        n = args["N"]
+    n = triton.next_power_of_2(n)
+    if n <= 16384:
+        return max(64, min(2048, n))
+    return 8192
+
+
 def index_add_heur_block_m(args):
     # BLOCK_M was previously next_power_of_2(cdiv(M, 12)) -> UNBOUNDED: it grows
     # with M, so a large M produces a giant [BLOCK_M, BLOCK_N] constexpr tile that
     # ConvertTritonXPUToLLVM materializes per element -> IR explosion (29MB/148MB
     # in ir-index_add*-devN.log) and slow launches. Cap BLOCK_M to keep the tile
-    # bounded (small M stays under the cap, e.g. M=64 -> 8).
-    return min(64, triton.next_power_of_2(triton.cdiv(args["M"], 12)))
+    # bounded and increase program-level parallelism for wide unique-index rows.
+    return min(8, triton.next_power_of_2(triton.cdiv(args["M"], 12)))
 
 
 def index_add_heur_block_n(args):
@@ -285,6 +321,9 @@ HEURISTICS_CONFIGS = {
     "gather": {
         "BLOCK_M": gather_heur_block_m,
         "BLOCK_N": gather_heur_block_n,
+    },
+    "gather_block_quantized": {
+        "BLOCK_SIZE_N": gather_block_quantized_heur_block_size_n,
     },
     "index_select": {
         "BLOCK_M": index_select_heur_block_m,

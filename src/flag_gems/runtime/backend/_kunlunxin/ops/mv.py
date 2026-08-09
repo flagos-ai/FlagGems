@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import os
 
 import torch
 import triton
@@ -110,11 +109,9 @@ def mv(inp, vec):
                 buffer_size_limit=256,
             )
         else:
-            os.environ["XMLIR_MATMUL_FAST_MODE"] = "1"
             vec = vec[:, None]
             out = mm(inp, vec)
             out = out.squeeze()
-            del os.environ["XMLIR_MATMUL_FAST_MODE"]
     return out
 
 

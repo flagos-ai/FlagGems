@@ -48,7 +48,7 @@ _config = CodeGenConfig(
     buffer_size_limit=4096,
     isCloseVectorization=False,
     kunlunAutoGrid=True,
-    unroll_num=8,
+    unroll_num=16,
 )
 
 

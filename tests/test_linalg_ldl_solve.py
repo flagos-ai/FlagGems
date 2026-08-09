@@ -42,6 +42,9 @@ def _assert_ldl_close(res_out, ref_out, dtype):
 @pytest.mark.parametrize("shape", LDL_SOLVE_SHAPES)
 @pytest.mark.parametrize("dtype", LDL_SOLVE_DTYPES)
 def test_linalg_ldl_solve(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype != torch.float32:
+        pytest.skip("Kunlunxin XPU linalg_ldl_factor_ex test setup supports float32 only")
+
     n, k = shape
     A, B = _make_ldl_inputs((), n, k, dtype, flag_gems.device)
 
@@ -65,6 +68,9 @@ def test_linalg_ldl_solve(shape, dtype):
 @pytest.mark.parametrize("shape", LDL_SOLVE_SHAPES)
 @pytest.mark.parametrize("dtype", LDL_SOLVE_DTYPES)
 def test_linalg_ldl_solve_batched(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype != torch.float32:
+        pytest.skip("Kunlunxin XPU linalg_ldl_factor_ex test setup supports float32 only")
+
     batch_size = 4
     n, k = shape
     A, B = _make_ldl_inputs((batch_size,), n, k, dtype, flag_gems.device)

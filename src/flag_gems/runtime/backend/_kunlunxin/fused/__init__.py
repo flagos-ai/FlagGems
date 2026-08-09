@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .beam_search_score import beam_search_score, beam_search_score_
 from .bincount import bincount
 from .concat_and_cache_mla import concat_and_cache_mla
 from .cross_entropy_loss import cross_entropy_loss
@@ -21,6 +22,7 @@ from .geglu import dgeglu, geglu
 from .gelu_and_mul import gelu_and_mul
 from .instance_norm import instance_norm
 from .moe_align_block_size import moe_align_block_size, moe_align_block_size_triton
+from .matmul_bias_activation import matmul_bias_activation
 from .outer import outer
 from .reglu import dreglu, reglu
 from .reshape_and_cache import reshape_and_cache
@@ -35,11 +37,16 @@ from .silu_and_mul_with_clamp import (
 )
 from .skip_layernorm import skip_layer_norm
 from .sparse_attention import sparse_attn_triton
+from .swiglu import dswiglu, swiglu
 from .topk_softmax import topk_softmax
 from .weight_norm import weight_norm
+# mhc_pre vendor kernel (XPU): self-installs the direct-import entrypoint
+from .mhc_pre import mhc_pre
 
 __all__ = [
     "apply_rotary_pos_emb",
+    "beam_search_score",
+    "beam_search_score_",
     "skip_layer_norm",
     "fused_add_rms_norm",
     "silu_and_mul",
@@ -64,6 +71,10 @@ __all__ = [
     "rwkv_mm_sparsity",
     "dreglu",
     "reglu",
+    "matmul_bias_activation",
     "sparse_attn_triton",
+    "swiglu",
+    "dswiglu",
     "bincount",
+    "mhc_pre",
 ]

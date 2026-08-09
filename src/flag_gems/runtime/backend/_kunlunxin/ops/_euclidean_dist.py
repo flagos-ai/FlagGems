@@ -46,16 +46,19 @@ def _euclidean_dist_kernel(
     stride_x2,
     stride_out,
     CHUNK: tl.constexpr,
+    BLOCK_M: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tle.program_id(0)
-    pid_mc = tle.program_id(1)
-
+    pid_mc = tle.program_id(0)
+    pid_nb = tle.program_id(1)
+    n = pid_nb * BLOCK_M + tl.arange(0, BLOCK_M)
     d_offsets = tl.arange(0, BLOCK_D)
+    n_mask = n < N
     d_mask = d_offsets < D
-    # Load the x1 row once; reuse across all CHUNK output columns.
     x1_vals = tl.load(
-        x1_ptr + pid_n * stride_x1 + d_offsets, mask=d_mask, other=0.0
+        x1_ptr + n[:, None] * stride_x1 + d_offsets[None, :],
+        mask=n_mask[:, None] & d_mask[None, :],
+        other=0.0,
     ).to(tl.float32)
 
     for i in range(CHUNK):
@@ -66,10 +69,13 @@ def _euclidean_dist_kernel(
             mask=d_mask & m_ok,
             other=0.0,
         ).to(tl.float32)
-        diff = x1_vals - x2_vals
-        dist = tl.sqrt(tl.sum(diff * diff))
-        if m_ok:
-            tl.store(out_ptr + pid_n * stride_out + m, dist)
+        diff = x1_vals - x2_vals[None, :]
+        dist = tl.sqrt(tl.sum(diff * diff, axis=1))
+        tl.store(
+            out_ptr + n * stride_out + m,
+            dist,
+            mask=n_mask & m_ok,
+        )
 
 
 def _euclidean_dist(x1, x2):
@@ -89,13 +95,16 @@ def _euclidean_dist(x1, x2):
     if N == 0 or M == 0:
         return output
 
+    # Larger reductions are resource-sensitive on XPU; keep the original
+    # one-row reduction there and batch only the smaller supported reductions.
+    BLOCK_M = 4 if D < 256 else 1
     BLOCK_D = min(triton.next_power_of_2(D), 1024)
-    # Target ~512 programs total: split M into cdiv(512, N) column blocks.
-    n_col_blocks = max(1, triton.cdiv(512, N))
+    # Target ~512 programs total after grouping adjacent x1 rows.
+    n_col_blocks = max(1, triton.cdiv(512, triton.cdiv(N, BLOCK_M)))
     CHUNK = triton.cdiv(M, n_col_blocks)
 
     with torch_device_fn.device(x1.device):
-        grid = (N, triton.cdiv(M, CHUNK))
+        grid = (triton.cdiv(M, CHUNK), triton.cdiv(N, BLOCK_M))
         _euclidean_dist_kernel[grid](
             x1,
             x2,
@@ -107,6 +116,7 @@ def _euclidean_dist(x1, x2):
             x2.stride(0),
             output.stride(0),
             CHUNK=CHUNK,
+            BLOCK_M=BLOCK_M,
             BLOCK_D=BLOCK_D,
         )
 

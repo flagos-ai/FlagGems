@@ -13,24 +13,51 @@
 # limitations under the License.
 
 import logging
-import math
 
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=2048,
+    isCloseVectorization=True,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
 
-@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
+
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
 @triton.jit
 def sinc_func(x):
-    px = math.pi * x.to(tl.float32)
-    px2 = px * px
-    near_zero = tl.abs(px) < 1.0e-2
-    series = 1.0 + px2 * (-1.0 / 6.0 + px2 * (1.0 / 120.0 - px2 / 5040.0))
-    return tl.where(near_zero, series, tl.sin(px) / px)
+    x_f32 = x.to(tl.float32)
+    nearest = tl.floor(x_f32 + 0.5)
+    remainder = x_f32 - nearest
+    parity = nearest - 2.0 * tl.floor(nearest * 0.5)
+    sign = 1.0 - 2.0 * parity
+
+    u = 3.141592653589793 * remainder
+    u2 = u * u
+    sinc_u = -1.0 / 1307674368000.0
+    sinc_u = sinc_u * u2 + 1.0 / 6227020800.0
+    sinc_u = sinc_u * u2 - 1.0 / 39916800.0
+    sinc_u = sinc_u * u2 + 1.0 / 362880.0
+    sinc_u = sinc_u * u2 - 1.0 / 5040.0
+    sinc_u = sinc_u * u2 + 1.0 / 120.0
+    sinc_u = sinc_u * u2 - 1.0 / 6.0
+    sinc_u = sinc_u * u2 + 1.0
+
+    denominator = tl.where(x_f32 == 0.0, 1.0, x_f32)
+    result = sign * (remainder / denominator) * sinc_u
+    return tl.where(x_f32 == 0.0, 1.0, result)
 
 
 def sinc(A):
@@ -42,3 +69,8 @@ def sinc_(A):
     logger.debug("GEMS_KUNLUNXIN SINC_")
     sinc_func(A, out0=A)
     return A
+
+
+def special_sinc(A):
+    logger.debug("GEMS_KUNLUNXIN SPECIAL_SINC")
+    return sinc_func(A)

@@ -43,3 +43,5 @@ docs/benchmark/
 
 # Local outputs from FlagTune
 /flagtune*/
+benchmark/FlagTune/
+harness/

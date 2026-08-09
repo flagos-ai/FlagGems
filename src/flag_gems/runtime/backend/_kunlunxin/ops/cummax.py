@@ -471,10 +471,7 @@ def cummax(
     input = input.contiguous()
     K = input.numel() // M // N
 
-    dtype = input.dtype
-    if dtype is torch.bool:
-        dtype = torch.int64
-    out = torch.empty_like(input, dtype=dtype)
+    out = torch.empty_like(input)
     out_indices = torch.empty_like(input, dtype=torch.int64)
 
     compute_dtype = out.dtype
