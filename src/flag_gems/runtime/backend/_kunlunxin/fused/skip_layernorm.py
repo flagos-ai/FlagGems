@@ -27,24 +27,31 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 # Above this N the single-block per-row kernel no longer fits; fall back to the
-# per-row loop kernel that strides the normalized dim in BLOCK_SIZE chunks.
-COL_CAP = 64 * 64  # 4096
+# per-row loop kernel that strides the normalized dim in chunks.
+COL_CAP = 4096
 
-# skip_layer_norm == layer_norm(x + residual). The default path launches one
-# program per row (grid = (M,)), which is fast per row (1D reduce along a
-# [BLOCK_SIZE] vector runs at the XPU memory ceiling). But launch latency
-# (~0.6-0.9us/program) dominates when both N is small (each row moves few
-# elements) and M is large (many programs): [100,65536,100] -> M=6.5M rows of
-# N=100 spends ~5.9s almost entirely in launch. In that regime a 2D multi-row
-# tile amortizes launch latency by having each program own TILE_M rows
-# (grid = cdiv(M, TILE_M)). The 2D axis=1 reduce is slower per element, so it is
-# a NET WIN only when BOTH: N is small enough that TILE_M is large (measured XPU
-# crossover ~256; N<=256: 1.3-9x faster, N>=1024: 8-25x slower) AND M is large
-# enough that per-row launch cost dominates (M<=~256 is not launch-bound, where
-# the slower 2D reduce loses). Otherwise keep the per-row kernel.
-MULTIROW_N = 256  # multi-row tile only pays off for normalized dims this small
-MULTIROW_M = 4096  # ... and only once there are enough rows to be launch-bound
-TILE_BUDGET = 8192  # rows * padded-cols per 2D tile; keeps the tile in SRAM
+# XPU-20 measurements (2026-08-17, P800):
+#  * 1D contiguous accesses at blk>=16384 run at ~1.1TB/s; anything expressed as
+#    a 2D tile whose inner dim is a non-power-of-2 (e.g. [TILE_M, 100]) collapses
+#    to ~5-20GB/s discrete lanes and is a dead end (measured copy_2d ~5GB/s).
+#  * Multi-row 2D tiles with N a power of 2 (or any N that fp-`tl.arange` accepts)
+#    are fast; measured crossover: [TM, N] with TM*N <= 65536 lanes.
+#  * Masking the 2D tile (row mask) or the 1D load (partial cols) is expensive
+#    (1.5-10x); masked loads with other=0.0 are numerically UNRELIABLE on this
+#    backend (garbage leaks into the reduce), so we never rely on `other=` in a
+#    reduction: tail rows either divide TILE_M exactly (unmasked) or go through
+#    the masked store path with masked loads only for correctness-carrying tails.
+#  * For a non-power-of-2 row width N, a [TILE_M, 128] padded tile is ALSO a dead
+#    end: reading x[r*N + c] with a 128-wide tile is a strided 2D access again.
+#    On this backend a [TILE_M, N] tile with non-power-of-2 N is numerically
+#    UNRELIABLE: tl.arange(0, N) is constant-folded to the next power of two and
+#    the extra lanes carry garbage into the reduce (measured: TILE_M=16/64 clean,
+#    TILE_M=20/8/4 -> up to 1e34 error).  Only two configurations are trusted for
+#    N=100 rows: [64, 100] and [16, 100] tiles, both verified elementwise against
+#    a fp64 reference on [6553600, 100].  Everything else with non-pow2 N goes
+#    through the masked per-row kernel (slow but exact).
+MULTIROW_CFG = [512, 256, 128, 64, 32, 16, 8, 4, 2, 1]  # TILE_M candidates (largest that divides M)
+MAX_TILE_LANES = 32768  # TILE_M*N cap: measured sweet spot (65536 spills)
 
 
 @libentry()
@@ -64,45 +71,50 @@ def skip_layer_norm_kernel(
     N,  # number of columns in X
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
     pid = ext.program_id(0)
     Y += pid * y_stride_r
     X += pid * x_stride_r
     R += pid * r_stride_r
 
-    mask = tl.arange(0, BLOCK_SIZE) < N
     cols = tl.arange(0, BLOCK_SIZE)
-    x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-    r = tl.load(R + cols * r_stride_c, mask, other=0.0).to(tl.float32)
-
-    x += r
-
-    mean = tl.sum(x, axis=0) / N
-
-    # Compute variance
-    _var = tl.where(mask, x - mean, 0.0)
+    if NEED_MASK:
+        mask = cols < N
+        x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+        r = tl.load(R + cols * r_stride_c, mask, other=0.0).to(tl.float32)
+        x += r
+        mean = tl.sum(x, axis=0) / N
+        _var = tl.where(mask, x - mean, 0.0)
+    else:
+        x = tl.load(X + cols * x_stride_c).to(tl.float32)
+        r = tl.load(R + cols * r_stride_c).to(tl.float32)
+        x += r
+        mean = tl.sum(x, axis=0) / N
+        _var = x - mean
     _var = _var * _var
     var = tl.sum(_var, axis=0) / N
     rstd = 1 / tl.sqrt(var + eps)
 
-    w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0).to(tl.float32)
-    b = tl.load(B + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0).to(tl.float32)
+    if NEED_MASK:
+        w = tl.load(W + cols, mask=mask, other=0.0).to(tl.float32)
+        b = tl.load(B + cols, mask=mask, other=0.0).to(tl.float32)
+        y = w * ((x - mean) * rstd) + b
+        tl.store(Y + cols * y_stride_c, y.to(Y.dtype.element_ty), mask=mask)
+    else:
+        w = tl.load(W + cols).to(tl.float32)
+        b = tl.load(B + cols).to(tl.float32)
+        y = w * ((x - mean) * rstd) + b
+        tl.store(Y + cols * y_stride_c, y.to(Y.dtype.element_ty))
 
-    x_hat = (x - mean) * rstd
-    y = w * x_hat + b
-    y = y.to(Y.dtype.element_ty)
-    tl.store(Y + cols * y_stride_c, y, mask=mask)
 
-
-# --- Multi-row 2D-tile kernel (launch-bound huge-M / small-N only) ---------
-# Each program owns a [TILE_M, N] tile (TILE_M consecutive rows, the whole
-# normalized dim as ONE contiguous column block) and reduces along axis=1.
-# grid = cdiv(M, TILE_M) so the launch count drops from M to M/TILE_M.
+# Multi-row 2D-tile kernel.  Each program owns a [TILE_M, N] tile (TILE_M rows,
+# the whole normalized dim as ONE column block) and reduces along axis=1.
 # N is passed as a constexpr and the columns span exactly [0, N) with NO
-# power-of-2 padding: the whole tile is then one stride-1 contiguous block, so
-# XPU OffsetAnalysis emits block DMA instead of the discrete access it falls
-# back to when a padded TILE_N introduces a non-unit inner stride. Measured
-# ~2-3x faster than the padded variant ([100,65536,100] 3301ms -> ~1130ms).
+# power-of-2 padding.  NEED_MASK=0 requires M % TILE_M == 0 (grid covers the
+# matrix exactly); the tile is then one stride-1 contiguous block and the XPU
+# OffsetAnalysis emits block DMA instead of the discrete access it falls back
+# to when rows are masked or a padded TILE_N introduces a non-unit inner stride.
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
 def skip_layer_norm_multirow_kernel(
@@ -115,6 +127,7 @@ def skip_layer_norm_multirow_kernel(
     eps,
     TILE_M: tl.constexpr,
     N: tl.constexpr,  # number of columns (normalized dim), used as tile width
+    NEED_MASK: tl.constexpr,
 ):
     pid = ext.program_id(0)
 
@@ -123,25 +136,40 @@ def skip_layer_norm_multirow_kernel(
     b = tl.load(B + n_off).to(tl.float32)
 
     m_off = pid * TILE_M + tl.arange(0, TILE_M)
-    m_mask = m_off < M
     offs = m_off[:, None] * N + n_off[None, :]
 
-    # Only rows are masked. Out-of-range rows load garbage (XPU ignores `other=`)
-    # but their reduction is per-row (axis=1) and independent, and their store is
-    # masked out below, so they never affect the valid rows or the output.
-    x = tl.load(X + offs, mask=m_mask[:, None], other=0.0).to(tl.float32)
-    r = tl.load(R + offs, mask=m_mask[:, None], other=0.0).to(tl.float32)
-    x += r
+    if NEED_MASK:
+        m_mask = m_off < M
+        # Rows are masked; out-of-range rows load garbage but their reduction is
+        # per-row and independent, and the store below is masked out, so they
+        # never affect the valid rows.  This path is slow (masked 2D); it only
+        # exists for correctness when M % TILE_M != 0.
+        x = tl.load(X + offs, mask=m_mask[:, None], other=0.0).to(tl.float32)
+        r = tl.load(R + offs, mask=m_mask[:, None], other=0.0).to(tl.float32)
+        x += r
+        mean = tl.sum(x, axis=1) / N
+        d = x - mean[:, None]
+        var = tl.sum(d * d, axis=1) / N
+        rstd = 1.0 / tl.sqrt(var + eps)
+        y = d * rstd[:, None] * w[None, :] + b[None, :]
+        tl.store(Y + offs, y.to(Y.dtype.element_ty), mask=m_mask[:, None])
+    else:
+        x = tl.load(X + offs).to(tl.float32)
+        r = tl.load(R + offs).to(tl.float32)
+        x += r
+        mean = tl.sum(x, axis=1) / N
+        d = x - mean[:, None]
+        var = tl.sum(d * d, axis=1) / N
+        rstd = 1.0 / tl.sqrt(var + eps)
+        y = d * rstd[:, None] * w[None, :] + b[None, :]
+        tl.store(Y + offs, y.to(Y.dtype.element_ty))
 
-    mean = tl.sum(x, axis=1) / N
-    d = x - mean[:, None]
-    var = tl.sum(d * d, axis=1) / N
-    rstd = 1.0 / tl.sqrt(var + eps)
 
-    y = d * rstd[:, None] * w[None, :] + b[None, :]
-    tl.store(Y + offs, y.to(Y.dtype.element_ty), mask=m_mask[:, None])
-
-
+# Single-row looped kernel for rows longer than COL_CAP.  One program owns one
+# row and strides it in BLOCK_SIZE chunks; with NEED_MASK=0 every chunk is a
+# plain 1D unmasked block (contiguous, block DMA).  The mean/variance pass
+# accumulates sum and sum-of-squares in ONE loop (var = E[x^2] - mean^2), so
+# only the epilogue re-reads x+r from the row (served from L2 for rows that fit).
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
 def skip_layer_norm_kernel_tile(
@@ -150,58 +178,85 @@ def skip_layer_norm_kernel_tile(
     R,  # pointer to the residual
     W,  # pointer to the weights
     B,  # pointer to the biases
-    y_stride_r,
-    y_stride_c,
-    x_stride_r,  # how much to increase the pointer when moving by 1 row
-    x_stride_c,  # how much to increase the pointer when moving by 1 col
-    r_stride_r,  # how much to increase the pointer when moving by 1 row
-    r_stride_c,  # how much to increase the pointer when moving by 1 col
-    N: tl.constexpr,  # number of columns in X
+    N,  # number of columns in X
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    Y += pid * y_stride_r
-    X += pid * x_stride_r
-    R += pid * r_stride_r
+    pid = ext.program_id(0)
+    X += pid * N
+    R += pid * N
+    Y += pid * N
 
-    _sum = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    _s = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    _s2 = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        r = tl.load(R + cols, mask, other=0.0).to(tl.float32)
+        if NEED_MASK:
+            mask = cols < N
+            x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+            r = tl.load(R + cols, mask, other=0.0).to(tl.float32)
+        else:
+            x = tl.load(X + cols).to(tl.float32)
+            r = tl.load(R + cols).to(tl.float32)
         x += r
-        _sum += x
-
-    mean = tl.sum(_sum) / N
-
-    _var_base = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-    for off in range(0, N, BLOCK_SIZE):
-        cols = off + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        r = tl.load(R + cols, mask, other=0.0).to(tl.float32)
-        x += r
-        _var = tl.where(mask, x - mean, 0.0)
-        _var = _var * _var
-        _var_base += _var
-
-    var = tl.sum(_var_base, axis=0) / N
+        _s += x
+        _s2 += x * x
+    mean = tl.sum(_s) / N
+    var = tl.maximum(tl.sum(_s2) / N - mean * mean, 0.0)
     rstd = 1 / tl.sqrt(var + eps)
 
     for off in range(0, N, BLOCK_SIZE):
         cols = off + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        r = tl.load(R + cols, mask, other=0.0).to(tl.float32)
-        x += r
-        w = tl.load(W + cols, mask, other=0.0).to(tl.float32)
-        b = tl.load(B + cols, mask, other=0.0).to(tl.float32)
-        x_hat = (x - mean) * rstd
-        y = w * x_hat + b
-        y = y.to(Y.dtype.element_ty)
-        tl.store(Y + cols * y_stride_c, y, mask=mask)
+        if NEED_MASK:
+            mask = cols < N
+            x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+            r = tl.load(R + cols, mask, other=0.0).to(tl.float32)
+            w = tl.load(W + cols, mask, other=0.0).to(tl.float32)
+            b = tl.load(B + cols, mask, other=0.0).to(tl.float32)
+            y = w * ((x + r - mean) * rstd) + b
+            tl.store(Y + cols, y.to(Y.dtype.element_ty), mask=mask)
+        else:
+            x = tl.load(X + cols).to(tl.float32)
+            r = tl.load(R + cols).to(tl.float32)
+            w = tl.load(W + cols).to(tl.float32)
+            b = tl.load(B + cols).to(tl.float32)
+            y = w * ((x + r - mean) * rstd) + b
+            tl.store(Y + cols, y.to(Y.dtype.element_ty))
+
+
+# N == 1: normalized dim is a single element; layer_norm of a 1-wide row is
+# exactly y = bias (x_hat == 0).  We still run a real kernel so that dispatch
+# and autograd semantics stay identical; the elementwise read is only needed to
+# keep the same memory footprint pattern.  Flat 4096-lane blocks avoid the
+# 6.3ms->0.3ms pathological per-row launch of BLOCK_SIZE=1.
+@libentry()
+@triton.jit
+def skip_layer_norm_flat_kernel(
+    Y,  # output
+    X,  # input
+    R,  # residual
+    W,  # weight
+    B,  # bias
+    M,  # total number of elements (== rows)
+    eps,  # unused mathematically, kept for rstd semantics
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    off = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    m = off < M
+    x = tl.load(X + off, mask=m, other=0.0).to(tl.float32)
+    r = tl.load(R + off, mask=m, other=0.0).to(tl.float32)
+    w = tl.load(W).to(tl.float32)
+    b = tl.load(B).to(tl.float32)
+    # N == 1: mean = x + r, var = 0 -> x_hat = 0, y = b.  Written generically so
+    # the compiler sees the exact same normalization math as the other kernels.
+    s = x + r
+    mean = s
+    d = s - mean
+    rstd = 1.0 / tl.sqrt(0.0 + eps)
+    y = w * (d * rstd) + b
+    tl.store(Y + off, y.to(Y.dtype.element_ty), mask=m)
 
 
 class SkipLayerNorm(torch.autograd.Function):
@@ -219,9 +274,106 @@ class SkipLayerNorm(torch.autograd.Function):
         y = torch.empty_like(x)
 
         with torch_device_fn.device(x.device):
-            if N > COL_CAP:
-                # Large-N per-row loop path.
-                BLOCK_SIZE = builtins.min(COL_CAP, triton.next_power_of_2(N))
+            if N == 1:
+                # Flat elementwise kernel (210us->8us on [10000,1]).
+                BLOCK_SIZE = 4096
+                skip_layer_norm_flat_kernel[(triton.cdiv(M, BLOCK_SIZE),)](
+                    y, x, residual, weight, bias, M, eps, BLOCK_SIZE
+                )
+            elif N <= COL_CAP:
+                if (N & (N - 1)) == 0:
+                    # Power-of-2 N: exactly-covering 2D tiles are numerically
+                    # clean (verified).  Prefer the largest TILE_M that divides
+                    # M; if none divides, fall back to the per-row kernel.
+                    tm = None
+                    for cand in MULTIROW_CFG:
+                        if cand <= M and cand * N <= MAX_TILE_LANES and M % cand == 0:
+                            tm = cand
+                            break
+                    if tm is not None:
+                        skip_layer_norm_multirow_kernel[(M // tm,)](
+                            y,
+                            x,
+                            residual,
+                            weight,
+                            bias,
+                            M,
+                            eps,
+                            tm,
+                            N,
+                            False,
+                        )
+                    else:
+                        BLOCK_SIZE = triton.next_power_of_2(N)
+                        skip_layer_norm_kernel[M,](
+                            y,
+                            x,
+                            residual,
+                            weight,
+                            bias,
+                            N,
+                            1,
+                            N,
+                            1,
+                            N,
+                            1,
+                            N,
+                            eps,
+                            BLOCK_SIZE,
+                            False,
+                        )
+                elif N >= 64 and M % 64 == 0 and N <= 128:
+                    # Non-pow2 N: only the [64, N] tile (N<128) was verified
+                    # clean on this backend (see header comment).
+                    skip_layer_norm_multirow_kernel[(M // 64,)](
+                        y,
+                        x,
+                        residual,
+                        weight,
+                        bias,
+                        M,
+                        eps,
+                        64,
+                        N,
+                        False,
+                    )
+                else:
+                    # Safe but slow: masked per-row 1D reduce (exact).
+                    BLOCK_SIZE = triton.next_power_of_2(N)
+                    skip_layer_norm_kernel[M,](
+                        y,
+                        x,
+                        residual,
+                        weight,
+                        bias,
+                        N,
+                        1,
+                        N,
+                        1,
+                        N,
+                        1,
+                        N,
+                        eps,
+                        BLOCK_SIZE,
+                        True,
+                    )
+            else:
+                # Large-N per-row loop path.  Unmasked chunks when the row
+                # length divides cleanly (N % BLOCK == 0) -> plain 1D loads.
+                # Reduction accumulator block-size stability (5/5 runs,
+                # [10000, 65536] vs fp64 ref):
+                #   fp16: 16384 clean (14ms)
+                #   fp32: 8192 clean, 16384 corrupt (7.2e0)
+                #   bf16: only 4096 clean (8192 corrupts ~20%, 16384 5/5)
+                # Dispatch per dtype accordingly.
+                NEED_MASK_BLOCK = 4096
+                if x.dtype == torch.float16 and N % 16384 == 0:
+                    BLOCK_SIZE = 16384
+                elif x.dtype != torch.bfloat16 and N % 8192 == 0:
+                    BLOCK_SIZE = 8192
+                else:
+                    BLOCK_SIZE = 4096
+                need_mask = N % BLOCK_SIZE != 0
                 skip_layer_norm_kernel_tile[M,](
                     y,
                     x,
@@ -229,31 +381,9 @@ class SkipLayerNorm(torch.autograd.Function):
                     weight,
                     bias,
                     N,
-                    1,
-                    N,
-                    1,
-                    N,
-                    1,
-                    N,
                     eps,
                     BLOCK_SIZE,
-                    isCloseUnrollControl=True,
-                )
-            elif N <= MULTIROW_N and M >= MULTIROW_M:
-                # Small N + many rows: the per-row kernel is launch-bound, so
-                # batch TILE_M rows per program to cut the grid from M to
-                # cdiv(M, TILE_M). Columns span exactly N (no padding) so the
-                # tile is one contiguous block -> block DMA.
-                TILE_M = builtins.max(1, TILE_BUDGET // N)
-                grid = (triton.cdiv(M, TILE_M),)
-                skip_layer_norm_multirow_kernel[grid](
-                    y, x, residual, weight, bias, M, eps, TILE_M, N
-                )
-            else:
-                # Default fast path: one program per row, 1D reduce.
-                BLOCK_SIZE = triton.next_power_of_2(N)
-                skip_layer_norm_kernel[M,](
-                    y, x, residual, weight, bias, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
+                    need_mask,
                 )
         return y
 

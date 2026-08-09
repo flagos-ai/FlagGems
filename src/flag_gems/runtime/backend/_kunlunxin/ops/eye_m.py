@@ -45,14 +45,39 @@ def eye_diagonal_kernel(
     tl.store(out_ptr + offs * stride, 1, mask=mask)
 
 
+@libentry()
+@triton.jit
+def eye_fused_kernel(
+    out_ptr,
+    n,
+    m,
+    numel,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < numel
+    row = offs // m
+    col = offs - row * m
+    value = tl.where((row < n) & (row == col), 1, 0)
+    tl.store(out_ptr + offs, value, mask=mask)
+
+
 def _fill_diagonal(out, n, m):
     diag_len = min(n, m)
     if diag_len <= 0:
         return out
+    # For small outputs, one launch is faster than memset plus a diagonal
+    # launch. Keep the bandwidth-oriented path for larger outputs.
+    numel = n * m
     BLOCK = 1024
-    grid = (triton.cdiv(diag_len, BLOCK),)
     with torch_device_fn.device(out.device):
-        eye_diagonal_kernel[grid](out, diag_len, m + 1, BLOCK)
+        if numel <= 512 * 512:
+            grid = (triton.cdiv(numel, BLOCK),)
+            eye_fused_kernel[grid](out, n, m, numel, BLOCK)
+        else:
+            grid = (triton.cdiv(diag_len, BLOCK),)
+            eye_diagonal_kernel[grid](out, diag_len, m + 1, BLOCK)
     return out
 
 

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from .bincount import bincount
+from .beam_search_score import beam_search_score, beam_search_score_
 from .concat_and_cache_mla import concat_and_cache_mla
 from .cross_entropy_loss import cross_entropy_loss
 from .flash_mla import flash_mla
@@ -40,6 +41,8 @@ from .weight_norm import weight_norm
 
 __all__ = [
     "apply_rotary_pos_emb",
+    "beam_search_score",
+    "beam_search_score_",
     "skip_layer_norm",
     "fused_add_rms_norm",
     "silu_and_mul",

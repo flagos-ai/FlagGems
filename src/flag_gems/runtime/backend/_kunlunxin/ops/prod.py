@@ -18,14 +18,33 @@ import torch
 import triton
 import triton.language as tl
 
-# from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-from ..utils.block_size_utils import get_block_size_1d
-
 logger = logging.getLogger(__name__)
+
+# ---- design notes (Kunlunxin XPU, 2026-08-17) -------------------------------
+# prod = multiply-reduction.
+# * Flat (dim=None): rows-of-8192 main pass with the 2-D row kernel (few wide
+#   programs, mask-free), pow2-decomposed unmasked tail chunks (XPU masked-tail
+#   loads are unreliable -> never mask), staged fp32/idtree. 8192-lane reduce is
+#   the reliable width on this backend.
+# * dim path: reduced axes are moved innermost via `permute(order)`; the
+#   physical reorder uses the native strided-copy engine
+#   (`torch.ops.aten._copy_from`, flag_gems never overrides it) instead of the
+#   slow gems `.contiguous()`; then a [BLOCK_M, BLOCK_N] 2D row kernel reduces
+#   the innermost N (reduce-INSIDE accumulate in fp32).
+# * N == 1 (all reduced dims of size 1): identity -> native `_copy_from`.
+# * N == 0: product over an empty dim = 1 -> fill.
+# * ints: accumulate in the input width (wrap-around like torch.prod) since
+#   fp32 accumulation saturates to inf for large int products.
+
+_REDUCE_BLOCK = 8192  # reliable single-load tl.reduce width
+_FAST_BN_FP16 = (1024, 256, 512, 128, 64, 32, 16)
+_FAST_BN_FP32 = (512, 256, 1024, 128, 64, 32, 16)
+_FAST_BM_FP16 = (128, 64, 32, 256, 16, 8, 4, 2, 1)
+_FAST_BM_FP32 = (64, 128, 32, 256, 16, 8, 4, 2, 1)
 
 
 @triton.jit
@@ -33,194 +52,283 @@ def reduce_mul(a, b):
     return a * b
 
 
-@libentry()
-@triton.jit
-def prod_kernel_mid(
-    inp,
-    mid,
-    M,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = ext.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
-    mid_value = tl.reduce(inp_val, axis=0, combine_fn=reduce_mul)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, mid_value.to(inp_val.dtype))
+def _pick_fast_tile(M, N, is_fp32):
+    """Return (BLOCK_M, BLOCK_N) with M % BLOCK_M == 0 and N % BLOCK_N == 0, so
+    the whole reduction runs mask-free, or None."""
+    bns = _FAST_BN_FP32 if is_fp32 else _FAST_BN_FP16
+    bms = _FAST_BM_FP32 if is_fp32 else _FAST_BM_FP16
+    bn = next((b for b in bns if N % b == 0), None)
+    if bn is None:
+        return None
+    bm = next((m for m in bms if M % m == 0), None)
+    if bm is None:
+        return None
+    return bm, bn
+
+
+def _work_dtype(dt):
+    # floats: fp32 accumulation; ints: keep native width (wrap like torch)
+    return torch.float32 if dt.is_floating_point else dt
 
 
 @libentry()
 @triton.jit
-def prod_kernel_result(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=1.0).to(tl.float32)
-    prod_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_mul)
-    tl.store(out, prod_val)
-
-
-def prod(inp, *, dtype=None):
-    logger.debug("GEMS_KUNLUNXIN PROD")
-    if dtype is None:
-        dtype = inp.dtype
-
-    M = inp.numel()
-    # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    block_size = get_block_size_1d(M, inp.element_size())
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
-
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-    out = torch.empty([], dtype=dtype, device=inp.device)
-
-    with torch_device_fn.device(inp.device):
-        prod_kernel_mid[(mid_size, 1, 1)](
-            inp, mid, M, block_size, buffer_size_limit=2048
-        )
-        if mid_size == 1:
-            return mid.reshape([])
-        prod_kernel_result[(1, 1, 1)](
-            mid, out, mid_size, block_mid, buffer_size_limit=2048
-        )
-    return out
-
-
-def heur_m_block_size(args):
-    # Bound the accumulator tile [BLOCK_M, BLOCK_N] to a fixed element budget so
-    # BLOCK_M can never explode with M. The old `next_pow2(cdiv(M, 12))` built
-    # multi-hundred-MB tiles with only ~8 programs when M was large and N small
-    # (e.g. (1024,1024,1024) reduce dim=1 -> BLOCK_M=131072, a 512MB tile ->
-    # 747ms catastrophe). A ~64K-element tile keeps per-program work high (few,
-    # large contiguous DMA passes) while capping SRAM, and caps BLOCK_M at
-    # next_pow2(M) so tiny-M rows are not over-allocated.
-    import builtins
-
-    M, N = args["M"], args["N"]
-    block_n = builtins.min(triton.next_power_of_2(N), 8192)
-    block_m = builtins.max(1, 65536 // block_n)
-    return builtins.min(block_m, triton.next_power_of_2(M))
-
-
-def heur_n_block_size(args):
-    import builtins
-
-    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
-
-
-@libentry()
-@triton.heuristics(
-    values={
-        "BLOCK_M": heur_m_block_size,
-        "BLOCK_N": heur_n_block_size,
-    },
-)
-@triton.jit
-def prod_kernel(
+def prod_row2d(
     inp,
     out,
     M,
     N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+    ACC32: tl.constexpr,
 ):
-    # Map program id to its rows and pre-offset the base pointer so the inner
-    # `inp + cols` access is proven contiguous by OffsetAnalysis (block DMA).
-    # Computing `m_offset[:, None] * N + n_offset` inline (old impl) blocks the
-    # analysis -> discrete scalar gather.
-    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp = inp + pid * N
-    out = out + pid
-    row_mask = pid < M
+    # Map the program id to its rows and pre-offset the base pointer so the
+    # inner `inp + cols` access is proven contiguous by OffsetAnalysis.
+    pid = ext.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inp = inp + rows * N
+    out = out + rows
+    row_mask = rows < M
 
-    acc = tl.full((BLOCK_M, BLOCK_N), value=1.0, dtype=tl.float32)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        inp_vals = tl.load(inp + cols, mask=row_mask & col_mask, other=1.0).to(
-            tl.float32
-        )
-        acc *= inp_vals
-    result = tl.reduce(acc, axis=1, combine_fn=reduce_mul)[:, None]
-    tl.store(out, result, row_mask)
+    # reduce-INSIDE accumulation: each [BLOCK_M, BLOCK_N] block is reduced over
+    # N (axis=1) first, then multiplied into a [BLOCK_M, 1] accumulator. This
+    # is the only form that is numerically reliable on this XPU (the
+    # reduce-OUTSIDE variant with a persistent tile miscompiles for bf16 with
+    # masked tails). NEED_MASK=False compiles to a fully mask-free kernel.
+    if ACC32:
+        acc = tl.full([BLOCK_M, 1], value=1.0, dtype=tl.float32)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            if NEED_MASK:
+                mask = row_mask and (cols < N)
+                a = tl.load(inp + cols, mask, other=1.0).to(tl.float32)
+            else:
+                a = tl.load(inp + cols).to(tl.float32)
+            blk = tl.reduce(a, axis=1, combine_fn=reduce_mul)[:, None]
+            acc = acc * blk
+    else:
+        v0 = tl.load(inp + tl.zeros([BLOCK_M, BLOCK_N], tl.int32))
+        acc = tl.full([BLOCK_M, 1], value=1, dtype=v0.dtype)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            if NEED_MASK:
+                mask = row_mask and (cols < N)
+                a = tl.load(inp + cols, mask, other=1)
+            else:
+                a = tl.load(inp + cols)
+            blk = tl.reduce(a, axis=1, combine_fn=reduce_mul)[:, None]
+            acc = acc * blk
+    if NEED_MASK:
+        tl.store(out, acc, row_mask)
+    else:
+        tl.store(out, acc)
 
 
 @libentry()
 @triton.jit
-def prod_kernel_kn(
-    out,
-    inp,
-    M,
-    N,
-    K,
-    TILE_N: tl.constexpr,
-    TILE_K: tl.constexpr,
-):
-    # Middle-dim reduce (K>1) WITHOUT dim_compress transpose. View inp as
-    # [M, N, K] (contiguous). A [TILE_K, TILE_N] tile puts K on axis0 (rows) and
-    # the reduce target N on axis1 (cols) so we can use XPU's ONLY supported
-    # `tl.reduce(axis=1)` -- axis=0 2D reduce is a dead end on this toolchain
-    # (compile fail or numerically wrong). dim_compress would permute N to the
-    # innermost then `.contiguous()` on a non-contiguous permuted tensor, which
-    # under use_gems dispatches to the generic strided copy_ (~300x slower =
-    # the "transpose wall"); this KN layout avoids that copy entirely.
-    pid_m = ext.program_id(0)
-    pid_k = ext.program_id(1)
-    k_off = pid_k * TILE_K + tl.arange(0, TILE_K)[:, None]
-    acc = tl.full([TILE_K, TILE_N], value=1.0, dtype=tl.float32)
-    for start_n in range(0, N, TILE_N):
-        n_off = start_n + tl.arange(0, TILE_N)[None, :]
-        off = pid_m * N * K + n_off * K + k_off
-        mask = (k_off < K) & (n_off < N)
-        v = tl.load(inp + off, mask=mask, other=1.0).to(tl.float32)
-        acc *= v
-    result = tl.reduce(acc, axis=1, combine_fn=reduce_mul, keep_dims=True)
-    out_off = pid_m * K + k_off
-    tl.store(out + out_off, result, mask=k_off < K)
+def prod_mid_block(inp, mid, BLOCK: tl.constexpr, ACC32: tl.constexpr):
+    # one PID per BLOCK (<= 8192) contiguous unmasked chunk -> partial
+    pid = ext.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    if ACC32:
+        v = tl.load(inp + offs).to(tl.float32)
+    else:
+        v = tl.load(inp + offs)
+    p = tl.reduce(v, axis=0, combine_fn=reduce_mul)
+    tl.store(mid + pid, p)
+
+
+@libentry()
+@triton.jit
+def prod_tailk(inp, out, START, WIDTH: tl.constexpr, ACC32: tl.constexpr):
+    # exact pow2 slice [START, START+WIDTH) -> fully in-bounds, no mask
+    offs = START + tl.arange(0, WIDTH)
+    if ACC32:
+        v = tl.load(inp + offs).to(tl.float32)
+    else:
+        v = tl.load(inp + offs)
+    p = tl.reduce(v, axis=0, combine_fn=reduce_mul)
+    tl.store(out, p)
+
+
+@libentry()
+@triton.jit
+def prod_final(inp, out, WIDTH: tl.constexpr, ACC32: tl.constexpr):
+    offs = tl.arange(0, WIDTH)
+    if ACC32:
+        v = tl.load(inp + offs).to(tl.float32)
+    else:
+        v = tl.load(inp + offs)
+    p = tl.reduce(v, axis=0, combine_fn=reduce_mul)
+    tl.store(out, p)
+
+
+def _pow2_decomp(r):
+    parts = []
+    while r:
+        p = 1 << (r.bit_length() - 1)
+        parts.append(p)
+        r -= p
+    return parts
+
+
+def _reduce_partials(data, n, out, device, acc32):
+    """Staged product of `n` fp32/int partials -> scalar `out`, mask-free
+    (tails pow2-decomposed; final pad of 1.0s)."""
+    with torch_device_fn.device(device):
+        while n > _REDUCE_BLOCK:
+            k = n // _REDUCE_BLOCK
+            r = n - k * _REDUCE_BLOCK
+            chunks = _pow2_decomp(r)
+            sz = k + len(chunks)
+            midn = torch.empty((sz,), dtype=data.dtype, device=device)
+            if k:
+                prod_mid_block[(k, 1)](
+                    data, midn, _REDUCE_BLOCK, acc32, buffer_size_limit=2048
+                )
+            pos = k * _REDUCE_BLOCK
+            for i, w in enumerate(chunks):
+                prod_tailk[(1, 1)](
+                    data, midn[k + i : k + i + 1], pos, w, acc32,
+                    buffer_size_limit=2048,
+                )
+                pos += w
+            data = midn
+            n = sz
+        width = triton.next_power_of_2(n)
+        if width == n:
+            prod_final[(1, 1)](data, out, width, acc32, buffer_size_limit=2048)
+        else:
+            pad = torch.full((width,), 1, dtype=data.dtype, device=device)
+            if n:
+                torch.ops.aten._copy_from(data, pad[:n], False)
+            prod_final[(1, 1)](pad, out, width, acc32, buffer_size_limit=2048)
+
+
+def _prod_flat(inp, out, device):
+    numel = inp.numel()
+    block = _REDUCE_BLOCK
+    rows = numel // block
+    res = numel - rows * block
+    is_fp32 = inp.dtype == torch.float32
+    acc32 = inp.dtype.is_floating_point
+    wdt = _work_dtype(inp.dtype)
+    with torch_device_fn.device(device):
+        if rows:
+            tile = _pick_fast_tile(rows, block, is_fp32)
+            bm = tile[0] if tile else 2
+            bn = 1024 if not is_fp32 else 512
+            chunks = _pow2_decomp(res) if res else []
+            mid = torch.empty((rows + len(chunks),), dtype=wdt, device=device)
+            prod_row2d[(max(rows // bm, 1), 1)](
+                inp, mid, rows, block, bm, bn, False, acc32,
+                buffer_size_limit=2048,
+            )
+            pos = rows * block
+            for i, w in enumerate(chunks):
+                prod_tailk[(1, 1)](
+                    inp, mid[rows + i : rows + i + 1], pos, w, acc32,
+                    buffer_size_limit=2048,
+                )
+                pos += w
+        else:
+            chunks = _pow2_decomp(res)
+            mid = torch.empty((len(chunks),), dtype=wdt, device=device)
+            pos = 0
+            for i, w in enumerate(chunks):
+                prod_tailk[(1, 1)](
+                    inp, mid[i : i + 1], pos, w, acc32, buffer_size_limit=2048
+                )
+                pos += w
+        _reduce_partials(mid, mid.numel(), out, device, acc32)
+
+
+def prod(inp, *, dtype=None):
+    logger.debug("GEMS_KUNLUNXIN PROD")
+    if dtype is None:
+        dtype = inp.dtype
+    numel = inp.numel()
+    out = torch.empty([], dtype=dtype, device=inp.device)
+    if numel == 0:
+        out.fill_(1)
+        return out
+    if numel == 1:
+        with torch_device_fn.device(inp.device):
+            torch.ops.aten._copy_from(inp.reshape([]), out, False)
+        return out
+    with torch_device_fn.device(inp.device):
+        _prod_flat(inp, out, inp.device)
+    return out
 
 
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS_KUNLUNXIN PROD_DIM")
-    import builtins
-
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    if dtype is None:
+        dtype = inp.dtype
     shape = list(inp.shape)
-    dim = dim % inp.ndim
-
-    N = shape[dim]
+    d = dim % inp.ndim
+    N = shape[d]
     M = 1
-    for s in shape[:dim]:
+    for s in shape[:d]:
         M *= s
     K = 1
-    for s in shape[dim + 1 :]:
+    for s in shape[d + 1 :]:
         K *= s
 
     out_shape = shape.copy()
-    out_shape[dim] = 1
-    if dtype is None:
-        dtype = inp.dtype
-
-    inp = inp.contiguous()
+    out_shape[d] = 1
     out = torch.empty(out_shape, dtype=dtype, device=inp.device)
+    if M == 0 or K == 0:
+        if not keepdim:
+            out = torch.squeeze(out, d)
+        return out
+    if N == 0:
+        out.fill_(1)
+        if not keepdim:
+            out = torch.squeeze(out, d)
+        return out
+    if N == 1:
+        # reduce over a size-1 dim is the identity
+        with torch_device_fn.device(inp.device):
+            torch.ops.aten._copy_from(inp, out, False)
+        if not keepdim:
+            out = torch.squeeze(out, d)
+        return out
 
+    # Move the reduced dim innermost (same order as dim_compress) and make it
+    # contiguous with the native strided-copy engine instead of gems'
+    # `.contiguous()` (which is ~1000x slower for big transposes).
+    order = [i for i in range(inp.dim()) if i != d] + [d]
+    view = inp.permute(order)
+    if view.is_contiguous():
+        src = view
+    else:
+        src = torch.empty(list(view.shape), dtype=inp.dtype, device=inp.device)
+        with torch_device_fn.device(inp.device):
+            torch.ops.aten._copy_from(view, src, False)
+
+    rows = M * K
+    out_flat = out.reshape(rows)
+    is_fp32 = dtype == torch.float32
+    acc32 = dtype.is_floating_point
     with torch_device_fn.device(inp.device):
-        if K == 1:
-            # Innermost reduce: rows are contiguous, the 2D block kernel with
-            # pre-offset base pointer gives clean block DMA.
-            grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-            prod_kernel[grid](inp, out, M, N, buffer_size_limit=2048)
-        else:
-            # Middle-dim reduce: no-transpose KN kernel (see prod_kernel_kn).
-            tile_n = builtins.min(triton.next_power_of_2(N), 2048)
-            tile_k = builtins.min(triton.next_power_of_2(K), 64)
-            grid = (M, triton.cdiv(K, tile_k), 1)
-            prod_kernel_kn[grid](
-                out, inp, M, N, K, tile_n, tile_k, buffer_size_limit=2048
+        tile = _pick_fast_tile(rows, N, is_fp32)
+        if tile is not None:
+            bm, bn = tile
+            prod_row2d[(max(rows // bm, 1), 1)](
+                src, out_flat, rows, N, bm, bn, False, acc32,
+                buffer_size_limit=2048,
             )
-
+        else:
+            bn = min(triton.next_power_of_2(N), _REDUCE_BLOCK)
+            bm = triton.next_power_of_2(min(triton.cdiv(rows, 12), 65536 // bn))
+            grid = (triton.cdiv(rows, bm),)
+            prod_row2d[grid](
+                src, out_flat, rows, N, bm, bn, True, acc32,
+                buffer_size_limit=2048,
+            )
     if not keepdim:
-        out = torch.squeeze(out, dim)
-
+        out = torch.squeeze(out, d)
     return out

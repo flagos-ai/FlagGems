@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 @libentry()
 @triton.jit
 def masked_scatter_single_block_kernel(
-    inp_ptr, mask_ptr, src_ptr, N, BLOCK_SIZE: tl.constexpr
+    out_ptr, inp_ptr, mask_ptr, src_ptr, N, BLOCK_SIZE: tl.constexpr
 ):
     offsets = tl.arange(0, BLOCK_SIZE)
     block_mask = offsets < N
@@ -58,7 +58,7 @@ def masked_scatter_single_block_kernel(
     active = block_mask & mask_val
     src_val = tl.load(src_ptr + src_indices, mask=active, other=0)
     out_val = tl.where(mask_val, src_val, inp_val)
-    tl.store(inp_ptr + offsets, out_val, mask=block_mask)
+    tl.store(out_ptr + offsets, out_val, mask=block_mask)
 
 
 @libentry()
@@ -73,7 +73,7 @@ def mask_block_count_kernel(mask_ptr, counts_ptr, N, BLOCK_SIZE: tl.constexpr):
 @libentry()
 @triton.jit
 def masked_scatter_where_kernel(
-    inp_ptr, mask_ptr, src_ptr, base_ptr, N, BLOCK_SIZE: tl.constexpr
+    out_ptr, inp_ptr, mask_ptr, src_ptr, base_ptr, N, BLOCK_SIZE: tl.constexpr
 ):
     pid = ext.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -84,13 +84,23 @@ def masked_scatter_where_kernel(
     active = block_mask & mask_val
     inp_val = tl.load(inp_ptr + offsets, mask=block_mask, other=0)
     src_val = tl.load(src_ptr + src_indices, mask=active, other=0)
-    tl.store(inp_ptr + offsets, tl.where(active, src_val, inp_val), mask=block_mask)
+    tl.store(
+        out_ptr + offsets, tl.where(mask_val, src_val, inp_val), mask=block_mask
+    )
 
 
-def masked_scatter_impl(inp, mask, source, N):
+def masked_scatter_impl(out, inp, mask, source, N):
+    flat_out = out.ravel()
     flat_inp = inp.ravel()
     flat_mask = mask.ravel()
     flat_src = source.ravel()
+    # an all-False mask yields an empty `source`; guard so a zero-size buffer
+    # never reaches the kernels (values are discarded by tl.where for False).
+    if flat_src.numel() == 0:
+        flat_src = torch.zeros(1, dtype=source.dtype, device=source.device)
+
+    if N == 0:
+        return out
 
     if N <= 4096:
         BLOCK_SIZE = triton.next_power_of_2(N)
@@ -101,6 +111,7 @@ def masked_scatter_impl(inp, mask, source, N):
             num_warps = 16
         with torch_device_fn.device(inp.device):
             masked_scatter_single_block_kernel[(1,)](
+                flat_out,
                 flat_inp,
                 flat_mask,
                 flat_src,
@@ -108,7 +119,7 @@ def masked_scatter_impl(inp, mask, source, N):
                 BLOCK_SIZE=BLOCK_SIZE,
                 num_warps=num_warps,
             )
-        return inp
+        return out
 
     BLOCK_SIZE = 8192
     n_blocks = triton.cdiv(N, BLOCK_SIZE)
@@ -123,6 +134,7 @@ def masked_scatter_impl(inp, mask, source, N):
         torch.cumsum(counts[:-1], dim=0, out=base[1:])
         # pass 2: single-pass where-store, index = base + in-block cumsum
         masked_scatter_where_kernel[(n_blocks,)](
+            flat_out,
             flat_inp,
             flat_mask,
             flat_src,
@@ -131,7 +143,7 @@ def masked_scatter_impl(inp, mask, source, N):
             BLOCK_SIZE=BLOCK_SIZE,
             num_warps=16,
         )
-    return inp
+    return out
 
 
 def masked_scatter(inp, mask, source):
@@ -143,16 +155,24 @@ def masked_scatter(inp, mask, source):
 
     _, mask = torch.broadcast_tensors(inp, mask)
 
-    out = inp.clone()
+    # NOTE: `inp.clone()` under gems dispatches to the registered `copy_`
+    # (a Triton kernel ~3.2ms for 4MB) which made out-of-place >6x slower than
+    # in-place. The kernels write every output lane with
+    # `where(mask, src[...], inp[...])` and take separate input/output
+    # pointers, so the pre-copy is redundant: a plain allocation suffices and
+    # the input is read by the kernels directly.
+    out = torch.empty_like(inp)
     if not out.is_contiguous():
         out = out.contiguous()
     if not mask.is_contiguous():
         mask = mask.contiguous()
     if not source.is_contiguous():
         source = source.contiguous()
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
 
     N = out.numel()
-    masked_scatter_impl(out, mask, source, N)
+    masked_scatter_impl(out, inp, mask, source, N)
     return out
 
 
@@ -171,5 +191,5 @@ def masked_scatter_(inp, mask, source):
     source = source if source.is_contiguous() else source.contiguous()
 
     N = inp.numel()
-    masked_scatter_impl(inp, mask, source, N)
+    masked_scatter_impl(inp, inp, mask, source, N)
     return inp

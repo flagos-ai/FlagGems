@@ -13,20 +13,35 @@
 # limitations under the License.
 
 import logging
-import os
 from typing import Optional
 
 import torch
 import triton
+import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
+
+from flag_gems.runtime import torch_device_fn
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
+# Capture the ORIGINAL native CPU `copy_` kernel while FlagGems overrides are
+# not yet registered (module import happens before any use_gems()/enable()).
+# Complex tensors (and CPU -> XPU transfers of complex data) are not supported
+# by the triton kernels in this file; the vendor runtime performs such copies
+# in its native copy backend. The captured CPU-slot kernel executes the real
+# data movement independently of the FlagGems overrides registered on the CUDA
+# dispatch key (dispatch is driven by the destination device, so plain calls
+# would recurse into the registered to_copy/copy_ overrides).
+try:
+    _XPU_NATIVE_CPU_COPY = torch.library.get_kernel(
+        torch.ops.aten.copy_.default, "CPU"
+    )
+    _CPU_KS = torch._C.DispatchKeySet(torch._C.DispatchKey.CPU)
+except Exception:  # pragma: no cover - defensive fallback
+    _XPU_NATIVE_CPU_COPY = None
+    _CPU_KS = None
 
 
 @pointwise_dynamic(
@@ -38,6 +53,63 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 @triton.jit
 def _to_copy_func(x):
     return x
+
+
+@triton.jit
+def _to_copy_contiguous_kernel(inp, out, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    values = tl.load(inp + offsets, mask=mask)
+    tl.store(out + offsets, values.to(out.dtype.element_ty), mask=mask)
+
+
+@triton.jit
+def _to_copy_to_complex_kernel(inp, out, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    values = tl.load(inp + offsets, mask=mask)
+    real_offsets = offsets * 2
+    tl.store(out + real_offsets, values.to(out.dtype.element_ty), mask=mask)
+    tl.store(out + real_offsets + 1, 0.0, mask=mask)
+
+
+@triton.jit
+def _to_copy_contiguous_to_bf16_kernel(inp, out, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    values = tl.load(inp + offsets, mask=mask).to(tl.float32)
+    fp32_bits = values.to(tl.uint32, bitcast=True)
+    rounding_bias = 0x7FFF + ((fp32_bits >> 16) & 1)
+    bf16_bits = ((fp32_bits + rounding_bias) >> 16).to(tl.uint16)
+    out_bits = out.to(tl.pointer_type(tl.uint16))
+    tl.store(out_bits + offsets, bf16_bits, mask=mask)
+
+
+def _to_copy_contiguous(inp, out, target_dtype):
+    n_elements = inp.numel()
+    if n_elements == 0:
+        return out
+    block_size = 256
+    with torch_device_fn.device(inp.device):
+        kernel = (
+            _to_copy_contiguous_to_bf16_kernel
+            if target_dtype == torch.bfloat16
+            else _to_copy_contiguous_kernel
+        )
+        kernel[(triton.cdiv(n_elements, block_size),)](inp, out, n_elements, block_size)
+    return out
+
+
+def _to_copy_to_complex(inp, out):
+    n_elements = inp.numel()
+    if n_elements == 0:
+        return out
+    block_size = 256
+    with torch_device_fn.device(inp.device):
+        _to_copy_to_complex_kernel[(triton.cdiv(n_elements, block_size),)](
+            inp, torch.view_as_real(out), n_elements, block_size
+        )
+    return out
 
 
 close_interleave_config = CodeGenConfig(
@@ -109,7 +181,7 @@ def to_copy(
     else:
         to_dtype_fn = _to_copy_func
 
-    # We only implement the dense strided kernel today; all other layouts fall back to PyTorch.
+    # The specialized kernel supports dense strided tensors only.
     if (layout is not None and layout != torch.strided) or x.layout != torch.strided:
         raise NotImplementedError(
             "FlagGems to_copy currently supports strided tensors only."
@@ -126,33 +198,36 @@ def to_copy(
     target_dtype = _resolve_dtype(x, dtype)
     target_device = _resolve_device(x, device)
     target_memory_format = _normalize_memory_format(memory_format)
+    if x.dtype == torch.bfloat16:
+        to_dtype_fn = _to_copy_func_close_interleave
+    else:
+        to_dtype_fn = _to_copy_func
 
-    # Triton on kunlunxin does not support complex dtypes; fall back to PyTorch.
-    if x.dtype.is_complex or target_dtype.is_complex:
-        return torch.ops.aten._to_copy.default.redispatch(
-            _FALLBACK_KEYSET,
-            x,
-            dtype=target_dtype,
-            layout=layout,
-            device=target_device,
-            pin_memory=pin_memory,
-            non_blocking=non_blocking,
-            memory_format=target_memory_format,
-        )
+    if x.dtype.is_complex:
+        # Complex tensors: the triton kernels in this file do not support
+        # complex element types, so the native copy backend of the vendor
+        # runtime is used (captured at import time, before FlagGems registers
+        # its overrides on the CUDA dispatch key). This covers complexes
+        # CPU -> XPU host transfers and complex<->complex conversions alike.
+        if _XPU_NATIVE_CPU_COPY is None:
+            raise NotImplementedError(
+                "FlagGems to_copy does not support complex source tensors on Kunlunxin."
+            )
+        out = torch.empty_like(x, dtype=target_dtype, device=target_device)
+        _XPU_NATIVE_CPU_COPY.call_boxed(_CPU_KS, out, x.contiguous(), False)
+        # The native copy drops the lazy conjugate tag on complex tensors;
+        # re-apply it via aten::conj (a pure metadata op, not overridden
+        # anywhere in FlagGems) so a later resolve_conj materializes the
+        # conjugated values as expected.
+        if x.is_conj() and not out.is_conj():
+            out = torch.ops.aten.conj(out)
+        return out
 
     if target_device != x.device or (
         x.device.type == "cpu" and target_device.type == "cpu"
     ):
-        # Device transfer (d2h/h2d etc.) relies on PyTorch's implementation.
-        return torch.ops.aten._to_copy.default.redispatch(
-            _FALLBACK_KEYSET,
-            x,
-            dtype=target_dtype,
-            layout=layout,
-            device=target_device,
-            pin_memory=pin_memory,
-            non_blocking=non_blocking,
-            memory_format=target_memory_format,
+        raise NotImplementedError(
+            "FlagGems to_copy only supports copies within one Kunlunxin device."
         )
 
     logger.debug("GEMS_KUNLUNXIN TO_COPY")
@@ -163,15 +238,14 @@ def to_copy(
     else:
         out = torch.empty_like(x, memory_format=target_memory_format, **empty_kwargs)
 
-    out = torch.empty_like(x, dtype=dtype, memory_format=memory_format)
-    if out.element_size() == 8:
-        os.environ["TRITONXPU_ELEMBYTES"] = "8"
-        os.environ["TRITONXPU_BF16_FAST"] = "1"
-        res = to_dtype_fn(x, out0=out)
-        del os.environ["TRITONXPU_ELEMBYTES"]
-        del os.environ["TRITONXPU_BF16_FAST"]
-    else:
-        os.environ["TRITONXPU_BF16_FAST"] = "1"
-        res = to_dtype_fn(x, out0=out)
-        del os.environ["TRITONXPU_BF16_FAST"]
-    return res
+    if target_dtype.is_complex:
+        if not x.is_contiguous() or not out.is_contiguous():
+            raise NotImplementedError(
+                "FlagGems to_copy only supports contiguous real-to-complex copies on Kunlunxin."
+            )
+        return _to_copy_to_complex(x, out)
+
+    if x.is_contiguous() and out.is_contiguous():
+        return _to_copy_contiguous(x, out, target_dtype)
+
+    return to_dtype_fn(x, out0=out)

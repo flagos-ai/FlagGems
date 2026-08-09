@@ -52,11 +52,50 @@ autotune_decorator = triton.autotune(
 KLX_USE_AUTOTUNE = os.environ.get("KLX_USE_AUTOTUNE", "1") == "1"
 
 if not KLX_USE_AUTOTUNE:
-    autotune_decorator = triton.autotune(
-        configs=[
-            triton.Config({"BLOCK_M": 256, "BLOCK_N": 256, "BLOCK_K": 256}),
-        ],
-        key=["M", "N", "K"],
+
+    # XPU tile probe (2026-08-13, XPU 4, 7 unique shapes x 3 dtypes, direct
+    # do_bench warm+rep medians): the 256^3 tile is the floor for M,N > 512 on
+    # all dtypes (fp16 4096^3 0.68ms / 0.82x, fp32 1.37ms / 0.90x), while small
+    # shapes (M,N <= 512) are launch-bound and prefer the 128-tile w4 config
+    # (384^3: 0.014 -> 0.0087ms fp16, 0.021 -> 0.012ms bf16, 0.014 -> 0.011ms
+    # fp32, ~1.05-1.12x vs torch). num_stages stays at backend default (2):
+    # bf16 BK=256 collapses at s3 (1.82ms vs 1.32ms on 4096^3). BK is kept at
+    # 256 for the 256-tile (fp16 needs BK=256: 1.01ms at BK=128 vs 0.68ms at
+    # BK=256 on 4096^3).
+
+    def heur_block_m(args):
+        M = args["M"]
+        if M <= 512:
+            return 128
+        return 256
+
+    def heur_block_n(args):
+        N = args["N"]
+        if N <= 512:
+            return 128
+        return 256
+
+    def heur_block_k(args):
+        M = args["M"]
+        N = args["N"]
+        if M <= 512 and N <= 512:
+            return 128
+        return 256
+
+    def heur_num_warps(args):
+        M = args["M"]
+        N = args["N"]
+        if M <= 512 and N <= 512:
+            return 4
+        return 8
+
+    autotune_decorator = triton.heuristics(
+        {
+            "BLOCK_M": heur_block_m,
+            "BLOCK_N": heur_block_n,
+            "BLOCK_K": heur_block_k,
+            "num_warps": heur_num_warps,
+        }
     )
 
 
@@ -142,6 +181,34 @@ def mm_kernel(
 
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
 
+_FAST_MODE_ENV = "XMLIR_MATMUL_FAST_MODE"
+
+
+def _set_matmul_fast_mode(a_dtype, M, N, K):
+    """XPU probe (2026-08-13, XPU 4): XMLIR_MATMUL_FAST_MODE=1 speeds the
+    bf16 tl.dot lowering for large-K GEMMs (4096^3 1.32->0.81ms; 2048^3
+    0.20->0.15ms; K=65536 1.86->1.44ms) while fp16/fp32 kernels are
+    unaffected; on small bf16 shapes it regresses (64^3 0.012->0.018ms), so
+    the flag is applied selectively: bf16 only, with K >= 2048 and both M, N
+    >= 128."""
+    if (
+        a_dtype == torch.bfloat16
+        and K >= 2048
+        and M >= 128
+        and N >= 128
+    ):
+        saved = os.environ.get(_FAST_MODE_ENV)
+        os.environ[_FAST_MODE_ENV] = "1"
+        return saved
+    return None
+
+
+def _restore_matmul_fast_mode(saved):
+    if saved is None:
+        os.environ.pop(_FAST_MODE_ENV, None)
+    else:
+        os.environ[_FAST_MODE_ENV] = saved
+
 
 def get_higher_dtype(a, b):
     if a is b:
@@ -178,22 +245,26 @@ def mm(a, b):
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
         META["SPLIT_K"],
     )
-    with torch_device_fn.device(a.device):
-        mm_kernel[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            dot_out_dtype=dot_out_dtype,
-        )
+    saved = _set_matmul_fast_mode(a.dtype, M, N, K)
+    try:
+        with torch_device_fn.device(a.device):
+            mm_kernel[grid](
+                a,
+                b,
+                c,
+                M,
+                N,
+                K,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                b.stride(1),
+                c.stride(0),
+                c.stride(1),
+                dot_out_dtype=dot_out_dtype,
+            )
+    finally:
+        _restore_matmul_fast_mode(saved)
     return c
 
 
@@ -216,20 +287,24 @@ def mm_out(a, b, *, out):
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
         META["SPLIT_K"],
     )
-    with torch_device_fn.device(a.device):
-        mm_kernel[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            dot_out_dtype=dot_out_dtype,
-        )
+    saved = _set_matmul_fast_mode(a.dtype, M, N, K)
+    try:
+        with torch_device_fn.device(a.device):
+            mm_kernel[grid](
+                a,
+                b,
+                c,
+                M,
+                N,
+                K,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                b.stride(1),
+                c.stride(0),
+                c.stride(1),
+                dot_out_dtype=dot_out_dtype,
+            )
+    finally:
+        _restore_matmul_fast_mode(saved)
     return c

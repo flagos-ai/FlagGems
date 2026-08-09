@@ -39,8 +39,14 @@ def polar_kernel(abs, angle):
 
 def polar(abs, angle):
     logger.debug("GEMS_KUNLUNXIN POLAR")
-    output = torch.empty((*abs.shape, 2), dtype=abs.dtype, device=abs.device)
+    # XPU note: writing the two components directly into the interleaved
+    # complex layout (stride-2 strided outputs) takes the slow rank-2
+    # scalarized codegen path (~40s for 16M elts).  Write two contiguous
+    # real/imag buffers on the fast rank-1 path, then interleave them with
+    # one coalesced device-side copy (torch.complex) before returning.
+    real = torch.empty_like(abs)
+    imag = torch.empty_like(abs)
 
-    polar_kernel(abs, angle, out0=output[..., 0], out1=output[..., 1])
+    polar_kernel(abs, angle, out0=real, out1=imag)
 
-    return torch.view_as_complex(output)
+    return torch.complex(real, imag)

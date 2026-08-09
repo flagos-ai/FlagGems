@@ -249,10 +249,14 @@ def weight_norm_bwd_kernel_last(
 
 
 def heur_block_m_weight_norm_bwd_kernel_first(args):
+    if 1024 <= args["N"] <= 8192:
+        return 1
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))
 
 
 def heur_block_n_weight_norm_bwd_kernel_first(args):
+    if 1024 <= args["N"] <= 8192:
+        return triton.next_power_of_2(args["N"])
     return 1
 
 
@@ -314,6 +318,283 @@ def weight_norm_bwd_kernel_first(
     tl.store(g_grad + row_offset, g_grad_value, mask=row_mask)
 
 
+_WN_BWD_LARGE_N_TILE = 32768
+
+
+def _wn_bwd_tile_m(M, N):
+    """Largest power-of-two tile rows keeping TILE_M*N <= 8192 and TILE_M <= M.
+
+    Prefers a divisor of M (unmasked fast path); falls back to the largest
+    allowed tile (masked) when M is not divisible.
+    """
+    if N == 0:
+        return 1
+    cap = max(1, _WN_BWD_MULTI_MAX_LANES // N)
+    tile = 1
+    while tile * 2 <= cap and tile * 2 <= M:
+        tile *= 2
+    res = tile
+    while res > 1:
+        if M % res == 0:
+            return res
+        res //= 2
+    return max(1, tile)
+
+
+_WN_BWD_MULTI_MAX_LANES = 8192
+
+
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def _wn_bwd_multi_row_kernel(
+    v_grad,
+    g_grad,
+    w_grad,
+    v,
+    g,
+    norm,
+    M,
+    N: tl.constexpr,
+    TILE_M: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+    eps,
+):
+    pid = tl.program_id(0)
+    rows_c = pid * TILE_M + tl.arange(0, TILE_M)  # [TILE_M]
+    rows = rows_c[:, None]  # [TILE_M, 1]
+    cols = tl.arange(0, N)[None, :]  # [1, N]
+    offs = rows * N + cols  # [TILE_M, N]
+    if NEED_MASK:
+        rmask = rows_c < M
+        m2 = rmask[:, None]
+        wc = tl.load(w_grad + offs, mask=m2).to(tl.float32)
+        vv = tl.load(v + offs, mask=m2).to(tl.float32)
+    else:
+        wc = tl.load(w_grad + offs).to(tl.float32)
+        vv = tl.load(v + offs).to(tl.float32)
+    vw_sum = tl.sum(wc * vv, axis=1)[:, None]  # [TILE_M, 1]
+    if NEED_MASK:
+        rmask2 = rmask[:, None]
+        nrm = tl.load(norm + rows, mask=rmask2).to(tl.float32)
+        gv = tl.load(g + rows, mask=rmask2).to(tl.float32)
+    else:
+        nrm = tl.load(norm + rows).to(tl.float32)
+        gv = tl.load(g + rows).to(tl.float32)
+    nrm3 = nrm * nrm * nrm + eps
+    s2 = vw_sum / nrm3
+    one_n = 1.0 / (nrm + eps)
+    vg = gv * (wc * one_n - vv * s2)
+    gg = vw_sum * one_n
+    if NEED_MASK:
+        tl.store(g_grad + rows, gg, mask=rmask2)
+        tl.store(v_grad + offs, vg, mask=m2)
+    else:
+        tl.store(g_grad + rows, gg)
+        tl.store(v_grad + offs, vg)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def _wn_bwd_row1d_kernel(
+    v_grad, g_grad, w_grad, v, g, norm, N: tl.constexpr, eps
+):
+    rel = tl.arange(0, N)
+    base = tl.program_id(0) * N
+    wc = tl.load(w_grad + base + rel).to(tl.float32)
+    vv = tl.load(v + base + rel).to(tl.float32)
+    vw_sum = tl.sum(wc * vv, axis=0)
+    nrm = tl.load(norm + tl.program_id(0)).to(tl.float32)
+    gv = tl.load(g + tl.program_id(0)).to(tl.float32)
+    nrm3 = nrm * nrm * nrm + eps
+    one_n = 1.0 / (nrm + eps)
+    vg = gv * (wc * one_n - vv * (vw_sum / nrm3))
+    tl.store(g_grad + tl.program_id(0), vw_sum * one_n)
+    tl.store(v_grad + base + rel, vg)
+
+
+def _weight_norm_bwd_multi_row(v_grad, g_grad, w_grad, saved_v, saved_g, saved_norms, M, N):
+    eps = torch.finfo(torch.float32).tiny
+    n_pow2 = (N & (N - 1)) == 0
+    tile = _wn_bwd_tile_m(M, N)
+    if tile >= 2:
+        need_mask = (M % tile) != 0 or not n_pow2
+        grid = (triton.cdiv(M, tile),)
+        with torch_device_fn.device(saved_v.device):
+            _wn_bwd_multi_row_kernel[grid](
+                v_grad,
+                g_grad,
+                w_grad,
+                saved_v,
+                saved_g,
+                saved_norms,
+                M,
+                N,
+                tile,
+                need_mask,
+                eps,
+                num_warps=4,
+            )
+    else:
+        # 1-row program: correct for tile==1 and non-pow2 N (avoids the XPU
+        # 2D-tile non-pow2 layout bug and the 1-row 2D-tile lowering bug).
+        grid = (M,)
+        with torch_device_fn.device(saved_v.device):
+            _wn_bwd_row1d_kernel[grid](
+                v_grad, g_grad, w_grad, saved_v, saved_g, saved_norms, N, eps, num_warps=2
+            )
+
+
+@libentry()
+@triton.jit
+def _weight_norm_bwd_partial_dot_kernel(
+    partial_dots,
+    w,
+    v,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    NUM_CHUNKS: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid = ext.program_id(axis=0)
+    row = pid // NUM_CHUNKS
+    chunk = pid % NUM_CHUNKS
+    cols = chunk * BLOCK_N + tl.arange(0, BLOCK_N)
+    offsets = row * N + cols
+    if NEED_MASK:
+        mask = (row < M) & (cols < N)
+        dot = tl.sum(
+            tl.load(w + offsets, mask=mask).to(tl.float32)
+            * tl.load(v + offsets, mask=mask).to(tl.float32),
+            axis=0,
+        )
+    else:
+        dot = tl.sum(
+            tl.load(w + offsets).to(tl.float32)
+            * tl.load(v + offsets).to(tl.float32),
+            axis=0,
+        )
+    tl.store(partial_dots + pid, dot)
+
+
+@libentry()
+@triton.jit
+def _weight_norm_bwd_reduce_dot_kernel(
+    g_grad,
+    row_dots,
+    partial_dots,
+    norms,
+    M: tl.constexpr,
+    NUM_CHUNKS: tl.constexpr,
+    BLOCK_CHUNKS: tl.constexpr,
+    eps,
+):
+    row = ext.program_id(axis=0)
+    chunks = tl.arange(0, BLOCK_CHUNKS)
+    dot = tl.sum(
+        tl.load(partial_dots + row * NUM_CHUNKS + chunks, mask=chunks < NUM_CHUNKS),
+        axis=0,
+    )
+    norm = tl.load(norms + row).to(tl.float32)
+    tl.store(row_dots + row, dot)
+    tl.store(g_grad + row, dot / (norm + eps))
+
+
+@libentry()
+@triton.jit
+def _weight_norm_bwd_large_n_v_grad_kernel(
+    v_grad,
+    w,
+    v,
+    g,
+    norms,
+    row_dots,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+    eps,
+):
+    offsets = ext.program_id(axis=0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    rows = offsets // N
+    if NEED_MASK:
+        mask = offsets < M * N
+        w_value = tl.load(w + offsets, mask=mask).to(tl.float32)
+        v_value = tl.load(v + offsets, mask=mask).to(tl.float32)
+        g_value = tl.load(g + rows, mask=mask).to(tl.float32)
+        norm = tl.load(norms + rows, mask=mask).to(tl.float32)
+        dot = tl.load(row_dots + rows, mask=mask).to(tl.float32)
+        value = g_value * (
+            w_value / (norm + eps) - v_value * dot / (norm * norm * norm + eps)
+        )
+        tl.store(v_grad + offsets, value, mask=mask)
+    else:
+        w_value = tl.load(w + offsets).to(tl.float32)
+        v_value = tl.load(v + offsets).to(tl.float32)
+        g_value = tl.load(g + rows).to(tl.float32)
+        norm = tl.load(norms + rows).to(tl.float32)
+        dot = tl.load(row_dots + rows).to(tl.float32)
+        value = g_value * (
+            w_value / (norm + eps) - v_value * dot / (norm * norm * norm + eps)
+        )
+        tl.store(v_grad + offsets, value)
+
+
+def _weight_norm_bwd_large_n(
+    v_grad, g_grad, w_grad, saved_v, saved_g, saved_norms, M, N
+):
+    # N in (8192, 32768]: the 8192-chunk pipeline benches faster on XPU;
+    # larger N benefits from 32768 blocks (fewer launches, higher BW).
+    block_n = 8192 if N <= 32768 else _WN_BWD_LARGE_N_TILE
+    num_chunks = triton.cdiv(N, block_n)
+    partial_dots = torch.empty(
+        (M, num_chunks), device=saved_v.device, dtype=torch.float32
+    )
+    row_dots = torch.empty(M, device=saved_v.device, dtype=torch.float32)
+    eps = torch.finfo(torch.float32).tiny
+    need_mask_p = (N % block_n) != 0
+    v_block = 8192 if N <= 32768 else _WN_BWD_LARGE_N_TILE
+    need_mask_v = (M * N) % v_block != 0
+    launch_kw = {"buffer_size_limit": 2048} if block_n == 32768 else {}
+    with torch_device_fn.device(saved_v.device):
+        _weight_norm_bwd_partial_dot_kernel[(M * num_chunks,)](
+            partial_dots,
+            w_grad,
+            saved_v,
+            M,
+            N,
+            num_chunks,
+            BLOCK_N=block_n,
+            NEED_MASK=need_mask_p,
+            **launch_kw,
+        )
+        _weight_norm_bwd_reduce_dot_kernel[(M,)](
+            g_grad,
+            row_dots,
+            partial_dots,
+            saved_norms,
+            M,
+            num_chunks,
+            triton.next_power_of_2(num_chunks),
+            eps,
+        )
+        _weight_norm_bwd_large_n_v_grad_kernel[
+            (triton.cdiv(M * N, v_block),)
+        ](
+            v_grad,
+            w_grad,
+            saved_v,
+            saved_g,
+            saved_norms,
+            row_dots,
+            M,
+            N,
+            BLOCK_SIZE=v_block,
+            NEED_MASK=need_mask_v,
+            eps=eps,
+        )
+
+
 def weight_norm_interface(v, g, dim=0):
     logger.debug("GEMS_KUNLUNXIN WEIGHT_NORM_INTERFACE")
     v = v.contiguous()
@@ -347,19 +628,43 @@ def weight_norm_interface_backward(w_grad, saved_v, saved_g, saved_norms, dim):
     if dim == 0:
         M = saved_v.shape[0]
         N = math.prod(saved_v.shape[1:])
-        grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
-        with torch_device_fn.device(saved_v.device):
-            weight_norm_bwd_kernel_first[grid](
-                v_grad,
-                g_grad,
-                w_grad,
-                saved_v,
-                saved_g,
-                saved_norms,
-                M,
-                N,
-                eps=torch.finfo(torch.float32).tiny,
+        if N > _WN_BWD_MULTI_MAX_LANES and saved_v.dtype == torch.float32:
+            _weight_norm_bwd_large_n(
+                v_grad, g_grad, w_grad, saved_v, saved_g, saved_norms, M, N
             )
+        elif N == 1:
+            # keep the dedicated scalar-column path (fast for tall-narrow)
+            grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
+            with torch_device_fn.device(saved_v.device):
+                weight_norm_bwd_kernel_first[grid](
+                    v_grad,
+                    g_grad,
+                    w_grad,
+                    saved_v,
+                    saved_g,
+                    saved_norms,
+                    M,
+                    N,
+                    eps=torch.finfo(torch.float32).tiny,
+                )
+        elif N <= _WN_BWD_MULTI_MAX_LANES:
+            _weight_norm_bwd_multi_row(
+                v_grad, g_grad, w_grad, saved_v, saved_g, saved_norms, M, N
+            )
+        else:
+            grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
+            with torch_device_fn.device(saved_v.device):
+                weight_norm_bwd_kernel_first[grid](
+                    v_grad,
+                    g_grad,
+                    w_grad,
+                    saved_v,
+                    saved_g,
+                    saved_norms,
+                    M,
+                    N,
+                    eps=torch.finfo(torch.float32).tiny,
+                )
     elif dim == saved_v.ndim - 1:
         M = math.prod(saved_v.shape[:dim])
         N = saved_v.shape[dim]

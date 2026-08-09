@@ -95,8 +95,8 @@ def index_add_heur_block_m(args):
     # with M, so a large M produces a giant [BLOCK_M, BLOCK_N] constexpr tile that
     # ConvertTritonXPUToLLVM materializes per element -> IR explosion (29MB/148MB
     # in ir-index_add*-devN.log) and slow launches. Cap BLOCK_M to keep the tile
-    # bounded (small M stays under the cap, e.g. M=64 -> 8).
-    return min(64, triton.next_power_of_2(triton.cdiv(args["M"], 12)))
+    # bounded and increase program-level parallelism for wide unique-index rows.
+    return min(8, triton.next_power_of_2(triton.cdiv(args["M"], 12)))
 
 
 def index_add_heur_block_n(args):

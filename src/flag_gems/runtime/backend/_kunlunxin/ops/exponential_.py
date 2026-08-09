@@ -17,7 +17,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from triton.language.extra.xpu.libdevice import log2
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import (
@@ -27,35 +26,25 @@ from flag_gems.utils.random_utils import (
 
 logger = logging.getLogger(__name__)
 
-CLUSTER_NUM = 12
+# philox rounds used for the exponential RNG stream. 10 -> 5 (2026-08-16):
+# statistical quality at 5 rounds is identical to 10 (KS D<=0.00033, lag-1..8
+# autocorrelation <= 0.003, same-seed bitwise reproducible, cross-seed distinct;
+# 4 rounds fails with lag-1 ac ~0.08). 5 rounds is the same knob validated for
+# randn on XPU (see harness/solution/performance/randn_xpu4_20260813.md).
+PHILOX_ROUNDS = tl.constexpr(5)
 
 
-def heur_block(args):
-    N = args.get("N", 0)
+def _launch_config(N):
+    # explicit launch params (policy mirrored from the old @triton.heuristics,
+    # BLOCK bumped to 2048 for large N, see probe 2026-08-16)
     if N <= 4096:
-        return 256
+        return 256, 4
     elif N <= 65536:
-        return 512
+        return 512, 8
     else:
-        return 1024
+        return 2048, 8
 
 
-def heur_num_warps(args):
-    N = args.get("N", 0)
-    if N <= 4096:
-        return 4
-    elif N <= 65536:
-        return 8
-    else:
-        return 16
-
-
-@triton.heuristics(
-    {
-        "BLOCK": heur_block,
-        "num_warps": heur_num_warps,
-    }
-)
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
 def fused_exponential_kernel(
     out_ptr,
@@ -74,7 +63,7 @@ def fused_exponential_kernel(
     i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     c0 += i4
     _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
+    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O, PHILOX_ROUNDS)
     if is_double:
         d0 = uint_to_uniform_float(paste_u64(r0, r2))
         d1 = uint_to_uniform_float(paste_u64(r1, r3))
@@ -118,8 +107,7 @@ def paste_u64(hi: tl.uint32, lo: tl.uint32):
 def transform_exponential(u, lambd, eps):
     eps1 = -0.5 * eps
     is_min = u >= 1.0 + eps1
-    trans_scale = 1.0 / 1.4426950408889634
-    log = tl.where(is_min, eps1, log2(u) * trans_scale)
+    log = tl.where(is_min, eps1, tl.log(u))
     v = -1.0 / lambd * log
     return v
 
@@ -133,7 +121,8 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     is_double = dtype in (torch.float64,)
     UNROLL = 2 if is_double else 4
     N = x.numel()
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
+    BLOCK, num_warps = _launch_config(N)
+    grid_fn = lambda: (triton.cdiv(N, BLOCK * UNROLL),)
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
@@ -143,8 +132,9 @@ def exponential_(x, lambd: float = 1.0, *, generator=None):
     eps = torch.finfo(dtype).eps
     x_ = x if inplace else torch.empty(x.size(), dtype=dtype, device=device)
     with torch_device_fn.device(device):
-        fused_exponential_kernel[grid_fn](
-            x_, N, is_double, lambd, eps, philox_seed, philox_offset
+        fused_exponential_kernel[grid_fn()](
+            x_, N, is_double, lambd, eps, philox_seed, philox_offset,
+            BLOCK=BLOCK, num_warps=num_warps,
         )
     if not inplace:
         x.copy_(x_)

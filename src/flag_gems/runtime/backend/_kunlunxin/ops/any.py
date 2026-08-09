@@ -133,6 +133,38 @@ def max_kernel_dim(
 
 @libentry()
 @triton.jit
+def any_word_stage1(in_ptr, mid, n_words, BLOCK_SIZE: tl.constexpr):
+    """Stage 1 (int32-word bitmap path) of the global-any reduction.
+
+    Reads the input as raw int32 words (valid whenever element_size divides 4:
+    word != 0  <=>  at least one element in that word is nonzero, bit-exact).
+    Maps the word to 0 (zero word) / INT32_MAX (nonzero word) with an integer
+    select, then reduces each chunk with an int32 max -> INT32_MAX iff the
+    chunk contains any nonzero element. Integer-only pipeline (no fcmp->i1
+    per-element converts and no i1 OR-tree), which is markedly faster on XPU.
+    Masked tail lanes load `other=0` (a zero word) and cannot create a false
+    positive. `mid` receives INT32_MAX / 0 per chunk."""
+    pid = ext.program_id(0)
+    offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    w = tl.load(in_ptr + offs, mask=offs < n_words, other=0)
+    m = tl.max(tl.where(w == 0, 0, 2147483647), axis=0)
+    tl.store(mid + pid, m)
+
+
+@libentry()
+@triton.jit
+def any_word_stage2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
+    """Stage 2: single program reduces the per-chunk int32 flags; masked
+    lanes load 0 (matches the "zero chunk" encoding) and cannot flip the
+    result. Outputs boolean (mx == INT32_MAX)."""
+    offs = tl.arange(0, BLOCK_MID)
+    m = tl.load(mid + offs, mask=offs < MID_SIZE, other=0)
+    mx = tl.max(m, axis=0)
+    tl.store(out, mx == 2147483647)
+
+
+@libentry()
+@triton.jit
 def any_kernel_1(
     inp,
     mid,
@@ -237,12 +269,43 @@ def _any_dims_reduce(inp, M, N, out_shape):
 def any(inp):
     logger.debug("GEMS_KUNLUNXIN ANY")
     n_elements = inp.numel()
-    block_size = get_block_size_1d(n_elements, inp.element_size())
+    elem = inp.element_size()
+    bytes_total = n_elements * elem
+
+    # Faster int32-word bitmap path: valid when the flat byte count is a
+    # multiple of 4 and the input is contiguous (flat view without copies).
+    # word != 0 <=> some element in the word is nonzero holds bit-exactly for
+    # any element size dividing 4 (fp16/bf16/fp32/bool/int*...), including
+    # NaN (nonzero bits) and the pre-existing +/-0.0 handling of the old
+    # `!= 0` element compare (a -0.0 bit pattern is nonzero here as well).
+    if inp.is_contiguous() and bytes_total % 4 == 0:
+        view = inp.reshape(-1).view(torch.uint8).view(torch.int32)
+        n_words = view.numel()
+        block_size = get_block_size_1d(n_words, 4)
+        mid_size = triton.cdiv(n_words, block_size)
+        block_mid = triton.next_power_of_2(mid_size)
+        # empty_strided (not registered by gems) -> native allocator,
+        # avoids the per-call gems empty tax on the mid/out buffers.
+        mid = torch.empty_strided((mid_size,), (1,), dtype=torch.int32, device=inp.device)
+        out = torch.empty_strided((), (), dtype=torch.bool, device=inp.device)
+        with torch_device_fn.device(inp.device):
+            any_word_stage1[(mid_size, 1)](
+                view, mid, n_words, block_size, buffer_size_limit=2048
+            )
+            if mid_size == 1:
+                return (mid == 2147483647).reshape([])
+            any_word_stage2[(1, 1)](
+                mid, out, mid_size, block_mid, buffer_size_limit=2048
+            )
+        return out
+
+    # generic elementwise two-stage path (any byte alignment / layout)
+    block_size = get_block_size_1d(n_elements, elem)
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
-    out = torch.empty([], dtype=torch.bool, device=inp.device)
+    mid = torch.empty_strided((mid_size,), (1,), dtype=torch.bool, device=inp.device)
+    out = torch.empty_strided((), (), dtype=torch.bool, device=inp.device)
     with torch_device_fn.device(inp.device):
         any_kernel_1[(mid_size, 1)](
             inp, mid, n_elements, block_size, buffer_size_limit=2048

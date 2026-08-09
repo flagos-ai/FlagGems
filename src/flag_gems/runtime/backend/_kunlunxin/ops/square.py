@@ -10,22 +10,44 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-MAX_BLOCK = 8192
-# NOTE: MIN_BLOCK must stay >= 2048. On XPU the fp32->bf16 down-cast in the
-# store uses round-to-nearest only when the compiled tile is >= 2048 lanes;
-# with a 512/1024 tile the compiler emits a truncating cast that disagrees
-# with torch.square on ~43% of bf16 elements (tests use exact bit-match).
+# NOTE: every tile must be >= 2048 lanes for the bf16 store path. On XPU the
+# fp32->bf16 down-cast uses round-to-nearest only when the compiled tile is
+# >= 2048 lanes; with a 512/1024 tile the compiler emits a truncating cast
+# that disagrees with torch.square on ~43% of bf16 elements (tests use exact
+# bit-match). The smallest bucket is 2048, so this always holds.
 MIN_BLOCK = 2048
-NUM_CLUSTERS = 12
+MAX_BLOCK = 131072
+# Compile-time knobs that matter on XPU: bigger DMA buffer + unrolled vector
+# loads keep the memory pipeline saturated; async memory is disabled because
+# the launch/completion of async copies dominates for memory-bound kernels.
+UNROLL_NUM = 16
+BUFFER_SIZE_LIMIT = 8192
+IS_CLOSE_MEMORY_ASYNC = False
 
 
 def _pick_block(n_elements):
-    # Bucket the tile to a power of two in [MIN_BLOCK, MAX_BLOCK] so the kernel
-    # compiles at most ~3 times total (no per-shape recompilation / IR
-    # explosion) while still splitting small/medium tensors across the 12 XPU
-    # clusters instead of running on 1-2 programs.
-    target = triton.next_power_of_2(max(1, triton.cdiv(n_elements, NUM_CLUSTERS)))
-    return max(MIN_BLOCK, min(MAX_BLOCK, target))
+    # Bucket the tile into one of 3 unmasked sizes + 1 masked fallback so the
+    # kernel compiles at most ~4 times total (no per-shape recompilation / IR
+    # explosion). Two rules:
+    #  1. When n_elements divides the tile exactly the kernel runs WITHOUT a
+    #     mask. A (runtime) always-true mask forces the slow masked memory
+    #     path on XPU (~1.8-2.4x penalty measured for fp16/bf16, ~2x for
+    #     fp32 on 16M elements) even though the condition is trivially true.
+    #  2. Big tiles (up to 131072) are better than small ones for
+    #     bandwidth-bound flat copies: grid = n/tile stays well above the 12
+    #     XPU clusters while each program streams a large contiguous chunk.
+    #     The multi-program launch floor (~0.006ms) still bounds small tensors.
+    if n_elements >= 1_048_576 and n_elements % MAX_BLOCK == 0:
+        return MAX_BLOCK, 32, False
+    if n_elements >= 262_144 and n_elements % 32768 == 0:
+        return 32768, 8, False
+    if n_elements >= 16384 and n_elements % 16384 == 0:
+        return 16384, 8, False
+    if n_elements <= 65536:
+        # Small tensors: a light single-block tile keeps launch cheap (~6us
+        # floor) instead of spawning one heavyweight 16384-lane program.
+        return 2048, 4, True
+    return 16384, 8, True
 
 
 @libentry()
@@ -47,14 +69,40 @@ def square_kernel(
     tl.store(out_ptr + offset, out.to(out_ptr.dtype.element_ty), mask=mask)
 
 
+@libentry()
+@triton.jit
+def square_kernel_unmasked(
+    x_ptr,
+    out_ptr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    x = tl.load(x_ptr + offset).to(tl.float32)
+    out = x * x
+    tl.store(out_ptr + offset, out.to(out_ptr.dtype.element_ty))
+
+
 def _launch(x, out):
     n_elements = x.numel()
     if n_elements == 0:
         return
-    block_size = _pick_block(n_elements)
-    grid = (triton.cdiv(n_elements, block_size),)
+    block_size, num_warps, masked = _pick_block(n_elements)
     with torch_device_fn.device(x.device):
-        square_kernel[grid](x, out, n_elements, BLOCK_SIZE=block_size)
+        if masked:
+            grid = (triton.cdiv(n_elements, block_size),)
+            square_kernel[grid](
+                x, out, n_elements, BLOCK_SIZE=block_size, num_warps=num_warps,
+                unroll_num=UNROLL_NUM, buffer_size_limit=BUFFER_SIZE_LIMIT,
+                isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
+            )
+        else:
+            grid = (n_elements // block_size,)
+            square_kernel_unmasked[grid](
+                x, out, BLOCK_SIZE=block_size, num_warps=num_warps,
+                unroll_num=UNROLL_NUM, buffer_size_limit=BUFFER_SIZE_LIMIT,
+                isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
+            )
 
 
 def square(A):
