@@ -102,6 +102,28 @@ def _meshgrid_kernel_2d_small(
 
 
 @triton.jit
+def _meshgrid_kernel_2d_ultra_small(
+    out0_ptr,
+    out1_ptr,
+    in0_ptr,
+    in1_ptr,
+    size0,
+    size1,
+):
+    offsets = tl.arange(0, size0 * size1)
+    mask = offsets < (size0 * size1)
+
+    row_idx = offsets // size1
+    col_idx = offsets - row_idx * size1
+
+    vals0 = tl.load(in0_ptr + row_idx, mask=mask)
+    vals1 = tl.load(in1_ptr + col_idx, mask=mask)
+
+    tl.store(out0_ptr + offsets, vals0, mask=mask)
+    tl.store(out1_ptr + offsets, vals1, mask=mask)
+
+
+@triton.jit
 def _meshgrid_kernel_3d(
     out0_ptr,
     out1_ptr,
@@ -272,48 +294,83 @@ def _meshgrid_kernel_4d_strided(
     tl.store(out3_ptr + out_offset, val3, mask=mask)
 
 
-def meshgrid(
-    tensors: List[torch.Tensor], indexing: str = "ij"
-) -> Tuple[torch.Tensor, ...]:
-    if not tensors:
-        raise ValueError("tensors must be a non-empty list or tuple")
+@triton.jit
+def _meshgrid_kernel_nd(
+    out_ptrs_ptr,
+    in_ptrs_ptr,
+    sizes_ptr,
+    ndim: tl.constexpr,
+    num_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < num_elements
 
-    rank = len(tensors)
-    if rank > 4:
-        raise NotImplementedError("Currently only supports up to 4 dimensions")
+    out_ptrs = tl.load(out_ptrs_ptr + tl.arange(0, ndim))
+    in_ptrs = tl.load(in_ptrs_ptr + tl.arange(0, ndim))
+    sizes = tl.load(sizes_ptr + tl.arange(0, ndim))
 
-    for i, t in enumerate(tensors):
-        if not isinstance(t, torch.Tensor):
-            raise TypeError(f"tensors[{i}] must be a torch.Tensor")
-        if t.dim() != 1:
-            raise ValueError(f"tensors[{i}] must be 1D, got shape {t.shape}")
+    strides = tl.zeros([ndim], dtype=tl.int64)
+    stride = 1
+    for i in range(ndim - 1, -1, -1):
+        strides[i] = stride
+        stride = stride * sizes[i]
 
-    if indexing not in ["ij", "xy"]:
-        raise ValueError(f"indexing must be 'ij' or 'xy', got {indexing}")
+    idxs = tl.zeros([ndim], dtype=tl.int64)
+    remaining = offsets
+    for i in range(ndim):
+        idxs[i] = remaining // strides[i]
+        remaining = remaining - idxs[i] * strides[i]
 
-    device = tensors[0].device
-
-    if device.type != "cuda":
-        raise RuntimeError(f"All tensors must be on CUDA devices, got {device}")
-
-    for t in tensors:
-        if t.device.type != "cuda":
-            raise RuntimeError(f"All tensors must be on CUDA devices, got {t.device}")
-
-    if rank == 1:
-        return tensors
-
-    if rank == 2:
-        return _meshgrid_2d(tensors, indexing)
-    elif rank == 3:
-        return _meshgrid_3d(tensors, indexing)
-    elif rank == 4:
-        return _meshgrid_4d(tensors, indexing)
-    else:
-        raise ValueError(f"Unsupported rank: {rank}")
+    for i in range(ndim):
+        val = tl.load(in_ptrs[i] + idxs[i], mask=mask)
+        tl.store(out_ptrs[i] + offsets, val, mask=mask)
 
 
-def _meshgrid_2d(tensors, indexing):
+@triton.jit
+def _meshgrid_kernel_nd_strided(
+    out_ptrs_ptr,
+    in_ptrs_ptr,
+    sizes_ptr,
+    out_strides_ptr,
+    ndim: tl.constexpr,
+    num_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < num_elements
+
+    out_ptrs = tl.load(out_ptrs_ptr + tl.arange(0, ndim))
+    in_ptrs = tl.load(in_ptrs_ptr + tl.arange(0, ndim))
+    sizes = tl.load(sizes_ptr + tl.arange(0, ndim))
+    out_strides = tl.load(out_strides_ptr + tl.arange(0, ndim))
+
+    strides = tl.zeros([ndim], dtype=tl.int64)
+    stride = 1
+    for i in range(ndim - 1, -1, -1):
+        strides[i] = stride
+        stride = stride * sizes[i]
+
+    idxs = tl.zeros([ndim], dtype=tl.int64)
+    remaining = offsets
+    for i in range(ndim):
+        idxs[i] = remaining // strides[i]
+        remaining = remaining - idxs[i] * strides[i]
+
+    out_offset = 0
+    for i in range(ndim):
+        out_offset = out_offset + idxs[i] * out_strides[i]
+
+    for i in range(ndim):
+        val = tl.load(in_ptrs[i] + idxs[i], mask=mask)
+        tl.store(out_ptrs[i] + out_offset, val, mask=mask)
+
+
+def _meshgrid_2d_cuda(tensors, indexing):
     x, y = tensors
     size0, size1 = x.size(0), y.size(0)
 
@@ -331,7 +388,11 @@ def _meshgrid_2d(tensors, indexing):
 
     total_elements = actual_size0 * actual_size1
 
-    if total_elements <= 16384:
+    if total_elements <= 64:
+        _meshgrid_kernel_2d_ultra_small[(1,)](
+            out0, out1, in0, in1, actual_size0, actual_size1
+        )
+    elif total_elements <= 16384:
         if total_elements <= 4096:
             BLOCK_SIZE = 16
         else:
@@ -378,7 +439,7 @@ def _meshgrid_2d(tensors, indexing):
     return out0, out1
 
 
-def _meshgrid_3d(tensors, indexing):
+def _meshgrid_3d_cuda(tensors, indexing):
     x, y, z = tensors
 
     if indexing == "xy":
@@ -445,7 +506,7 @@ def _meshgrid_3d(tensors, indexing):
     return out0, out1, out2
 
 
-def _meshgrid_4d(tensors, indexing):
+def _meshgrid_4d_cuda(tensors, indexing):
     x, y, z, w = tensors
 
     if indexing == "xy":
@@ -518,6 +579,110 @@ def _meshgrid_4d(tensors, indexing):
     if indexing == "xy":
         return out1, out0, out2, out3
     return out0, out1, out2, out3
+
+
+def _meshgrid_nd_cuda(tensors, indexing):
+    ndim = len(tensors)
+
+    if indexing == "xy":
+        tensors_ordered = list(tensors)
+        tensors_ordered[0], tensors_ordered[1] = tensors_ordered[1], tensors_ordered[0]
+        sizes = [t.size(0) for t in tensors_ordered]
+        out_shape = list(sizes)
+        out_shape[0], out_shape[1] = out_shape[1], out_shape[0]
+        in_tensors = tensors_ordered
+    else:
+        sizes = [t.size(0) for t in tensors]
+        out_shape = sizes
+        in_tensors = tensors
+
+    out_tensors = []
+    for i, t in enumerate(in_tensors):
+        out_tensors.append(torch.empty(out_shape, device=t.device, dtype=t.dtype))
+
+    num_elements = 1
+    for s in sizes:
+        num_elements *= s
+
+    if num_elements <= 4096:
+        BLOCK_SIZE = 64
+    elif num_elements > 4 * 1024 * 1024:
+        BLOCK_SIZE = 1024
+    elif num_elements > 1024 * 1024:
+        BLOCK_SIZE = 512
+    else:
+        BLOCK_SIZE = 256
+
+    grid = (triton.cdiv(num_elements, BLOCK_SIZE),)
+
+    all_contiguous = all(t.is_contiguous() for t in in_tensors)
+
+    out_ptrs = torch.tensor(
+        [t.data_ptr() for t in out_tensors], device="cuda", dtype=torch.int64
+    )
+    in_ptrs = torch.tensor(
+        [t.data_ptr() for t in in_tensors], device="cuda", dtype=torch.int64
+    )
+    sizes_tensor = torch.tensor(sizes, device="cuda", dtype=torch.int64)
+
+    if all_contiguous:
+        _meshgrid_kernel_nd[grid](
+            out_ptrs,
+            in_ptrs,
+            sizes_tensor,
+            ndim,
+            num_elements,
+            BLOCK_SIZE,
+        )
+    else:
+        out_strides = torch.tensor(
+            out_tensors[0].stride(), device="cuda", dtype=torch.int64
+        )
+        _meshgrid_kernel_nd_strided[grid](
+            out_ptrs,
+            in_ptrs,
+            sizes_tensor,
+            out_strides,
+            ndim,
+            num_elements,
+            BLOCK_SIZE,
+        )
+
+    if indexing == "xy":
+        out_tensors[0], out_tensors[1] = out_tensors[1], out_tensors[0]
+
+    return tuple(out_tensors)
+
+
+def meshgrid(
+    tensors: List[torch.Tensor], indexing: str = "ij"
+) -> Tuple[torch.Tensor, ...]:
+    if not tensors:
+        raise ValueError("tensors must be a non-empty list or tuple")
+
+    rank = len(tensors)
+    if rank > 8:
+        raise NotImplementedError("Currently only supports up to 8 dimensions")
+
+    for i, t in enumerate(tensors):
+        if not isinstance(t, torch.Tensor):
+            raise TypeError(f"tensors[{i}] must be a torch.Tensor")
+        if t.dim() != 1:
+            raise ValueError(f"tensors[{i}] must be 1D, got shape {t.shape}")
+
+    if indexing not in ["ij", "xy"]:
+        raise ValueError(f"indexing must be 'ij' or 'xy', got {indexing}")
+
+    if rank == 1:
+        return tuple(tensors)
+    elif rank == 2:
+        return _meshgrid_2d_cuda(tensors, indexing)
+    elif rank == 3:
+        return _meshgrid_3d_cuda(tensors, indexing)
+    elif rank == 4:
+        return _meshgrid_4d_cuda(tensors, indexing)
+    else:
+        return _meshgrid_nd_cuda(tensors, indexing)
 
 
 __all__ = ["meshgrid"]
