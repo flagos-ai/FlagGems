@@ -26,6 +26,16 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start  # noqa: F401
 from .argmax import argmax
 from .argmin import argmin
+
+# GCU300-specific flash attention: int32-indexed paged-KV flash kernel
+# (generic flash_varlen_fwd_kernel casts page indices to tl.int64, which the
+# GCU300 make_gcuir PassManager rejects).  Re-exported so SpecOpRegistrar
+# overrides flag_gems.flash_attn_varlen_func with the int32 variant.
+from .attention import (
+    flash_attention_forward,
+    flash_attn_varlen_func,
+    flash_attn_varlen_opt_func,
+)
 from .bincount import bincount
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -245,6 +255,9 @@ from .zeros_like import zeros_like
 __all__ = [
     "mean_dim",
     "mean",
+    "flash_attention_forward",
+    "flash_attn_varlen_func",
+    "flash_attn_varlen_opt_func",
     "zeros",
     "zero_",
     "scatter",
