@@ -66,7 +66,7 @@ class SolveTriBenchmark(base.Benchmark):
 
 
 @pytest.mark.linalg_solve_triangular
-def test_linalg_solve_triangular(monkeypatch):
+def test_linalg_solve_triangular():
     bench = SolveTriBenchmark(
         op_name="linalg_solve_triangular",
         torch_op=torch.linalg.solve_triangular,
@@ -91,7 +91,7 @@ class SolveTriOutBenchmark(base.Benchmark):
 
 
 @pytest.mark.linalg_solve_triangular_out
-def test_linalg_solve_triangular_out(monkeypatch):
+def test_linalg_solve_triangular_out():
     bench = SolveTriOutBenchmark(
         op_name="linalg_solve_triangular_out",
         torch_op=torch.linalg.solve_triangular,
