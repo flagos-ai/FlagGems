@@ -692,6 +692,25 @@ def _dequant_fp4_bf16_fold(b, cs0, cs1, cs2, cs3):
 
 
 @triton.jit
+def _concat_k(bs, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr, SWAP_AB: tl.constexpr):
+    # Concat the 8 dequant outputs along K; permute puts the sub-tile index ahead
+    # of the in-tile K coord so the reshape flattens to k = K_PACK * j + kp.
+    j0 = tl.join(bs[0], bs[1])
+    j1 = tl.join(bs[2], bs[3])
+    j2 = tl.join(bs[4], bs[5])
+    j3 = tl.join(bs[6], bs[7])
+    p0 = tl.join(j0, j1)
+    p1 = tl.join(j2, j3)
+    q = tl.join(p0, p1)
+    if SWAP_AB:
+        # bs[j] is (BLOCK_N, K_PACK) -> (BLOCK_N, 2, 2, 2, K_PACK) -> (BLOCK_N, BLOCK_K)
+        return tl.reshape(tl.permute(q, (0, 4, 3, 2, 1)), (BLOCK_N, BLOCK_K))
+    else:
+        # bs[j] is (K_PACK, BLOCK_N) -> (2, 2, 2, K_PACK, BLOCK_N) -> (BLOCK_K, BLOCK_N)
+        return tl.reshape(tl.permute(q, (4, 3, 2, 0, 1)), (BLOCK_K, BLOCK_N))
+
+
+@triton.jit
 def _dequant_fp4_fp16(b, s0, s1, s2, s3):
     x1, x2, x3, x4, x5, x6, x7, x8 = tl.inline_asm_elementwise(
         asm="""
@@ -904,7 +923,6 @@ def _w4a16_moe_gemm_kernel(
         return
 
     offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)) % N
-    offs_ak_pack = tl.arange(0, BLOCK_SIZE_K_PACK)
     offs_bk = tl.arange(0, BLOCK_SIZE_K_PACK)
 
     if SWAP_AB:
@@ -939,20 +957,18 @@ def _w4a16_moe_gemm_kernel(
             bs = _dequant_int4_bf16(b_packed, scale_bc)
 
         k_logical_base = k * BLOCK_SIZE_K
-        for j in tl.static_range(8):
-            k_off = k_logical_base + j * BLOCK_SIZE_K_PACK
-            if SWAP_AB:
-                a_j_ptrs = a_base + (k_off + offs_ak_pack[:, None]) * stride_ak
-                a_j = tl.load(
-                    a_j_ptrs, mask=token_mask[None, :], other=0.0
-                )  # (K_PACK, M)
-                accumulator = tl.dot(bs[j], a_j, acc=accumulator)  # (N, M)
-            else:
-                a_j_ptrs = a_base + (k_off + offs_ak_pack[None, :]) * stride_ak
-                a_j = tl.load(
-                    a_j_ptrs, mask=token_mask[:, None], other=0.0
-                )  # (M, K_PACK)
-                accumulator = tl.dot(a_j, bs[j], acc=accumulator)  # (M, N)
+        # One mma over the whole K tile; the activation is loaded once as a
+        # full tile instead of once per sub-tile.
+        bs_full = _concat_k(bs, BLOCK_SIZE_N, BLOCK_SIZE_K, SWAP_AB)
+        offs_ak_full = tl.arange(0, BLOCK_SIZE_K)
+        if SWAP_AB:
+            a_full_ptrs = a_base + (k_logical_base + offs_ak_full[:, None]) * stride_ak
+            a_full = tl.load(a_full_ptrs, mask=token_mask[None, :], other=0.0)  # (K, M)
+            accumulator = tl.dot(bs_full, a_full, acc=accumulator)  # (N, M)
+        else:
+            a_full_ptrs = a_base + (k_logical_base + offs_ak_full[None, :]) * stride_ak
+            a_full = tl.load(a_full_ptrs, mask=token_mask[:, None], other=0.0)  # (M, K)
+            accumulator = tl.dot(a_full, bs_full, acc=accumulator)  # (M, N)
 
         b_ptrs += BLOCK_SIZE_K_PACK * stride_bk
 
@@ -1080,7 +1096,6 @@ def _w4a16_moe_gemm_silu_kernel(
 
     offs_bn_gate = offs_cn % N
     offs_bn_up = offs_bn_gate + N
-    offs_ak_pack = tl.arange(0, BLOCK_SIZE_K_PACK)
     offs_bk = tl.arange(0, BLOCK_SIZE_K_PACK)
 
     if SWAP_AB:
@@ -1136,18 +1151,21 @@ def _w4a16_moe_gemm_silu_kernel(
             bs_up = _dequant_int4_bf16(b_packed_up, scale_up_bc)
 
         k_logical_base = k * BLOCK_SIZE_K
-        for j in tl.static_range(8):
-            k_off = k_logical_base + j * BLOCK_SIZE_K_PACK
-            if SWAP_AB:
-                a_j_ptrs = a_base + (k_off + offs_ak_pack[:, None]) * stride_ak
-                a_j = tl.load(a_j_ptrs, mask=token_mask[None, :], other=0.0)
-                acc_gate = tl.dot(bs_gate[j], a_j, acc=acc_gate)
-                acc_up = tl.dot(bs_up[j], a_j, acc=acc_up)
-            else:
-                a_j_ptrs = a_base + (k_off + offs_ak_pack[None, :]) * stride_ak
-                a_j = tl.load(a_j_ptrs, mask=token_mask[:, None], other=0.0)
-                acc_gate = tl.dot(a_j, bs_gate[j], acc=acc_gate)
-                acc_up = tl.dot(a_j, bs_up[j], acc=acc_up)
+        # gate and up each get one mma; the activation is loaded once and
+        # shared by both.
+        bs_gate_full = _concat_k(bs_gate, BLOCK_SIZE_N, BLOCK_SIZE_K, SWAP_AB)
+        bs_up_full = _concat_k(bs_up, BLOCK_SIZE_N, BLOCK_SIZE_K, SWAP_AB)
+        offs_ak_full = tl.arange(0, BLOCK_SIZE_K)
+        if SWAP_AB:
+            a_full_ptrs = a_base + (k_logical_base + offs_ak_full[:, None]) * stride_ak
+            a_full = tl.load(a_full_ptrs, mask=token_mask[None, :], other=0.0)
+            acc_gate = tl.dot(bs_gate_full, a_full, acc=acc_gate)
+            acc_up = tl.dot(bs_up_full, a_full, acc=acc_up)
+        else:
+            a_full_ptrs = a_base + (k_logical_base + offs_ak_full[None, :]) * stride_ak
+            a_full = tl.load(a_full_ptrs, mask=token_mask[:, None], other=0.0)
+            acc_gate = tl.dot(a_full, bs_gate_full, acc=acc_gate)
+            acc_up = tl.dot(a_full, bs_up_full, acc=acc_up)
 
         b_ptrs_gate += BLOCK_SIZE_K_PACK * stride_bk
         b_ptrs_up += BLOCK_SIZE_K_PACK * stride_bk
@@ -1560,7 +1578,6 @@ def _mxfp4_moe_gemm_kernel(
         return
 
     offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)) % N
-    offs_ak_pack = tl.arange(0, BLOCK_SIZE_K_PACK)
     offs_bk = tl.arange(0, BLOCK_SIZE_K_PACK)
 
     if SWAP_AB:
@@ -1605,16 +1622,18 @@ def _mxfp4_moe_gemm_kernel(
             bs = _dequant_fp4_bf16(b_packed, s0, s1, s2, s3)
 
         k_logical_base = k * BLOCK_SIZE_K
-        for j in tl.static_range(8):
-            k_off = k_logical_base + j * BLOCK_SIZE_K_PACK
-            if SWAP_AB:
-                a_j_ptrs = a_base + (k_off + offs_ak_pack[:, None]) * stride_ak
-                a_j = tl.load(a_j_ptrs, mask=token_mask[None, :], other=0.0)
-                accumulator = tl.dot(bs[j], a_j, acc=accumulator)
-            else:
-                a_j_ptrs = a_base + (k_off + offs_ak_pack[None, :]) * stride_ak
-                a_j = tl.load(a_j_ptrs, mask=token_mask[:, None], other=0.0)
-                accumulator = tl.dot(a_j, bs[j], acc=accumulator)
+        # One mma over the whole K tile; the activation is loaded once as a
+        # full tile instead of once per sub-tile.
+        bs_full = _concat_k(bs, BLOCK_SIZE_N, BLOCK_SIZE_K, SWAP_AB)
+        offs_ak_full = tl.arange(0, BLOCK_SIZE_K)
+        if SWAP_AB:
+            a_full_ptrs = a_base + (k_logical_base + offs_ak_full[:, None]) * stride_ak
+            a_full = tl.load(a_full_ptrs, mask=token_mask[None, :], other=0.0)  # (K, M)
+            accumulator = tl.dot(bs_full, a_full, acc=accumulator)  # (N, M)
+        else:
+            a_full_ptrs = a_base + (k_logical_base + offs_ak_full[None, :]) * stride_ak
+            a_full = tl.load(a_full_ptrs, mask=token_mask[:, None], other=0.0)  # (M, K)
+            accumulator = tl.dot(a_full, bs_full, acc=accumulator)  # (M, N)
 
         b_ptrs += BLOCK_SIZE_K_PACK * stride_bk
 
@@ -1719,7 +1738,6 @@ def _mxfp4_moe_gemm_silu_kernel(
 
     offs_bn_gate = offs_cn % N
     offs_bn_up = offs_bn_gate + N
-    offs_ak_pack = tl.arange(0, BLOCK_SIZE_K_PACK)
     offs_bk = tl.arange(0, BLOCK_SIZE_K_PACK)
 
     if SWAP_AB:
@@ -1808,18 +1826,21 @@ def _mxfp4_moe_gemm_silu_kernel(
             bs_up = _dequant_fp4_bf16(b_packed_up, su0, su1, su2, su3)
 
         k_logical_base = k * BLOCK_SIZE_K
-        for j in tl.static_range(8):
-            k_off = k_logical_base + j * BLOCK_SIZE_K_PACK
-            if SWAP_AB:
-                a_j_ptrs = a_base + (k_off + offs_ak_pack[:, None]) * stride_ak
-                a_j = tl.load(a_j_ptrs, mask=token_mask[None, :], other=0.0)
-                acc_gate = tl.dot(bs_gate[j], a_j, acc=acc_gate)
-                acc_up = tl.dot(bs_up[j], a_j, acc=acc_up)
-            else:
-                a_j_ptrs = a_base + (k_off + offs_ak_pack[None, :]) * stride_ak
-                a_j = tl.load(a_j_ptrs, mask=token_mask[:, None], other=0.0)
-                acc_gate = tl.dot(a_j, bs_gate[j], acc=acc_gate)
-                acc_up = tl.dot(a_j, bs_up[j], acc=acc_up)
+        # gate and up each get one mma; the activation is loaded once and
+        # shared by both.
+        bs_gate_full = _concat_k(bs_gate, BLOCK_SIZE_N, BLOCK_SIZE_K, SWAP_AB)
+        bs_up_full = _concat_k(bs_up, BLOCK_SIZE_N, BLOCK_SIZE_K, SWAP_AB)
+        offs_ak_full = tl.arange(0, BLOCK_SIZE_K)
+        if SWAP_AB:
+            a_full_ptrs = a_base + (k_logical_base + offs_ak_full[:, None]) * stride_ak
+            a_full = tl.load(a_full_ptrs, mask=token_mask[None, :], other=0.0)
+            acc_gate = tl.dot(bs_gate_full, a_full, acc=acc_gate)
+            acc_up = tl.dot(bs_up_full, a_full, acc=acc_up)
+        else:
+            a_full_ptrs = a_base + (k_logical_base + offs_ak_full[None, :]) * stride_ak
+            a_full = tl.load(a_full_ptrs, mask=token_mask[:, None], other=0.0)
+            acc_gate = tl.dot(a_full, bs_gate_full, acc=acc_gate)
+            acc_up = tl.dot(a_full, bs_up_full, acc=acc_up)
 
         b_ptrs_gate += BLOCK_SIZE_K_PACK * stride_bk
         b_ptrs_up += BLOCK_SIZE_K_PACK * stride_bk

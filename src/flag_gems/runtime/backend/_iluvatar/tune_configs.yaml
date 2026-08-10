@@ -38,6 +38,20 @@ attention:
   - 1
   - 2
   - 3
+attention_bwd:
+- gen: true
+  param_map:
+    META: metas
+    num_warps: warps
+    num_stages: stages
+  metas:
+    - {BLOCK_M1: 32, BLOCK_N1: 128, BLOCK_M2: 128, BLOCK_N2: 32}
+  warps:
+    - 4
+    - 8
+  stages:
+    - 1
+    - 2
 bmm:
   - META:
       TILE_M: 128

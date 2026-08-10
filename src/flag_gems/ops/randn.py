@@ -114,6 +114,26 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
         dtype = torch.get_default_dtype()
     if device is None:
         device = torch.device(device_.name)
+
+    # Triton cannot handle complex pointer types on some backends; generate randn
+    # in the underlying real dtype and view as complex.
+    if dtype.is_complex:
+        if dtype == torch.complex32:
+            real_dtype = torch.float16
+        elif dtype == torch.complex64:
+            real_dtype = torch.float32
+        else:  # complex128
+            real_dtype = torch.float64
+        real_size = tuple(size) + (2,)
+        real_out = torch.empty(real_size, device=device, dtype=real_dtype)
+        N = volume(real_size)
+        grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
+        increment = triton.cdiv(N, UNROLL)
+        philox_seed, philox_offset = philox_backend_seed_offset(increment)
+        with torch_device_fn.device(device):
+            randn_kernel[grid_fn](real_out, N, philox_seed, philox_offset)
+        return torch.view_as_complex(real_out.contiguous())
+
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
