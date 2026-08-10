@@ -33,6 +33,7 @@ from .repeat_interleave import repeat_interleave_self_tensor
 from .resolve_conj import resolve_conj
 from .segment_reduce import segment_reduce, segment_reduce_out
 from .sigmoid import sigmoid
+from .special_bessel_j0 import special_bessel_j0, special_bessel_j0_out
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
@@ -89,6 +90,8 @@ __all__ = [
     "segment_reduce",
     "segment_reduce_out",
     "sigmoid",
+    "special_bessel_j0",
+    "special_bessel_j0_out",
     "special_shifted_chebyshev_polynomial_w",
     "tanh",
     "upsample_nearest2d",
