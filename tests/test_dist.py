@@ -36,6 +36,8 @@ def test_dist(shape, p, dtype):
         rtol=1e-3,
         atol=1e-3,
     )
+
+
 def test_dist_empty():
     x = torch.empty(0, device="cuda")
     y = torch.empty(0, device="cuda")
