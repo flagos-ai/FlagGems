@@ -20,6 +20,13 @@ import flag_gems
 
 from . import base
 
+# fp64 is not supported on every platform (e.g. ascend, iluvatar).
+_IGAMMAC_DTYPES = [
+    torch.float32,
+]
+if flag_gems.runtime.device.support_fp64:
+    _IGAMMAC_DTYPES.append(torch.float64)
+
 
 class IgammacBenchmark(base.GenericBenchmark):
     """GenericBenchmark with domain-valid inputs.
@@ -65,7 +72,7 @@ def test_igammac():
         torch_op=torch.special.gammaincc,
         gems_op=flag_gems.igammac,
         input_fn=_igammac_input,
-        dtypes=[torch.float32, torch.float64],
+        dtypes=_IGAMMAC_DTYPES,
     )
     bench.run()
 
@@ -77,6 +84,6 @@ def test_igammac_out():
         input_fn=_igammac_input_out,
         torch_op=torch.ops.aten.special_gammaincc.out,
         gems_op=flag_gems.igammac_out,
-        dtypes=[torch.float32, torch.float64],
+        dtypes=_IGAMMAC_DTYPES,
     )
     bench.run()

@@ -20,7 +20,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-_IGAMMAC_DTYPES = [torch.float32, torch.float64]
+# fp64 is not supported on every platform (e.g. ascend, iluvatar).
+_IGAMMAC_DTYPES = [
+    torch.float32,
+]
+if flag_gems.runtime.device.support_fp64:
+    _IGAMMAC_DTYPES.append(torch.float64)
 
 
 @pytest.mark.igammac
