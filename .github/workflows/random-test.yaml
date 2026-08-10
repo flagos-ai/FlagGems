@@ -85,6 +85,18 @@ jobs:
               VENDOR="ascend"
               BACKEND="ascend-cann900"
               ;;
+            metax)
+              VENDOR="metax"
+              BACKEND="metax-maca3810"
+              ;;
+            enflame)
+              VENDOR="enflame"
+              BACKEND="enflame-tops1106"
+              ;;
+            cambricon)
+              VENDOR="cambricon"
+              BACKEND="cambricon-neuware472"
+              ;;
             *)
               VENDOR="${RUNNER_LABEL}"
               BACKEND="${RUNNER_LABEL}"
