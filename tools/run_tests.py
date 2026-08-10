@@ -780,6 +780,8 @@ def run_benchmark_q(gpu_id, op):
 def worker_proc(gpu_id, work_queue, display_queue):
     # Redirect stdout/stderr to per-worker log files instead of /dev/null
     # to preserve error messages for debugging worker crashes.
+    # Previously all errors were silently swallowed by /dev/null redirection,
+    # making it impossible to diagnose why a worker died.
     worker_log = CFG.output_dir.joinpath(f"worker_{gpu_id}.log")
     try:
         log_file = open(worker_log, "w", buffering=1)
@@ -802,6 +804,9 @@ def worker_proc(gpu_id, work_queue, display_queue):
     }
 
     worker_result = {}
+    # Outer try/finally ensures the exit signal is always sent, even if the worker
+    # crashes midway. Without this, display_loop would wait forever for a signal
+    # that never arrives, causing the entire test run to hang indefinitely.
     try:
         while True:
             try:
@@ -817,6 +822,7 @@ def worker_proc(gpu_id, work_queue, display_queue):
 
             # Wrap per-op execution in try/except to prevent one bad op from
             # crashing the entire worker and orphaning remaining ops in the queue.
+            # This allows the worker to continue processing other ops even if one fails.
             try:
                 if op in CFG.accuracy_marks:
                     display_queue.put(("start", gpu_id, "accuracy", op))
@@ -878,7 +884,9 @@ def worker_proc(gpu_id, work_queue, display_queue):
         import traceback
         traceback.print_exc()
     finally:
-        # Always send exit signal, even if worker crashes midway
+        # Always send exit signal, even if worker crashes midway.
+        # This is critical: display_loop waits for exactly N exit signals (one per worker).
+        # If any worker dies without sending this signal, the main loop hangs forever.
         display_queue.put(("exit", gpu_id))
 
 
@@ -889,6 +897,10 @@ def display_loop(queue, display, workers):
         queue: Message queue from workers
         display: LiveDisplay instance
         workers: List of Process objects (not count), used to detect dead workers
+
+    This loop waits for "exit" signals from all workers. To prevent infinite hangs
+    when a worker crashes without sending its signal, we use Process.is_alive() checks
+    during queue timeouts to detect dead workers and break the loop gracefully.
     """
     # Track which workers have exited (by their Process object id)
     exited = set()
@@ -902,7 +914,9 @@ def display_loop(queue, display, workers):
         try:
             msg = queue.get(timeout=1)
         except Exception:
-            # Timeout: check if any worker died without sending "exit"
+            # Timeout: check if any worker died without sending "exit".
+            # This handles hard crashes (OOM-kill, segfault, etc.) where the
+            # worker's finally block never executes.
             for p in workers:
                 if p not in exited and not p.is_alive():
                     gpu_id = getattr(p, '_gpu_id', '?')
