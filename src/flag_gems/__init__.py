@@ -83,6 +83,7 @@ _FULL_CONFIG = (
     ),
     ("_assert_async", _assert_async),
     ("_batch_norm_no_update", _batch_norm_no_update),
+    ("_batch_norm_with_update", _batch_norm_with_update),
     ("_cdist_backward", _cdist_backward),
     ("_cdist_forward", _cdist_forward),
     ("_chunk_cat", _chunk_cat),

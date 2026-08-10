@@ -13,6 +13,17 @@
 # limitations under the License.
 
 ops:
+  - id: _batch_norm_with_update
+    description: Applies training-mode Batch Normalization using batch statistics and updates running_mean/running_var in place.
+    for:
+      - _batch_norm_with_update
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: _reshape_alias
     description: |
       Creates a view of the input tensor with the given size and stride,
