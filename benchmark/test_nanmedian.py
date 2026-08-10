@@ -19,10 +19,18 @@ import flag_gems
 
 from . import base, consts
 
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="Issue #4253: nanmedian accuracy failure on Kunlunxin",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        flag_gems.vendor_name == "kunlunxin",
+        reason="Issue #4253: nanmedian accuracy failure on Kunlunxin",
+    ),
+    # Ascend counts warmup/repetition as calls and records per-kernel CSV rows,
+    # so nanmedian runtime and multi-kernel timing are not reliably comparable.
+    pytest.mark.skipif(
+        flag_gems.vendor_name == "ascend",
+        reason="nanmedian benchmark timing is unreliable on Ascend",
+    ),
+]
 
 ASCEND_UNSUPPORTED_REFERENCE_DTYPES = (torch.bfloat16, torch.float64)
 
@@ -122,10 +130,6 @@ def test_nanmedian_dim():
 
 
 @pytest.mark.nanmedian_dim_values
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend native nanmedian.dim_values falls back to CPU, so its performance is not comparable.",
-)
 def test_nanmedian_dim_values():
     bench = base.GenericBenchmark(
         input_fn=_dim_values_input_fn,
