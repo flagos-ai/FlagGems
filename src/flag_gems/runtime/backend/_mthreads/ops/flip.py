@@ -53,25 +53,29 @@ def _can_use_triton_kernel(x: torch.Tensor) -> bool:
 def _flip_block_kernel(
     x_ptr,
     out_ptr,
+    shape_ptr,
+    strides_ptr,
+    flip_mask_ptr,
     inner_size,
     outer_size,
-    x_outer_stride,
-    x_inner_stride,
+    split: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """Flip kernel for case where innermost dims are NOT flipped.
+    """Flip kernel with correct multi-dimensional indexing.
 
     Each program processes multiple blocks (grid-stride loop).
     Each block has inner_size contiguous elements.
-    The outer index is mapped: output block i -> source block (outer_size - 1 - i).
+    The block_id is decoded to multi-dim indices, each dim independently flipped if needed.
 
     Args:
         x_ptr: source tensor data pointer
         out_ptr: output tensor data pointer
-        inner_size: number of contiguous elements per block (non-flipped trailing dims)
-        outer_size: number of blocks (product of flipped leading dims)
-        x_outer_stride: stride in source between consecutive blocks (positive)
-        x_inner_stride: stride within a source block (should be 1 for contiguous)
+        shape_ptr: shape of the leading dims [0:split]
+        strides_ptr: strides of the leading dims [0:split]
+        flip_mask_ptr: boolean mask indicating which dims to flip [0:split]
+        inner_size: number of contiguous elements per block (trailing non-flipped dims)
+        outer_size: number of blocks (product of leading dims)
+        split: number of leading dimensions
         BLOCK_SIZE: tile size for processing inner elements
     """
     pid = tl.program_id(0)
@@ -79,11 +83,26 @@ def _flip_block_kernel(
 
     # Grid-stride loop over outer blocks
     for block_id in range(pid, outer_size, num_programs):
-        # Map output block id to source block id (reverse for flip)
-        src_block_id = outer_size - 1 - block_id
+        # Decode block_id to multi-dimensional index and compute source offset
+        # Row-major layout: decode from the last dimension backwards
+        remaining = block_id
+        src_offset = 0
 
-        # Compute base offsets
-        src_base = src_block_id * x_outer_stride
+        for dim in range(split - 1, -1, -1):
+            dim_size = tl.load(shape_ptr + dim)
+            dim_stride = tl.load(strides_ptr + dim)
+            flip_dim = tl.load(flip_mask_ptr + dim)
+
+            # Extract index for this dimension (in output layout)
+            idx = remaining % dim_size
+            remaining = remaining // dim_size
+
+            # Apply flip if needed for this dimension
+            src_idx = tl.where(flip_dim, dim_size - 1 - idx, idx)
+
+            # Accumulate source offset
+            src_offset += src_idx * dim_stride
+
         dst_base = block_id * inner_size
 
         # Process inner elements in tiles
@@ -91,9 +110,7 @@ def _flip_block_kernel(
         for inner_start in range(0, inner_size, BLOCK_SIZE):
             idx = inner_start + offsets
             mask = idx < inner_size
-            # Read from source (coalesced since x_inner_stride is 1)
-            val = tl.load(x_ptr + src_base + idx * x_inner_stride, mask=mask, other=0.0)
-            # Write to output (coalesced, contiguous)
+            val = tl.load(x_ptr + src_offset + idx, mask=mask, other=0.0)
             tl.store(
                 out_ptr + dst_base + idx, val.to(out_ptr.dtype.element_ty), mask=mask
             )
@@ -160,15 +177,17 @@ def flip(x: torch.Tensor, dims) -> torch.Tensor:
     for i in range(split, ndim):
         inner_size *= shape[i]
 
-    # Outer size = product of leading dims (all flipped)
+    # Outer size = product of leading dims
     outer_size = 1
     for i in range(0, split):
         outer_size *= shape[i]
 
-    # x_outer_stride = stride for the innermost flipped dimension
-    # For contiguous tensors, this equals inner_size
-    x_outer_stride = strides[split - 1] if split > 0 else inner_size
-    x_inner_stride = 1  # contiguous inner block
+    # Prepare shape, strides, and flip_mask for leading dims
+    leading_shape = torch.tensor(shape[:split], dtype=torch.int32, device=x.device)
+    leading_strides = torch.tensor(strides[:split], dtype=torch.int32, device=x.device)
+    leading_flip_mask = torch.tensor(
+        [i in flip_set for i in range(split)], dtype=torch.bool, device=x.device
+    )
 
     out = torch.empty_like(x)
 
@@ -180,9 +199,11 @@ def flip(x: torch.Tensor, dims) -> torch.Tensor:
         _flip_block_kernel[grid](
             x,
             out,
+            leading_shape,
+            leading_strides,
+            leading_flip_mask,
             inner_size,
             outer_size,
-            x_outer_stride,
-            x_inner_stride,
+            split,
         )
     return out
