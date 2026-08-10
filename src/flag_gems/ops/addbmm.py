@@ -150,7 +150,7 @@ def addbmm(bias, batch1, batch2, beta=1.0, alpha=1.0):
             batch2.stride(2),
             out.stride(0),
             out.stride(1),
-            ALLOW_TF32=config.get_allow_tf32(),
+            ALLOW_TF32=config.ALLOW_TF32,
             IS_FP64=bias.dtype == torch.float64,
         )
 
