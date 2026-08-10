@@ -49,6 +49,9 @@ from flag_gems.ops._fused_rms_norm import (
     _fused_rms_norm_backward,
     _fused_rms_norm_forward,
 )
+from flag_gems.ops._has_compatible_shallow_copy_type import (
+    _has_compatible_shallow_copy_type,
+)
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
@@ -682,6 +685,7 @@ from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.svd import svd
+from flag_gems.ops.sym_storage_offset import sym_storage_offset
 from flag_gems.ops.sym_stride import sym_stride
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.take import take, take_out
@@ -776,6 +780,7 @@ __all__ = [
     "_fused_rms_norm",
     "_fused_rms_norm_backward",
     "_fused_rms_norm_forward",
+    "_has_compatible_shallow_copy_type",
     "_index_put_impl_",
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
@@ -1536,6 +1541,7 @@ __all__ = [
     "sum_dim_out",
     "sum_out",
     "svd",
+    "sym_storage_offset",
     "sym_stride",
     "t_copy",
     "t_copy_out",
