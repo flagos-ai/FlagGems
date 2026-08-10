@@ -794,7 +794,7 @@ def worker_proc(gpu_id, work_queue, display_queue):
     }
 
     worker_result = {}
-    # Outer try/finally ensures the exit signal is always sent, even if the worker
+    # try/finally ensures the exit signal is always sent, even if the worker
     # crashes midway. Without this, display_loop would wait forever for a signal
     # that never arrives, causing the entire test run to hang indefinitely.
     try:
@@ -870,18 +870,10 @@ def worker_proc(gpu_id, work_queue, display_queue):
                 os.replace(tmp_path, json_path)
 
             except Exception:
-                # Log the exception and continue with the next op
-                import traceback
-
-                traceback.print_exc()
+                # Mark op as Error and continue with next op
                 display_queue.put(("done", gpu_id, "accuracy", op, "Error", 0))
                 display_queue.put(("done", gpu_id, "benchmark", op, "Error", 0))
 
-    except Exception:
-        # Catch any outer-loop exceptions (e.g., queue corruption)
-        import traceback
-
-        traceback.print_exc()
     finally:
         # Always send exit signal, even if worker crashes midway.
         # This is critical: display_loop waits for exactly N exit signals (one per worker).
