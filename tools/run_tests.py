@@ -918,7 +918,7 @@ def display_loop(queue, display, workers):
             # worker's finally block never executes.
             for p in workers:
                 if p not in exited and not p.is_alive():
-                    gpu_id = getattr(p, '_gpu_id', '?')
+                    gpu_id = getattr(p, "_gpu_id", "?")
                     n = per_gpu_done.get(gpu_id, 0)
                     display.log(
                         f"{RED}[ERROR]{NC} worker pid={p.pid} (GPU {gpu_id}) "
@@ -926,7 +926,7 @@ def display_loop(queue, display, workers):
                     )
                     display.update_gpu(
                         gpu_id,
-                        f"{RED}[GPU {gpu_id:2d}] DIED ({n} ops, code={p.exitcode}){NC}"
+                        f"{RED}[GPU {gpu_id:2d}] DIED ({n} ops, code={p.exitcode}){NC}",
                     )
                     exited.add(p)
             continue
@@ -1360,7 +1360,9 @@ def main():
         WORKER_PROCESSES.append(p)
 
     display.init()
-    display_loop(display_queue, display, WORKER_PROCESSES)  # Pass process list, not count
+    display_loop(
+        display_queue, display, WORKER_PROCESSES
+    )  # Pass process list, not count
 
     for p in WORKER_PROCESSES:
         p.join()
