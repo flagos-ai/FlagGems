@@ -3,7 +3,6 @@ from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
-from .batch_norm import batch_norm, batch_norm_backward
 from .bmm import bmm
 from .exponential_ import exponential_
 from .full import full
@@ -18,6 +17,7 @@ from .layernorm import layer_norm, layer_norm_backward
 from .linalg_svdvals import linalg_svdvals
 from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import log_softmax, log_softmax_backward
+from .logical_or import logical_or, logical_or_
 from .masked_fill import masked_fill, masked_fill_
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
@@ -37,6 +37,7 @@ from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
 from .tanh import tanh
+from .to_copy import to_copy
 from .unique import _unique2
 from .upsample_nearest2d import upsample_nearest2d
 from .zeros import zeros
@@ -50,8 +51,6 @@ __all__ = [
     "amax",
     "arange",
     "arange_start",
-    "batch_norm",
-    "batch_norm_backward",
     "bmm",
     "exponential_",
     "full",
@@ -69,6 +68,8 @@ __all__ = [
     "log_sigmoid_forward",
     "log_softmax",
     "log_softmax_backward",
+    "logical_or",
+    "logical_or_",
     "matmul_bf16",
     "matmul_int8",
     "masked_fill",
@@ -91,6 +92,7 @@ __all__ = [
     "special_bessel_j0_out",
     "special_shifted_chebyshev_polynomial_w",
     "tanh",
+    "to_copy",
     "upsample_nearest2d",
     "zeros",
     "zeros_like",
