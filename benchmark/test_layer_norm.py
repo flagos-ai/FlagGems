@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -26,6 +40,25 @@ def input_fn(shape, dtype, device):
     weight = torch.randn(layer_shape, dtype=dtype, device=device)
     bias = torch.randn(layer_shape, dtype=dtype, device=device)
     yield inp, layer_shape, weight, bias
+
+
+def native_layer_norm_input_fn(shape, dtype, device):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    normalized_shape = shape[1:]
+    weight = torch.randn(normalized_shape, dtype=dtype, device=device)
+    bias = torch.randn(normalized_shape, dtype=dtype, device=device)
+    yield inp, normalized_shape, weight, bias, 1e-5
+
+
+@pytest.mark.native_layer_norm
+def test_native_layer_norm():
+    bench = NormBenchmark(
+        op_name="native_layer_norm",
+        input_fn=native_layer_norm_input_fn,
+        torch_op=torch.ops.aten.native_layer_norm.default,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
 
 
 @pytest.mark.layer_norm

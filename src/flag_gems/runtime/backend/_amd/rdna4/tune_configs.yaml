@@ -1,0 +1,185 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Autotune candidates for RDNA4, that is gfx1200 and gfx1201, measured on
+# gfx1201. Ops listed here replace the vendor-wide list in
+# _amd/tune_configs.yaml; anything absent falls back to it unchanged.
+# _amd/__init__.py maps those two targets by name, so the GFX12.5 parts that
+# report the same major version do not read this file.
+#
+# The candidates come from an exhaustive sweep of the tile/warp/stage space:
+# every configuration that won at least one benchmarked shape, plus a few
+# covering the sizes in between so the table does not overfit those shapes. The
+# space is bounded by the 64 KiB of LDS a workgroup may use, which caps
+# (BLOCK_M + BLOCK_N) * BLOCK_K; num_stages stays at 1-2 because deeper
+# pipelines ranked poorly throughout the sweep.
+
+mm:
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_stages: 1
+    num_warps: 4
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_stages: 1
+    num_warps: 4
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 128
+      BLOCK_K: 32
+    num_stages: 1
+    num_warps: 4
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_stages: 1
+    num_warps: 4
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_stages: 1
+    num_warps: 4
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_stages: 1
+    num_warps: 4
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 128
+      BLOCK_K: 32
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 256
+      BLOCK_K: 32
+    num_stages: 1
+    num_warps: 4
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 256
+      BLOCK_K: 64
+    num_stages: 1
+    num_warps: 8
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 256
+      BLOCK_K: 32
+    num_stages: 1
+    num_warps: 8
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 256
+      BLOCK_K: 64
+    num_stages: 2
+    num_warps: 8
+  - META:
+      BLOCK_M: 256
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_stages: 2
+    num_warps: 8
+bmm:
+  - META:
+      TILE_M: 32
+      TILE_N: 64
+      TILE_K: 64
+      GROUP_M: 2
+    num_warps: 4
+    num_stages: 1
+  - META:
+      TILE_M: 64
+      TILE_N: 64
+      TILE_K: 64
+      GROUP_M: 2
+    num_warps: 4
+    num_stages: 1
+  - META:
+      TILE_M: 64
+      TILE_N: 64
+      TILE_K: 32
+      GROUP_M: 2
+    num_warps: 8
+    num_stages: 1
+  - META:
+      TILE_M: 64
+      TILE_N: 128
+      TILE_K: 32
+      GROUP_M: 2
+    num_warps: 4
+    num_stages: 1
+  - META:
+      TILE_M: 128
+      TILE_N: 128
+      TILE_K: 32
+      GROUP_M: 2
+    num_warps: 4
+    num_stages: 1
+  - META:
+      TILE_M: 128
+      TILE_N: 128
+      TILE_K: 32
+      GROUP_M: 2
+    num_warps: 4
+    num_stages: 2
+  - META:
+      TILE_M: 128
+      TILE_N: 128
+      TILE_K: 32
+      GROUP_M: 4
+    num_warps: 4
+    num_stages: 2
+  - META:
+      TILE_M: 128
+      TILE_N: 128
+      TILE_K: 64
+      GROUP_M: 2
+    num_warps: 4
+    num_stages: 2
+  - META:
+      TILE_M: 64
+      TILE_N: 256
+      TILE_K: 32
+      GROUP_M: 2
+    num_warps: 4
+    num_stages: 1
+  - META:
+      TILE_M: 128
+      TILE_N: 256
+      TILE_K: 32
+      GROUP_M: 2
+    num_warps: 8
+    num_stages: 2
+  - META:
+      TILE_M: 128
+      TILE_N: 256
+      TILE_K: 32
+      GROUP_M: 4
+    num_warps: 8
+    num_stages: 2
+  - META:
+      TILE_M: 256
+      TILE_N: 128
+      TILE_K: 32
+      GROUP_M: 2
+    num_warps: 8
+    num_stages: 1

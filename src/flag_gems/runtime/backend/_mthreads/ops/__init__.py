@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from torch_musa import current_device, get_device_capability
 
 from .all import all, all_dim, all_dims
@@ -8,7 +22,17 @@ from .argmin import argmin
 from .batch_norm import batch_norm, batch_norm_backward
 from .celu import celu
 from .conv2d import conv2d
+from .div import (
+    div_mode,
+    div_mode_,
+    floor_divide,
+    floor_divide_,
+    true_divide,
+    true_divide_,
+    true_divide_out,
+)
 from .dropout import dropout, dropout_backward
+from .flip import flip
 from .gather import gather, gather_backward
 from .index_add import index_add, index_add_
 from .index_put import _index_put_impl_, index_put, index_put_
@@ -24,6 +48,7 @@ from .log_softmax import (
 from .max import max, max_dim
 from .min import min, min_dim
 from .mode import mode
+from .mul import mul, mul_
 from .normal import normal_
 from .one_hot import one_hot
 from .ones import ones
@@ -66,6 +91,7 @@ __all__ = [
     "conv2d",
     "dropout",
     "dropout_backward",
+    "flip",
     "gather",
     "gather_backward",
     "index_add",
@@ -87,6 +113,8 @@ __all__ = [
     "min",
     "min_dim",
     "mode",
+    "mul",
+    "mul_",
     "normal_",
     "one_hot",
     "ones",
@@ -106,6 +134,13 @@ __all__ = [
     "sort",
     "sort_stable",
     "tile",
+    "true_divide",
+    "true_divide_",
+    "true_divide_out",
+    "div_mode",
+    "div_mode_",
+    "floor_divide",
+    "floor_divide_",
     "_unique2",
     "w8a8_block_fp8_matmul",
     "zero_",

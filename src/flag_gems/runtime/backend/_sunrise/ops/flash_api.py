@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -92,6 +106,7 @@ class fwd_params:
         "page_table_ptr",
         "page_table_batch_stride",
         "block_size",
+        "k_page_stride",
     )
 
     def __init__(
@@ -160,6 +175,7 @@ class fwd_params:
         page_table_ptr,
         page_table_batch_stride,
         block_size,
+        k_page_stride,
     ):
         self.q_ptr = q_ptr
         self.k_ptr = k_ptr
@@ -225,6 +241,7 @@ class fwd_params:
         self.page_table_ptr = page_table_ptr
         self.page_table_batch_stride = page_table_batch_stride
         self.block_size = block_size
+        self.k_page_stride = k_page_stride
 
     def args(self):
         return tuple(getattr(self, k) for k in self.__slots__)
@@ -513,6 +530,7 @@ def mha_varlan_fwd(
             page_table,  # page_table_ptr,
             page_table_batch_stride,  # page_table_batch_stride,
             block_size,  # block_size,
+            k.stride(0) if is_paged else 0,  # k_page_stride,
         )
 
         if flag_gems.vendor_name == "iluvatar":
@@ -864,6 +882,7 @@ def mha_varlan_fwd_opt(
             page_table,  # page_table_ptr,
             page_table_batch_stride,  # page_table_batch_stride,
             block_size,  # block_size,
+            k.stride(0) if is_paged else 0,  # k_page_stride,
         )
 
         if flag_gems.vendor_name == "iluvatar":
@@ -1249,6 +1268,7 @@ def mha_fwd(
             None,  # page_table_ptr,
             0,  # page_table_batch_stride,
             0,  # block_size,
+            0,  # k_page_stride,
         )
 
         # Move TxD to last dims for correct stride in Triton tt.load

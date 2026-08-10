@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # -*- coding: utf-8 -*-
 """
 run_tests.py - FlagGems Operator Accuracy & Performance Automated Test Scheduler
@@ -87,6 +102,7 @@ Examples
   # Show help
   python run_tests.py -h
 """
+
 import argparse
 import datetime
 import json
@@ -728,8 +744,6 @@ def run_benchmark_q(gpu_id, op):
 
     dur = time.time()
     cmd = f'pytest -m "{op}" --level core --record json --output benchmark_{op}.json --continue-on-collection-errors'
-    if ENV_INFO["flag_gems"]["vendor"] == "kunlunxin":
-        cmd += " --fg_mode operator"
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     dur = time.time() - dur
 
@@ -1032,7 +1046,7 @@ def _parse_marks_file(marks_file):
                 for mark in item.get("marks", []):
                     marks.add(mark)
     except Exception as e:
-        pwarn(f"Failed to parse marks file {marks_file}: {e}")
+        pwarn(f"Failed to read or parse marks file {marks_file}: {e}")
     return marks
 
 
@@ -1233,9 +1247,9 @@ def main():
     CFG.ops = ops
 
     if OPTS.output_dir is None:
-        from datetime import datetime
-
-        output_dir = Path(f"logs_results_{datetime.now().strftime('%Y%m%d_%H%M')}")
+        output_dir = Path(
+            f"logs_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}"
+        )
     else:
         output_dir = Path(OPTS.output_dir)
     ensure_dir(output_dir)

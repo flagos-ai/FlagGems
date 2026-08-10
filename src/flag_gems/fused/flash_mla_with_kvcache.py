@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Triton implementation of flash_mla_with_kvcache for MLA attention.
 Supports both sparse (FP8 KV cache + topk indices) and dense (paged attention) modes.
@@ -18,13 +32,26 @@ if has_triton_tle(3, 6, 0):
     try:
         import triton.experimental.tle.language as tle
 
-        HAS_TLE = True
+        HAS_TLE = hasattr(tle.gpu, "alloc_barriers")
     except ImportError:
         tle = None
         HAS_TLE = False
 else:
     tle = None
     HAS_TLE = False
+
+if HAS_TLE:
+    try:
+        from flag_gems.fused.flash_mla_with_kvcache_model1 import (
+            can_use_model1_tle,
+            sparse_decode_model1_tle,
+        )
+
+        HAS_TLE_MODEL1 = True
+    except ImportError:
+        HAS_TLE_MODEL1 = False
+else:
+    HAS_TLE_MODEL1 = False
 
 
 # TLE constants for decode
@@ -1125,6 +1152,26 @@ def _sparse_decode_dispatch(
     skv = kv.shape[0] * page_block_size
 
     if head_dim_k == 512:
+        # Warp-specialized MODEL1 fast path (FlagTree TLE, sm90). Falls back
+        # to the portable kernel below when the layout is unsupported.
+        if HAS_TLE_MODEL1 and can_use_model1_tle(
+            q, kv, indices, out, lse, extra_kv, extra_indices
+        ):
+            sparse_decode_model1_tle(
+                q,
+                kv,
+                indices,
+                attn_sink=attn_sink,
+                topk_length=topk_length,
+                extra_kv=extra_kv,
+                extra_indices=extra_indices,
+                extra_topk_length=extra_topk_length,
+                out=out,
+                lse=lse,
+                sm_scale=softmax_scale,
+            )
+            return
+
         _sparse_decode_model1_kernel[grid](
             q,
             kv,

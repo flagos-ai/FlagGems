@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .amax import amax
@@ -39,6 +53,7 @@ from .index import index
 from .index_add import index_add, index_add_
 from .index_select import index_select
 from .isin import isin
+from .linalg_lstsq import linalg_lstsq
 from .linspace import linspace
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .masked_fill import masked_fill, masked_fill_
@@ -137,6 +152,7 @@ __all__ = [
     "index_add_",
     "index_select",
     "isin",
+    "linalg_lstsq",
     "linspace",
     "log_softmax",
     "log_softmax_backward",

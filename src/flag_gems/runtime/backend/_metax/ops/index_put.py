@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import os
@@ -263,6 +277,40 @@ class IndexPutFunction:
 _index_put_func = IndexPutFunction()
 
 
+# DispatchKeySet to redispatch to the native ATen implementation,
+# bypassing our registered dispatch override (avoids recursion).
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
+
+
+def _handle_mixed_none_indices(inp, indices, values, accumulate, inplace=False):
+    """Handle indices containing None by falling back to native ATen index_put.
+
+    Mixed None-and-tensor indices involve complex advanced indexing semantics
+    (values permutation, broadcast shape placement rules differ based on whether
+    tensor indices are contiguous). Rather than replicating this complex logic,
+    we delegate to PyTorch's native implementation which handles all cases correctly.
+
+    We use redispatch to bypass our own registered dispatch and call the native
+    ATen operator directly, avoiding infinite recursion.
+    """
+    if values.device != inp.device:
+        values = values.to(inp.device)
+
+    # Convert indices list to a list (ATen expects List[Optional[Tensor]])
+    indices_list = list(indices)
+
+    if inplace:
+        return torch.ops.aten.index_put_.default.redispatch(
+            _FALLBACK_KEYSET, inp, indices_list, values, accumulate
+        )
+    else:
+        return torch.ops.aten.index_put.default.redispatch(
+            _FALLBACK_KEYSET, inp, indices_list, values, accumulate
+        )
+
+
 def index_put(inp, indices, values, accumulate=False):
     logger.debug("GEMS_METAX INDEX_PUT")
 
@@ -294,11 +342,19 @@ def index_put(inp, indices, values, accumulate=False):
         for index in indices
     ]
 
+    # Check if there are any None indices - if so, use special handling
+    has_none = any(idx is None for idx in indices)
+    has_tensor = any(idx is not None for idx in indices)
+    if has_none:
+        if not has_tensor:
+            raise ValueError("At least one non-None index tensor is required")
+        return _handle_mixed_none_indices(
+            inp, indices, values, accumulate, inplace=False
+        )
+
     target_shape = get_max_rank_shape(indices)
     broadcast_indices(indices, target_shape)
-    target_shape += inp.shape[len(indices) :]
-    # Filter out None values for kernel call (only tensor indices)
-    # Must be done AFTER broadcast_indices, as broadcast may create new tensors
+    target_shape += list(inp.shape[len(indices) :])
     tensor_indices = [idx for idx in indices if idx is not None]
     if not tensor_indices:
         raise ValueError("At least one non-None index tensor is required")
@@ -343,11 +399,19 @@ def index_put_(inp, indices, values, accumulate=False):
         for index in indices
     ]
 
+    # Check if there are any None indices - if so, use special handling
+    has_none = any(idx is None for idx in indices)
+    has_tensor = any(idx is not None for idx in indices)
+    if has_none:
+        if not has_tensor:
+            raise ValueError("At least one non-None index tensor is required")
+        return _handle_mixed_none_indices(
+            inp, indices, values, accumulate, inplace=True
+        )
+
     target_shape = get_max_rank_shape(indices)
     broadcast_indices(indices, target_shape)
-    target_shape += inp.shape[len(indices) :]
-    # Filter out None values for kernel call (only tensor indices)
-    # Must be done AFTER broadcast_indices, as broadcast may create new tensors
+    target_shape += list(inp.shape[len(indices) :])
     tensor_indices = [idx for idx in indices if idx is not None]
     if not tensor_indices:
         raise ValueError("At least one non-None index tensor is required")
