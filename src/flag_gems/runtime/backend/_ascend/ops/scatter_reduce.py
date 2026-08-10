@@ -31,10 +31,10 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-_LARGE_SOURCE_MIN_INDICES = 1 << 18
-# CANN may replay source-driven Triton programs from 2**18 indices onward. The
-# selected implementation either claims programs or replaces atomic updates
-# with replay-idempotent sorted-segment assignments above this boundary.
+_SOURCE_PRODUCT_MIN_INDICES = 1 << 18
+# Below this size, the output-centric product scan is cheaper; at and above it,
+# the selected runtime uses sorted segments or claimed source programs. Both
+# sides are replay-safe, so this threshold is only a product performance gate.
 
 _TRITON_VERSION = tuple(int(part) for part in triton.__version__.split(".")[:2])
 _REPLAY_ATOMICS_MIN_TRITON = (3, 5)
@@ -255,9 +255,22 @@ def _scatter_reduce_prod(inp, dim, index, src, include_self):
 
 
 def _scatter_reduce_with_segments(inp, dim, index, src, reduce, include_self):
-    """Use scan/sorted-segment reductions for runtimes without replay atomics."""
-    large_source = index.numel() >= _LARGE_SOURCE_MIN_INDICES
-    if large_source and reduce in ("sum", "prod", "mean"):
+    """Use scan/sorted-segment reductions for runtimes without replay atomics.
+
+    CANN 8.5 replay is not monotonic in source size, so non-idempotent sum and
+    mean updates must never fall back to the generic source-atomic kernels.
+    """
+    if index.numel() == 0:
+        return _generic_scatter_reduce(
+            inp,
+            dim,
+            index,
+            src,
+            reduce,
+            include_self=include_self,
+        )
+    source_product = index.numel() >= _SOURCE_PRODUCT_MIN_INDICES
+    if reduce in ("sum", "mean") or (reduce == "prod" and source_product):
         return _scatter_reduce_sorted_segments(
             inp,
             dim,
@@ -279,10 +292,15 @@ def _scatter_reduce_with_segments(inp, dim, index, src, reduce, include_self):
 
 
 def _scatter_reduce_with_claims(inp, dim, index, src, reduce, include_self):
-    """Use program claims and a product lock on replay-safe newer runtimes."""
-    large_source = index.numel() >= _LARGE_SOURCE_MIN_INDICES
-    if reduce == "prod" and not large_source:
+    """Use program claims and a product lock on replay-safe newer runtimes.
+
+    CANN 9 can also replay below the product performance boundary. Claim every
+    non-idempotent source program instead of using tensor size as a safety gate.
+    """
+    source_product = index.numel() >= _SOURCE_PRODUCT_MIN_INDICES
+    if reduce == "prod" and not source_product:
         return _scatter_reduce_prod(inp, dim, index, src, include_self)
+    replay_sensitive = reduce in ("sum", "prod", "mean")
     return _generic_scatter_reduce(
         inp,
         dim,
@@ -290,7 +308,7 @@ def _scatter_reduce_with_claims(inp, dim, index, src, reduce, include_self):
         src,
         reduce,
         include_self=include_self,
-        _deduplicate_programs=large_source,
+        _deduplicate_programs=replay_sensitive,
         _use_product_lock=reduce == "prod",
     )
 

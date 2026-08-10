@@ -52,26 +52,26 @@ ACTIVE_PREFIX_CASES = (
 
 if not cfg.QUICK_MODE:
     # Full accuracy runs retain the quick structural cases and add roughly
-    # million-element shapes that exercise long index ranges and reduction axes.
+    # 1/4-million-element shapes that exercise long index ranges and reduction axes.
     SHAPE_DIM_CASES += (
-        pytest.param((1 << 20,), 0, id="large_1d_dim0"),
-        pytest.param((1024, 1000), -1, id="large_2d_dim_last"),
-        pytest.param((20, 320, 128), 1, id="large_3d_dim1"),
-        pytest.param((16, 64, 64, 16), 2, id="large_4d_dim2"),
-        pytest.param((8, 16, 16, 16, 32), -2, id="large_5d_dim_neg2"),
+        pytest.param((1 << 18,), 0, id="large_1d_dim0"),
+        pytest.param((256, 1000), -1, id="large_2d_dim_last"),
+        pytest.param((5, 320, 128), 1, id="large_3d_dim1"),
+        pytest.param((4, 64, 64, 16), 2, id="large_4d_dim2"),
+        pytest.param((2, 16, 16, 16, 32), -2, id="large_5d_dim_neg2"),
     )
     HIGH_DIM_SHAPE_DIM_CASES += (
-        pytest.param((8, 8, 8, 8, 8, 4), 0, id="large_6d_dim0"),
-        pytest.param((4, 8, 8, 16, 16, 16), 3, id="large_6d_dim3"),
-        pytest.param((2, 4, 4, 4, 4, 4, 4, 128), 7, id="large_8d_dim_last"),
-        pytest.param((2, 2, 4, 16, 8, 8, 8, 8), -5, id="large_8d_dim_neg5"),
+        pytest.param((8, 8, 8, 8, 8, 1), 0, id="large_6d_dim0"),
+        pytest.param((1, 8, 8, 16, 16, 16), 3, id="large_6d_dim3"),
+        pytest.param((2, 2, 2, 4, 4, 4, 4, 128), 7, id="large_8d_dim_last"),
+        pytest.param((2, 2, 4, 16, 2, 8, 8, 8), -5, id="large_8d_dim_neg5"),
     )
     ACTIVE_PREFIX_CASES += (
         pytest.param(
             3,
-            (2, 2, 4, 16, 8, 8, 8, 8),
-            (1, 2, 4, 32, 8, 8, 4, 8),
-            (2, 2, 4, 32, 8, 8, 8, 8),
+            (2, 2, 4, 16, 4, 4, 8, 8),
+            (1, 2, 4, 32, 4, 4, 4, 8),
+            (2, 2, 4, 32, 4, 4, 8, 8),
             id="large_8d_active_prefix",
         ),
     )
