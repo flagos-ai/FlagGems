@@ -29,6 +29,10 @@ has_c_extension = False
 use_c_extension = False
 aten_patch_list = []
 
+# Global allow_tf32 configuration for Triton kernels
+# Controlled by FLAGGEMS_ALLOW_TF32 environment variable
+_ALLOW_TF32 = os.environ.get("FLAGGEMS_ALLOW_TF32", "0") == "1"
+
 # set FLAGGEMS_SOURCE_DIR for cpp extension to find
 os.environ["FLAGGEMS_SOURCE_DIR"] = str(Path(__file__).parent.resolve())
 
@@ -61,6 +65,37 @@ if use_env_c_extension and _has_cpp_so:
         aten_patch_list = []
         has_c_extension = False
         use_c_extension = False
+
+
+def get_allow_tf32() -> bool:
+    """
+    Get the global allow_tf32 setting for Triton kernels.
+
+    Returns:
+        bool: True if TF32 is allowed, False otherwise.
+
+    The value is controlled by the FLAGGEMS_ALLOW_TF32 environment variable.
+    Set FLAGGEMS_ALLOW_TF32=1 to enable TF32 (faster but lower precision).
+    Default is False (disabled) for numerical accuracy.
+
+    Can also be changed at runtime using set_allow_tf32().
+    """
+    return _ALLOW_TF32
+
+
+def set_allow_tf32(value: bool) -> None:
+    """
+    Set the global allow_tf32 flag at runtime.
+
+    Args:
+        value: True to enable TF32, False to disable.
+
+    Note:
+        This affects all Triton kernel launches after this call.
+        For performance, TF32 uses lower precision (19-bit mantissa vs 23-bit in FP32).
+    """
+    global _ALLOW_TF32
+    _ALLOW_TF32 = value
 
 
 def load_enable_config_from_yaml(yaml_path, key="include"):
@@ -235,4 +270,6 @@ __all__ = [
     "use_c_extension",
     "resolve_user_setting",
     "get_skip_precision_check_ops",
+    "get_allow_tf32",
+    "set_allow_tf32",
 ]
