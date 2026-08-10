@@ -778,10 +778,18 @@ def run_benchmark_q(gpu_id, op):
 
 
 def worker_proc(gpu_id, work_queue, display_queue):
-    # Suppress direct stdout/stderr from worker processes to prevent
-    # corrupting the main process's terminal cursor positioning.
-    sys.stdout = open(os.devnull, "w")
-    sys.stderr = open(os.devnull, "w")
+    # Redirect stdout/stderr to per-worker log files instead of /dev/null
+    # to preserve error messages for debugging worker crashes.
+    worker_log = CFG.output_dir.joinpath(f"worker_{gpu_id}.log")
+    try:
+        log_file = open(worker_log, "w", buffering=1)
+        sys.stdout = log_file
+        sys.stderr = log_file
+    except Exception as e:
+        # Fallback to /dev/null if log file creation fails
+        sys.stdout = open(os.devnull, "w")
+        sys.stderr = open(os.devnull, "w")
+        print(f"Warning: failed to create worker log {worker_log}: {e}", file=sys.stderr)
 
     notfound_result = {
         "status": "NotFound",
@@ -794,78 +802,120 @@ def worker_proc(gpu_id, work_queue, display_queue):
     }
 
     worker_result = {}
-    while True:
-        try:
-            op = work_queue.get_nowait()
-        except queue_module.Empty:
-            break
-        op = op.strip()
-        if not op:
-            continue
+    try:
+        while True:
+            try:
+                op = work_queue.get_nowait()
+            except queue_module.Empty:
+                break
+            op = op.strip()
+            if not op:
+                continue
 
-        op_dir = CFG.output_dir.joinpath(op)
-        ensure_dir(op_dir)
+            op_dir = CFG.output_dir.joinpath(op)
+            ensure_dir(op_dir)
 
-        if op in CFG.accuracy_marks:
-            display_queue.put(("start", gpu_id, "accuracy", op))
-            acc = run_accuracy_q(gpu_id, op)
-            display_queue.put(
-                (
-                    "done",
-                    gpu_id,
-                    "accuracy",
-                    op,
-                    acc.get("status", "Error"),
-                    acc.get("duration", 0),
-                )
-            )
-        else:
-            acc = notfound_result
-            display_queue.put(("done", gpu_id, "accuracy", op, "NotFound", 0))
+            # Wrap per-op execution in try/except to prevent one bad op from
+            # crashing the entire worker and orphaning remaining ops in the queue.
+            try:
+                if op in CFG.accuracy_marks:
+                    display_queue.put(("start", gpu_id, "accuracy", op))
+                    acc = run_accuracy_q(gpu_id, op)
+                    display_queue.put(
+                        (
+                            "done",
+                            gpu_id,
+                            "accuracy",
+                            op,
+                            acc.get("status", "Error"),
+                            acc.get("duration", 0),
+                        )
+                    )
+                else:
+                    acc = notfound_result
+                    display_queue.put(("done", gpu_id, "accuracy", op, "NotFound", 0))
 
-        if op in CFG.benchmark_marks:
-            display_queue.put(("start", gpu_id, "benchmark", op))
-            perf = run_benchmark_q(gpu_id, op)
-            display_queue.put(
-                (
-                    "done",
-                    gpu_id,
-                    "benchmark",
-                    op,
-                    perf.get("status", "Error"),
-                    perf.get("duration", 0),
-                )
-            )
-        else:
-            perf = {"status": "NotFound", "exit_code": 0, "duration": 0, "data": {}}
-            display_queue.put(("done", gpu_id, "benchmark", op, "NotFound", 0))
+                if op in CFG.benchmark_marks:
+                    display_queue.put(("start", gpu_id, "benchmark", op))
+                    perf = run_benchmark_q(gpu_id, op)
+                    display_queue.put(
+                        (
+                            "done",
+                            gpu_id,
+                            "benchmark",
+                            op,
+                            perf.get("status", "Error"),
+                            perf.get("duration", 0),
+                        )
+                    )
+                else:
+                    perf = {"status": "NotFound", "exit_code": 0, "duration": 0, "data": {}}
+                    display_queue.put(("done", gpu_id, "benchmark", op, "NotFound", 0))
 
-        customized_ops = [o[0] for o in flag_gems.runtime.backend.get_customized_ops()]
-        result = {
-            "customized": op in customized_ops,
-            "accuracy": acc,
-            "performance": perf,
-        }
-        worker_result.setdefault(op, result)
+                customized_ops = [o[0] for o in flag_gems.runtime.backend.get_customized_ops()]
+                result = {
+                    "customized": op in customized_ops,
+                    "accuracy": acc,
+                    "performance": perf,
+                }
+                worker_result.setdefault(op, result)
 
-        json_path = CFG.output_dir.joinpath(f"summary{gpu_id}.json")
-        tmp_path = json_path.with_suffix(".tmp")
-        with open(tmp_path, "w") as f:
-            json.dump(worker_result, f, indent=2)
-        os.replace(tmp_path, json_path)
+                json_path = CFG.output_dir.joinpath(f"summary{gpu_id}.json")
+                tmp_path = json_path.with_suffix(".tmp")
+                with open(tmp_path, "w") as f:
+                    json.dump(worker_result, f, indent=2)
+                os.replace(tmp_path, json_path)
 
-    display_queue.put(("exit", gpu_id))
+            except Exception:
+                # Log the exception and continue with the next op
+                import traceback
+                traceback.print_exc()
+                display_queue.put(("done", gpu_id, "accuracy", op, "Error", 0))
+                display_queue.put(("done", gpu_id, "benchmark", op, "Error", 0))
+
+    except Exception:
+        # Catch any outer-loop exceptions (e.g., queue corruption)
+        import traceback
+        traceback.print_exc()
+    finally:
+        # Always send exit signal, even if worker crashes midway
+        display_queue.put(("exit", gpu_id))
 
 
-def display_loop(queue, display, n_workers):
-    exited = 0
+def display_loop(queue, display, workers):
+    """Main progress display loop.
+
+    Args:
+        queue: Message queue from workers
+        display: LiveDisplay instance
+        workers: List of Process objects (not count), used to detect dead workers
+    """
+    # Track which workers have exited (by their Process object id)
+    exited = set()
+    # Build a map from gpu_id to Process for liveness checks
+    gpu_to_proc = {getattr(p, '_gpu_id', None): p for p in workers}
+
     tests_done = 0
     per_gpu_done = {gid: 0 for gid in display.gpu_ids}
 
-    while exited < n_workers:
+    while len(exited) < len(workers):
         try:
             msg = queue.get(timeout=1)
         except Exception:
+            # Timeout: check if any worker died without sending "exit"
+            for p in workers:
+                if p not in exited and not p.is_alive():
+                    gpu_id = getattr(p, '_gpu_id', '?')
+                    n = per_gpu_done.get(gpu_id, 0)
+                    display.log(
+                        f"{RED}[ERROR]{NC} worker pid={p.pid} (GPU {gpu_id}) "
+                        f"died without exit signal, exitcode={p.exitcode}"
+                    )
+                    display.update_gpu(
+                        gpu_id,
+                        f"{RED}[GPU {gpu_id:2d}] DIED ({n} ops, code={p.exitcode}){NC}"
+                    )
+                    exited.add(p)
             continue
 
         kind = msg[0]
@@ -874,7 +924,14 @@ def display_loop(queue, display, n_workers):
             gpu_id = msg[1]
             n = per_gpu_done.get(gpu_id, 0)
             display.update_gpu(gpu_id, f"{DIM}[GPU {gpu_id:2d}] done ({n} ops){NC}")
-            exited += 1
+            # Mark the corresponding Process as exited
+            proc = gpu_to_proc.get(gpu_id)
+            if proc:
+                exited.add(proc)
+            else:
+                # Fallback: if we can't map gpu_id to proc, just count it
+                # (shouldn't happen with proper setup, but defensive)
+                exited.add(gpu_id)
 
         elif kind == "start":
             _, gpu_id, phase, op = msg
@@ -1285,11 +1342,12 @@ def main():
 
     for gpu in gpu_ids:
         p = Process(target=worker_proc, args=(gpu, work_queue, display_queue))
+        p._gpu_id = gpu  # Attach gpu_id for display_loop to identify dead workers
         p.start()
         WORKER_PROCESSES.append(p)
 
     display.init()
-    display_loop(display_queue, display, gpu_count)
+    display_loop(display_queue, display, WORKER_PROCESSES)  # Pass process list, not count
 
     for p in WORKER_PROCESSES:
         p.join()
