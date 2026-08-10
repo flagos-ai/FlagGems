@@ -13,6 +13,17 @@
 # limitations under the License.
 
 ops:
+  - id: _batch_norm_with_update_functional
+    description: Functional variant of _batch_norm_with_update that applies training-mode Batch Normalization and updates running statistics.
+    for:
+      - _batch_norm_with_update_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: _reshape_alias
     description: |
       Creates a view of the input tensor with the given size and stride,

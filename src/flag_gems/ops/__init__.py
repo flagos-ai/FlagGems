@@ -28,6 +28,9 @@ from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
+from flag_gems.ops._batch_norm_with_update_functional import (
+    _batch_norm_with_update_functional,
+)
 from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
 from flag_gems.ops._conj import _conj
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
@@ -746,6 +749,7 @@ __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_no_update",
+    "_batch_norm_with_update_functional",
     "_cdist_backward",
     "_cdist_forward",
     "_chunk_cat",
