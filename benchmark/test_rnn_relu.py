@@ -60,7 +60,7 @@ def test_rnn_relu():
     # software conversion for every load/store, which makes the RNN
     # hidden-state recurrence ~20x slower than PyTorch's cuDNN path.
     # Replace bf16 with fp16 on these devices so the benchmark still
-    # exercises 3 dtype entries with meaningful numbers.
+    # exercises 3 dtype entries with meaningful number.
     major, _ = torch.cuda.get_device_capability()
     if major < 8 and torch.bfloat16 in dtypes:
         dtypes[dtypes.index(torch.bfloat16)] = torch.float16
