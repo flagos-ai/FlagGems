@@ -7,6 +7,12 @@ import flag_gems  # noqa: E402
 
 from . import accuracy_utils as utils  # noqa: E402
 
+DTYPES = [
+    torch.float32,
+]
+if flag_gems.runtime.device.support_fp64:
+    DTYPES.append(torch.float64)
+
 
 def _make_triangular(shape, dtype, device, upper, unitriangular):
     n = shape[-1]
@@ -38,7 +44,7 @@ def _make_triangular(shape, dtype, device, upper, unitriangular):
 @pytest.mark.linalg_solve_triangular
 @pytest.mark.parametrize("n", [1, 4, 8, 16, 32, 64, 128, 256, 512])
 @pytest.mark.parametrize("k", [1, 3, 16])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", DTYPES)
 def test_lower_left(n, k, dtype):
     A = _make_triangular(
         (n, n), dtype, flag_gems.device, upper=False, unitriangular=False
@@ -58,7 +64,7 @@ def test_lower_left(n, k, dtype):
 @pytest.mark.linalg_solve_triangular
 @pytest.mark.parametrize("n", [1, 4, 8, 16, 32, 64, 128, 256])
 @pytest.mark.parametrize("k", [1, 3, 16])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", DTYPES)
 def test_upper_left(n, k, dtype):
     A = _make_triangular(
         (n, n), dtype, flag_gems.device, upper=True, unitriangular=False
@@ -79,7 +85,7 @@ def test_upper_left(n, k, dtype):
 @pytest.mark.parametrize("n", [4, 16, 64, 128])
 @pytest.mark.parametrize("k", [1, 8])
 @pytest.mark.parametrize("upper", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", DTYPES)
 def test_right(n, k, upper, dtype):
     A = _make_triangular(
         (k, k), dtype, flag_gems.device, upper=upper, unitriangular=False
@@ -100,7 +106,7 @@ def test_right(n, k, upper, dtype):
 @pytest.mark.parametrize("n", [4, 16, 64, 128])
 @pytest.mark.parametrize("k", [1, 8])
 @pytest.mark.parametrize("upper", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", DTYPES)
 def test_unitriangular(n, k, upper, dtype):
     A = _make_triangular(
         (n, n), dtype, flag_gems.device, upper=upper, unitriangular=True
@@ -126,7 +132,7 @@ def test_unitriangular(n, k, upper, dtype):
 @pytest.mark.parametrize("n", [8, 32])
 @pytest.mark.parametrize("k", [1, 4])
 @pytest.mark.parametrize("upper", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", DTYPES)
 def test_batched(batch_shape, n, k, upper, dtype):
     shape_A = batch_shape + (n, n)
     shape_B = batch_shape + (n, k)
@@ -145,11 +151,11 @@ def test_batched(batch_shape, n, k, upper, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.linalg_solve_triangular
+@pytest.mark.linalg_solve_triangular_out
 @pytest.mark.parametrize("n", [16, 64, 128])
 @pytest.mark.parametrize("k", [1, 8])
 @pytest.mark.parametrize("upper", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", DTYPES)
 def test_out_kwarg(n, k, upper, dtype):
     A = _make_triangular(
         (n, n), dtype, flag_gems.device, upper=upper, unitriangular=False
@@ -159,7 +165,8 @@ def test_out_kwarg(n, k, upper, dtype):
 
     ref_A = utils.to_reference(A)
     ref_B = utils.to_reference(B)
-    ref_out = torch.linalg.solve_triangular(ref_A, ref_B, upper=upper)
+    ref_out = torch.empty_like(ref_B)
+    torch.linalg.solve_triangular(ref_A, ref_B, upper=upper, out=ref_out)
 
     with flag_gems.use_gems():
         res_out = torch.linalg.solve_triangular(A, B, upper=upper, out=out)
@@ -168,11 +175,11 @@ def test_out_kwarg(n, k, upper, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.linalg_solve_triangular
+@pytest.mark.linalg_solve_triangular_out
 @pytest.mark.parametrize("n", [16, 64, 128])
 @pytest.mark.parametrize("k", [1, 8])
 @pytest.mark.parametrize("upper", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", DTYPES)
 def test_linalg_solve_triangular_out(n, k, upper, dtype):
     A = _make_triangular(
         (n, n), dtype, flag_gems.device, upper=upper, unitriangular=False
@@ -182,7 +189,8 @@ def test_linalg_solve_triangular_out(n, k, upper, dtype):
 
     ref_A = utils.to_reference(A)
     ref_B = utils.to_reference(B)
-    ref_out = torch.linalg.solve_triangular(ref_A, ref_B, upper=upper)
+    ref_out = torch.empty_like(ref_B)
+    torch.linalg.solve_triangular(ref_A, ref_B, upper=upper, out=ref_out)
 
     with flag_gems.use_gems():
         res_out = torch.linalg.solve_triangular(A, B, upper=upper, out=out)
@@ -227,7 +235,7 @@ def test_empty(dtype):
 @pytest.mark.parametrize("n", [64, 128, 256, 512, 1024])
 @pytest.mark.parametrize("k", [1, 8])
 @pytest.mark.parametrize("upper", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", DTYPES)
 def test_large_n_f64(n, k, upper, dtype):
     """Large matrix tests - covering all three kernel dispatch paths"""
     A = _make_triangular(
@@ -257,7 +265,7 @@ def test_large_n_f64(n, k, upper, dtype):
 @pytest.mark.linalg_solve_triangular
 @pytest.mark.parametrize("n", [8, 32, 128, 512, 600])
 @pytest.mark.parametrize("upper", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", DTYPES)
 def test_no_tle_fallback(n, upper, dtype, monkeypatch):
     """Non-TLE fallback smoke tests: force HAS_TLE=False to exercise pure-Triton fallback kernels."""
     import importlib

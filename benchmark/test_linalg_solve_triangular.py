@@ -29,6 +29,12 @@ SOLVE_TRI_SHAPES = [
     (512, 256),
 ]
 
+SOLVE_TRI_DTYPES = [
+    torch.float32,
+]
+if flag_gems.runtime.device.support_fp64:
+    SOLVE_TRI_DTYPES.append(torch.float64)
+
 
 def _make_triangular_input(n, k, dtype, device, upper, unitriangular):
     """Generate a well-conditioned triangular matrix: A = I + 0.1 * tri(randn)"""
@@ -65,7 +71,7 @@ def test_linalg_solve_triangular(monkeypatch):
         op_name="linalg_solve_triangular",
         torch_op=torch.linalg.solve_triangular,
         gems_op=flag_gems.linalg_solve_triangular,
-        dtypes=[torch.float32, torch.float64],
+        dtypes=SOLVE_TRI_DTYPES,
     )
     bench.run()
 
@@ -84,12 +90,12 @@ class SolveTriOutBenchmark(base.Benchmark):
                 yield A, B, {"upper": upper, "out": out}
 
 
-@pytest.mark.linalg_solve_triangular
+@pytest.mark.linalg_solve_triangular_out
 def test_linalg_solve_triangular_out(monkeypatch):
     bench = SolveTriOutBenchmark(
         op_name="linalg_solve_triangular_out",
         torch_op=torch.linalg.solve_triangular,
         gems_op=flag_gems.linalg_solve_triangular_out,
-        dtypes=[torch.float32, torch.float64],
+        dtypes=SOLVE_TRI_DTYPES,
     )
     bench.run()
