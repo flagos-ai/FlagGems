@@ -68,6 +68,9 @@ registrar = GeneralOpRegistrar
 current_work_registrar = None
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
 CONJUGATE_DISPATCH_KEY = torch._C.DispatchKey.Conjugate.name
+# Sparse dispatch key for the active backend, e.g. "SparseCUDA" on NVIDIA. Sparse
+# COO inputs dispatch to this key rather than the dense backend key.
+SPARSE_DISPATCH_KEY = "Sparse" + runtime.device.dispatch_key
 
 
 def torch_ge(v):
@@ -538,6 +541,7 @@ _FULL_CONFIG = (
     ("index_reduce_", index_reduce_),
     ("index_select", index_select),
     ("index_select_backward", index_select_backward),
+    ("is_coalesced", is_coalesced, lambda: torch_ge("2.8"), (SPARSE_DISPATCH_KEY,)),
     ("is_nonzero", is_nonzero),
     ("isclose", isclose),
     ("isfinite", isfinite),

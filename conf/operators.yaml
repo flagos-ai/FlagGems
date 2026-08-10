@@ -4842,6 +4842,17 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: is_coalesced
+    description: Returns whether the input sparse COO tensor is in coalesced form.
+    for:
+      - is_coalesced
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: is_nonzero
     description: Returns True if the single-element input tensor is not equal to zero.
     for:
