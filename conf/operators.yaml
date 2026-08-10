@@ -4842,6 +4842,17 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: is_non_overlapping_and_dense
+    description: Returns True if the tensor's storage layout is contiguous with no gaps or overlaps.
+    for:
+      - is_non_overlapping_and_dense
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: is_nonzero
     description: Returns True if the single-element input tensor is not equal to zero.
     for:

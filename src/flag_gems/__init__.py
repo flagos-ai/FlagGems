@@ -538,6 +538,7 @@ _FULL_CONFIG = (
     ("index_reduce_", index_reduce_),
     ("index_select", index_select),
     ("index_select_backward", index_select_backward),
+    ("is_non_overlapping_and_dense", is_non_overlapping_and_dense),
     ("is_nonzero", is_nonzero),
     ("isclose", isclose),
     ("isfinite", isfinite),
