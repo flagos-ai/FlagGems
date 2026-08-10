@@ -12,25 +12,69 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 FLOAT_DTYPES = utils.FLOAT_DTYPES
-SHAPES = [
-    utils.UT_SHAPES_1D[1],
-    utils.UT_SHAPES_2D[0],
-    (4, 8, 4),
-    (2, 4, 3, 4),
-    (2, 4, 3, 4, 5),
-]
-SHAPE_DIM_CASES = tuple(zip(SHAPES, (0, -1, 1, 2, -2)))
 REDUCE_MODES = ("sum", "prod", "mean", "amax", "amin")
 # None exercises the schema default by omitting the include_self keyword.
 INCLUDE_SELF_CASES = (None, False)
+
+SHAPE_DIM_CASES = (
+    pytest.param(utils.UT_SHAPES_1D[1], 0, id="1d_dim0"),
+    pytest.param(utils.UT_SHAPES_2D[0], -1, id="2d_dim_last"),
+    pytest.param((4, 8, 4), 1, id="3d_dim1"),
+    pytest.param((2, 4, 3, 4), 2, id="4d_dim2"),
+    pytest.param((2, 4, 3, 4, 5), -2, id="5d_dim_neg2"),
+)
+HIGH_DIM_SHAPE_DIM_CASES = (
+    pytest.param((2, 3, 2, 2, 2, 2), 0, id="6d_dim0"),
+    pytest.param((2, 2, 2, 3, 2, 2), 3, id="6d_dim3"),
+    pytest.param((2, 2, 2, 2, 2, 2, 2, 3), 7, id="8d_dim_last"),
+    pytest.param((2, 2, 2, 3, 2, 2, 2, 2), -5, id="8d_dim_neg5"),
+)
+ACTIVE_PREFIX_CASES = (
+    pytest.param(
+        3,
+        (2, 2, 2, 3, 2, 2, 2, 2),
+        (1, 2, 1, 4, 1, 2, 1, 2),
+        (3, 2, 2, 4, 2, 3, 2, 2),
+        id="8d_active_prefix",
+    ),
+)
+
+if not cfg.QUICK_MODE:
+    # Full accuracy runs retain the quick structural cases and add roughly
+    # million-element shapes that exercise long index ranges and reduction axes.
+    SHAPE_DIM_CASES += (
+        pytest.param((1 << 20,), 0, id="large_1d_dim0"),
+        pytest.param((1024, 1000), -1, id="large_2d_dim_last"),
+        pytest.param((20, 320, 128), 1, id="large_3d_dim1"),
+        pytest.param((16, 64, 64, 16), 2, id="large_4d_dim2"),
+        pytest.param((8, 16, 16, 16, 32), -2, id="large_5d_dim_neg2"),
+    )
+    HIGH_DIM_SHAPE_DIM_CASES += (
+        pytest.param((8, 8, 8, 8, 8, 4), 0, id="large_6d_dim0"),
+        pytest.param((4, 8, 8, 16, 16, 16), 3, id="large_6d_dim3"),
+        pytest.param((2, 4, 4, 4, 4, 4, 4, 128), 7, id="large_8d_dim_last"),
+        pytest.param((2, 2, 4, 16, 8, 8, 8, 8), -5, id="large_8d_dim_neg5"),
+    )
+    ACTIVE_PREFIX_CASES += (
+        pytest.param(
+            3,
+            (2, 2, 4, 16, 8, 8, 8, 8),
+            (1, 2, 4, 32, 8, 8, 4, 8),
+            (2, 2, 4, 32, 8, 8, 8, 8),
+            id="large_8d_active_prefix",
+        ),
+    )
 
 
 def _make_test_data(shape, dim, dtype, reduce):
@@ -52,6 +96,39 @@ def _make_test_data(shape, dim, dtype, reduce):
         dtype=torch.long,
         device=flag_gems.device,
     )
+    return inp, index, src
+
+
+def _make_high_dim_active_prefix_data(
+    dtype, reduce, dim, self_shape, index_shape, src_shape
+):
+    """Create unequal, noncontiguous 8-D tensors with a valid active prefix."""
+    torch.manual_seed(0)
+    reverse_dims = tuple(reversed(range(len(self_shape))))
+    inp = torch.randn(
+        tuple(reversed(self_shape)),
+        dtype=dtype,
+        device=flag_gems.device,
+    ).permute(reverse_dims)
+    src = torch.randn(
+        tuple(reversed(src_shape)),
+        dtype=dtype,
+        device=flag_gems.device,
+    ).permute(reverse_dims)
+    index = torch.randint(
+        0,
+        self_shape[dim],
+        tuple(reversed(index_shape)),
+        dtype=torch.long,
+        device=flag_gems.device,
+    ).permute(reverse_dims)
+    if reduce == "prod":
+        inp.mul_(0.1).add_(1.0)
+        src.mul_(0.1).add_(1.0)
+
+    assert not inp.is_contiguous()
+    assert not index.is_contiguous()
+    assert not src.is_contiguous()
     return inp, index, src
 
 
@@ -146,6 +223,214 @@ def test_scatter_reduce_out(shape, dim, dtype, reduce, include_self):
     assert result.data_ptr() == result_out.data_ptr()
     assert ref_result.data_ptr() == ref_out.data_ptr()
     _assert_scatter_reduce_close(result, ref_result, dtype, dim, src, reduce)
+
+
+@pytest.mark.scatter_reduce_two
+@pytest.mark.parametrize("shape,dim", HIGH_DIM_SHAPE_DIM_CASES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+def test_scatter_reduce_high_dim(shape, dim, reduce, include_self):
+    """Validate the functional overload for 6-D and 8-D tensors."""
+    dtype = torch.float32
+    inp, index, src = _make_test_data(shape, dim, dtype, reduce)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    kwargs = _include_self_kwargs(include_self)
+
+    ref_out = torch.ops.aten.scatter_reduce.two(
+        ref_inp, dim, ref_index, ref_src, reduce, **kwargs
+    )
+    with flag_gems.use_gems():
+        result = torch.ops.aten.scatter_reduce.two(
+            inp, dim, index, src, reduce, **kwargs
+        )
+
+    assert result.data_ptr() != inp.data_ptr()
+    _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
+
+
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.parametrize("shape,dim", HIGH_DIM_SHAPE_DIM_CASES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+def test_scatter_reduce__high_dim(shape, dim, reduce, include_self):
+    """Validate the in-place overload for 6-D and 8-D tensors."""
+    dtype = torch.float32
+    inp, index, src = _make_test_data(shape, dim, dtype, reduce)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp.clone(), index, src)
+    kwargs = _include_self_kwargs(include_self)
+
+    ref_out = torch.ops.aten.scatter_reduce_.two(
+        ref_inp, dim, ref_index, ref_src, reduce, **kwargs
+    )
+    with flag_gems.use_gems():
+        result = torch.ops.aten.scatter_reduce_.two(
+            inp, dim, index, src, reduce, **kwargs
+        )
+
+    assert result.data_ptr() == inp.data_ptr()
+    _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
+
+
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.parametrize("shape,dim", HIGH_DIM_SHAPE_DIM_CASES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+def test_scatter_reduce_out_high_dim(shape, dim, reduce, include_self):
+    """Validate the out overload for 6-D and 8-D tensors."""
+    dtype = torch.float32
+    inp, index, src = _make_test_data(shape, dim, dtype, reduce)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    result_out = torch.empty_like(inp)
+    ref_out = torch.empty_like(ref_inp)
+    kwargs = _include_self_kwargs(include_self)
+
+    ref_result = torch.ops.aten.scatter_reduce.two_out(
+        ref_inp, dim, ref_index, ref_src, reduce, out=ref_out, **kwargs
+    )
+    with flag_gems.use_gems():
+        result = torch.ops.aten.scatter_reduce.two_out(
+            inp, dim, index, src, reduce, out=result_out, **kwargs
+        )
+
+    assert result.data_ptr() == result_out.data_ptr()
+    assert ref_result.data_ptr() == ref_out.data_ptr()
+    _assert_scatter_reduce_close(result, ref_result, dtype, dim, src, reduce)
+
+
+@pytest.mark.scatter_reduce_two
+@pytest.mark.parametrize("dim,self_shape,index_shape,src_shape", ACTIVE_PREFIX_CASES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+def test_scatter_reduce_high_dim_active_prefix(
+    dim, self_shape, index_shape, src_shape, reduce, include_self
+):
+    """Validate functional 8-D canonicalization with an active prefix."""
+    dtype = torch.float32
+    inp, index, src = _make_high_dim_active_prefix_data(
+        dtype, reduce, dim, self_shape, index_shape, src_shape
+    )
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    kwargs = _include_self_kwargs(include_self)
+
+    ref_out = torch.ops.aten.scatter_reduce.two(
+        ref_inp,
+        dim,
+        ref_index,
+        ref_src,
+        reduce,
+        **kwargs,
+    )
+    with flag_gems.use_gems():
+        result = torch.ops.aten.scatter_reduce.two(
+            inp,
+            dim,
+            index,
+            src,
+            reduce,
+            **kwargs,
+        )
+
+    assert result.data_ptr() != inp.data_ptr()
+    _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
+
+
+@pytest.mark.scatter_reduce_two_
+@pytest.mark.parametrize("dim,self_shape,index_shape,src_shape", ACTIVE_PREFIX_CASES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+def test_scatter_reduce__high_dim_active_prefix(
+    dim, self_shape, index_shape, src_shape, reduce, include_self
+):
+    """Validate in-place 8-D canonicalization with an active prefix."""
+    dtype = torch.float32
+    inp, index, src = _make_high_dim_active_prefix_data(
+        dtype, reduce, dim, self_shape, index_shape, src_shape
+    )
+    ref_inp, ref_index, ref_src = _reference_inputs(inp.clone(), index, src)
+    kwargs = _include_self_kwargs(include_self)
+
+    ref_out = torch.ops.aten.scatter_reduce_.two(
+        ref_inp,
+        dim,
+        ref_index,
+        ref_src,
+        reduce,
+        **kwargs,
+    )
+    with flag_gems.use_gems():
+        result = torch.ops.aten.scatter_reduce_.two(
+            inp,
+            dim,
+            index,
+            src,
+            reduce,
+            **kwargs,
+        )
+
+    assert result.data_ptr() == inp.data_ptr()
+    _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
+
+
+@pytest.mark.scatter_reduce_two_out
+@pytest.mark.parametrize("dim,self_shape,index_shape,src_shape", ACTIVE_PREFIX_CASES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
+def test_scatter_reduce_out_high_dim_active_prefix(
+    dim, self_shape, index_shape, src_shape, reduce, include_self
+):
+    """Validate out 8-D canonicalization with an active prefix."""
+    dtype = torch.float32
+    inp, index, src = _make_high_dim_active_prefix_data(
+        dtype, reduce, dim, self_shape, index_shape, src_shape
+    )
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+    result_out = torch.empty_like(inp)
+    ref_out = torch.empty_like(ref_inp)
+    kwargs = _include_self_kwargs(include_self)
+
+    ref_result = torch.ops.aten.scatter_reduce.two_out(
+        ref_inp,
+        dim,
+        ref_index,
+        ref_src,
+        reduce,
+        out=ref_out,
+        **kwargs,
+    )
+    with flag_gems.use_gems():
+        result = torch.ops.aten.scatter_reduce.two_out(
+            inp,
+            dim,
+            index,
+            src,
+            reduce,
+            out=result_out,
+            **kwargs,
+        )
+
+    assert result.data_ptr() == result_out.data_ptr()
+    assert ref_result.data_ptr() == ref_out.data_ptr()
+    _assert_scatter_reduce_close(result, ref_result, dtype, dim, src, reduce)
+
+
+@pytest.mark.scatter_reduce_two
+@pytest.mark.parametrize("reduce", ("amax", "amin"))
+def test_scatter_reduce_5d_canonical_gate(monkeypatch, reduce):
+    """Exercise the large-5D extrema gate without allocating a benchmark shape."""
+    scatter_reduce_module = importlib.import_module("flag_gems.ops.scatter_reduce")
+    monkeypatch.setattr(scatter_reduce_module, "_CANONICALIZE_5D_MIN_ELEMENTS", 0)
+
+    shape, dim, dtype = (2, 2, 3, 2, 2), 2, torch.float32
+    inp, index, src = _make_test_data(shape, dim, dtype, reduce)
+    ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
+
+    ref_out = torch.ops.aten.scatter_reduce.two(
+        ref_inp, dim, ref_index, ref_src, reduce
+    )
+    with flag_gems.use_gems():
+        result = torch.ops.aten.scatter_reduce.two(inp, dim, index, src, reduce)
+
+    _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
 
 
 def _make_empty_test_data(dtype=torch.float32):

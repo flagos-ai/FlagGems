@@ -16,52 +16,63 @@
 
 import logging
 
-from flag_gems.ops.scatter_reduce import _scatter_reduce_prod_scan
-from flag_gems.ops.scatter_reduce import scatter_reduce as _generic_scatter_reduce
-from flag_gems.ops.scatter_reduce import scatter_reduce_ as _generic_scatter_reduce_
 from flag_gems.ops.scatter_reduce import (
-    scatter_reduce_out as _generic_scatter_reduce_out,
+    _scatter_reduce_high_rank,
+    _scatter_reduce_prod_scan,
 )
+from flag_gems.ops.scatter_reduce import scatter_reduce as _generic_scatter_reduce
 
 logger = logging.getLogger(__name__)
 
-# The deterministic kernel launches one program per output. HCU rejects a
-# one-dimensional grid wider than 65535; large, low-contention workloads use
-# the generic parallel CAS kernel instead.
 _MAX_SCAN_OUTPUTS = 65535
+# The deterministic product-scan kernel launches one Triton program per output
+# element. HCU limits each launch-grid axis to 65,535 programs, so larger
+# outputs use the source-driven lock kernel and spill excess programs onto a
+# second axis. The threshold only selects the path and caps grid-x; it does not
+# change scatter_reduce semantics.
 
 
 def _use_prod_scan(inp, reduce):
     return reduce == "prod" and inp.numel() <= _MAX_SCAN_OUTPUTS
 
 
-def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
-    if not _use_prod_scan(inp, reduce):
-        return _generic_scatter_reduce(
+def _scatter_reduce_prod(inp, dim, index, src, include_self):
+    if inp.ndim > 5:
+        return _scatter_reduce_high_rank(
             inp,
             dim,
             index,
             src,
-            reduce,
-            include_self=include_self,
+            "prod",
+            include_self,
+            use_prod_scan=True,
         )
-    logger.debug("GEMS_HYGON SCATTER_REDUCE_TWO")
-    assert inp.ndim <= 5, f"scatter_reduce supports up to 5D tensors, got {inp.ndim}D"
     return _scatter_reduce_prod_scan(inp, dim, index, src, include_self)
 
 
+def _scatter_reduce(inp, dim, index, src, reduce, include_self):
+    if _use_prod_scan(inp, reduce):
+        return _scatter_reduce_prod(inp, dim, index, src, include_self)
+    return _generic_scatter_reduce(
+        inp,
+        dim,
+        index,
+        src,
+        reduce,
+        include_self=include_self,
+        _use_product_lock=reduce == "prod",
+        _product_grid_limit=_MAX_SCAN_OUTPUTS,
+    )
+
+
+def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
+    logger.debug("GEMS_HYGON SCATTER_REDUCE_TWO")
+    return _scatter_reduce(inp, dim, index, src, reduce, include_self)
+
+
 def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
-    if not _use_prod_scan(inp, reduce):
-        return _generic_scatter_reduce_(
-            inp,
-            dim,
-            index,
-            src,
-            reduce,
-            include_self=include_self,
-        )
     logger.debug("GEMS_HYGON SCATTER_REDUCE_TWO_")
-    result = _scatter_reduce_prod_scan(inp, dim, index, src, include_self)
+    result = _scatter_reduce(inp, dim, index, src, reduce, include_self)
     inp.copy_(result)
     return inp
 
@@ -76,22 +87,12 @@ def scatter_reduce_out(
     include_self=True,
     out=None,
 ):
-    if not _use_prod_scan(inp, reduce):
-        return _generic_scatter_reduce_out(
-            inp,
-            dim,
-            index,
-            src,
-            reduce,
-            include_self=include_self,
-            out=out,
-        )
     logger.debug("GEMS_HYGON SCATTER_REDUCE_TWO_OUT")
     if out is not None and out.dtype != inp.dtype:
         raise RuntimeError(
             f"Expected out tensor to have dtype {inp.dtype}, but got {out.dtype} instead"
         )
-    result = _scatter_reduce_prod_scan(inp, dim, index, src, include_self)
+    result = _scatter_reduce(inp, dim, index, src, reduce, include_self)
     if out is not None:
         out.copy_(result)
         return out
