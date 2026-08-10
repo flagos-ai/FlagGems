@@ -1574,6 +1574,57 @@ def _small_jacobi_svd(input):
             SWEEPS=sweeps,
             num_warps=1 if block_r <= 64 else 4,
         )
+    if k <= 17 and rows <= 64:
+        with torch_device_fn.device(input.device):
+            if m >= n:
+                _thin_reorthogonalize_kernel[(batch,)](
+                    v,
+                    ROWS=n,
+                    K=k,
+                    BLOCK_R=triton.next_power_of_2(n),
+                    num_warps=1,
+                )
+            else:
+                _thin_reorthogonalize_kernel[(batch,)](
+                    u,
+                    ROWS=m,
+                    K=k,
+                    BLOCK_R=triton.next_power_of_2(m),
+                    num_warps=1,
+                )
+        if m >= n:
+            u = _triton_bmm(a, v, (batch, m, k))
+            projected = u
+            projected_rows = m
+        else:
+            a_t = a.transpose(1, 2).contiguous()
+            v = _triton_bmm(a_t, u, (batch, n, k))
+            projected = v
+            projected_rows = n
+        with torch_device_fn.device(input.device):
+            _normalize_projection_kernel[(batch, k)](
+                projected,
+                s,
+                ROWS=projected_rows,
+                K=k,
+                BLOCK_R=triton.next_power_of_2(projected_rows),
+                num_warps=1,
+            )
+            _complete_zero_projection_kernel[(batch, k)](
+                projected,
+                s,
+                ROWS=projected_rows,
+                K=k,
+                BLOCK_R=triton.next_power_of_2(projected_rows),
+                num_warps=1,
+            )
+            _thin_reorthogonalize_kernel[(batch,)](
+                projected,
+                ROWS=projected_rows,
+                K=k,
+                BLOCK_R=triton.next_power_of_2(projected_rows),
+                num_warps=1,
+            )
     return (
         u.reshape(*input.shape[:-2], m, k),
         s.reshape(*input.shape[:-2], k),
@@ -2385,14 +2436,13 @@ def _cyclic_jacobi_svd(input):
                 BLOCK_R=triton.next_power_of_2(projected_rows),
                 num_warps=1,
             )
-            if batch > 1 and k <= 16:
-                _thin_reorthogonalize_kernel[(batch,)](
-                    projected,
-                    ROWS=projected_rows,
-                    K=k,
-                    BLOCK_R=triton.next_power_of_2(projected_rows),
-                    num_warps=1,
-                )
+            _thin_reorthogonalize_kernel[(batch,)](
+                projected,
+                ROWS=projected_rows,
+                K=k,
+                BLOCK_R=triton.next_power_of_2(projected_rows),
+                num_warps=1,
+            )
     return (
         u.reshape(*input.shape[:-2], m, k),
         s.reshape(*input.shape[:-2], k),
