@@ -3,6 +3,7 @@ from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
+from .attention import flash_attn_varlen_func
 from .bmm import bmm
 from .exponential_ import exponential_
 from .full import full
@@ -53,6 +54,7 @@ __all__ = [
     "arange_start",
     "bmm",
     "exponential_",
+    "flash_attn_varlen_func",
     "full",
     "full_like",
     "group_norm",
