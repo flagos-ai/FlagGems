@@ -38,9 +38,7 @@ namespace {
     unsigned int num_stages;
   };
 
-  RopeLaunchConfig get_rope_launch_config(int64_t n_tokens_bucket,
-                                          int64_t q_heads,
-                                          int64_t k_heads) {
+  RopeLaunchConfig get_rope_launch_config(int64_t n_tokens_bucket, int64_t q_heads, int64_t k_heads) {
     const int64_t max_heads = std::max(q_heads, k_heads);
     // Heads are only worth splitting for decode-like launches where the
     // number of token programs alone cannot fill the device. Beyond that,
@@ -173,9 +171,7 @@ void rotary_embedding_inplace(
   int64_t n_tokens_bucket = utils::next_power_of_2(n_tokens);
 
   int64_t padded_head_dim = std::max(utils::next_power_of_2(head_dim), int64_t(16));
-  const RopeLaunchConfig config = get_rope_launch_config(n_tokens_bucket,
-                                                         q_heads,
-                                                         k_heads);
+  const RopeLaunchConfig config = get_rope_launch_config(n_tokens_bucket, q_heads, k_heads);
   const unsigned int grid_y =
       config.head_block_size > 0
           ? static_cast<unsigned int>(
@@ -286,9 +282,7 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
   int64_t n_tokens_bucket = utils::next_power_of_2(n_tokens);
 
   int64_t padded_head_dim = std::max(utils::next_power_of_2(head_dim), int64_t(16));
-  const RopeLaunchConfig config = get_rope_launch_config(n_tokens_bucket,
-                                                         q_heads,
-                                                         k_heads);
+  const RopeLaunchConfig config = get_rope_launch_config(n_tokens_bucket, q_heads, k_heads);
   const unsigned int grid_y =
       config.head_block_size > 0
           ? static_cast<unsigned int>(
