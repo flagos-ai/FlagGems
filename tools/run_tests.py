@@ -778,20 +778,10 @@ def run_benchmark_q(gpu_id, op):
 
 
 def worker_proc(gpu_id, work_queue, display_queue):
-    # Redirect stdout/stderr to per-worker log files instead of /dev/null
-    # to preserve error messages for debugging worker crashes.
-    # Previously all errors were silently swallowed by /dev/null redirection,
-    # making it impossible to diagnose why a worker died.
-    worker_log = CFG.output_dir.joinpath(f"worker_{gpu_id}.log")
-    try:
-        log_file = open(worker_log, "w", buffering=1)
-        sys.stdout = log_file
-        sys.stderr = log_file
-    except Exception as e:
-        # Fallback to /dev/null if log file creation fails
-        sys.stdout = open(os.devnull, "w")
-        sys.stderr = open(os.devnull, "w")
-        print(f"Warning: failed to create worker log {worker_log}: {e}", file=sys.stderr)
+    # Redirect stdout/stderr to /dev/null to avoid file handle issues in subprocesses.
+    # Open file handles in forked processes can cause deadlocks.
+    sys.stdout = open(os.devnull, "w")
+    sys.stderr = open(os.devnull, "w")
 
     notfound_result = {
         "status": "NotFound",
