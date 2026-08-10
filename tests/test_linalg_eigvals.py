@@ -22,10 +22,15 @@ from . import accuracy_utils as utils
 
 @pytest.mark.linalg_eigvals
 @pytest.mark.parametrize("shape", [(2, 2), (3, 3), (5, 5), (10, 10), (20, 20)])
-# _linalg_eigvals requires float32 for cuSOLVER eigenvalue computation
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.complex64, torch.complex128])
 def test_linalg_eigvals(shape, dtype):
-    """Test _linalg_eigvals accuracy against PyTorch reference."""
+    """Test _linalg_eigvals accuracy against PyTorch reference.
+
+    Supports:
+    - float32 input -> complex64 output
+    - complex64 input -> complex64 output
+    - complex128 input -> complex128 output
+    """
     # Create a square matrix
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -36,4 +41,6 @@ def test_linalg_eigvals(shape, dtype):
 
     # Compare complex eigenvalues - use the output dtype for comparison
     # For float32 input, output is complex64
+    # For complex64 input, output is complex64
+    # For complex128 input, output is complex128
     utils.gems_assert_close(res_out, ref_out, res_out.dtype)

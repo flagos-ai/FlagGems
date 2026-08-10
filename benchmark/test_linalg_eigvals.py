@@ -34,7 +34,6 @@ def test_linalg_eigvals():
     bench = LinalgEigvalsBenchmark(
         op_name="linalg_eigvals",
         torch_op=torch.linalg.eigvals,
-        # _linalg_eigvals requires float32 for cuSOLVER eigenvalue computation
-        dtypes=[torch.float32],
+        dtypes=[torch.float32, torch.complex64, torch.complex128],
     )
     bench.run()

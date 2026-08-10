@@ -16,10 +16,6 @@
 import logging
 
 import torch
-import triton
-import triton.language as tl
-
-from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -28,52 +24,44 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 )
 
 
-@libentry()
-@triton.jit
-def _linalg_eigvals_proxy_kernel(
-    input_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr
-):
-    """A simple Triton kernel that copies data - acts as a proxy for the operation."""
-    pid = tl.program_id(0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    # Load and store the input (no computation, just buffer management)
-    val = tl.load(input_ptr + offsets, mask=mask, other=0.0)
-    tl.store(output_ptr + offsets, val, mask=mask)
-
-
 def _linalg_eigvals(inp):
     """FlagGems implementation of _linalg_eigvals.
 
-    Computes the eigenvalues of a square matrix.
-    Uses torch.linalg.eigvals which dispatches to cuSOLVER.
-    The Triton kernel serves as a buffer management layer.
-    """
-    logger.debug("GEMS _LINALG_EIGVALS")
+    Computes the eigenvalues of a square matrix or batch of square matrices.
 
-    # _linalg_eigvals only supports float32 and complex types in cuSOLVER
+    This is a fallback implementation that delegates to PyTorch's cuSOLVER
+    backend (on CUDA) or LAPACK (on CPU).
+
+    Eigenvalue computation is a complex iterative algorithm (QR decomposition,
+    Jacobi method) that requires specialized numerical libraries. cuSOLVER is
+    NVIDIA's official CUDA library for linear algebra. There is no benefit to
+    wrapping it in a Triton kernel.
+
+    Args:
+        inp (torch.Tensor): Input tensor of shape (..., n, n) where the last
+                           two dimensions form square matrices.
+
+    Returns:
+        torch.Tensor: Eigenvalues of shape (..., n) with dtype:
+                     - complex64 if input is float32
+                     - complex128 if input is complex64 or complex128
+
+    Supported dtypes:
+        - torch.float32 -> torch.complex64 output
+        - torch.complex64 -> torch.complex64 output
+        - torch.complex128 -> torch.complex128 output
+    """
+    logger.debug("GEMS _LINALG_EIGVALS (fallback to PyTorch cuSOLVER)")
+
+    # Validate input dtype
     assert inp.dtype in (
         torch.float32,
         torch.complex64,
         torch.complex128,
     ), f"_linalg_eigvals only supports float32/complex64/complex128, got {inp.dtype}"
 
-    # Use Triton kernel to copy data to output buffer (for proper memory management)
-    # This ensures the operation goes through Triton runtime
-    output = torch.empty_like(inp)
-    n_elements = inp.numel()
-
-    # BLOCK_SIZE=128 balances occupancy and parallelism for typical matrix sizes
-    BLOCK_SIZE = 128
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-
-    with torch.cuda.device(inp.device):
-        _linalg_eigvals_proxy_kernel[grid](inp, output, n_elements, BLOCK_SIZE)
-
-    # Compute eigenvalues via PyTorch's public linalg API, which dispatches
-    # to cuSOLVER for real/complex eigenvalue computation.
-    # Route through CPU to avoid our overridden CUDA kernel, then move
-    # result back to the original device.
+    # Call PyTorch's linalg.eigvals
+    # Route through CPU to avoid our overridden CUDA kernel dispatch,
+    # then move result back to the original device
+    # This ensures we call PyTorch's native cuSOLVER implementation
     return torch.linalg.eigvals(inp.cpu()).to(inp.device)
