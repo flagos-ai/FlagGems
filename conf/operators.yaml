@@ -10099,6 +10099,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: sym_storage_offset
+    description: Returns the storage offset of the input tensor as an integer. Used for torch.compile symbolic tracing.
+    for:
+      - sym_storage_offset
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: sym_stride
     description: Returns the stride of the input tensor as a tuple of integers. Used for torch.compile symbolic tracing.
     for:
