@@ -14,7 +14,14 @@
     "enabled": true
   },
   {
-    "backend": "enflame",
+    "backend": "cambricon-neuware472",
+    "runner_label": "cambricon",
+    "label": "vendor/Cambricon",
+    "gpu_check": "tools/gpu_check_cambricon.sh",
+    "enabled": true
+  },
+  {
+    "backend": "enflame-tops1106",
     "runner_label": "enflame",
     "label": "vendor/Enflame",
     "gpu_check": "",
@@ -42,7 +49,7 @@
     "enabled": true
   },
   {
-    "backend": "metax",
+    "backend": "metax-maca3810",
     "runner_label": "metax",
     "label": "vendor/MetaX",
     "gpu_check": "tools/gpu_check_metax.sh",
@@ -86,7 +93,7 @@
   {
     "backend": "thead",
     "runner_label": "thead",
-    "label": "vendor/Thead",
+    "label": "vendor/THead",
     "gpu_check": "tools/gpu_check_thead.sh",
     "enabled": true
   },

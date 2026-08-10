@@ -197,6 +197,20 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: addbmm
+    description: |
+      Performs a batch matrix-matrix product of matrices in `batch1` and `batch2`,
+      with a reduced add step (sum over batch dimension), and adds `input` to the result.
+      Formula: out = beta * input + alpha * (sum_i batch1_i @ batch2_i).
+    for:
+      - addbmm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: addcdiv
     description: |
       Performs the element-wise division of `tensor1` by `tensor2`, multiplies the result
@@ -1474,6 +1488,19 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: block_diag
+    description: |
+      Creates a block diagonal matrix from provided tensors. Each input tensor
+      forms a diagonal block in the output, with zeros elsewhere.
+    for:
+      - block_diag
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
     stages:
       - alpha: '5.4'
   - id: bmm
@@ -4393,6 +4420,23 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: has_compatible_shallow_copy_type
+    description: |
+      Metadata-only check that returns True when `self` can shallow-copy the
+      TensorImpl type of `from`. Compatibility is decided on the tensors'
+      DispatchKeySets: the sets are equal, or both are dense, both are sparse
+      COO, or both are sparse compressed. It is independent of dtype and shape,
+      and of device within a family, but opaque impls (meta, MKL-DNN, nested,
+      quantized) only match an identical key set even though some of them
+      report a strided layout.
+    for:
+      - _has_compatible_shallow_copy_type
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: hc_head_fused_kernel
     description: |
       The head fusion kernel for MHC (Manifold-Constrained Hyper-Connections).
@@ -5675,6 +5719,28 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: lu_unpack
+    description: Unpacks the LU decomposition returned by `lu_factor` into separate permutation matrix P, lower triangular L, and upper triangular U.
+    for:
+      - lu_unpack
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: lu_unpack_out
+    description: Out-of-place variant of lu_unpack that writes results into pre-allocated output tensors.
+    for:
+      - lu_unpack.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: unsafe_chunk
     description: Split a tensor into a specified number of chunks along a given dimension.
     for:
@@ -8530,6 +8596,20 @@ ops:
       - Reduction
     stages:
       - stable: '4.2'
+  - id: scatter_add
+    description: |
+      Out-of-place version of scatter_add_: adds all values from the tensor `src`
+      into `inp` at the indices specified in the `index` tensor along dimension
+      `dim` and returns the result without modifying the input.
+    for:
+      - scatter_add
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: scatter_add_
     description: |
       Adds all values from the tensor `src` into `self` at the indices specified
@@ -9612,6 +9692,14 @@ ops:
       Applies the log of the softmax function along a given dimension.
     for:
       - special.log_softmax
+    labels:
+    - aten
+    - nn.functional
+    - KernelGen
+    kind:
+    - Math
+    stages:
+    - alpha: '5.4'
   - id: special_log1p
     description: Computes log(1 + x) for each element of the input tensor.
     for:
@@ -10011,6 +10099,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: sym_storage_offset
+    description: Returns the storage offset of the input tensor as an integer. Used for torch.compile symbolic tracing.
+    for:
+      - sym_storage_offset
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: sym_stride
     description: Returns the stride of the input tensor as a tuple of integers. Used for torch.compile symbolic tracing.
     for:
