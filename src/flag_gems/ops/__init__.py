@@ -1076,6 +1076,7 @@ __all__ = [
     "median_dim",
     "median_dim_values",
     "median_out",
+    "meshgrid",
     "min",
     "min_dim",
     "minimum",
@@ -1373,5 +1374,4 @@ __all__ = [
     "zero_out",
     "zeros",
     "zeros_like",
-    "meshgrid",
 ]

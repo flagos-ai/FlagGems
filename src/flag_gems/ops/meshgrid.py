@@ -1,5 +1,4 @@
 from typing import List, Tuple
-
 import torch
 import triton
 import triton.language as tl
@@ -307,23 +306,23 @@ def _meshgrid_kernel_nd(
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < num_elements
-
+    
     out_ptrs = tl.load(out_ptrs_ptr + tl.arange(0, ndim))
     in_ptrs = tl.load(in_ptrs_ptr + tl.arange(0, ndim))
     sizes = tl.load(sizes_ptr + tl.arange(0, ndim))
-
+    
     strides = tl.zeros([ndim], dtype=tl.int64)
     stride = 1
     for i in range(ndim - 1, -1, -1):
         strides[i] = stride
         stride = stride * sizes[i]
-
+    
     idxs = tl.zeros([ndim], dtype=tl.int64)
     remaining = offsets
     for i in range(ndim):
         idxs[i] = remaining // strides[i]
         remaining = remaining - idxs[i] * strides[i]
-
+    
     for i in range(ndim):
         val = tl.load(in_ptrs[i] + idxs[i], mask=mask)
         tl.store(out_ptrs[i] + offsets, val, mask=mask)
@@ -343,28 +342,28 @@ def _meshgrid_kernel_nd_strided(
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < num_elements
-
+    
     out_ptrs = tl.load(out_ptrs_ptr + tl.arange(0, ndim))
     in_ptrs = tl.load(in_ptrs_ptr + tl.arange(0, ndim))
     sizes = tl.load(sizes_ptr + tl.arange(0, ndim))
     out_strides = tl.load(out_strides_ptr + tl.arange(0, ndim))
-
+    
     strides = tl.zeros([ndim], dtype=tl.int64)
     stride = 1
     for i in range(ndim - 1, -1, -1):
         strides[i] = stride
         stride = stride * sizes[i]
-
+    
     idxs = tl.zeros([ndim], dtype=tl.int64)
     remaining = offsets
     for i in range(ndim):
         idxs[i] = remaining // strides[i]
         remaining = remaining - idxs[i] * strides[i]
-
+    
     out_offset = 0
     for i in range(ndim):
         out_offset = out_offset + idxs[i] * out_strides[i]
-
+    
     for i in range(ndim):
         val = tl.load(in_ptrs[i] + idxs[i], mask=mask)
         tl.store(out_ptrs[i] + out_offset, val, mask=mask)
@@ -583,7 +582,7 @@ def _meshgrid_4d_cuda(tensors, indexing):
 
 def _meshgrid_nd_cuda(tensors, indexing):
     ndim = len(tensors)
-
+    
     if indexing == "xy":
         tensors_ordered = list(tensors)
         tensors_ordered[0], tensors_ordered[1] = tensors_ordered[1], tensors_ordered[0]
@@ -595,15 +594,15 @@ def _meshgrid_nd_cuda(tensors, indexing):
         sizes = [t.size(0) for t in tensors]
         out_shape = sizes
         in_tensors = tensors
-
+    
     out_tensors = []
     for i, t in enumerate(in_tensors):
         out_tensors.append(torch.empty(out_shape, device=t.device, dtype=t.dtype))
-
+    
     num_elements = 1
     for s in sizes:
         num_elements *= s
-
+    
     if num_elements <= 4096:
         BLOCK_SIZE = 64
     elif num_elements > 4 * 1024 * 1024:
@@ -612,19 +611,15 @@ def _meshgrid_nd_cuda(tensors, indexing):
         BLOCK_SIZE = 512
     else:
         BLOCK_SIZE = 256
-
+    
     grid = (triton.cdiv(num_elements, BLOCK_SIZE),)
-
+    
     all_contiguous = all(t.is_contiguous() for t in in_tensors)
-
-    out_ptrs = torch.tensor(
-        [t.data_ptr() for t in out_tensors], device="cuda", dtype=torch.int64
-    )
-    in_ptrs = torch.tensor(
-        [t.data_ptr() for t in in_tensors], device="cuda", dtype=torch.int64
-    )
-    sizes_tensor = torch.tensor(sizes, device="cuda", dtype=torch.int64)
-
+    
+    out_ptrs = torch.tensor([t.data_ptr() for t in out_tensors], device='cuda', dtype=torch.int64)
+    in_ptrs = torch.tensor([t.data_ptr() for t in in_tensors], device='cuda', dtype=torch.int64)
+    sizes_tensor = torch.tensor(sizes, device='cuda', dtype=torch.int64)
+    
     if all_contiguous:
         _meshgrid_kernel_nd[grid](
             out_ptrs,
@@ -635,9 +630,7 @@ def _meshgrid_nd_cuda(tensors, indexing):
             BLOCK_SIZE,
         )
     else:
-        out_strides = torch.tensor(
-            out_tensors[0].stride(), device="cuda", dtype=torch.int64
-        )
+        out_strides = torch.tensor(out_tensors[0].stride(), device='cuda', dtype=torch.int64)
         _meshgrid_kernel_nd_strided[grid](
             out_ptrs,
             in_ptrs,
@@ -647,16 +640,14 @@ def _meshgrid_nd_cuda(tensors, indexing):
             num_elements,
             BLOCK_SIZE,
         )
-
+    
     if indexing == "xy":
         out_tensors[0], out_tensors[1] = out_tensors[1], out_tensors[0]
-
+    
     return tuple(out_tensors)
 
 
-def meshgrid(
-    tensors: List[torch.Tensor], indexing: str = "ij"
-) -> Tuple[torch.Tensor, ...]:
+def meshgrid(tensors: List[torch.Tensor], indexing: str = "ij") -> Tuple[torch.Tensor, ...]:
     if not tensors:
         raise ValueError("tensors must be a non-empty list or tuple")
 
