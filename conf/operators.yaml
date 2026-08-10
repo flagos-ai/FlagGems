@@ -9674,6 +9674,20 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_i1e
+    description: |
+      Computes the exponentially scaled modified Bessel function of the first kind
+      of order 1, i1e(x) = i1(x) * exp(-|x|), for each element in the input tensor.
+    for:
+      - special_i1e
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_legendre_polynomial_p
     description: |
       Computes the Legendre polynomial P_n(x) of degree n for each element in the input tensor,
