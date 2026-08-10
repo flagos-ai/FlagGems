@@ -390,6 +390,7 @@ mm:
     BLOCK_K: 64
   num_stages: 5
   num_warps: 2
+
 nansum_dim:
 - META:
     BLOCK_M: 8

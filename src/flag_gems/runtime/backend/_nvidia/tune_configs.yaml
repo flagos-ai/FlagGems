@@ -1365,6 +1365,42 @@ replication_pad3d:
       BLOCK_H: 8
       BLOCK_W: 128
     num_warps: 8
+reflection_pad2d_backward:
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 16
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 16
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 32
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_stages: 2
+    num_warps: 8
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 8
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_H: 8
+      BLOCK_W: 16
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 8
+    num_stages: 5
+    num_warps: 2
 vstack:
   - gen: true
     param_map:
@@ -2438,6 +2474,29 @@ diff:
   - 256
   - 1024
 
+_adaptive_avg_pool2d_backward:
+  - META: {BLOCK_H: 16, BLOCK_W: 16}
+    num_warps: 4
+    num_stages: 4
+  - META: {BLOCK_H: 32, BLOCK_W: 16}
+    num_warps: 4
+    num_stages: 3
+  - META: {BLOCK_H: 16, BLOCK_W: 32}
+    num_warps: 4
+    num_stages: 3
+  - META: {BLOCK_H: 32, BLOCK_W: 32}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_H: 8, BLOCK_W: 8}
+    num_warps: 2
+    num_stages: 5
+  - META: {BLOCK_H: 8, BLOCK_W: 16}
+    num_warps: 2
+    num_stages: 5
+  - META: {BLOCK_H: 16, BLOCK_W: 8}
+    num_warps: 2
+    num_stages: 5
+
 adaptive_max_pool3d_backward:
   - META:
       BLOCK_SIZE: 16
@@ -2626,6 +2685,39 @@ fused_marlin_moe_mxfp4_gemm_silu:
     num_warps: 8
     num_stages: 3
     maxnreg: 255
+
+pairwise_distance:
+  - gen: true
+    param_map:
+      META: {BLOCK_M: block_m, BLOCK_D: block_d}
+      num_warps: 4
+    block_m: [16, 32]
+    block_d: [1]
+  - gen: true
+    param_map:
+      META: {BLOCK_M: block_m, BLOCK_D: block_d}
+      num_warps: 4
+    block_m: [16]
+    block_d: [2, 4, 8]
+  - gen: true
+    param_map:
+      META: {BLOCK_M: block_m, BLOCK_D: block_d}
+      num_warps: warps
+    block_m: [4, 8]
+    block_d: [128, 256]
+    warps: [4, 8]
+  - gen: true
+    param_map:
+      META: {BLOCK_M: block_m, BLOCK_D: block_d}
+      num_warps: 4
+    block_m: [16]
+    block_d: [64, 128, 256]
+  - gen: true
+    param_map:
+      META: {BLOCK_M: block_m, BLOCK_D: block_d}
+      num_warps: 8
+    block_m: [1, 4, 8]
+    block_d: [1024, 4096]
 
 w8a8_block_fp8_bmm:
   - gen: true

@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -19,6 +21,8 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -383,7 +387,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
     next_power_global_ctas_num = triton.next_power_of_2(global_ctas_num)
     ctas_num = global_ctas_num if global_ctas_num < 65536 else 2048
     tiles_per_cta = triton.cdiv(num_tasks, tile_size * ctas_num)
-    num_warps = 8 if tiles_per_cta == 1 else 16  # maca support up to 16
+    num_warps = 8  # MetaX C550: max 512 threads = 8 warps × 64
     grid = (ctas_num, 1, 1)
 
     # allocate tensor
@@ -664,7 +668,7 @@ def sorted_indices_unique_flat(
     next_power_global_ctas_num = triton.next_power_of_2(global_ctas_num)
     ctas_num = global_ctas_num if global_ctas_num < 32768 else 8192
     tiles_per_cta = triton.cdiv(num_tasks, tile_size * ctas_num)
-    num_warps = 8 if tiles_per_cta == 1 else 16  # maca support up to 16
+    num_warps = 8  # MetaX C550: max 512 threads = 8 warps × 64
     grid = (ctas_num, 1, 1)
 
     # allocate tensor
@@ -786,6 +790,7 @@ def _unique2(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
+    logger.debug("GEMS_METAX _UNIQUE2")
     if in0.numel() <= 8192:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = simple_unique_flat(
