@@ -907,6 +907,7 @@ _FULL_CONFIG = (
         "special_shifted_chebyshev_polynomial_u_",
         special_shifted_chebyshev_polynomial_u_,
     ),
+    ("special_shifted_chebyshev_polynomial_t", special_shifted_chebyshev_polynomial_t),
     ("special_shifted_chebyshev_polynomial_v", special_shifted_chebyshev_polynomial_v),
     ("special_shifted_chebyshev_polynomial_w", special_shifted_chebyshev_polynomial_w),
     ("special_sinc", special_sinc),

@@ -9829,6 +9829,19 @@ ops:
       - KernelGen
     kind:
       - Math
+  - id: special_shifted_chebyshev_polynomial_t
+    description: |
+      Computes the shifted Chebyshev polynomial of the first kind T_n^*(x).
+    for:
+      - special_shifted_chebyshev_polynomial_t
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_shifted_chebyshev_polynomial_w
     kind:
       - Math
