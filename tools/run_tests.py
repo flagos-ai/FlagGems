@@ -845,10 +845,17 @@ def worker_proc(gpu_id, work_queue, display_queue):
                         )
                     )
                 else:
-                    perf = {"status": "NotFound", "exit_code": 0, "duration": 0, "data": {}}
+                    perf = {
+                        "status": "NotFound",
+                        "exit_code": 0,
+                        "duration": 0,
+                        "data": {},
+                    }
                     display_queue.put(("done", gpu_id, "benchmark", op, "NotFound", 0))
 
-                customized_ops = [o[0] for o in flag_gems.runtime.backend.get_customized_ops()]
+                customized_ops = [
+                    o[0] for o in flag_gems.runtime.backend.get_customized_ops()
+                ]
                 result = {
                     "customized": op in customized_ops,
                     "accuracy": acc,
@@ -865,6 +872,7 @@ def worker_proc(gpu_id, work_queue, display_queue):
             except Exception:
                 # Log the exception and continue with the next op
                 import traceback
+
                 traceback.print_exc()
                 display_queue.put(("done", gpu_id, "accuracy", op, "Error", 0))
                 display_queue.put(("done", gpu_id, "benchmark", op, "Error", 0))
@@ -872,6 +880,7 @@ def worker_proc(gpu_id, work_queue, display_queue):
     except Exception:
         # Catch any outer-loop exceptions (e.g., queue corruption)
         import traceback
+
         traceback.print_exc()
     finally:
         # Always send exit signal, even if worker crashes midway.
@@ -895,7 +904,7 @@ def display_loop(queue, display, workers):
     # Track which workers have exited (by their Process object id)
     exited = set()
     # Build a map from gpu_id to Process for liveness checks
-    gpu_to_proc = {getattr(p, '_gpu_id', None): p for p in workers}
+    gpu_to_proc = {getattr(p, "_gpu_id", None): p for p in workers}
 
     tests_done = 0
     per_gpu_done = {gid: 0 for gid in display.gpu_ids}
