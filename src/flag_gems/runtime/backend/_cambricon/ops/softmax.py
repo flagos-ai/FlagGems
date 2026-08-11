@@ -19,7 +19,14 @@ import math
 import torch
 import triton
 import triton.language as tl
-from triton._utils import TRITON_MAX_TENSOR_NUMEL
+
+try:
+    from triton._utils import TRITON_MAX_TENSOR_NUMEL
+except ImportError:
+    # Older vendor triton forks (e.g. cambricon mlu 3.2.0) don't export this
+    # constant from triton._utils. Fall back to the upstream literal value
+    # (2**20), matching how _tsingmicro/ops/rms_norm.py defines it locally.
+    TRITON_MAX_TENSOR_NUMEL = 1048576
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
