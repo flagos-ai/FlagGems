@@ -9511,6 +9511,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_erf
+    description: |
+      Computes the error function of `input` element-wise.
+      Alias for erf; delegates to the erf kernel.
+    for:
+      - special_erf
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_erfcx
     description: |
       Computes the scaled complementary error function for each element of input.
