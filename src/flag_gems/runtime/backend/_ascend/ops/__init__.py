@@ -31,6 +31,7 @@ from .attention import (
 from .baddbmm import baddbmm
 from .bmm import bmm
 from .cat import cat, cat_out
+from .complex import complex
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
@@ -122,6 +123,7 @@ __all__ = [
     "bmm",
     "cat",
     "cat_out",
+    "complex",
     "count_nonzero",
     "cummax",
     "cummin",
