@@ -36,6 +36,9 @@ else:
 
 
 @pytest.mark.cudnn_convolution
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize("shape, kernel, groups", SHAPE_CUDNN_CONV2D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
@@ -88,6 +91,9 @@ else:
 
 
 @pytest.mark.cudnn_convolution
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize("shape, kernel", SHAPE_CUDNN_CONV1D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])
@@ -136,6 +142,9 @@ else:
 
 
 @pytest.mark.cudnn_convolution
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize("shape, kernel, groups", SHAPE_CUDNN_CONV3D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", [0, 1])

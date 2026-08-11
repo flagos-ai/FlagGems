@@ -63,7 +63,7 @@ def _should_stage_ptpu_tensor_for_multiprocessing(tensor):
 
 
 def _sunrise_monkey_patch_enabled():
-    value = os.getenv("FLAG_GEMS_SUNRISE_ENABLE_MONKEY_PATCH", "1").strip().lower()
+    value = os.getenv("FLAG_GEMS_SUNRISE_ENABLE_MONKEY_PATCH", "0").strip().lower()
     return value not in {"0", "false", "no", "off"}
 
 
@@ -77,6 +77,7 @@ CUSTOMIZED_AUTOGRAD_OPS = (
     "arcsinh",
     "arcsinh.out",
     "arctanh_",
+    "atanh_",
     "clip",
     "clip_",
     "concatenate",
@@ -100,6 +101,7 @@ CUSTOMIZED_AUTOGRAD_OPS = (
     "kron",
     "log_sigmoid",
     "margin_ranking_loss",
+    "max_pool3d_with_indices_backward",
     "nonzero_numpy",
     "pad",
     "prelu",
@@ -120,16 +122,53 @@ CUSTOMIZED_AUTOGRAD_OPS = (
 )
 
 
+def _sunrise_max_pool3d_with_indices_backward(
+    grad_output,
+    input,
+    kernel_size,
+    stride,
+    padding,
+    dilation,
+    ceil_mode,
+    indices,
+):
+    """Adapt the current aten schema to FlagGems' max-pool backward API."""
+    from .ops import max_pool3d_backward
+
+    return max_pool3d_backward(
+        grad_output,
+        input,
+        indices,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        ceil_mode,
+    )
+
+
 def _sunrise_extra_config_entries():  # 有些公共库也没有注册的op，只能先放在这里了。使得tests能过
+    from flag_gems.ops.atanh import atanh_
+    from flag_gems.ops.geometric import geometric, geometric_
+    from flag_gems.ops.range import range as range_op
+
     from .ops import (
         amax_out,
         amin,
         amin_out,
         aminmax_out,
+        bitwise_left_shift_out,
+        bitwise_right_shift_out,
         clamp_min,
         clamp_min_,
         clamp_min_out,
+        empty,
+        fft_c2c,
         hypot_out,
+        special_chebyshev_polynomial_w_out,
+        special_i0e_out,
+        special_i1_out,
+        special_shifted_chebyshev_polynomial_u_out,
     )
 
     return (
@@ -137,10 +176,32 @@ def _sunrise_extra_config_entries():  # 有些公共库也没有注册的op，�
         ("amin", amin),
         ("amin.out", amin_out),
         ("aminmax.out", aminmax_out),
+        ("atanh_", atanh_),
+        ("bitwise_left_shift.Tensor_out", bitwise_left_shift_out),
+        ("bitwise_right_shift.Tensor_out", bitwise_right_shift_out),
         ("clamp_min.Tensor", clamp_min),
         ("clamp_min.Tensor_out", clamp_min_out),
         ("clamp_min_.Tensor", clamp_min_),
+        ("empty.memory_format", empty),
+        ("_fft_c2c", fft_c2c),
+        ("geometric", geometric),
+        ("geometric_", geometric_),
         ("hypot.out", hypot_out),
+        (
+            "special_chebyshev_polynomial_w.out",
+            special_chebyshev_polynomial_w_out,
+        ),
+        ("special_i0e.out", special_i0e_out),
+        ("special_i1.out", special_i1_out),
+        (
+            "special_shifted_chebyshev_polynomial_u.out",
+            special_shifted_chebyshev_polynomial_u_out,
+        ),
+        (
+            "max_pool3d_with_indices_backward",
+            _sunrise_max_pool3d_with_indices_backward,
+        ),
+        ("range.step", range_op),
     )
 
 

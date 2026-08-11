@@ -14,6 +14,7 @@
 
 __all__ = []
 
+from ._unsafe_masked_index import _unsafe_masked_index
 from .abs import abs, abs_
 from .add import add, add_
 from .addmm import addmm
@@ -25,6 +26,7 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start  # noqa: F401
 from .argmax import argmax
 from .argmin import argmin
+from .bincount import bincount
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_,
@@ -51,11 +53,13 @@ from .bitwise_xor import (
 )
 from .bmm import bmm, bmm_out
 from .cat import cat, cat_out
+from .cauchy import cauchy, cauchy_
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
 from .clamp_min import clamp_min, clamp_min_
 from .clip import clip, clip_
+from .concatenate import concatenate
 from .conj_physical import conj_physical
 from .contiguous import contiguous
 from .copy import copy, copy_
@@ -80,7 +84,7 @@ from .div import (
 )
 from .dropout import dropout
 from .elu import elu
-from .embedding import embedding
+from .embedding import embedding, embedding_backward
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
 from .exp import exp, exp_, exp_out
@@ -89,6 +93,7 @@ from .expm1 import expm1, expm1_, expm1_out
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
+from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import (
     fill_scalar,
     fill_scalar_,
@@ -100,13 +105,14 @@ from .fill import (
 from .flip import flip
 from .full import full
 from .full_like import full_like
-from .gather import gather
+from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
 from .glu import glu
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .index import index
+from .index_add import index_add, index_add_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
 from .isclose import allclose, isclose
@@ -114,6 +120,7 @@ from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
+from .kron import kron
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
@@ -132,26 +139,41 @@ from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .max import max, max_dim
+from .max_pool2d_with_indices import max_pool2d_backward, max_pool2d_with_indices
+from .max_pool3d_with_indices import max_pool3d_backward, max_pool3d_with_indices
 from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .minimum import minimum
-from .mm import mm
+from .mm import mm, router_gemm
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv
 from .nan_to_num import nan_to_num
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
-from .nllloss import nll_loss_backward, nll_loss_forward
+from .nllloss import (
+    nll_loss2d_backward,
+    nll_loss2d_forward,
+    nll_loss_backward,
+    nll_loss_forward,
+)
 from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
-from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
+from .normal import (
+    normal_,
+    normal_float_tensor,
+    normal_tensor_float,
+    normal_tensor_tensor,
+)
+from .one_hot import one_hot
 from .ones import ones  # noqa: F401
 from .ones_like import ones_like
 from .outer import outer
 from .pad import pad
 from .per_token_group_quant_fp8 import per_token_group_quant_fp8
+from .poisson import poisson
 from .polar import polar
 from .pow import (
     pow_scalar,
@@ -163,6 +185,7 @@ from .pow import (
 from .prod import prod, prod_dim
 from .rand import rand
 from .rand_like import rand_like
+from .randint_like import randint_like
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
@@ -178,6 +201,13 @@ from .replication_pad3d import replication_pad3d
 from .rsqrt import rsqrt, rsqrt_
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
+from .searchsorted import (
+    searchsorted,
+    searchsorted_out,
+    searchsorted_scalar,
+    searchsorted_scalar_out,
+)
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
@@ -200,6 +230,8 @@ from .tril import tril, tril_, tril_out
 from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2, simple_unique_flat, sorted_indices_unique_flat
+from .unique_consecutive import unique_consecutive
+from .unique_dim import unique_dim
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
@@ -217,6 +249,9 @@ __all__ = [
     "zero_",
     "scatter",
     "scatter_",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "sort",
     "sort_stable",
     "cat",
@@ -224,9 +259,11 @@ __all__ = [
     "bmm",
     "bmm_out",
     "mm",
+    "router_gemm",
     "mv",
     "arange",
     "embedding",
+    "embedding_backward",
     "multinomial",
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
@@ -235,13 +272,20 @@ __all__ = [
     "argmin",
     "exponential_",
     "gather",
+    "gather_backward",
     "gt",
     "gt_scalar",
     "index_select",
+    "index_add",
+    "index_add_",
     "index",
     "isin",
     "max",
     "max_dim",
+    "max_pool2d_backward",
+    "max_pool2d_with_indices",
+    "max_pool3d_backward",
+    "max_pool3d_with_indices",
     "min",
     "min_dim",
     "sum",
@@ -254,6 +298,7 @@ __all__ = [
     "add",
     "add_",
     "angle",
+    "bincount",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
     "bitwise_and_scalar_tensor",
@@ -271,10 +316,13 @@ __all__ = [
     "bitwise_xor_scalar_tensor",
     "bitwise_xor_tensor",
     "bitwise_xor_tensor_",
+    "cauchy",
+    "cauchy_",
     "clamp",
     "clamp_",
     "clamp_tensor",
     "clamp_tensor_",
+    "concatenate",
     "copy",
     "copy_",
     "cos",
@@ -304,6 +352,8 @@ __all__ = [
     "expm1",
     "expm1_",
     "expm1_out",
+    "feature_dropout",
+    "feature_dropout_",
     "fill_scalar",
     "fill_scalar_",
     "fill_tensor",
@@ -323,6 +373,7 @@ __all__ = [
     "isfinite",
     "isinf",
     "isnan",
+    "kron",
     "le_scalar",
     "le",
     "lerp_tensor_",
@@ -346,6 +397,10 @@ __all__ = [
     "mul",
     "mul_",
     "nan_to_num",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "ne_scalar",
     "ne",
     "neg",
@@ -354,7 +409,10 @@ __all__ = [
     "normal_tensor_tensor",
     "normal_tensor_float",
     "normal_float_tensor",
+    "normal_",
+    "one_hot",
     "per_token_group_quant_fp8",
+    "poisson",
     "polar",
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
@@ -412,11 +470,16 @@ __all__ = [
     "slice_backward",
     "slice_scatter",
     "select_scatter",
+    "searchsorted",
+    "searchsorted_out",
+    "searchsorted_scalar",
+    "searchsorted_scalar_out",
     "ones_like",
     "prod",
     "prod_dim",
     "zeros_like",
     "rand",
+    "randint_like",
     "randn",
     "rand_like",
     "randn_like",
@@ -431,6 +494,9 @@ __all__ = [
     "simple_unique_flat",
     "_unique2",
     "sorted_indices_unique_flat",
+    "unique_consecutive",
+    "unique_dim",
+    "_unsafe_masked_index",
     "dropout",
     "cummax",
     "_index_put_impl_",
@@ -452,6 +518,8 @@ __all__ = [
     "amax",
     "nll_loss_forward",
     "nll_loss_backward",
+    "nll_loss2d_forward",
+    "nll_loss2d_backward",
     "vector_norm",
     "tril",
     "tril_",
