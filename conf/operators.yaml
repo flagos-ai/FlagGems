@@ -9511,6 +9511,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_erf
+    description: |
+      Computes the error function of `input` element-wise.
+      Alias for erf; delegates to the erf kernel.
+    for:
+      - special_erf
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_erfcx
     description: |
       Computes the scaled complementary error function for each element of input.
@@ -9566,6 +9580,20 @@ ops:
       - special_erfinv.out
     labels:
       - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_exp2
+    description: |
+      Computes the base two exponential function of `input` element-wise.
+      Alias for exp2; delegates to the exp2 kernel.
+    for:
+      - special_exp2
+    labels:
+      - aten
+      - pointwise
       - KernelGen
     kind:
       - Math
@@ -9674,6 +9702,20 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_i1e
+    description: |
+      Computes the exponentially scaled modified Bessel function of the first kind
+      of order 1, i1e(x) = i1(x) * exp(-|x|), for each element in the input tensor.
+    for:
+      - special_i1e
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_legendre_polynomial_p
     description: |
       Computes the Legendre polynomial P_n(x) of degree n for each element in the input tensor,

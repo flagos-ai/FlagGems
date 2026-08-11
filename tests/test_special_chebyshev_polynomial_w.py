@@ -61,7 +61,7 @@ def test_special_chebyshev_polynomial_w_out_of_domain(dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.special_chebyshev_polynomial_w
+@pytest.mark.special_chebyshev_polynomial_w_out
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_special_chebyshev_polynomial_w_out(shape, dtype):
