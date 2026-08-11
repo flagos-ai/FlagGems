@@ -398,6 +398,7 @@ class TunedConfigLoader(object):
             ]
 
         if op_name == "mm_splitk":
+            group_m_values = ranges.get("GROUP_M", [8])
             return [
                 triton.Config(
                     {
@@ -405,6 +406,7 @@ class TunedConfigLoader(object):
                         "BLOCK_N": block_n,
                         "BLOCK_K": block_k,
                         "SPLIT_K": split_k,
+                        "GROUP_M": group_m,
                     },
                     num_stages=s,
                     num_warps=w,
@@ -414,6 +416,7 @@ class TunedConfigLoader(object):
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
                 for split_k in ranges["SPLIT_K"]
+                for group_m in group_m_values
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
