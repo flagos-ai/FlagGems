@@ -308,6 +308,17 @@ grouped_mm:
     - [64, 2048, 128]
   shape_desc: "Groups, N, K"   # shapes are defined as (Groups, N, K)
 
+awq_gemm:
+  shapes:
+    - [1, 4096, 11008]
+    - [1, 11008, 4096]
+    - [16, 4096, 11008]
+    - [64, 4096, 11008]
+    - [256, 4096, 11008]
+    - [2048, 4096, 11008]
+    - [64, 11008, 4096]
+  shape_desc: "M, N, K"
+
 MvAndOuterBenchmark:
   shapes:
     - [384, 384]
