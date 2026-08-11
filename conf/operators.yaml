@@ -4619,6 +4619,27 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: igammac
+    description: |
+      Computes the regularized upper incomplete gamma function Q(a, x) element-wise.
+    for:
+      - special.gammaincc
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: igammac_out
+    description: Out-of-place variant of igammac that writes the result to the out tensor.
+    for:
+      - special.gammaincc.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: igammac_
     description: |
       In-place version of igammac. Computes the regularized upper incomplete gamma function complement.
@@ -8117,6 +8138,31 @@ ops:
       - KernelGen
     kind:
       - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: replication_pad2d_backward
+    description: >
+      Computes the gradient for replication_pad2d. Gradients from padded output
+      are redistributed back to the original input boundaries via replication
+      (edge-value duplication) semantics.
+    for:
+      - replication_pad2d_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: replication_pad2d_backward_grad_input
+    description: >
+      A variant of `replication_pad2d_backward` that writes gradients into a
+      pre-allocated `grad_input` tensor instead of allocating a new one.
+    for:
+      - replication_pad2d_backward.grad_input
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
     stages:
       - alpha: '5.4'
   - id: replication_pad3d
