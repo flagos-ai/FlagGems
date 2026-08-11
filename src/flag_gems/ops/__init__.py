@@ -631,6 +631,10 @@ from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
 from flag_gems.ops.special_bessel_j0 import special_bessel_j0
 from flag_gems.ops.special_bessel_j1 import special_bessel_j1
+from flag_gems.ops.special_chebyshev_polynomial_t import (
+    special_chebyshev_polynomial_t,
+    special_chebyshev_polynomial_t_out,
+)
 from flag_gems.ops.special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_chebyshev_polynomial_w import (
@@ -1498,6 +1502,8 @@ __all__ = [
     "special_airy_ai_out",
     "special_bessel_j0",
     "special_bessel_j1",
+    "special_chebyshev_polynomial_t",
+    "special_chebyshev_polynomial_t_out",
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
