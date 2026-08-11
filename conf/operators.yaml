@@ -9571,6 +9571,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_exp2
+    description: |
+      Computes the base two exponential function of `input` element-wise.
+      Alias for exp2; delegates to the exp2 kernel.
+    for:
+      - special_exp2
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_gammainc
     description: |
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.
