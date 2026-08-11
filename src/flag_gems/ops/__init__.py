@@ -353,6 +353,7 @@ from flag_gems.ops.hypot_ import hypot_
 from flag_gems.ops.i0 import i0, i0_out
 from flag_gems.ops.i0_ import i0_
 from flag_gems.ops.igamma_ import igamma_
+from flag_gems.ops.igammac import igammac, igammac_out
 from flag_gems.ops.igammac_ import igammac_
 from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
@@ -554,6 +555,10 @@ from flag_gems.ops.repeat_interleave import (
 )
 from flag_gems.ops.replication_pad1d import replication_pad1d, replication_pad1d_out
 from flag_gems.ops.replication_pad2d import replication_pad2d, replication_pad2d_out
+from flag_gems.ops.replication_pad2d_backward import (
+    replication_pad2d_backward,
+    replication_pad2d_backward_grad_input,
+)
 from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.replication_pad3d_backward import replication_pad3d_backward
 from flag_gems.ops.resize import resize, resize_
@@ -633,6 +638,7 @@ from flag_gems.ops.special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w_out,
 )
 from flag_gems.ops.special_digamma import special_digamma
+from flag_gems.ops.special_erf import special_erf
 
 # from flag_gems.ops.special_erfc import erfc, erfc_, special_erfc
 from flag_gems.ops.special_erfcx import special_erfcx
@@ -641,6 +647,7 @@ from flag_gems.ops.special_erfinv import (
     special_erfinv_,
     special_erfinv_out,
 )
+from flag_gems.ops.special_exp2 import special_exp2
 from flag_gems.ops.special_gammainc import special_gammainc
 from flag_gems.ops.special_gammaln import special_gammaln, special_gammaln_out
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
@@ -1136,7 +1143,9 @@ __all__ = [
     "i0_",
     "i0_out",
     "igamma_",
+    "igammac",
     "igammac_",
+    "igammac_out",
     "im2col",
     "index",
     "index_add",
@@ -1391,6 +1400,8 @@ __all__ = [
     "replication_pad1d_out",
     "replication_pad2d",
     "replication_pad2d_out",
+    "replication_pad2d_backward",
+    "replication_pad2d_backward_grad_input",
     "replication_pad3d",
     "replication_pad3d_backward",
     "resize",
@@ -1492,11 +1503,13 @@ __all__ = [
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
     "special_digamma",
+    "special_erf",
     # "special_erfc",
     "special_erfcx",
     "special_erfinv",
     "special_erfinv_",
     "special_erfinv_out",
+    "special_exp2",
     "special_gammainc",
     "special_gammaln",
     "special_gammaln_out",
