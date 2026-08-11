@@ -31,6 +31,7 @@ from .attention import (
 from .baddbmm import baddbmm
 from .bmm import bmm
 from .cat import cat, cat_out
+from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
@@ -66,10 +67,12 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .multinomial import multinomial
+from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
 from .polar import polar
+from .polygamma import polygamma_
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -122,6 +125,8 @@ __all__ = [
     "bmm",
     "cat",
     "cat_out",
+    "cholesky_solve",
+    "cholesky_solve_out",
     "count_nonzero",
     "cummax",
     "cummin",
@@ -173,11 +178,14 @@ __all__ = [
     "mm",
     "mm_out",
     "multinomial",
+    "nonzero_static",
+    "nonzero_static_out",
     "normed_cumsum",
     "ones",
     "ones_like",
     "outer",
     "polar",
+    "polygamma_",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",
