@@ -4619,6 +4619,27 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: igammac
+    description: |
+      Computes the regularized upper incomplete gamma function Q(a, x) element-wise.
+    for:
+      - special.gammaincc
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: igammac_out
+    description: Out-of-place variant of igammac that writes the result to the out tensor.
+    for:
+      - special.gammaincc.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: igammac_
     description: |
       In-place version of igammac. Computes the regularized upper incomplete gamma function complement.
