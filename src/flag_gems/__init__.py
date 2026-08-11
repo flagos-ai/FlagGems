@@ -34,7 +34,21 @@ from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
 
 try:
+    from flag_gems._version import commit_id as _commit_id
     from flag_gems._version import version as __version__
+
+    # Daily builds are versioned by date (e.g. 5.3.4.dev20260809) so the wheel
+    # filename and package metadata stay short and readable. That date alone
+    # can't be traced back to a commit, so for dev builds we append the commit
+    # to the *runtime* __version__ only (the string a bug report pastes):
+    #
+    #   >>> flag_gems.__version__
+    #   '5.3.4.dev20260809+g90eed79f3'
+    #
+    # Release builds (no ".dev") are left untouched. This does not change the
+    # filename or metadata version, which stay bound to `version` above.
+    if ".dev" in __version__ and _commit_id:
+        __version__ = f"{__version__}+{_commit_id}"
 except ImportError:
     try:
         from importlib.metadata import version as _meta_version
@@ -112,6 +126,12 @@ _FULL_CONFIG = (
     ("_fused_adam_", _fused_adam_),
     ("_fused_rms_norm", _fused_rms_norm),
     ("_grouped_mm", group_mm),
+    (
+        "_has_compatible_shallow_copy_type",
+        _has_compatible_shallow_copy_type,
+        None,
+        (AUTOGRAD_DISPATCH_KEY,),
+    ),
     ("_index_put_impl_", _index_put_impl_),
     ("_is_all_true", _is_all_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
@@ -197,6 +217,7 @@ _FULL_CONFIG = (
     ("add.Tensor", add),
     ("add_.Tensor", add_),
     ("add_rms_norm", add_rms_norm),
+    ("addbmm", addbmm),
     ("addcdiv", addcdiv),
     ("addcdiv.out", addcdiv_out),
     ("addcdiv_", addcdiv_),
@@ -294,6 +315,7 @@ _FULL_CONFIG = (
     ("bitwise_xor.Tensor", bitwise_xor_tensor),
     ("bitwise_xor_.Scalar", bitwise_xor_scalar_),
     ("bitwise_xor_.Tensor", bitwise_xor_tensor_),
+    ("block_diag", block_diag),
     ("bmm", bmm),
     ("bmm.out", bmm_out),
     ("broadcast_tensors", broadcast_tensors),
@@ -562,7 +584,10 @@ _FULL_CONFIG = (
     ("linalg_ldl_factor_ex", ldl_factor_ex),
     ("linalg_lu_factor", linalg_lu_factor),
     ("linalg_lu_factor.out", linalg_lu_factor_out),
+    ("linalg_lu_factor_ex", linalg_lu_factor_ex),
+    ("linalg_lu_factor_ex.out", linalg_lu_factor_ex_out),
     ("linalg_ldl_solve", linalg_ldl_solve),
+    ("linalg_lstsq", linalg_lstsq),
     ("linalg_slogdet", linalg_slogdet),
     ("linalg_vector_norm", vector_norm),
     ("linear", linear),
@@ -605,6 +630,8 @@ _FULL_CONFIG = (
     ("lt.Tensor", lt),
     ("lt_.Scalar", lt_scalar_),
     ("lt_.Tensor", lt_),
+    ("lu_unpack", lu_unpack),
+    ("lu_unpack.out", lu_unpack_out),
     ("margin_ranking_loss", margin_ranking_loss),
     ("masked_fill.Scalar", masked_fill),
     ("masked_fill.Tensor", masked_fill),
@@ -704,6 +731,7 @@ _FULL_CONFIG = (
     ("ones", ones),
     ("ones_like", ones_like),
     ("pad", pad),
+    ("pairwise_distance", pairwise_distance),
     ("pdist", pdist),
     ("permute_copy", permute_copy),
     ("pixel_shuffle", pixel_shuffle),
@@ -711,6 +739,9 @@ _FULL_CONFIG = (
     ("pixel_unshuffle.out", pixel_unshuffle_out),
     ("poisson", poisson),
     ("polar", polar),
+    ("polygamma", polygamma),
+    ("polygamma.out", polygamma_out),
+    ("polygamma_", polygamma_),
     ("pow.Scalar", pow_scalar),
     ("pow.Tensor_Scalar", pow_tensor_scalar),
     ("pow.Tensor_Tensor", pow_tensor_tensor),
@@ -760,6 +791,8 @@ _FULL_CONFIG = (
     ("replication_pad1d.out", replication_pad1d_out),
     ("replication_pad2d", replication_pad2d),
     ("replication_pad2d.out", replication_pad2d_out),
+    ("replication_pad2d_backward", replication_pad2d_backward),
+    ("replication_pad2d_backward.grad_input", replication_pad2d_backward_grad_input),
     ("replication_pad3d", replication_pad3d),
     ("replication_pad3d_backward", replication_pad3d_backward),
     ("resize", resize),
@@ -788,6 +821,7 @@ _FULL_CONFIG = (
     ("scatter.src", scatter),
     ("scatter_.reduce", scatter_),
     ("scatter_.src", scatter_),
+    ("scatter_add", scatter_add),
     ("scatter_add_", scatter_add_),
     ("scatter_reduce.two", scatter_reduce),
     ("scatter_reduce.two_out", scatter_reduce_out),
@@ -836,6 +870,7 @@ _FULL_CONFIG = (
     ("sort.stable", sort_stable),
     ("special_airy_ai", special_airy_ai),
     ("special_airy_ai.out", special_airy_ai_out),
+    ("special_bessel_j0", special_bessel_j0),
     ("special_bessel_j1", special_bessel_j1),
     ("special_chebyshev_polynomial_u", special_chebyshev_polynomial_u),
     ("special_chebyshev_polynomial_u.n_scalar", special_chebyshev_polynomial_u),
@@ -843,12 +878,16 @@ _FULL_CONFIG = (
     ("special_chebyshev_polynomial_w", special_chebyshev_polynomial_w),
     ("special_chebyshev_polynomial_w_out", special_chebyshev_polynomial_w_out),
     ("special_digamma", special_digamma),
+    ("special_erf", special_erf),
     # ("special_erfc", special_erfc),
     ("special_erfcx", special_erfcx),
     ("special_erfinv", special_erfinv),
     ("special_erfinv.out", special_erfinv_out),
     ("special_erfinv_", special_erfinv_),
+    ("special_exp2", special_exp2),
     ("special_gammainc", special_gammainc),
+    ("special_gammaincc", igammac),
+    ("special_gammaincc.out", igammac_out),
     ("special_gammaln", special_gammaln),
     ("special_gammaln.out", special_gammaln_out),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
@@ -856,6 +895,7 @@ _FULL_CONFIG = (
     ("special_i0e_out", special_i0e_out),
     ("special_i1", special_i1),
     ("special_i1_out", special_i1_out),
+    ("special_i1e", special_i1e),
     ("special_legendre_polynomial_p", special_legendre_polynomial_p),
     ("special_log1p", special_log1p),
     ("special_log1p.out", special_log1p_out),
@@ -896,6 +936,7 @@ _FULL_CONFIG = (
     ("sum.dim_IntList", sum_dim),
     ("sum.out", sum_out),
     ("svd", svd),
+    ("sym_storage_offset", sym_storage_offset),
     ("sym_stride", sym_stride),
     ("t_copy", t_copy),
     ("t_copy.out", t_copy_out),
