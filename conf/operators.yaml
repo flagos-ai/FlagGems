@@ -8140,6 +8140,31 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: replication_pad2d_backward
+    description: >
+      Computes the gradient for replication_pad2d. Gradients from padded output
+      are redistributed back to the original input boundaries via replication
+      (edge-value duplication) semantics.
+    for:
+      - replication_pad2d_backward
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: replication_pad2d_backward_grad_input
+    description: >
+      A variant of `replication_pad2d_backward` that writes gradients into a
+      pre-allocated `grad_input` tensor instead of allocating a new one.
+    for:
+      - replication_pad2d_backward.grad_input
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: replication_pad3d
     description: Pads the edge of a 3D input tensor by repeating the boundary values.
     for:
