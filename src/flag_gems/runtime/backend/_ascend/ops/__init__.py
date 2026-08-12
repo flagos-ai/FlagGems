@@ -67,6 +67,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .multinomial import multinomial
+from .nansum import nansum, nansum_out
 from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
@@ -178,6 +179,8 @@ __all__ = [
     "mm",
     "mm_out",
     "multinomial",
+    "nansum",
+    "nansum_out",
     "nonzero_static",
     "nonzero_static_out",
     "normed_cumsum",
