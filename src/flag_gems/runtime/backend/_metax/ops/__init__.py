@@ -5,7 +5,6 @@ from .amax import amax
 from .arange import arange, arange_start
 from .batch_norm import batch_norm, batch_norm_backward
 from .bmm import bmm
-from .conj_physical import conj_physical
 from .exponential_ import exponential_
 from .full import full
 from .full_like import full_like
@@ -53,7 +52,6 @@ __all__ = [
     "batch_norm",
     "batch_norm_backward",
     "bmm",
-    "conj_physical",
     "exponential_",
     "full",
     "full_like",
