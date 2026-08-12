@@ -177,6 +177,7 @@ from .log import log
 from .log1p import log1p, log1p_
 from .log_sigmoid import log_sigmoid
 from .log_softmax import log_softmax, log_softmax_backward
+from .logaddexp import logaddexp, logaddexp_out
 from .logaddexp2 import logaddexp2, logaddexp2_out
 from .logical_and import logical_and, logical_and_
 from .logical_not import logical_not, logical_not_
@@ -562,6 +563,8 @@ __all__ = [
     "log_sigmoid",
     "log_softmax",
     "log_softmax_backward",
+    "logaddexp",
+    "logaddexp_out",
     "logaddexp2",
     "logaddexp2_out",
     "logsumexp",
