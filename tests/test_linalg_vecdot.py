@@ -29,7 +29,8 @@ def test_linalg_vecdot(shape, dtype, dim):
     ref_y = utils.to_reference(y)
 
     ref_out = torch.linalg.vecdot(ref_x, ref_y, dim=dim)
-    res_out = flag_gems.linalg_vecdot(x, y, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.linalg.vecdot(x, y, dim=dim)
 
     if dim < 0:
         dim = dim % len(shape)
@@ -55,9 +56,10 @@ def test_linalg_vecdot_out(shape, dtype, dim):
     ref_x = utils.to_reference(x)
     ref_y = utils.to_reference(y)
 
-    ref_out = torch.linalg.vecdot(ref_x, ref_y, dim=dim)
-    out = flag_gems.linalg_vecdot_out(x, y, dim=dim)
-
+    ref_out = torch.linalg.vecdot(ref_x, ref_y, dim=dim, out=?)
+    with flag_gems.use_gems():
+        out = torch.linalg.vecdot(x, y, dim=dim, out=?)
+        
     if dim < 0:
         dim = dim % len(shape)
     vec_dim = shape[dim]
