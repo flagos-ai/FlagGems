@@ -35,8 +35,8 @@ def reduce_all(a, b):
     return a and b
 
 
-@libentry()
 @triton.autotune(configs=runtime.get_tuned_config("all"), key=["M", "N"])
+@libentry()
 @triton.jit
 def all_kernel_dim(
     inp,
@@ -65,8 +65,8 @@ def all_kernel_dim(
     tl.store(out, all[:, None], row_mask)
 
 
-@libentry()
 @triton.autotune(configs=cfggen_reduce_op2(), key=["M"])
+@libentry()
 @triton.jit
 def all_kernel_1(
     inp,
@@ -125,6 +125,10 @@ def all_dim(inp, dim=None, keepdim=False):
         shape[dim] = 1
         M = inp.numel() // N
 
+        # Cast to bool to avoid float16/bfloat16 comparison issues in kernel
+        if inp.dtype != torch.bool:
+            inp = inp.bool()
+
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
@@ -150,6 +154,10 @@ def all_dims(inp, dim=None, keepdim=False):
         N *= shape[i]
         shape[i] = 1
     M = inp.numel() // N
+
+    # Cast to bool to avoid float16/bfloat16 comparison issues in kernel
+    if inp.dtype != torch.bool:
+        inp = inp.bool()
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
