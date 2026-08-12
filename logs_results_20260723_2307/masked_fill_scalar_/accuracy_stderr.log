@@ -1,5 +1,0 @@
-[CMD] pytest -m "masked_fill_scalar_" --record json --output accuracy_masked_fill_scalar_.json --ref cpu --continue-on-collection-errors -vs
-[CWD] /workspace/FlagGems/tests
-
-XCCL /root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
-[35mSYMBOL_REWRITE [0m[32mtorch success[0m

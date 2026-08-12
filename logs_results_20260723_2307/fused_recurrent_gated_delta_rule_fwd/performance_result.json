@@ -1,7 +1,0 @@
-{
-  "fused_recurrent_gated_delta_rule": {
-    "result": "failed",
-    "test_case": "benchmark/test_FLA/test_fused_recurrent_gated_delta_rule_perf.py::test_perf_fused_recurrent_gated_delta_rule[False]",
-    "reason": "Failed: too many values to unpack (expected 1)"
-  }
-}

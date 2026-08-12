@@ -1,3 +1,0 @@
-[CMD] pytest -m "bitwise_not" --level core --record json --output benchmark_bitwise_not.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

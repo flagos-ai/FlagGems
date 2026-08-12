@@ -1,3 +1,0 @@
-[CMD] pytest -m "atan_" --level core --record json --output benchmark_atan_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

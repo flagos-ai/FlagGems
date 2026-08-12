@@ -1,3 +1,0 @@
-[CMD] pytest -m "resize_" --level core --record json --output benchmark_resize_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

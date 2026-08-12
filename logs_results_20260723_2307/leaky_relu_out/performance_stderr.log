@@ -1,3 +1,0 @@
-[CMD] pytest -m "leaky_relu_out" --level core --record json --output benchmark_leaky_relu_out.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

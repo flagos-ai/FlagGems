@@ -1,3 +1,0 @@
-[CMD] pytest -m "conv_transpose2d" --level core --record json --output benchmark_conv_transpose2d.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

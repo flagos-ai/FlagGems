@@ -1,3 +1,0 @@
-[CMD] pytest -m "cauchy_" --level core --record json --output benchmark_cauchy_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

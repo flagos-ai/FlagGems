@@ -1,3 +1,0 @@
-[CMD] pytest -m "frac" --level core --record json --output benchmark_frac.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

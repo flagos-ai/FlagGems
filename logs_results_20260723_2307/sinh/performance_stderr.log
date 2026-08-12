@@ -1,3 +1,0 @@
-[CMD] pytest -m "sinh" --level core --record json --output benchmark_sinh.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,3 +1,0 @@
-[CMD] pytest -m "col2im" --level core --record json --output benchmark_col2im.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

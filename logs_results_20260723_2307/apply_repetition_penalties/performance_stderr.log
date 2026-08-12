@@ -1,3 +1,0 @@
-[CMD] pytest -m "apply_repetition_penalties" --level core --record json --output benchmark_apply_repetition_penalties.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

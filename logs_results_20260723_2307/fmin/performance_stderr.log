@@ -1,3 +1,0 @@
-[CMD] pytest -m "fmin" --level core --record json --output benchmark_fmin.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

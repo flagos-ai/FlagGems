@@ -1,3 +1,0 @@
-[CMD] pytest -m "logical_xor_" --level core --record json --output benchmark_logical_xor_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

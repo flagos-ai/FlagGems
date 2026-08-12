@@ -1,7 +1,0 @@
-{
-  "compute_global_topk_indices_and_lens": {
-    "result": "skipped",
-    "reason": "Skipped: requires cuda and vllm deepseek_v4_ops.compute_global_topk_indices_and_lens",
-    "test_case": "benchmark/test_deepseek_v4_attention_compute_global_topk_indices_and_lens.py::test_compute_global_topk_indices_and_lens_benchmark"
-  }
-}

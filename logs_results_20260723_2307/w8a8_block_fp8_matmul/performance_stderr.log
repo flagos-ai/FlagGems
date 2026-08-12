@@ -1,3 +1,0 @@
-[CMD] pytest -m "w8a8_block_fp8_matmul" --level core --record json --output benchmark_w8a8_block_fp8_matmul.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

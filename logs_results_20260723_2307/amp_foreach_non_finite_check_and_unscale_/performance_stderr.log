@@ -1,3 +1,0 @@
-[CMD] pytest -m "amp_foreach_non_finite_check_and_unscale_" --level core --record json --output benchmark_amp_foreach_non_finite_check_and_unscale_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

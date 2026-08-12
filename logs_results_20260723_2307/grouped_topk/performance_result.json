@@ -1,7 +1,0 @@
-{
-  "grouped_topk": {
-    "result": "skipped",
-    "reason": "Skipped: #2891: Not working",
-    "test_case": "benchmark/test_grouped_topk.py::test_grouped_topk_score_1"
-  }
-}

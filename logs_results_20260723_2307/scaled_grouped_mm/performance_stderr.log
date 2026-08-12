@@ -1,3 +1,0 @@
-[CMD] pytest -m "scaled_grouped_mm" --level core --record json --output benchmark_scaled_grouped_mm.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

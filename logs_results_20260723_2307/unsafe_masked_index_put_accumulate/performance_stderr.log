@@ -1,3 +1,0 @@
-[CMD] pytest -m "unsafe_masked_index_put_accumulate" --level core --record json --output benchmark_unsafe_masked_index_put_accumulate.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

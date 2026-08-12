@@ -1,3 +1,0 @@
-[CMD] pytest -m "concat" --level core --record json --output benchmark_concat.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

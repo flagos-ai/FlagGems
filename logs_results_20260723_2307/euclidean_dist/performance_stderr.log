@@ -1,3 +1,0 @@
-[CMD] pytest -m "euclidean_dist" --level core --record json --output benchmark_euclidean_dist.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

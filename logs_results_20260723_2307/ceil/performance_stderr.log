@@ -1,3 +1,0 @@
-[CMD] pytest -m "ceil" --level core --record json --output benchmark_ceil.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

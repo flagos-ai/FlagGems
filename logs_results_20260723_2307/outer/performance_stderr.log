@@ -1,3 +1,0 @@
-[CMD] pytest -m "outer" --level core --record json --output benchmark_outer.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

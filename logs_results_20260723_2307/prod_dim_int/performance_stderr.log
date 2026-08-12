@@ -1,3 +1,0 @@
-[CMD] pytest -m "prod_dim_int" --level core --record json --output benchmark_prod_dim_int.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

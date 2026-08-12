@@ -1,3 +1,0 @@
-[CMD] pytest -m "thnn_fused_lstm_cell" --level core --record json --output benchmark_thnn_fused_lstm_cell.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,5 +1,0 @@
-[CMD] pytest -m "abs" --record json --output accuracy_abs.json --ref cpu --continue-on-collection-errors -vs
-[CWD] /workspace/FlagGems/tests
-
-XCCL /workspace/FlagGems/.venv/lib/python3.10/site-packages/torch_xmlir/libbkcl.so loaded
-[35mSYMBOL_REWRITE [0m[32mtorch success[0m

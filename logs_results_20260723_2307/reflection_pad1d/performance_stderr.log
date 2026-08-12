@@ -1,3 +1,0 @@
-[CMD] pytest -m "reflection_pad1d" --level core --record json --output benchmark_reflection_pad1d.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

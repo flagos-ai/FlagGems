@@ -1,3 +1,0 @@
-[CMD] pytest -m "batch_norm_no_update" --level core --record json --output benchmark_batch_norm_no_update.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

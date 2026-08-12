@@ -1,7 +1,0 @@
-{
-  "cdist_backward": {
-    "result": "failed",
-    "test_case": "benchmark/test_cdist_backward.py::test_cdist_backward",
-    "reason": "Failed: not enough values to unpack (expected 3, got 2)"
-  }
-}

@@ -1,7 +1,0 @@
-{
-  "get_paged_mqa_logits_metadata": {
-    "result": "skipped",
-    "reason": "Skipped: requires vLLM with DeepGEMM and NVIDIA Hopper architecture or newer",
-    "test_case": "benchmark/test_get_paged_mql_logits_metadata.py::test_get_paged_mqa_logits_metadata"
-  }
-}

@@ -1,3 +1,0 @@
-[CMD] pytest -m "group_norm_backward" --level core --record json --output benchmark_group_norm_backward.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

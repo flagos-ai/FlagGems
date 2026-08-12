@@ -1,3 +1,0 @@
-[CMD] pytest -m "signbit" --level core --record json --output benchmark_signbit.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

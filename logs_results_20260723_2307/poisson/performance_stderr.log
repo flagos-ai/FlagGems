@@ -1,3 +1,0 @@
-[CMD] pytest -m "poisson" --level core --record json --output benchmark_poisson.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,7 +1,0 @@
-{
-  "hc_head_fused_kernel": {
-    "result": "skipped",
-    "reason": "Skipped: vLLM not available",
-    "test_case": "benchmark/test_mhc.py::test_hc_head_fused_kernel"
-  }
-}

@@ -1,3 +1,0 @@
-[CMD] pytest -m "conv1d_padding" --level core --record json --output benchmark_conv1d_padding.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

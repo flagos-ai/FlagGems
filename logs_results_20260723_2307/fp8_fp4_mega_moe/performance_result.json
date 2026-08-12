@@ -1,7 +1,0 @@
-{
-  "fp8_fp4_mega_moe": {
-    "result": "skipped",
-    "reason": "Skipped: requires CUDA with native FP8 support (SM90+)",
-    "test_case": "benchmark/test_fp8_fp4_mega_moe.py::test_fp8_fp4_mega_moe_torch_ref"
-  }
-}

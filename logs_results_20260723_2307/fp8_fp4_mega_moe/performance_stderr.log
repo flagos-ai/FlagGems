@@ -1,3 +1,0 @@
-[CMD] pytest -m "fp8_fp4_mega_moe" --level core --record json --output benchmark_fp8_fp4_mega_moe.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,3 +1,0 @@
-[CMD] pytest -m "topk" --level core --record json --output benchmark_topk.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

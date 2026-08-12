@@ -1,3 +1,0 @@
-[CMD] pytest -m "clamp_max" --level core --record json --output benchmark_clamp_max.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

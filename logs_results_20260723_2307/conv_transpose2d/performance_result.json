@@ -1,7 +1,0 @@
-{
-  "conv_transpose2d": {
-    "result": "failed",
-    "test_case": "benchmark/test_conv_transpose2d.py::test_perf_conv_transpose2d",
-    "reason": "Failed: not enough values to unpack (expected 10, got 2)"
-  }
-}

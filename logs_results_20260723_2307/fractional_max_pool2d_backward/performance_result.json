@@ -1,7 +1,0 @@
-{
-  "fractional_max_pool2d_backward": {
-    "result": "failed",
-    "test_case": "benchmark/test_fractional_max_pool2d.py::test_fractional_max_pool2d_backward",
-    "reason": "Failed: tuple index out of range"
-  }
-}

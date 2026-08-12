@@ -1,3 +1,0 @@
-[CMD] pytest -m "xlogy_scalar_tensor" --level core --record json --output benchmark_xlogy_scalar_tensor.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

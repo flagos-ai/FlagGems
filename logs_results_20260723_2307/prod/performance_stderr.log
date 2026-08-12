@@ -1,3 +1,0 @@
-[CMD] pytest -m "prod" --level core --record json --output benchmark_prod.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

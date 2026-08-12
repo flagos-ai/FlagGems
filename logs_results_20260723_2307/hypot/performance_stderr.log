@@ -1,3 +1,0 @@
-[CMD] pytest -m "hypot" --level core --record json --output benchmark_hypot.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

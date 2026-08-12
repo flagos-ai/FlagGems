@@ -1,3 +1,0 @@
-[CMD] pytest -m "deg2rad" --level core --record json --output benchmark_deg2rad.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

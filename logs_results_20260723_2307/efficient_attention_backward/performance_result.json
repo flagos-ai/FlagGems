@@ -1,7 +1,0 @@
-{
-  "efficient_attention_backward": {
-    "result": "failed",
-    "test_case": "benchmark/test_flash_attention_backward.py::test_perf_efficient_attention_backward",
-    "reason": "Failed: Check failed, max_seqlen_q not supported yet"
-  }
-}

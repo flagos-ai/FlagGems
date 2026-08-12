@@ -1,3 +1,0 @@
-[CMD] pytest -m "sparse_mla_fwd_interface" --level core --record json --output benchmark_sparse_mla_fwd_interface.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

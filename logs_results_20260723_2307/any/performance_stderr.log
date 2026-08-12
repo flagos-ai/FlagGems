@@ -1,3 +1,0 @@
-[CMD] pytest -m "any" --level core --record json --output benchmark_any.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

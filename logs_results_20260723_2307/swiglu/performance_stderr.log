@@ -1,3 +1,0 @@
-[CMD] pytest -m "swiglu" --level core --record json --output benchmark_swiglu.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

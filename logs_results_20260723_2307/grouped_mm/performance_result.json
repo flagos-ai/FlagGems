@@ -1,7 +1,0 @@
-{
-  "grouped_mm": {
-    "result": "failed",
-    "test_case": "benchmark/test_grouped_mm.py::test_grouped_mm",
-    "reason": "Failed: too many values to unpack (expected 3)"
-  }
-}

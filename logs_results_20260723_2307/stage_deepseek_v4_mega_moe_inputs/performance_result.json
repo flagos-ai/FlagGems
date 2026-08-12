@@ -1,7 +1,0 @@
-{
-  "stage_deepseek_v4_mega_moe_inputs": {
-    "result": "skipped",
-    "reason": "Skipped: requires cuda with fp8e4nv support",
-    "test_case": "benchmark/test_stage_deepseek_v4_mega_moe_inputs.py::test_stage_deepseek_v4_mega_moe_inputs_benchmark"
-  }
-}

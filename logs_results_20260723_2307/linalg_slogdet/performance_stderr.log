@@ -1,3 +1,0 @@
-[CMD] pytest -m "linalg_slogdet" --level core --record json --output benchmark_linalg_slogdet.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

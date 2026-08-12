@@ -1,3 +1,0 @@
-[CMD] pytest -m "avg_pool3d" --level core --record json --output benchmark_avg_pool3d.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

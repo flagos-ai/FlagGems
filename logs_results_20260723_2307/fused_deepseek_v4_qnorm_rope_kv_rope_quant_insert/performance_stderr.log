@@ -1,3 +1,0 @@
-[CMD] pytest -m "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert" --level core --record json --output benchmark_fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

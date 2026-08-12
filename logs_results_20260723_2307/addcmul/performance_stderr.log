@@ -1,3 +1,0 @@
-[CMD] pytest -m "addcmul" --level core --record json --output benchmark_addcmul.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

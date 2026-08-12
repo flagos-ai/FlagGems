@@ -1,3 +1,0 @@
-[CMD] pytest -m "hc_head_fused_kernel" --level core --record json --output benchmark_hc_head_fused_kernel.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

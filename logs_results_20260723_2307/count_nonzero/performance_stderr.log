@@ -1,3 +1,0 @@
-[CMD] pytest -m "count_nonzero" --level core --record json --output benchmark_count_nonzero.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

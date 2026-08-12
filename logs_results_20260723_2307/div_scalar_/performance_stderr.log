@@ -1,3 +1,0 @@
-[CMD] pytest -m "div_scalar_" --level core --record json --output benchmark_div_scalar_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

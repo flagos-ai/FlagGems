@@ -1,3 +1,0 @@
-[CMD] pytest -m "special_sinc" --level core --record json --output benchmark_special_sinc.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

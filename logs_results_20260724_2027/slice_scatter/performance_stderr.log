@@ -1,3 +1,0 @@
-[CMD] pytest -m "slice_scatter" --level core --record json --output benchmark_slice_scatter.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

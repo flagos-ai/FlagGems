@@ -1,3 +1,0 @@
-[CMD] pytest -m "layer_norm" --level core --record json --output benchmark_layer_norm.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,3 +1,0 @@
-[CMD] pytest -m "copysign_" --level core --record json --output benchmark_copysign_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,3 +1,0 @@
-[CMD] pytest -m "dunder_ior_tensor" --level core --record json --output benchmark_dunder_ior_tensor.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

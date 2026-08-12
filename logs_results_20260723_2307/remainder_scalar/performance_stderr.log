@@ -1,3 +1,0 @@
-[CMD] pytest -m "remainder_scalar" --level core --record json --output benchmark_remainder_scalar.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

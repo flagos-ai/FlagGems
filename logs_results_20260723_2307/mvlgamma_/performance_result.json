@@ -1,7 +1,0 @@
-{
-  "mvlgamma_": {
-    "result": "failed",
-    "test_case": "benchmark/test_mvlgamma_.py::test_mvlgamma_",
-    "reason": "Failed: Command '['/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3-elfconv', '/tmp/tmpx111hldm/kernel.o', '/tmp/tmpx111hldm/kernel.bin', '/root/miniconda/envs/python310_torch29_cuda/lib/python3.10/site-packages/triton/backends/xpu/xpu3/bin']' returned non-zero exit status 1."
-  }
-}

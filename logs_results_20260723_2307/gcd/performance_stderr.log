@@ -1,3 +1,0 @@
-[CMD] pytest -m "gcd" --level core --record json --output benchmark_gcd.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,7 +1,0 @@
-{
-  "reshape_and_cache": {
-    "result": "failed",
-    "test_case": "benchmark/test_reshape_and_cache.py::test_reshape_and_cache",
-    "reason": "Failed: not enough values to unpack (expected 5, got 2)"
-  }
-}

@@ -1,3 +1,0 @@
-[CMD] pytest -m "acosh" --level core --record json --output benchmark_acosh.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

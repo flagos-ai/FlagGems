@@ -1,3 +1,0 @@
-[CMD] pytest -m "zeros_like" --level core --record json --output benchmark_zeros_like.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

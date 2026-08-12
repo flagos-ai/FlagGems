@@ -1,3 +1,0 @@
-[CMD] pytest -m "allclose" --level core --record json --output benchmark_allclose.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

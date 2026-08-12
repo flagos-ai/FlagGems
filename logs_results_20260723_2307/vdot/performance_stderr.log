@@ -1,3 +1,0 @@
-[CMD] pytest -m "vdot" --level core --record json --output benchmark_vdot.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

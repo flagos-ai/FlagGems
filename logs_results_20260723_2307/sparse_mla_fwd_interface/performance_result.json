@@ -1,7 +1,0 @@
-{
-  "sparse_mla_fwd_interface": {
-    "result": "failed",
-    "test_case": "benchmark/test_sparse_mla_fwd_interface.py::test_sparse_mla_fwd_interface",
-    "reason": "Failed: at 85:8:\n    # max_col = max(0, i_sq + SKV - SQ) if is_causal else SKV-1\n    max_col = i_sq if is_causal else SQ - 1\n\n    NK = tl.cdiv(K, BK)\n    for ck in range(NK):\n        t_ptr = (BK * ck + offs_t) * stride_tt\n        t_msk = t_ptr < K\n        t_ptr += t_base\n        kv_ids = tl.load(t_ptr, t_msk, other=-1)\n        mask_ids = (kv_ids <= max_col) & (kv_ids >= 0)\n\n        if tl.max(mask_ids, axis=0) > 0:\n        ^\nAssertionError('initial value for `qk` is of type <[64, 32], fp16>, but the then block redefines it as <[64, 32], fp32>')"
-  }
-}

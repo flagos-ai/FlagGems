@@ -1,3 +1,0 @@
-[CMD] pytest -m "act_quant_triton" --level core --record json --output benchmark_act_quant_triton.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

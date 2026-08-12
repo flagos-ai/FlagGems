@@ -1,3 +1,0 @@
-[CMD] pytest -m "arange_start_step" --level core --record json --output benchmark_arange_start_step.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

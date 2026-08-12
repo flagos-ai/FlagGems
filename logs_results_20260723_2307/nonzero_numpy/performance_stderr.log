@@ -1,3 +1,0 @@
-[CMD] pytest -m "nonzero_numpy" --level core --record json --output benchmark_nonzero_numpy.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,7 +1,0 @@
-{
-  "scaled_softmax_backward": {
-    "result": "skipped",
-    "reason": "Skipped: 'scaled_softmax_backward' not found in TransformerEngine",
-    "test_case": "benchmark/test_scaled_softmax.py::test_perf_scaled_softmax_backward"
-  }
-}

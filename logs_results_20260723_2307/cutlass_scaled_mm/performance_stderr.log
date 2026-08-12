@@ -1,3 +1,0 @@
-[CMD] pytest -m "cutlass_scaled_mm" --level core --record json --output benchmark_cutlass_scaled_mm.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

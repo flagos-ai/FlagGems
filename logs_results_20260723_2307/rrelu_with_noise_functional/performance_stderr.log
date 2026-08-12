@@ -1,3 +1,0 @@
-[CMD] pytest -m "rrelu_with_noise_functional" --level core --record json --output benchmark_rrelu_with_noise_functional.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,3 +1,0 @@
-[CMD] pytest -m "cummin" --level core --record json --output benchmark_cummin.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

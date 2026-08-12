@@ -1,3 +1,0 @@
-[CMD] pytest -m "new_full" --level core --record json --output benchmark_new_full.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

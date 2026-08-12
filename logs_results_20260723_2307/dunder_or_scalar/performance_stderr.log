@@ -1,3 +1,0 @@
-[CMD] pytest -m "dunder_or_scalar" --level core --record json --output benchmark_dunder_or_scalar.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

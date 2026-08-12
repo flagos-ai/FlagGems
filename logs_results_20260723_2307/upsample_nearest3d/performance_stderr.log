@@ -1,3 +1,0 @@
-[CMD] pytest -m "upsample_nearest3d" --level core --record json --output benchmark_upsample_nearest3d.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

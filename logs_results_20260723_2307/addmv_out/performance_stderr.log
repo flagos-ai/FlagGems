@@ -1,3 +1,0 @@
-[CMD] pytest -m "addmv_out" --level core --record json --output benchmark_addmv_out.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

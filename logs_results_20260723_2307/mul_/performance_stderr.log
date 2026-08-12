@@ -1,3 +1,0 @@
-[CMD] pytest -m "mul_" --level core --record json --output benchmark_mul_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

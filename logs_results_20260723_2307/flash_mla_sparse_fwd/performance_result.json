@@ -1,7 +1,0 @@
-{
-  "flash_mla_sparse_fwd": {
-    "result": "failed",
-    "test_case": "benchmark/test_flash_mla_sparse_fwd.py::test_flash_mla_sparse_fwd",
-    "reason": "Failed: vllm._flashmla_C is not available, likely was not compiled due to insufficient nvcc version or a supported arch was not in the list of target arches to compile for."
-  }
-}

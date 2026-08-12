@@ -1,3 +1,0 @@
-[CMD] pytest -m "pow_scalar" --level core --record json --output benchmark_pow_scalar.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

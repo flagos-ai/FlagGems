@@ -1,3 +1,0 @@
-[CMD] pytest -m "min_dim" --level core --record json --output benchmark_min_dim.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

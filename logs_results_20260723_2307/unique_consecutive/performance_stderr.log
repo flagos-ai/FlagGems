@@ -1,3 +1,0 @@
-[CMD] pytest -m "unique_consecutive" --level core --record json --output benchmark_unique_consecutive.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

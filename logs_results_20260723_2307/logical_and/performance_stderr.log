@@ -1,3 +1,0 @@
-[CMD] pytest -m "logical_and" --level core --record json --output benchmark_logical_and.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

@@ -1,3 +1,0 @@
-[CMD] pytest -m "gt_scalar_" --level core --record json --output benchmark_gt_scalar_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

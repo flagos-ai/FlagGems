@@ -1,3 +1,0 @@
-[CMD] pytest -m "ones_like" --level core --record json --output benchmark_ones_like.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

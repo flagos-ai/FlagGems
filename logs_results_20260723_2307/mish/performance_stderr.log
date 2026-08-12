@@ -1,3 +1,0 @@
-[CMD] pytest -m "mish" --level core --record json --output benchmark_mish.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

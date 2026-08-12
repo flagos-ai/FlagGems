@@ -1,3 +1,0 @@
-[CMD] pytest -m "range" --level core --record json --output benchmark_range.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

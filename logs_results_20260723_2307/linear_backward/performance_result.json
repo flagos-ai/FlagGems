@@ -1,7 +1,0 @@
-{
-  "linear_backward": {
-    "result": "failed",
-    "test_case": "benchmark/test_linear_backward.py::test_linear_backward",
-    "reason": "Failed: 'Keyword argument SPLIT_K was specified but unrecognised'"
-  }
-}

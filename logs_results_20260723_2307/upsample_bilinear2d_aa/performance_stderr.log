@@ -1,3 +1,0 @@
-[CMD] pytest -m "upsample_bilinear2d_aa" --level core --record json --output benchmark_upsample_bilinear2d_aa.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

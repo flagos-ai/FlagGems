@@ -1,3 +1,0 @@
-[CMD] pytest -m "randperm" --level core --record json --output benchmark_randperm.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

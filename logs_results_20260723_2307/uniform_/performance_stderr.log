@@ -1,3 +1,0 @@
-[CMD] pytest -m "uniform_" --level core --record json --output benchmark_uniform_.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

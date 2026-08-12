@@ -1,3 +1,0 @@
-[CMD] pytest -m "dispatch_fused_moe_kernel" --level core --record json --output benchmark_dispatch_fused_moe_kernel.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

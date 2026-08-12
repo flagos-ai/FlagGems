@@ -1,3 +1,0 @@
-[CMD] pytest -m "rnn_relu" --level core --record json --output benchmark_rnn_relu.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

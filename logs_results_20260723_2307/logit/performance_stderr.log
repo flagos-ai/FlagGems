@@ -1,3 +1,0 @@
-[CMD] pytest -m "logit" --level core --record json --output benchmark_logit.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-

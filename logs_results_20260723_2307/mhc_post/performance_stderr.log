@@ -1,3 +1,0 @@
-[CMD] pytest -m "mhc_post" --level core --record json --output benchmark_mhc_post.json --continue-on-collection-errors
-[CWD] /workspace/FlagGems/benchmark
-
