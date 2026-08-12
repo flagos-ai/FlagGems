@@ -147,8 +147,7 @@ def _gather_back_kernel(
         tl.store(val_base + e, new.to(old.dtype), mask=mask)
 
 
-def sparse_sampled_addmm(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
-    logger.debug("GEMS SPARSE_SAMPLED_ADDMM")
+def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
     if input.layout != torch.sparse_csr:
         raise RuntimeError(
             f"sparse_sampled_addmm: Expected input to have sparse csr layout, "
@@ -286,3 +285,17 @@ def sparse_sampled_addmm(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
         )
 
     return out
+
+
+def sparse_sampled_addmm(input, mat1, mat2, *, beta=1.0, alpha=1.0):
+    logger.debug("GEMS SPARSE_SAMPLED_ADDMM")
+    return _sparse_sampled_addmm_impl(input, mat1, mat2, beta=beta, alpha=alpha)
+
+
+def sparse_sampled_addmm_out(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
+    logger.debug("GEMS SPARSE_SAMPLED_ADDMM_OUT")
+    if out is None:
+        raise TypeError("sparse_sampled_addmm(): out must be provided for out variant")
+    return _sparse_sampled_addmm_impl(
+        input, mat1, mat2, beta=beta, alpha=alpha, out=out
+    )

@@ -911,7 +911,7 @@ _FULL_CONFIG = (
     ("sparse_sampled_addmm", sparse_sampled_addmm, None, (SPARSE_CSR_DISPATCH_KEY,)),
     (
         "sparse_sampled_addmm.out",
-        sparse_sampled_addmm,
+        sparse_sampled_addmm_out,
         None,
         (SPARSE_CSR_DISPATCH_KEY,),
     ),

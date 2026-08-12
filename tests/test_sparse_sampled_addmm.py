@@ -1,3 +1,5 @@
+import math
+
 import pytest
 import torch
 
@@ -111,6 +113,40 @@ def _to_cpu_ref(csr):
     )
 
 
+def _small_ops_sampled_addmm(input, mat1, mat2, *, beta=1.0, alpha=1.0):
+    device = input.device
+    batch_shape = mat1.shape[:-2]
+    M, K = mat1.shape[-2:]
+    N = mat2.shape[-1]
+    B = math.prod(batch_shape) if batch_shape else 1
+    nnz = input._nnz()
+
+    in_batch = input.shape[:-2]
+    in_B = math.prod(in_batch) if in_batch else 1
+    crow = input.crow_indices().reshape(in_B, M + 1)
+    col = input.col_indices().reshape(in_B, nnz)
+    vals = input.values().reshape(in_B, nnz)
+    if in_B != B:
+        crow = crow.expand(B, M + 1)
+        col = col.expand(B, nnz)
+        vals = vals.expand(B, nnz)
+
+    dense = torch.matmul(
+        mat1.reshape(B, M, K).to(torch.float32),
+        mat2.reshape(B, K, N).to(torch.float32),
+    )
+    counts = (crow[:, 1:] - crow[:, :-1]).reshape(-1)
+    rows = torch.repeat_interleave(torch.arange(M, device=device).repeat(B), counts)
+    batch_idx = torch.arange(B, device=device).unsqueeze(-1).expand(B, nnz).reshape(-1)
+    pos = batch_idx * (M * N) + rows * N + col.reshape(-1)
+    sampled = dense.reshape(-1)[pos]
+
+    new_vals = alpha * sampled + beta * vals.to(torch.float32).reshape(-1)
+    ref = torch.zeros(B, M, N, dtype=torch.float32, device=device)
+    ref.reshape(-1)[pos] = new_vals
+    return ref.reshape(batch_shape + (M, N))
+
+
 @pytest.mark.sparse_sampled_addmm
 @pytest.mark.parametrize("M, N, K", PYTORCH_MNK)
 @pytest.mark.parametrize("sparsity", SPARSITIES)
@@ -145,20 +181,24 @@ def test_sparse_sampled_addmm(
         mat2 = mat2.transpose(-2, -1).transpose(-2, -1)
     input = _make_sparse_csr(input_shape, dtype, device, sparsity, index_dtype)
 
-    ref_input = _to_cpu_ref(input)
-    ref_mat1 = utils.to_reference(mat1, upcast=True).cpu()
-    ref_mat2 = utils.to_reference(mat2, upcast=True).cpu()
-
-    ref_out = torch.sparse.sampled_addmm(
-        ref_input, ref_mat1, ref_mat2, alpha=alpha, beta=beta
-    )
+    if input.device.type == "npu" and not utils.TO_CPU:
+        ref_dense = _small_ops_sampled_addmm(
+            input, mat1, mat2, beta=beta, alpha=alpha
+        ).cpu()
+    else:
+        ref_input = _to_cpu_ref(input)
+        ref_mat1 = utils.to_reference(mat1, upcast=True).cpu()
+        ref_mat2 = utils.to_reference(mat2, upcast=True).cpu()
+        ref_dense = torch.sparse.sampled_addmm(
+            ref_input, ref_mat1, ref_mat2, alpha=alpha, beta=beta
+        ).to_dense()
 
     with flag_gems.use_gems():
         res_out = torch.sparse.sampled_addmm(input, mat1, mat2, alpha=alpha, beta=beta)
 
     _assert_close_dense(
         _csr_to_cpu(res_out).to_dense(),
-        ref_out.to_dense(),
+        ref_dense,
         dtype,
         K,
         1e-3 if dtype in _LOW_PREC_DTYPES else 1e-4,
@@ -175,18 +215,20 @@ def test_sparse_sampled_addmm_large(M, N, K, dtype):
     mat2 = torch.randn((K, N), dtype=dtype, device=device)
     input = _make_sparse_csr((M, N), dtype, device, sparsity=0.5)
 
-    ref_input = _to_cpu_ref(input)
-    ref_mat1 = utils.to_reference(mat1, upcast=True).cpu()
-    ref_mat2 = utils.to_reference(mat2, upcast=True).cpu()
-
-    ref_out = torch.sparse.sampled_addmm(ref_input, ref_mat1, ref_mat2)
+    if input.device.type == "npu" and not utils.TO_CPU:
+        ref_dense = _small_ops_sampled_addmm(input, mat1, mat2).cpu()
+    else:
+        ref_input = _to_cpu_ref(input)
+        ref_mat1 = utils.to_reference(mat1, upcast=True).cpu()
+        ref_mat2 = utils.to_reference(mat2, upcast=True).cpu()
+        ref_dense = torch.sparse.sampled_addmm(ref_input, ref_mat1, ref_mat2).to_dense()
 
     with flag_gems.use_gems():
         res_out = torch.sparse.sampled_addmm(input, mat1, mat2)
 
     _assert_close_dense(
         _csr_to_cpu(res_out).to_dense(),
-        ref_out.to_dense(),
+        ref_dense,
         dtype,
         K,
         1e-3 if dtype in _LOW_PREC_DTYPES else 1e-4,
@@ -212,22 +254,28 @@ def test_sparse_sampled_addmm_out(
     mat2 = torch.randn(mat2_shape, dtype=dtype, device=device)
     input = _make_sparse_csr(input_shape, dtype, device, sparsity=0.5)
 
-    ref_input = _to_cpu_ref(input)
-    ref_mat1 = utils.to_reference(mat1, upcast=True).cpu()
-    ref_mat2 = utils.to_reference(mat2, upcast=True).cpu()
-
     out = _broadcast_sparse_csr(input, out_shape)
-    with flag_gems.use_gems():
-        torch.sparse.sampled_addmm(input, mat1, mat2, alpha=alpha, beta=beta, out=out)
-
-    ref_out = _broadcast_sparse_csr(ref_input, out_shape)
-    torch.sparse.sampled_addmm(
-        ref_input, ref_mat1, ref_mat2, alpha=alpha, beta=beta, out=ref_out
+    flag_gems.sparse_sampled_addmm_out(
+        input, mat1, mat2, alpha=alpha, beta=beta, out=out
     )
+
+    if input.device.type == "npu" and not utils.TO_CPU:
+        ref_dense = _small_ops_sampled_addmm(
+            input, mat1, mat2, beta=beta, alpha=alpha
+        ).cpu()
+    else:
+        ref_input = _to_cpu_ref(input)
+        ref_mat1 = utils.to_reference(mat1, upcast=True).cpu()
+        ref_mat2 = utils.to_reference(mat2, upcast=True).cpu()
+        ref_out = _broadcast_sparse_csr(ref_input, out_shape)
+        torch.sparse.sampled_addmm(
+            ref_input, ref_mat1, ref_mat2, alpha=alpha, beta=beta, out=ref_out
+        )
+        ref_dense = ref_out.to_dense()
 
     _assert_close_dense(
         _csr_to_cpu(out).to_dense(),
-        ref_out.to_dense(),
+        ref_dense,
         dtype,
         K,
         1e-3 if dtype in _LOW_PREC_DTYPES else 1e-4,

@@ -384,8 +384,15 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
     return out
 
 
-def sparse_sampled_addmm(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
+def sparse_sampled_addmm(input, mat1, mat2, *, beta=1.0, alpha=1.0):
     logger.debug("GEMS_ASCEND SPARSE_SAMPLED_ADDMM")
+    return _sparse_sampled_addmm_impl(input, mat1, mat2, beta=beta, alpha=alpha)
+
+
+def sparse_sampled_addmm_out(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
+    logger.debug("GEMS_ASCEND SPARSE_SAMPLED_ADDMM_OUT")
+    if out is None:
+        raise TypeError("sparse_sampled_addmm(): out must be provided for out variant")
     return _sparse_sampled_addmm_impl(
         input, mat1, mat2, beta=beta, alpha=alpha, out=out
     )

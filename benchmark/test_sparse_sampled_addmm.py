@@ -158,7 +158,7 @@ def test_sparse_sampled_addmm_out(monkeypatch):
         op_name="sparse_sampled_addmm_out",
         input_fn=_input_fn_out,
         torch_op=_torch_sampled_addmm,
-        gems_op=flag_gems.sparse_sampled_addmm,
+        gems_op=flag_gems.sparse_sampled_addmm_out,
         dtypes=consts.FLOAT_DTYPES,
     )
 
