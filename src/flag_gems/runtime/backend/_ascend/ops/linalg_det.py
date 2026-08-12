@@ -47,17 +47,16 @@ def _det_register_kernel(
         pivot_val = tl.max(abs_col, axis=0)
         pivot_row = tl.min(tl.where(abs_col == pivot_val, rows, BLOCK_N), axis=0)
 
-        if pivot_row != k:
-            row_k = tl.reshape(
-                tl.gather(work, tl.full((1, BLOCK_N), k, tl.int32), axis=0), (BLOCK_N,)
-            )
-            row_p = tl.reshape(
-                tl.gather(work, tl.full((1, BLOCK_N), pivot_row, tl.int32), axis=0),
-                (BLOCK_N,),
-            )
-            work = tl.where(rows[:, None] == k, row_p[None, :], work)
-            work = tl.where(rows[:, None] == pivot_row, row_k[None, :], work)
-            swap_count += 1
+        row_k = tl.reshape(
+            tl.gather(work, tl.full((1, BLOCK_N), k, tl.int32), axis=0), (BLOCK_N,)
+        )
+        row_p = tl.reshape(
+            tl.gather(work, tl.full((1, BLOCK_N), pivot_row, tl.int32), axis=0),
+            (BLOCK_N,),
+        )
+        work = tl.where(rows[:, None] == k, row_p[None, :], work)
+        work = tl.where(rows[:, None] == pivot_row, row_k[None, :], work)
+        swap_count += (pivot_row != k).to(tl.int32)
 
         col_k = tl.reshape(
             tl.gather(work, tl.full((BLOCK_N, 1), k, tl.int32), axis=1), (BLOCK_N,)
@@ -69,8 +68,8 @@ def _det_register_kernel(
             tl.gather(work, tl.full((1, BLOCK_N), k, tl.int32), axis=0), (BLOCK_N,)
         )
 
-        mask2d = ((rows[:, None] > k) & (cols[None, :] > k)).to(tl.float32)
-        work = work - l_col[:, None] * u_row[None, :] * mask2d
+        mask2d = (rows[:, None] > k) & (cols[None, :] > k)
+        work = tl.where(mask2d, work - l_col[:, None] * u_row[None, :], work)
 
     diag = tl.reshape(tl.gather(work, rows[:, None], axis=1), (BLOCK_N,))
     diag = diag * (cols < N).to(tl.float32) + (cols >= N).to(tl.float32)
