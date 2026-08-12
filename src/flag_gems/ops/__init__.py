@@ -486,6 +486,7 @@ from flag_gems.ops.nanmedian import (
 from flag_gems.ops.nansum import nansum, nansum_out
 from flag_gems.ops.narrow import narrow
 from flag_gems.ops.narrow_copy import narrow_copy
+from flag_gems.ops.native_dropout_backward import native_dropout_backward
 from flag_gems.ops.native_layer_norm import native_layer_norm
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.ne_ import ne_, ne_scalar_
@@ -1335,6 +1336,7 @@ __all__ = [
     "nansum_out",
     "narrow",
     "narrow_copy",
+    "native_dropout_backward",
     "native_layer_norm",
     "ne",
     "ne_scalar",

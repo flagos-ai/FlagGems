@@ -2767,7 +2767,7 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
-  - id: dropout_backward
+  - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
       - native_dropout_backward
