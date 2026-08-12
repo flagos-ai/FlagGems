@@ -85,3 +85,11 @@ def linalg_vecdot(x, y, dim=-1):
     if out_dtype != x.dtype:
         return out.to(x.dtype)
     return out
+
+
+def linalg_vecdot_out(x, y, dim=-1, out=None):
+    if out is None:
+        return linalg_vecdot(x, y, dim=dim)
+    res = linalg_vecdot(x, y, dim=dim)
+    out.copy_(res)
+    return out

@@ -2,32 +2,35 @@ import pytest
 import torch
 
 import flag_gems
-from tests import base
+
+from . import base
+
+VECDOT_SHAPES = [
+    (10,),
+    (100,),
+    (1000,),
+    (10000,),
+    (2, 10),
+    (2, 100),
+    (2, 1000),
+    (4, 10),
+    (4, 100),
+    (4, 1000),
+    (8, 10),
+    (8, 100),
+    (8, 1000),
+    (16, 10),
+    (16, 100),
+    (16, 1000),
+    (32, 10),
+    (32, 100),
+    (32, 1000),
+]
 
 
 class VecdotBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = [
-            (10,),
-            (100,),
-            (1000,),
-            (10000,),
-            (2, 10),
-            (2, 100),
-            (2, 1000),
-            (4, 10),
-            (4, 100),
-            (4, 1000),
-            (8, 10),
-            (8, 100),
-            (8, 1000),
-            (16, 10),
-            (16, 100),
-            (16, 1000),
-            (32, 10),
-            (32, 100),
-            (32, 1000),
-        ]
+        self.shapes = VECDOT_SHAPES
 
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
@@ -44,4 +47,15 @@ def test_linalg_vecdot_benchmark():
         dtypes=[torch.float32, torch.float64],
     )
     bench.gems_op = flag_gems.linalg_vecdot
+    bench.run()
+
+
+@pytest.mark.linalg_vecdot_out
+def test_linalg_vecdot_out_benchmark():
+    bench = VecdotBenchmark(
+        op_name="linalg_vecdot_out",
+        torch_op=torch.linalg.vecdot,
+        dtypes=[torch.float32, torch.float64],
+    )
+    bench.gems_op = flag_gems.linalg_vecdot_out
     bench.run()
