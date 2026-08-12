@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import math
 
 import torch
 import triton
@@ -22,7 +21,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-from .topk import _get_finfo_val, _get_iinfo_val, argsort
+from .topk import _get_finfo_val, _get_iinfo_val, argsort, topk
 
 logger = logging.getLogger(__name__)
 
@@ -544,64 +543,36 @@ def sort_kernel(
     tl.store(out_index_ptr, sorted_index_val, mask=mask)
 
 
+def _sort_via_topk(inp, dim, descending):
+    if inp.ndim == 0:
+        return inp.clone(), torch.zeros_like(inp, dtype=torch.int64)
+
+    dim = dim % inp.ndim
+    moved = dim != inp.ndim - 1
+    work = torch.movedim(inp, dim, -1).contiguous() if moved else inp.contiguous()
+    # The vendor topk kernel has no int16 specialization. Sorting is order-only,
+    # so widening to int32 is exact and the values can be cast back afterwards.
+    topk_input = work.to(torch.int32) if work.dtype == torch.int16 else work
+    values, indices = topk(
+        topk_input,
+        topk_input.shape[-1],
+        dim=-1,
+        largest=descending,
+        sorted=True,
+    )
+    if values.dtype != inp.dtype:
+        values = values.to(inp.dtype)
+    if moved:
+        values = torch.movedim(values, -1, dim)
+        indices = torch.movedim(indices, -1, dim)
+    return values, indices
+
+
 def sort(inp, dim=-1, descending=False):
     logger.debug("GEMS_KUNLUNXIN SORT")
-    sort_elem_cnt = inp.shape[dim]
-    if sort_elem_cnt == 1:
-        return inp, torch.zeros_like(inp, dtype=torch.int64)
-    elif sort_elem_cnt > 512:  # TODO: Optimize implementation for large cases.
-        return torch.sort(inp, stable=False, dim=dim, descending=descending)
-    block_size = triton.next_power_of_2(sort_elem_cnt)
-
-    if dim < 0:
-        dim = dim + inp.ndim
-    if dim != inp.ndim - 1:
-        inp = torch.movedim(inp, dim, -1).contiguous()
-    else:
-        inp = inp.contiguous()
-    batch_size = math.prod(inp.shape) // sort_elem_cnt
-
-    out = torch.empty_like(inp)
-    out_index = torch.empty_like(inp, dtype=torch.int64)
-
-    with torch_device_fn.device(inp.device):
-        sort_kernel[batch_size,](
-            inp,
-            out,
-            out_index,
-            N=sort_elem_cnt,
-            BLOCK_SIZE=block_size,
-            DESCENDING=descending,
-            IS_FLOAT=inp.is_floating_point(),
-            num_warps=4,
-        )
-
-    if dim != inp.ndim - 1:
-        out = torch.movedim(out, -1, dim)
-        out_index = torch.movedim(out_index, -1, dim)
-    return out, out_index
+    return _sort_via_topk(inp, dim, descending)
 
 
 def sort_stable(inp, *, stable, dim=-1, descending=False):
     logger.debug("GEMS_KUNLUNXIN SORT_STABLE")
-    # We only implement stable radix sort here
-    _ = stable
-    sort_elem_cnt = inp.shape[dim]
-    if sort_elem_cnt == 1:
-        return inp, torch.zeros_like(inp, dtype=torch.int64)
-
-    if dim < 0:
-        dim = dim + inp.ndim
-    if dim != inp.ndim - 1:
-        inp = torch.movedim(inp, dim, -1).contiguous()
-    else:
-        inp = inp.contiguous()
-
-    dtype = inp.dtype
-    num_bits_per_pass = 1 if dtype == torch.bool else 4
-    out, out_index = radix_sort_low_mem(inp, num_bits_per_pass, descending)
-
-    if dim != inp.ndim - 1:
-        out = torch.movedim(out, -1, dim)
-        out_index = torch.movedim(out_index, -1, dim)
-    return out, out_index
+    return _sort_via_topk(inp, dim, descending)
