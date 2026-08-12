@@ -65,42 +65,6 @@ svd:
     - [256, 256]
   shape_desc: "(*B), M, N"
 
-linalg_lu_factor:
-  shapes:
-    - [16, 16]
-    - [32, 32]
-    - [64, 64]
-    - [128, 128]
-    - [256, 256]
-    - [1024, 512]
-    - [32, 16]
-    - [16, 32]
-    - [128, 64]
-    - [64, 128]
-    - [4, 32, 32]
-    - [128, 16, 16]
-    - [1024, 512, 512]
-    - [4096, 512, 512]
-  shape_desc: "input shape"
-
-linalg_lu_factor_out:
-  shapes:
-    - [16, 16]
-    - [32, 32]
-    - [64, 64]
-    - [128, 128]
-    - [256, 256]
-    - [1024, 512]
-    - [32, 16]
-    - [16, 32]
-    - [128, 64]
-    - [64, 128]
-    - [4, 32, 32]
-    - [128, 16, 16]
-    - [1024, 512, 512]
-    - [4096, 512, 512]
-  shape_desc: "input shape"
-
 segment_reduce: &segment_reduce_shapes
   shapes:
     - [1048576]
@@ -386,6 +350,34 @@ TensorRepeatBenchmark:
     - [512, 2048]
   shape_desc: "(B), M, N"
 
+weight_norm:
+  shapes:
+    - [64, 64]
+    - [512, 512]
+    - [1024, 1024]
+
+# MetaX C550: reduced shapes to avoid 32-bit pointer limitation in MacaLauncher
+group_norm:
+  shapes:
+    - [4, 16, 64, 4]
+    - [16, 16, 8, 48]
+    - [16, 16, 8, 88]
+    - [16, 16, 128]
+  shape_desc: "N, C, *"
+
+argmin:
+  shapes:
+    - [65536]
+    - [64, 64]
+    - [512, 512]
+    - [64, 64, 64]
+
+log_softmax:
+  shapes:
+    - [64, 64]
+    - [256, 256]
+    - [1024, 1024]
+
 GenericBenchmarkExcluse1D:
   shapes:
     - [64, 64]
@@ -441,6 +433,24 @@ GenericBenchmark2DOnly:
     - [1024, 1024]
     - [4096, 4096]
     - [1024, 65536]
+
+# huber_loss is a reduction op: small tensors are dominated by launch/dispatch
+# overhead, so its per-op shape set keeps the default 2D shapes and additionally
+# covers larger reduction workloads where the Triton kernel is representative.
+huber_loss:
+  shapes:
+    - [64, 64]
+    - [256, 256]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [1024, 65536]
+    - [2048, 32768]
+    - [2048, 65536]
+    - [4096, 32768]
+    - [4096, 65536]
+    - [3072, 49152]
+    - [3072, 65536]
+  shape_desc: "M, N"
 
 # default 4d-only shapes
 GenericBenchmark4DOnly:

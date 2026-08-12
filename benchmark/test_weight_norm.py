@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base
+from . import base, consts
 
 vendor_name = flag_gems.vendor_name
 
@@ -52,9 +52,9 @@ def test_weight_norm_dim0():
     bench = base.GenericBenchmarkExcluse1D(
         op_name="weight_norm",
         input_fn=weight_norm_input_fn,
-        torch_op=torch._weight_norm,
+        torch_op=torch.ops.aten._weight_norm.default,
+        dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems.weight_norm)
     bench.run()
 
 
@@ -66,7 +66,7 @@ def test_weight_norm_dim_last():
     bench = base.GenericBenchmarkExcluse1D(
         op_name="weight_norm",
         input_fn=weight_norm_input_fn_last,
-        torch_op=torch._weight_norm,
+        torch_op=torch.ops.aten._weight_norm.default,
+        dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems.weight_norm)
     bench.run()
