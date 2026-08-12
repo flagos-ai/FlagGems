@@ -219,12 +219,17 @@ class BenchmarkResult:
     level: str
     # Benchmark results
     result: List[BenchmarkMetrics]
+    native_baseline_skip_reason: Optional[str] = None
 
     def __str__(self) -> str:
         header_title = (
             f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
             f"level={self.level})\n"
         )
+        if self.native_baseline_skip_reason:
+            header_title += (
+                f"Native baseline: N/A ({self.native_baseline_skip_reason})\n"
+            )
         col_names = [
             f"{'Status':<10}",
             f"{'Torch Latency (ms)':>20}",

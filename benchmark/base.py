@@ -436,7 +436,10 @@ class Benchmark:
                 try:
                     args, kwargs = self.unpack_to_args_kwargs(input)
                     metric.shape_detail = self.record_shapes(*args, **kwargs)
-                    if "latency_base" in self.to_bench_metrics:
+                    if (
+                        "latency_base" in self.to_bench_metrics
+                        and not Config.skip_native
+                    ):
                         metric.latency_base = self.get_latency(
                             self.torch_op, *args, **kwargs
                         )
@@ -458,14 +461,20 @@ class Benchmark:
                                     metric.latency = self.get_latency(
                                         self.torch_op, *args, **kwargs
                                     )
-                    if "speedup" in self.to_bench_metrics:
+                    if (
+                        "speedup" in self.to_bench_metrics
+                        and metric.latency_base is not None
+                        and metric.latency is not None
+                    ):
                         metric.speedup = metric.latency_base / metric.latency
 
                     if "gbps" in self.to_bench_metrics:
-                        metric.gbps_base = self.get_gbps(
-                            args, latency=metric.latency_base
-                        )
-                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+                        if metric.latency_base is not None:
+                            metric.gbps_base = self.get_gbps(
+                                args, latency=metric.latency_base
+                            )
+                        if metric.latency is not None:
+                            metric.gbps = self.get_gbps(args, latency=metric.latency)
 
                     if "tflops" in self.to_bench_metrics:
                         metric.tflops = (
@@ -488,6 +497,7 @@ class Benchmark:
                 dtype=str(dtype),
                 mode=Config.mode.value,
                 result=metrics,
+                native_baseline_skip_reason=Config.native_baseline_skip_reason,
             )
             print(result)
             update_result(self.op_name, asdict(result))

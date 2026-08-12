@@ -39,6 +39,10 @@ def _input_fn_dim1(shape, dtype, device):
 
 
 @pytest.mark.unique_dim
+@pytest.mark.skip_native(
+    vendors=("ascend",),
+    reason="aten::unique_dim falls back to CPU on Ascend",
+)
 def test_unique_dim_dim0():
     bench = base.GenericBenchmark2DOnly(
         input_fn=_input_fn_dim0,
@@ -50,6 +54,10 @@ def test_unique_dim_dim0():
 
 
 @pytest.mark.unique_dim
+@pytest.mark.skip_native(
+    vendors=("ascend",),
+    reason="aten::unique_dim falls back to CPU on Ascend",
+)
 def test_unique_dim_dim1():
     bench = base.GenericBenchmark2DOnly(
         input_fn=_input_fn_dim1,
