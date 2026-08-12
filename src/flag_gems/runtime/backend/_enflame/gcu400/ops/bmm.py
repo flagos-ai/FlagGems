@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -110,6 +114,7 @@ def bmm_kernel(
 
 
 def bmm(A, B):
+    logger.debug("GEMS_ENFLAME BMM")
     assert A.shape[0] == B.shape[0], "Batch dim mismatch"
     assert A.shape[2] == B.shape[1], "K dim mismatch"
     Batch, M, K = A.shape
@@ -145,6 +150,7 @@ def bmm(A, B):
 
 
 def bmm_out(A, B, out):
+    logger.debug("GEMS_ENFLAME BMM_OUT")
     assert A.shape[0] == B.shape[0] == out.shape[0], "Batch dim mismatch"
     assert A.shape[2] == B.shape[1], "K dim mismatch"
     Batch, M, K = A.shape

@@ -62,6 +62,12 @@ def lift_fresh(*args, **kwargs):
         )
 
     x_contig = x.contiguous()
+
+    # Triton cannot canonicalize complex pointer types on some backends;
+    # clone() is a functionally equivalent copy that avoids the triton kernel.
+    if x_contig.is_complex():
+        return x_contig.clone()
+
     out = torch.empty_like(x_contig, memory_format=torch.contiguous_format)
 
     n_elements = x_contig.numel()
