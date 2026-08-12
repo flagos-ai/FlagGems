@@ -28,6 +28,110 @@ def argmax_heur_block_n(args):
     return min(4096, triton.next_power_of_2(args["N"]))
 
 
+def argmax_heur_tile_k(args):
+    MAX_TILE_K = 512
+    NUM_SMS = torch.cuda.get_device_properties(
+        torch.cuda.current_device()
+    ).multi_processor_count
+
+    K = args["K"]
+    M = args["M"]
+
+    if K <= 128:
+        return 1 << (K.bit_length() - 1) if K > 0 else 1
+
+    tile_k = 64
+    upper_bound = min(K, MAX_TILE_K)
+
+    while tile_k <= upper_bound:
+        num_blocks = M * triton.cdiv(K, tile_k)
+        num_waves = num_blocks / NUM_SMS
+        if num_waves > 1 and (tile_k * 2 <= upper_bound):
+            tile_k *= 2
+        else:
+            break
+
+    return tile_k
+
+
+def argmax_heur_tile_n_non_inner(args):
+    n = args["N"]
+    tile_k = args["TILE_K"]
+
+    if n <= 128:
+        return n
+
+    target_tile = min(8192, n)
+    tile_n = triton.next_power_of_2(target_tile)
+    tile_n = max(64, min(tile_n, 4096))
+
+    if tile_n * tile_k > 32768:
+        tile_n = max(64, 32768 // tile_k)
+
+    return tile_n
+
+
+def argmax_heur_tile_n_inner(args):
+    if args["N"] <= (32 * 1024):
+        return triton.next_power_of_2(args["N"])
+    else:
+        return 4096
+
+
+def argmax_heur_one_tile_per_cta(args):
+    return args["TILE_N"] >= args["N"]
+
+
+def argmax_heur_num_warps_non_inner(args):
+    tile_n = args["TILE_N"]
+    if tile_n <= 64:
+        return 4
+    else:
+        return 8  # MetaX C550: max 512 threads = 8 warps × 64
+
+
+def argmax_heur_num_warps_inner(args):
+    tile_size = args["TILE_N"]
+    if tile_size < 2048:
+        return 4
+    else:
+        return 8  # MetaX C550: max 512 threads = 8 warps × 64
+
+
+def mean_heur_tile_k(args):
+    MAX_TILE_K = 512
+    NUM_SMS = torch.cuda.get_device_properties(
+        torch.cuda.current_device()
+    ).multi_processor_count
+    tile_k = 1
+    upper_bound = min(args["K"], MAX_TILE_K)
+    while tile_k <= upper_bound:
+        num_blocks = args["M"] * triton.cdiv(args["K"], tile_k)
+        num_waves = num_blocks / NUM_SMS
+        if (num_waves > 1) and (tile_k * 2 <= upper_bound):
+            tile_k *= 2
+        else:
+            break
+    return tile_k
+
+
+def mean_heur_tile_n_non_inner(args):
+    tile_k = args.get("TILE_K", 1)
+    n = args["N"]
+    if n <= 128:
+        return n
+    target_tile = min(8192, n)
+    tile_n = triton.next_power_of_2(target_tile)
+    tile_n = max(64, min(tile_n, 4096))
+    if tile_n * tile_k > 32768:
+        tile_n = max(64, 32768 // tile_k)
+    return tile_n
+
+
+def mean_heur_one_tile_per_cta(args):
+    return args["TILE_N"] >= args["N"]
+
+
 def bmm_heur_divisible_m(args):
     return args["M"] % args["TILE_M"] == 0
 
@@ -58,10 +162,8 @@ def dropout_heur_block(args):
 def dropout_heur_num_warps(args):
     if args["N"] <= 512:
         return 4
-    elif args["N"] <= 1024:
-        return 8
     else:
-        return 16
+        return 8  # MetaX C550: max 512 threads = 8 warps × 64
 
 
 def exponential_heur_block(args):
@@ -74,10 +176,8 @@ def exponential_heur_block(args):
 def exponential_heur_num_warps(args):
     if args["N"] <= 512:
         return 4
-    elif args["N"] <= 1024:
-        return 8
     else:
-        return 16
+        return 8  # MetaX C550: max 512 threads = 8 warps × 64
 
 
 def gather_heur_block_m(args):
@@ -138,10 +238,8 @@ def rand_heur_block(args):
 def rand_heur_num_warps(args):
     if args["N"] <= 512:
         return 4
-    elif args["N"] <= 1024:
-        return 8
     else:
-        return 16
+        return 8  # MetaX C550: max 512 threads = 8 warps × 64
 
 
 def randn_heur_block(args):
@@ -154,10 +252,8 @@ def randn_heur_block(args):
 def randn_heur_num_warps(args):
     if args["N"] <= 512:
         return 4
-    elif args["N"] <= 1024:
-        return 8
     else:
-        return 16
+        return 8  # MetaX C550: max 512 threads = 8 warps × 64
 
 
 def softmax_heur_tile_k(args):
@@ -190,14 +286,10 @@ def softmax_heur_num_warps_non_inner(args):
     tile_size = args["TILE_N"] * args["TILE_K"]
     if tile_size < 512:
         return 1
-    elif tile_size < 256:
-        return 2
     elif tile_size < 2048:
         return 4
-    elif tile_size < 4096:
-        return 8
     else:
-        return 16
+        return 8  # MetaX C550: max 512 threads = 8 warps × 64
 
 
 def softmax_heur_tile_n_inner(args):
@@ -211,10 +303,8 @@ def softmax_heur_num_warps_inner(args):
     tile_size = args["TILE_N"]
     if tile_size < 2048:
         return 4
-    elif tile_size < 4096:
-        return 8
     else:
-        return 16
+        return 8  # MetaX C550: max 512 threads = 8 warps × 64
 
 
 def softmax_heur_tile_n_bwd_non_inner(args):
@@ -235,10 +325,8 @@ def uniform_heur_block(args):
 def uniform_heur_num_warps(args):
     if args["N"] <= 512:
         return 4
-    elif args["N"] <= 1024:
-        return 8
     else:
-        return 16
+        return 8  # MetaX C550: max 512 threads = 8 warps × 64
 
 
 def var_mean_heur_block_n(args):
@@ -258,14 +346,17 @@ def upsample_nearest2d_USE_INT32_IDX(args):
 
 
 def batch_norm_heur_block_m(args):
-    return min(2048, triton.next_power_of_2(args["batch_dim"]))
+    return min(512, triton.next_power_of_2(args["batch_dim"]))
 
 
 def batch_norm_heur_block_n(args):
-    # A maximum of 16384 elements are loaded at once.
+    # Cap total tile elements to 4096 to stay within MetaX C550 4KB/thread
+    # private memory limit. The kernel holds 3 float32 accumulators (mean, var,
+    # cnt) of shape (BLOCK_M, BLOCK_N) plus temporaries; 4096 elements keeps
+    # register spill well under 4KB.
     BLOCK_M = batch_norm_heur_block_m(args)
     BLOCK_N = triton.next_power_of_2(args["spatial_dim"])
-    return min(BLOCK_N, max(1, 2**14 // BLOCK_M))
+    return min(BLOCK_N, max(1, 2**12 // BLOCK_M))
 
 
 def vdot_heur_block_size(args):
@@ -302,9 +393,16 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": lambda args: 4,
         "BLOCK_N": lambda args: 1024,
     },
-    "argmax": {
-        "BLOCK_M": argmax_heur_block_m,
-        "BLOCK_N": argmax_heur_block_n,
+    "argmax_non_inner": {
+        "TILE_K": argmax_heur_tile_k,
+        "TILE_N": argmax_heur_tile_n_non_inner,
+        "ONE_TILE_PER_CTA": argmax_heur_one_tile_per_cta,
+        "num_warps": argmax_heur_num_warps_non_inner,
+    },
+    "argmax_inner": {
+        "TILE_N": argmax_heur_tile_n_inner,
+        "ONE_TILE_PER_CTA": argmax_heur_one_tile_per_cta,
+        "num_warps": argmax_heur_num_warps_inner,
     },
     "argmin": {
         "BLOCK_M": argmin_heur_block_m,
@@ -363,6 +461,12 @@ HEURISTICS_CONFIGS = {
         "TILE_N": softmax_heur_tile_n_inner,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
         "num_warps": softmax_heur_num_warps_inner,
+    },
+    "mean_non_inner": {
+        "TILE_K": mean_heur_tile_k,
+        "TILE_N": mean_heur_tile_n_non_inner,
+        "ONE_TILE_PER_CTA": mean_heur_one_tile_per_cta,
+        "num_warps": softmax_heur_num_warps_non_inner,
     },
     "softmax_backward_non_inner": {
         "TILE_N": softmax_heur_tile_n_bwd_non_inner,

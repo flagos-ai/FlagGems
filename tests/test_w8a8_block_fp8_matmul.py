@@ -58,6 +58,10 @@ def test_w8a8_block_fp8_matmul(M, N, K):
     block_k = 128
     block_size = [block_n, block_k]
 
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
+
     A = torch.randn((M, K), device=device).to(dtype)
     B = torch.randn((N, K), device=device).to(dtype)
 
