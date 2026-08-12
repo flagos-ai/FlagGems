@@ -39,4 +39,5 @@ def exp_(A):
 
 
 def exp_out(A, out):
+    logger.debug("GEMS_ENFLAME EXP_OUT")
     return exp_func(A, out0=out)
