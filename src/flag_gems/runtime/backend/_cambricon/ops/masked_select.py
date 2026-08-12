@@ -110,9 +110,12 @@ def masked_select(inp, mask):
         inp_shape, mask_shape
     ), "The shapes of the `mask` and the `input` tensor must be broadcastable"
     inp, mask = torch.broadcast_tensors(inp, mask)
+    mask = mask.contiguous()
+    num_select = mask.sum().item()
+    if num_select < 1:
+        return torch.empty(num_select, dtype=inp.dtype, device=inp.device)
 
     inp = inp.contiguous()
-    mask = mask.contiguous()
 
     n_elements = inp.numel()
     grid = lambda meta: (
@@ -124,7 +127,6 @@ def masked_select(inp, mask):
         masked_select_kernel[grid](inp, mask, select_val, select_num, n_elements)
 
         cur_block_size = masked_select_kernel.best_config.kwargs["BLOCK_SIZE"]
-        num_select = mask.sum().item()
         output = torch.empty(num_select, dtype=inp.dtype, device=inp.device)
         get_out_kernel[grid](select_val, select_num, output, n_elements, cur_block_size)
 

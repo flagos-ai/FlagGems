@@ -93,8 +93,8 @@ flaggems-setup nvidia-cuda128
 # Huawei Ascend CANN 9.0.0
 flaggems-setup ascend-cann900
 
-# MetaX MACA
-flaggems-setup metax
+# MetaX MACA 3.8.1
+flaggems-setup metax-maca3810
 ```
 
 Preview the exact commands without running them:
@@ -159,8 +159,8 @@ For example:
 # Huawei Ascend CANN 9.0.0
 ./setup.sh ascend-cann900
 
-# MetaX MACA
-./setup.sh metax
+# MetaX MACA 3.8.1
+./setup.sh metax-maca3810
 ```
 
 To see available backends:

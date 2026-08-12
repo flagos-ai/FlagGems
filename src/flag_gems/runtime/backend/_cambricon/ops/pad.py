@@ -88,6 +88,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("from triton import language as tl")
     code.newline()
+    code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.libentry import libentry")
     code.writeline("from flag_gems.runtime import torch_device_fn")
     code.writeline("from flag_gems.utils import triton_lang_extension as ext")
@@ -159,7 +160,14 @@ def generate_destination_passing_padding_wrapper(
 
     with code.indent():
         # docstring
-        code.writeline("BLOCK_SIZE = 2048")
+        code.writeline('pad_configs = runtime.get_tuned_config("pad")')
+        code.writeline(
+            'BLOCK_SIZE = pad_configs[0].kwargs.get("BLOCK_SIZE", 256) '
+            "if pad_configs else 256"
+        )
+        code.writeline("if 0 < out0.numel() < BLOCK_SIZE:")
+        with code.indent():
+            code.writeline("BLOCK_SIZE = triton.next_power_of_2(out0.numel())")
         code.writeline("grid = (triton.cdiv(out0.numel(), BLOCK_SIZE), 1, 1)")
         code.newline()
 
@@ -245,8 +253,8 @@ def generate_pad_kernel(
     code.newline()
 
     # the decorators
-    code.writeline("@libentry()")
     non_specialize_arg_names = ["value"]
+    code.writeline("@libentry()")
     code.writeline(f"@triton.jit(do_not_specialize={non_specialize_arg_names})")
 
     # signature
@@ -471,7 +479,6 @@ class PadFunction:
 _pad_func = PadFunction()
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_SIZE": 2**n}, num_stages=s)
@@ -480,6 +487,7 @@ _pad_func = PadFunction()
     ],
     key=["inp_elements"],
 )
+@libentry()
 @triton.jit
 def pad_1d_constant_kernel(
     inp_ptr,
@@ -504,7 +512,6 @@ def pad_1d_constant_kernel(
         tl.store(out_ptr + out_offset, inp, mask=out_mask)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_H": n}, num_stages=s)
@@ -513,6 +520,7 @@ def pad_1d_constant_kernel(
     ],
     key=["H", "W"],
 )
+@libentry()
 @triton.jit
 def pad_2d_constant_kernel(
     inp_ptr,

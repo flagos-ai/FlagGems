@@ -30,11 +30,11 @@ logger = logging.getLogger(__name__)
 MAX_N = 31744
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("weight_norm_kernel"),
     key=["v_shape0", "v_shape1", "v_shape2"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_except_dim_kernel(
     output,
@@ -85,11 +85,11 @@ def weight_norm_except_dim_kernel(
         tl.store(output + v_offsets, out, mask=mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("weight_norm_kernel"),
     key=["v_shape0", "v_shape1", "v_shape2"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_except_dim_bwd_kernel(
     v_grad,
