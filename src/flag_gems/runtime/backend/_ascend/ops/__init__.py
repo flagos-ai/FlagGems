@@ -55,6 +55,7 @@ from .index_add import index_add, index_add_
 from .index_select import index_select
 from .isin import isin
 from .linalg_lstsq import linalg_lstsq
+from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linspace import linspace
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .masked_fill import masked_fill, masked_fill_
@@ -67,6 +68,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .multinomial import multinomial
+from .nansum import nansum, nansum_out
 from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
@@ -158,6 +160,8 @@ __all__ = [
     "index_select",
     "isin",
     "linalg_lstsq",
+    "linalg_lu_factor",
+    "linalg_lu_factor_out",
     "linspace",
     "log_softmax",
     "log_softmax_backward",
@@ -178,6 +182,8 @@ __all__ = [
     "mm",
     "mm_out",
     "multinomial",
+    "nansum",
+    "nansum_out",
     "nonzero_static",
     "nonzero_static_out",
     "normed_cumsum",

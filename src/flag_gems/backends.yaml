@@ -238,9 +238,7 @@ backends:
   metax-maca3810:
     python: "3.12"
     triton: triton==3.6.0+metax3.8.1.0
-    # FlagTree not usable on the CI node because it has requirements
-    # that cannot be met on the runner node.
-    # flagtree: flagtree==0.6.1a2+metax3.6
+    flagtree: flagtree==0.6.1+metax3.6
     env:
       MACA_PATH: /opt/maca
       PATH: /opt/maca/mxgpu_llvm/bin:/opt/maca/bin:${PATH}
