@@ -55,6 +55,7 @@ from .index_add import index_add, index_add_
 from .index_select import index_select
 from .isin import isin
 from .linalg_lstsq import linalg_lstsq
+from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linspace import linspace
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .masked_fill import masked_fill, masked_fill_
@@ -159,6 +160,8 @@ __all__ = [
     "index_select",
     "isin",
     "linalg_lstsq",
+    "linalg_lu_factor",
+    "linalg_lu_factor_out",
     "linspace",
     "log_softmax",
     "log_softmax_backward",
