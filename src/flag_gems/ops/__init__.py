@@ -474,6 +474,7 @@ from flag_gems.ops.mv import mv
 from flag_gems.ops.mvlgamma import mvlgamma
 from flag_gems.ops.mvlgamma_ import mvlgamma_
 from flag_gems.ops.nan_to_num import nan_to_num
+from flag_gems.ops.nan_to_num_ import nan_to_num_
 from flag_gems.ops.nanmedian import (
     nanmedian,
     nanmedian_dim,
@@ -1315,6 +1316,7 @@ __all__ = [
     "mvlgamma",
     "mvlgamma_",
     "nan_to_num",
+    "nan_to_num_",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
