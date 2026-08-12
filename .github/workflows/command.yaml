@@ -44,6 +44,7 @@ jobs:
           skip_reviews: "true"
           fork_review_bypass: "true"
           permissions: "write,admin"
+          param_separator: " "
 
       - id: parse-command
         if: ${{ steps.check.outputs.continue == 'true' }}
