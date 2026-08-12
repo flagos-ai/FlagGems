@@ -127,6 +127,7 @@ from .masked_select import masked_select
 from .max_pool3d_with_indices import max_pool3d_backward, max_pool3d_with_indices
 from .mean import mean, mean_dim
 from .median import median, median_dim, median_dim_values, median_out
+from .mode import mode
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .multiply_ import multiply_
@@ -329,6 +330,7 @@ __all__ = [
     "median_dim",
     "median_dim_values",
     "median_out",
+    "mode",
     "mul",
     "mul_",
     "multiply_",
