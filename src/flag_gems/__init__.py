@@ -597,6 +597,8 @@ _FULL_CONFIG = (
     ("linalg_ldl_solve", linalg_ldl_solve),
     ("linalg_lstsq", linalg_lstsq),
     ("linalg_slogdet", linalg_slogdet),
+    ("linalg_vecdot", linalg_vecdot),
+    ("linalg_vecdot.out", linalg_vecdot_out),
     ("linalg_vector_norm", vector_norm),
     ("linear", linear),
     ("linear_backward", linear_backward),
