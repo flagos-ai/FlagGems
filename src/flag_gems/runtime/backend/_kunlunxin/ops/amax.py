@@ -27,6 +27,9 @@ from ..utils.block_size_utils import get_block_size_1d
 
 logger = logging.getLogger(__name__)
 
+_NATIVE_AMAX = torch.library.get_kernel("aten::amax", "CUDA")
+_CUDA_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
+
 
 @libentry()
 @triton.jit
@@ -122,6 +125,13 @@ def amax_kernel(
 
 def amax(inp, dim=None, keepdim=False):
     logger.debug("GEMS_KUNLUNXIN AMAX")
+    if isinstance(dim, int):
+        dim = [dim]
+    elif dim is not None:
+        dim = list(dim)
+    if dim is not None and len(dim) > 1:
+        return _NATIVE_AMAX.call_boxed(_CUDA_KEYSET, inp, dim, keepdim)
+
     if dim is None or len(dim) == 0:
         M = inp.numel()
         # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
@@ -146,8 +156,6 @@ def amax(inp, dim=None, keepdim=False):
             )  # max block size is 128k, so mid does not requires int64 index
         return out
     else:
-        if isinstance(dim, int):
-            dim = [dim]
         assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
         dtype = inp.dtype
 
