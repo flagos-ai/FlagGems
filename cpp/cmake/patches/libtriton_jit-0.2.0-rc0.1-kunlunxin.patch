@@ -1,0 +1,336 @@
+--- a/scripts/standalone_compile.py
++++ b/scripts/standalone_compile.py
+@@ -259,7 +259,7 @@
+     divisible_by_16 = tuple(i for i, h in hints.items() if h == 16)
+     equal_to_1 = tuple(i for i, h in hints.items() if h == 1)
+
+-    if triton_version.major == 3 and triton_version.minor == 1:
++    if triton_version.major == 3 and triton_version.minor in (0, 1):
+         attrs = triton.compiler.AttrsDescriptor(
+             divisible_by_16=divisible_by_16, equal_to_1=equal_to_1
+         )
+@@ -285,7 +285,7 @@
+         raise RuntimeError(
+             "Triton may change APIs, we cannot ensure compatibility here now. "
+             "You can goto https://github.com/flagos-ai/libtriton_jit to raise an issue "
+-            "about supporting your triton version. Triton 3.1/3.2/3.3/3.4/3.5/3.6 are supported now."
++            "about supporting your triton version. Triton 3.0/3.1/3.2/3.3/3.4/3.5/3.6 are supported now."
+         )
+
+     # integer 1 in value, but the corresponding ArgType in static signature is not constexpr are added into constants
+--- a/include/triton_jit/kernel_metadata.h
++++ b/include/triton_jit/kernel_metadata.h
+@@ -1,5 +1,6 @@
+ #pragma once
+
++#include <cstdint>
+ #include <string>
+
+ #include "triton_jit/backends/npu_types.h"
+@@ -10,6 +11,12 @@
+ struct GpuKernelMeta {
+   unsigned int shared = 0;
+   unsigned int arch = 0;
++  std::string backend;
++  unsigned int warp_size = 0;
++  unsigned int cluster_num = 0;
++  unsigned int core_num = 0;
++  bool is_sdnn = false;
++  uint64_t printf_buf_offset = 0;
+ };
+
+ // Load GPU kernel metadata from {dir}/{kernel_name}.json
+--- a/src/kernel_metadata.cpp
++++ b/src/kernel_metadata.cpp
+@@ -18,10 +18,19 @@
+   }
+   try {
+     nlohmann::json j = nlohmann::json::parse(f);
+-    meta.shared = j.value("shared", 0u);
+-    if (j.contains("target") && j["target"].contains("arch")) {
+-      meta.arch = j["target"]["arch"].get<unsigned int>();
++    const auto shared = j.value("shared", 0);
++    meta.shared = shared > 0 ? static_cast<unsigned int>(shared) : 0;
++    if (j.contains("target")) {
++      const auto& target = j["target"];
++      meta.backend = target.value("backend", std::string());
++      meta.arch = target.value("arch", 0u);
++      meta.warp_size = target.value("warp_size", 0u);
+     }
++    if (meta.backend.empty()) meta.backend = j.value("backend_name", std::string());
++    meta.cluster_num = j.value("cluster_num", 0u);
++    meta.core_num = j.value("core_num", 0u);
++    meta.is_sdnn = j.value("is_sdnn", false);
++    meta.printf_buf_offset = j.value("printf_buf_offset", uint64_t {0});
+   } catch (const nlohmann::json::exception& e) {
+     LOG(WARNING) << fmt::format("Failed to parse GPU metadata {}: {}", path, e.what());
+   }
+--- a/include/triton_jit/backends/cuda_backend.h
++++ b/include/triton_jit/backends/cuda_backend.h
+@@ -1,10 +1,16 @@
+ #pragma once
+
+ #include <cuda.h>
++#include <dlfcn.h>
++#include <algorithm>
++#include <cctype>
++#include <cstdint>
++#include <fstream>
+ #include <mutex>
+ #include <stdexcept>
+ #include <string>
+ #include <unordered_map>
++#include <vector>
+
+ #include "c10/util/Logging.h"
+ #include "fmt/core.h"
+@@ -17,6 +23,26 @@
+ struct CudaKernelMetadata {
+   unsigned int shared;
+   unsigned int arch;
++  bool is_xpu = false;
++  unsigned int xpu_arch = 0;
++  unsigned int cluster_num = 0;
++  unsigned int core_num = 0;
++  bool is_sdnn = false;
++  uint64_t printf_buf_offset = 0;
++};
++
++// Matches the public XPU runtime descriptor used by Triton's XPU driver.
++struct XpuKernelDescriptor {
++  uint32_t type : 16;
++  uint32_t place : 16;
++  uint64_t code_addr;
++  uint32_t code_byte_size;
++  uint32_t code_pc;
++  uint32_t param_dword_size;
++  uint64_t hash;
++  const char* name;
++  void* rt_private;
++  uint64_t printf_buffer_offset;
+ };
+
+ struct CudaBackend {
+@@ -29,23 +55,44 @@
+
+   struct LaunchOptions {
+     unsigned int shared_memory = 0;
++    bool is_xpu = false;
++    unsigned int xpu_arch = 0;
++    unsigned int cluster_num = 0;
++    unsigned int core_num = 0;
++    std::vector<size_t> argument_sizes;
+   };
+
+   struct ModuleData {
+-    CUmodule module;
+-    CUfunction function;
++    CUmodule module = nullptr;
++    CUfunction function = nullptr;
+     CudaKernelMetadata metadata;
++    std::vector<unsigned char> xpu_binary;
++    std::string kernel_name;
++    XpuKernelDescriptor xpu_kernel {};
+   };
+
+   static inline std::unordered_map<std::string, ModuleData> module_cache_;
+   static inline std::mutex cache_mutex_;
+
+-  static LaunchOptions prepare_launch(const std::string& /*dir*/,
+-                                      const std::string& /*name*/,
++  static LaunchOptions prepare_launch(const std::string& dir,
++                                      const std::string& name,
+                                       unsigned int shared_mem,
+-                                      const std::string& /*sig*/,
++                                      const std::string& sig,
+                                       size_t /*num_args*/) {
+-    return {.shared_memory = shared_mem};
++    LaunchOptions opts {.shared_memory = shared_mem};
++    const auto key = fmt::format("{}::{}", dir, name);
++    {
++      std::lock_guard<std::mutex> lock(cache_mutex_);
++      auto it = module_cache_.find(key);
++      if (it != module_cache_.end()) {
++        opts.is_xpu = it->second.metadata.is_xpu;
++        opts.xpu_arch = it->second.metadata.xpu_arch;
++        opts.cluster_num = it->second.metadata.cluster_num;
++        opts.core_num = it->second.metadata.core_num;
++      }
++    }
++    if (opts.is_xpu) opts.argument_sizes = parse_xpu_argument_sizes(sig);
++    return opts;
+   }
+
+   static void launch_kernel(CUstream stream,
+@@ -58,6 +105,11 @@
+                             unsigned block_z,
+                             void** args,
+                             const LaunchOptions& opts) {
++    if (opts.is_xpu) {
++      launch_xpu_kernel(stream, kernel, grid_x, grid_y, grid_z, args, opts);
++      return;
++    }
++
+     LOG(INFO) << "cuLaunchKernel";
+
+     CUresult result = cuLaunchKernel(kernel,
+@@ -131,6 +183,12 @@
+     CudaKernelMetadata metadata;
+     metadata.shared = gpu_meta.shared;
+     metadata.arch = gpu_meta.arch;
++    metadata.is_xpu = gpu_meta.backend == "xpu";
++    metadata.xpu_arch = gpu_meta.arch;
++    metadata.cluster_num = gpu_meta.cluster_num;
++    metadata.core_num = gpu_meta.core_num;
++    metadata.is_sdnn = gpu_meta.is_sdnn;
++    metadata.printf_buf_offset = gpu_meta.printf_buf_offset;
+
+     if (metadata.arch == 0) {
+       throw std::runtime_error(fmt::format("Failed to load metadata for kernel: {}", kernel_name));
+@@ -141,6 +199,10 @@
+                              metadata.arch,
+                              metadata.shared);
+
++    if (metadata.is_xpu) {
++      return load_xpu_kernel(key, dir, kernel_name, metadata);
++    }
++
+     // Check architecture compatibility
+     CUdevice device;
+     checkCudaErrors(cuCtxGetDevice(&device));
+@@ -191,6 +253,135 @@
+   }
+
+  private:
++  static size_t align_up(size_t value, size_t alignment) {
++    return (value + alignment - 1) & ~(alignment - 1);
++  }
++
++  static std::vector<size_t> parse_xpu_argument_sizes(const std::string& signature) {
++    std::vector<size_t> sizes;
++    size_t begin = 0;
++    while (begin <= signature.size()) {
++      size_t end = signature.find(',', begin);
++      std::string token = signature.substr(begin, end == std::string::npos ? end : end - begin);
++      token.erase(std::remove_if(token.begin(), token.end(), [](unsigned char c) { return std::isspace(c); }),
++                  token.end());
++
++      const size_t hint = token.find(':');
++      if (hint != std::string::npos && token.substr(hint + 1) == "1") {
++        token.clear();
++      } else if (hint != std::string::npos) {
++        token.resize(hint);
++      }
++
++      if (!token.empty() && token != "nullopt") {
++        const bool numeric_constant = std::isdigit(static_cast<unsigned char>(token[0])) || token[0] == '-';
++        if (!numeric_constant) {
++          if (token[0] == '*' || token == "i64" || token == "u64" || token == "fp64" || token == "f64") {
++            sizes.push_back(8);
++          } else if (token == "i8" || token == "u8") {
++            sizes.push_back(1);
++          } else if (token == "i16" || token == "u16" || token == "fp16" || token == "bf16") {
++            sizes.push_back(2);
++          } else {
++            sizes.push_back(4);
++          }
++        }
++      }
++
++      if (end == std::string::npos) break;
++      begin = end + 1;
++    }
++    return sizes;
++  }
++
++  template <typename Fn>
++  static Fn load_xpu_symbol(const char* name) {
++    void* symbol = dlsym(RTLD_DEFAULT, name);
++    if (!symbol) throw std::runtime_error(fmt::format("Failed to resolve XPU runtime symbol {}", name));
++    return reinterpret_cast<Fn>(symbol);
++  }
++
++  static CUfunction load_xpu_kernel(const std::string& key,
++                                    const std::string& dir,
++                                    const std::string& kernel_name,
++                                    const CudaKernelMetadata& metadata) {
++    const std::string path = fmt::format("{}/{}.xpubin", dir, kernel_name);
++    std::ifstream input(path, std::ios::binary);
++    if (!input) throw std::runtime_error(fmt::format("Failed to open XPU binary: {}", path));
++
++    std::vector<unsigned char> binary((std::istreambuf_iterator<char>(input)),
++                                      std::istreambuf_iterator<char>());
++    if (binary.empty()) throw std::runtime_error(fmt::format("XPU binary is empty: {}", path));
++
++    auto it = module_cache_.try_emplace(key).first;
++    ModuleData& data = it->second;
++    data.metadata = metadata;
++    data.xpu_binary = std::move(binary);
++    data.kernel_name = kernel_name;
++
++    uint32_t checksum = 0;
++    for (unsigned char byte : data.xpu_binary) checksum += byte;
++    data.xpu_kernel.type = metadata.is_sdnn ? 1 : 0;
++    data.xpu_kernel.place = 0;
++    data.xpu_kernel.code_addr = reinterpret_cast<uint64_t>(data.xpu_binary.data());
++    data.xpu_kernel.code_byte_size = static_cast<uint32_t>(data.xpu_binary.size());
++    data.xpu_kernel.code_pc = 0;
++    data.xpu_kernel.param_dword_size = 0;
++    data.xpu_kernel.hash = checksum;
++    data.xpu_kernel.name = data.kernel_name.c_str();
++    data.xpu_kernel.rt_private = nullptr;
++    data.xpu_kernel.printf_buffer_offset = metadata.printf_buf_offset;
++    data.function = reinterpret_cast<CUfunction>(&data.xpu_kernel);
++
++    LOG(INFO) << fmt::format("Loading XPU binary from {}", path);
++    return data.function;
++  }
++
++  static void launch_xpu_kernel(CUstream stream,
++                                CUfunction kernel,
++                                unsigned int grid_x,
++                                unsigned int grid_y,
++                                unsigned int grid_z,
++                                void** args,
++                                const LaunchOptions& opts) {
++    using ConfigFn = int (*)(int, int, void*);
++    using ArgumentFn = int (*)(const void*, size_t, size_t);
++    using LaunchFn = int (*)(void*);
++    static const ConfigFn configure = load_xpu_symbol<ConfigFn>("xpu_launch_config");
++    static const ArgumentFn set_argument = load_xpu_symbol<ArgumentFn>("xpu_launch_argument_set");
++    static const LaunchFn launch = load_xpu_symbol<LaunchFn>("xpu_launch_async");
++
++    size_t offset = 0;
++    for (size_t i = 0; i < opts.argument_sizes.size(); ++i) {
++      const size_t size = opts.argument_sizes[i];
++      const size_t alignment = opts.xpu_arch == 3 && size == 8 ? 8 : 4;
++      offset = align_up(offset, alignment);
++      int result = set_argument(args[i], size, offset);
++      if (result != 0) {
++        throw std::runtime_error(fmt::format("xpu_launch_argument_set failed with error {}", result));
++      }
++      offset += align_up(size, alignment);
++    }
++
++    for (const unsigned int* dim : {&grid_x, &grid_y, &grid_z}) {
++      int result = set_argument(dim, sizeof(*dim), offset);
++      if (result != 0) {
++        throw std::runtime_error(fmt::format("xpu_launch_argument_set(grid) failed with error {}", result));
++      }
++      offset += sizeof(*dim);
++    }
++
++    const uint64_t grid_size = static_cast<uint64_t>(grid_x) * grid_y * grid_z;
++    const unsigned int available_clusters = opts.cluster_num == 0 ? 12 : opts.cluster_num;
++    const unsigned int cores = opts.core_num == 0 ? 64 : opts.core_num;
++    int result = configure(static_cast<int>(std::min<uint64_t>(grid_size, available_clusters)),
++                           static_cast<int>(cores),
++                           reinterpret_cast<void*>(stream));
++    if (result != 0) throw std::runtime_error(fmt::format("xpu_launch_config failed with error {}", result));
++    result = launch(reinterpret_cast<void*>(kernel));
++    if (result != 0) throw std::runtime_error(fmt::format("xpu_launch_async failed with error {}", result));
++  }
++
+   static void configure_shared_memory(CUfunction kernel, CUdevice device, unsigned int required_shared) {
+     // Check shared memory limits
+     int shared_optin;
