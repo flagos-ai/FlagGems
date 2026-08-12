@@ -127,6 +127,7 @@ from .masked_select import masked_select
 from .max_pool3d_with_indices import max_pool3d_backward, max_pool3d_with_indices
 from .mean import mean, mean_dim
 from .median import median, median_dim, median_dim_values, median_out
+from .mm import mm, mm_out, router_gemm
 from .mode import mode
 from .mul import mul, mul_
 from .multinomial import multinomial
@@ -331,6 +332,8 @@ __all__ = [
     "median_dim_values",
     "median_out",
     "mode",
+    "mm",
+    "mm_out",
     "mul",
     "mul_",
     "multiply_",
@@ -362,6 +365,7 @@ __all__ = [
     "rms_norm",
     "rms_norm_forward",
     "rms_norm_backward",
+    "router_gemm",
     "scaled_grouped_mm",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
