@@ -488,6 +488,7 @@ from flag_gems.ops.narrow import narrow
 from flag_gems.ops.narrow_copy import narrow_copy
 from flag_gems.ops.native_layer_norm import native_layer_norm
 from flag_gems.ops.ne import ne, ne_scalar
+from flag_gems.ops.ne_ import ne_, ne_scalar_
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
 from flag_gems.ops.negative_ import negative_
@@ -1337,6 +1338,8 @@ __all__ = [
     "native_layer_norm",
     "ne",
     "ne_scalar",
+    "ne_",
+    "ne_scalar_",
     "neg",
     "neg_",
     "negative",
