@@ -267,27 +267,32 @@ def _det_panel_kernel(
     tl.store(out + pid, det)
 
 
-def linalg_det(A, *, out=None):
+def linalg_det(A):
     logger.debug("GEMS LINALG_DET")
-    if out is not None:
-        if out.dtype != A.dtype:
-            raise RuntimeError(
-                f"linalg_det: dtype of out ({out.dtype}) does not match "
-                f"dtype of input ({A.dtype})"
-            )
-        if out.device != A.device:
-            raise RuntimeError(
-                f"linalg_det: device of out ({out.device}) does not match "
-                f"device of input ({A.device})"
-            )
-        if out.shape != A.shape[:-2]:
-            raise RuntimeError(
-                f"linalg_det: shape of out {tuple(out.shape)} does not match "
-                f"expected shape {tuple(A.shape[:-2])}"
-            )
-        out.copy_(_linalg_det_impl(A))
-        return out
     return _linalg_det_impl(A)
+
+
+def linalg_det_out(A, *, out=None):
+    logger.debug("GEMS LINALG_DET_OUT")
+    if out is None:
+        raise TypeError("linalg_det(): out must be provided for out variant")
+    if out.dtype != A.dtype:
+        raise RuntimeError(
+            f"linalg_det: dtype of out ({out.dtype}) does not match "
+            f"dtype of input ({A.dtype})"
+        )
+    if out.device != A.device:
+        raise RuntimeError(
+            f"linalg_det: device of out ({out.device}) does not match "
+            f"device of input ({A.device})"
+        )
+    if out.shape != A.shape[:-2]:
+        raise RuntimeError(
+            f"linalg_det: shape of out {tuple(out.shape)} does not match "
+            f"expected shape {tuple(A.shape[:-2])}"
+        )
+    out.copy_(_linalg_det_impl(A))
+    return out
 
 
 def _linalg_det_impl(A):

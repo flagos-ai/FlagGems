@@ -2,7 +2,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems import linalg_det
+from flag_gems import linalg_det, linalg_det_out
 
 from . import base
 
@@ -83,5 +83,5 @@ def test_linalg_det_out():
         torch_op=_torch_det_out,
         dtypes=DET_DTYPES,
     )
-    bench.set_gems(linalg_det)
+    bench.set_gems(linalg_det_out)
     bench.run()

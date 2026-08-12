@@ -52,6 +52,15 @@ def _scaled_randn(shape, dtype):
     return torch.randn(shape, dtype=dtype, device=flag_gems.device) / math.sqrt(n)
 
 
+def _ref_det(A):
+    prev = torch.get_num_threads()
+    torch.set_num_threads(min(prev, 64))
+    try:
+        return torch.linalg.det(A)
+    finally:
+        torch.set_num_threads(prev)
+
+
 @pytest.mark.linalg_det
 @pytest.mark.parametrize("shape", DET_SHAPES)
 @pytest.mark.parametrize("dtype", DET_DTYPES)
@@ -60,7 +69,7 @@ def test_linalg_det_random(shape, dtype):
     A = _scaled_randn(shape, dtype)
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.det(ref_A)
+    ref_out = _ref_det(ref_A)
 
     with flag_gems.use_gems():
         res_out = torch.linalg.det(A)
@@ -76,7 +85,7 @@ def test_linalg_det_random_batch(shape, dtype):
     A = _scaled_randn(shape, dtype)
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.det(ref_A)
+    ref_out = _ref_det(ref_A)
 
     with flag_gems.use_gems():
         res_out = torch.linalg.det(A)
@@ -94,7 +103,7 @@ def test_linalg_det_positive_definite(shape, dtype):
     A = (B @ B.transpose(-2, -1) + n * eye) / (2 * n)
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.det(ref_A)
+    ref_out = _ref_det(ref_A)
 
     with flag_gems.use_gems():
         res_out = torch.linalg.det(A)
@@ -113,7 +122,7 @@ def test_linalg_det_negative_determinant(shape, dtype):
         A = A.unsqueeze(0).expand(shape).contiguous()
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.det(ref_A)
+    ref_out = _ref_det(ref_A)
 
     with flag_gems.use_gems():
         res_out = torch.linalg.det(A)
@@ -133,7 +142,7 @@ def test_linalg_det_diagonal(shape, dtype):
         A = A.unsqueeze(0).expand(shape).contiguous()
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.det(ref_A)
+    ref_out = _ref_det(ref_A)
 
     with flag_gems.use_gems():
         res_out = torch.linalg.det(A)
@@ -149,7 +158,7 @@ def test_linalg_det_singular(shape, dtype):
     A[..., 0, :] = A[..., 1, :]
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.det(ref_A)
+    ref_out = _ref_det(ref_A)
 
     with flag_gems.use_gems():
         res_out = torch.linalg.det(A)
@@ -164,7 +173,7 @@ def test_linalg_det_empty(dtype):
         A = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 
         ref_A = utils.to_reference(A)
-        ref_out = torch.linalg.det(ref_A)
+        ref_out = _ref_det(ref_A)
 
         with flag_gems.use_gems():
             res_out = torch.linalg.det(A)
@@ -187,7 +196,7 @@ def test_linalg_det_non_contiguous(dtype):
     assert not A.is_contiguous()
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.det(ref_A)
+    ref_out = _ref_det(ref_A)
 
     with flag_gems.use_gems():
         res_out = torch.linalg.det(A)
@@ -213,11 +222,10 @@ def test_linalg_det_out(shape, dtype):
     A = _scaled_randn(shape, dtype)
 
     ref_A = utils.to_reference(A)
-    ref_out = torch.linalg.det(ref_A)
+    ref_out = _ref_det(ref_A)
 
     out = torch.empty(shape[:-2], dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res = torch.linalg.det(A, out=out)
+    res = flag_gems.linalg_det_out(A, out=out)
 
     assert res.data_ptr() == out.data_ptr()
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=n)
@@ -226,13 +234,12 @@ def test_linalg_det_out(shape, dtype):
 @pytest.mark.linalg_det_out
 def test_linalg_det_out_errors():
     A = torch.randn(4, 4, device=flag_gems.device)
-    with flag_gems.use_gems():
-        with pytest.raises((RuntimeError, ValueError)):
-            torch.linalg.det(
-                A, out=torch.empty((), dtype=torch.int32, device=flag_gems.device)
-            )
+    with pytest.raises((RuntimeError, ValueError)):
+        flag_gems.linalg_det_out(
+            A, out=torch.empty((), dtype=torch.int32, device=flag_gems.device)
+        )
 
-        with pytest.raises((RuntimeError, ValueError)):
-            torch.linalg.det(
-                A, out=torch.empty((4,), dtype=A.dtype, device=flag_gems.device)
-            )
+    with pytest.raises((RuntimeError, ValueError)):
+        flag_gems.linalg_det_out(
+            A, out=torch.empty((4,), dtype=A.dtype, device=flag_gems.device)
+        )
