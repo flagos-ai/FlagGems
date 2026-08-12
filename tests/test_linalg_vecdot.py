@@ -22,12 +22,8 @@ def test_linalg_vecdot(shape, dtype, dim):
     torch.manual_seed(42)
     torch.cuda.manual_seed_all(42)
 
-    if vendor_name in ["mthreads", "tsingmicro"]:
-        x = torch.randn(shape, dtype=dtype, device="cpu")
-        y = torch.randn(shape, dtype=dtype, device="cpu")
-    else:
-        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_x = utils.to_reference(x)
     ref_y = utils.to_reference(y)
@@ -40,11 +36,9 @@ def test_linalg_vecdot(shape, dtype, dim):
     vec_dim = shape[dim]
 
     if dtype in (torch.float16, torch.bfloat16):
-        flag_gems.testing.assert_close(res_out, ref_out, dtype=dtype, reduce_dim=2048)
+        utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=2048)
     else:
-        flag_gems.testing.assert_close(
-            res_out, ref_out, dtype=dtype, reduce_dim=vec_dim
-        )
+        utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=vec_dim)
 
 
 @pytest.mark.linalg_vecdot_out
@@ -55,12 +49,8 @@ def test_linalg_vecdot_out(shape, dtype, dim):
     torch.manual_seed(42)
     torch.cuda.manual_seed_all(42)
 
-    if vendor_name in ["mthreads", "tsingmicro"]:
-        x = torch.randn(shape, dtype=dtype, device="cpu")
-        y = torch.randn(shape, dtype=dtype, device="cpu")
-    else:
-        x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_x = utils.to_reference(x)
     ref_y = utils.to_reference(y)
@@ -73,6 +63,6 @@ def test_linalg_vecdot_out(shape, dtype, dim):
     vec_dim = shape[dim]
 
     if dtype in (torch.float16, torch.bfloat16):
-        flag_gems.testing.assert_close(out, ref_out, dtype=dtype, reduce_dim=2048)
+        utils.gems_assert_close(out, ref_out, dtype, reduce_dim=2048)
     else:
-        flag_gems.testing.assert_close(out, ref_out, dtype=dtype, reduce_dim=vec_dim)
+        utils.gems_assert_close(out, ref_out, dtype, reduce_dim=vec_dim)
