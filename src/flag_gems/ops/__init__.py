@@ -418,6 +418,7 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex,
     linalg_lu_factor_ex_out,
 )
+from flag_gems.ops.linalg_pinv import linalg_pinv
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linalg_svdvals import linalg_svdvals
 from flag_gems.ops.linear import linear
@@ -1255,6 +1256,7 @@ __all__ = [
     "linalg_lu_factor_out",
     "linalg_slogdet",
     "linalg_svdvals",
+    "linalg_pinv",
     "linear",
     "linear_backward",
     "linspace",
