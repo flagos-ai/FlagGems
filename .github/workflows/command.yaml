@@ -44,16 +44,19 @@ jobs:
           skip_reviews: "true"
           fork_review_bypass: "true"
           permissions: "write,admin"
+          param_separator: " "
 
       - id: parse-command
         if: ${{ steps.check.outputs.continue == 'true' }}
         env:
           PULL_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ steps.check.outputs.comment_body }}
         run: |
           # Parse command arguments
-          params=${{ steps.check.outputs.params }}
-          op=$(echo $params | cut -d ':' -f 1)
-          runner=$(echo $params | cut -d ':' -f 2)
+          # Comment format: "/test <op>:<runner>", e.g. "/test constant_pad_nd:mthreads"
+          params="${COMMENT_BODY#/test }"
+          op="${params%%:*}"
+          runner="${params##*:}"
           echo "OP_ID=${op}" >> $GITHUB_OUTPUT
           echo "RUNNER=${runner}" >> $GITHUB_OUTPUT
           echo "PR_NUMBER=${PULL_NUMBER}" >> $GITHUB_OUTPUT

@@ -455,6 +455,9 @@ from flag_gems.ops.max_pool3d_with_indices import (
     max_pool3d_backward,
     max_pool3d_with_indices,
 )
+from flag_gems.ops.max_pool3d_with_indices_backward import (
+    max_pool3d_with_indices_backward,
+)
 from flag_gems.ops.max_unpool2d import max_unpool2d
 from flag_gems.ops.max_unpool3d import max_unpool3d
 from flag_gems.ops.maximum import maximum
@@ -518,6 +521,7 @@ from flag_gems.ops.not_equal_ import not_equal_, not_equal_scalar_
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
+from flag_gems.ops.ormqr import ormqr
 from flag_gems.ops.pad import constant_pad_nd, pad
 from flag_gems.ops.pairwise_distance import pairwise_distance
 from flag_gems.ops.pdist import pdist
@@ -1298,6 +1302,7 @@ __all__ = [
     "max_pool2d_with_indices_backward",
     "max_pool3d_backward",
     "max_pool3d_with_indices",
+    "max_pool3d_with_indices_backward",
     "max_unpool2d",
     "max_unpool3d",
     "maximum",
@@ -1375,6 +1380,7 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
+    "ormqr",
     "pad",
     "pairwise_distance",
     "pdist",
