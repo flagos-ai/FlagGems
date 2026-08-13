@@ -14,23 +14,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
-
-# ``_addmm_activation`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register the markers
-# directly on the MarkGenerator so ``@pytest.mark._addmm_activation`` and
-# ``-m _addmm_activation`` both work.
-for _mark_name in ("_addmm_activation", "_addmm_activation_out"):
-    setattr(
-        pytest.mark,
-        _mark_name,
-        MarkDecorator(Mark(_mark_name, (), {}, _ispytest=True), _ispytest=True),
-    )
 
 if QUICK_MODE:
     MNK_SHAPES = [
@@ -46,12 +34,12 @@ else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 
-@pytest.mark._addmm_activation
+@pytest.mark.addmm_activation
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("use_gelu", [False, True])
-def test__addmm_activation(M, N, K, scalar, dtype, use_gelu):
+def test_addmm_activation(M, N, K, scalar, dtype, use_gelu):
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
     bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
@@ -72,12 +60,12 @@ def test__addmm_activation(M, N, K, scalar, dtype, use_gelu):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
-@pytest.mark._addmm_activation_out
+@pytest.mark.addmm_activation_out
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("use_gelu", [False, True])
-def test__addmm_activation_out(M, N, K, scalar, dtype, use_gelu):
+def test_addmm_activation_out(M, N, K, scalar, dtype, use_gelu):
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
     bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)

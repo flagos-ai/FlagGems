@@ -14,20 +14,8 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 from . import base, consts
-
-# ``_addmm_activation`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register the markers
-# directly on the MarkGenerator so ``@pytest.mark._addmm_activation`` and
-# ``-m _addmm_activation`` both work.
-for _mark_name in ("_addmm_activation", "_addmm_activation_out"):
-    setattr(
-        pytest.mark,
-        _mark_name,
-        MarkDecorator(Mark(_mark_name, (), {}, _ispytest=True), _ispytest=True),
-    )
 
 
 def _input_fn(b, m, n, k, dtype, device, b_column_major):
@@ -41,10 +29,10 @@ def _input_fn(b, m, n, k, dtype, device, b_column_major):
         yield bias, inp1, inp2,
 
 
-@pytest.mark._addmm_activation
-def test__addmm_activation(monkeypatch):
+@pytest.mark.addmm_activation
+def test_addmm_activation(monkeypatch):
     bench = base.BlasBenchmark(
-        op_name="_addmm_activation",
+        op_name="addmm_activation",
         input_fn=_input_fn,
         torch_op=torch._addmm_activation,
         dtypes=consts.FLOAT_DTYPES,
@@ -65,10 +53,10 @@ def _input_fn_out(b, m, n, k, dtype, device, b_column_major):
         yield bias, inp1, inp2, {"out": out}
 
 
-@pytest.mark._addmm_activation_out
-def test__addmm_activation_out(monkeypatch):
+@pytest.mark.addmm_activation_out
+def test_addmm_activation_out(monkeypatch):
     bench = base.BlasBenchmark(
-        op_name="_addmm_activation_out",
+        op_name="addmm_activation_out",
         input_fn=_input_fn_out,
         torch_op=torch._addmm_activation,
         dtypes=consts.FLOAT_DTYPES,
