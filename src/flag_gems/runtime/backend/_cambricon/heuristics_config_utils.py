@@ -166,6 +166,10 @@ def uniform_heur_num_warps(args):
         return 16
 
 
+def var_heur_block_n(args):
+    return triton.next_power_of_2(args["BLOCK_NUM"])
+
+
 def upsample_nearest2d_SAME_H(args):
     return args["OH"] == args["IH"]
 
@@ -255,6 +259,9 @@ HEURISTICS_CONFIGS = {
         "SAME_W": upsample_nearest2d_SAME_W,
     },
     "var_mean": {},
+    "var": {
+        "BLOCK_N": var_heur_block_n,
+    },
     "batch_norm": {},
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
