@@ -159,7 +159,9 @@ def test_fused_moving_avg_obs_fq_helper_rejects_non_fp32(dtype):
     )
     error = "expected scalar type Float but found"
 
-    with pytest.raises(RuntimeError, match=error):
+    # The exact native error text varies by PyTorch version depending on which
+    # dtype check runs first, but every supported version rejects these inputs.
+    with pytest.raises(RuntimeError):
         torch.ops.aten._fused_moving_avg_obs_fq_helper(x, *args)
     with flag_gems.use_gems(), pytest.raises(RuntimeError, match=error):
         torch.ops.aten._fused_moving_avg_obs_fq_helper(x, *args)
