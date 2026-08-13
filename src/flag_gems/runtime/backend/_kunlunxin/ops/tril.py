@@ -217,6 +217,7 @@ def _tril_inplace_zero_strided_tile_kernel(
     S5: tl.constexpr,
     STRIDE_M: tl.constexpr,
     STRIDE_N: tl.constexpr,
+    IN_STRIDE_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -250,11 +251,11 @@ def _tril_inplace_zero_strided_tile_kernel(
     row_end = row_start + BLOCK_M - 1
     col_start = pid_n * BLOCK_N
     if col_start > row_end + diag:
-        tl.store(ptr + offs_n * STRIDE_N, 0.0, mask=mask)
+        tl.store(ptr + offs_n * IN_STRIDE_N, 0.0, mask=mask)
         return
 
     zero = offs_n > offs_m + diag
-    tl.store(ptr + offs_n * STRIDE_N, 0.0, mask=mask & zero)
+    tl.store(ptr + offs_n * IN_STRIDE_N, 0.0, mask=mask & zero)
 
 
 @libentry()
@@ -277,8 +278,16 @@ def _tril_strided_out_tile_kernel(
     S3,
     S4,
     S5,
+    IS0,
+    IS1,
+    IS2,
+    IS3,
+    IS4,
+    IS5,
     STRIDE_M,
     STRIDE_N,
+    IN_STRIDE_M,
+    IN_STRIDE_N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -304,10 +313,11 @@ def _tril_strided_out_tile_kernel(
     mask = (offs_m < M) & (offs_n < N)
     keep = offs_n <= (offs_m + diag)
 
-    in_ptr += pid_b * (M * N) + offs_m * N
+    in_batch_offset = i0 * IS0 + i1 * IS1 + i2 * IS2 + i3 * IS3 + i4 * IS4 + i5 * IS5
+    in_ptr += in_batch_offset + offs_m * IN_STRIDE_M
     out_ptr += out_batch_offset + offs_m * STRIDE_M
 
-    x = tl.load(in_ptr + offs_n, mask=mask, other=0.0)
+    x = tl.load(in_ptr + offs_n * IN_STRIDE_N, mask=mask, other=0.0)
     result = tl.where(keep, x, 0.0)
     tl.store(out_ptr + offs_n * STRIDE_N, result, mask=mask)
 
@@ -617,6 +627,7 @@ def _launch_tril_inplace_strided(
     batch_shape.extend([1] * (6 - len(batch_shape)))
     batch_strides.extend([0] * (6 - len(batch_strides)))
     stride_m, stride_n = input.stride()[-2:]
+    input_stride_n = input.stride()[-1]
 
     grid = (triton.cdiv(active_rows, block_m), triton.cdiv(N, block_n), batch)
     with torch_device_fn.device(input.device):
@@ -639,6 +650,7 @@ def _launch_tril_inplace_strided(
             S5=batch_strides[5],
             STRIDE_M=stride_m,
             STRIDE_N=stride_n,
+            IN_STRIDE_N=input_stride_n,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
             num_warps=num_warps,
@@ -660,7 +672,6 @@ def _launch_tril_strided_out(
     if input.numel() == 0:
         return out
 
-    input_to_use = input if input.is_contiguous() else input.contiguous()
     batch_shape = list(out.shape[:-2])
     batch_strides = list(out.stride()[:-2])
     batch = 1
@@ -670,11 +681,14 @@ def _launch_tril_strided_out(
     batch_shape.extend([1] * (6 - len(batch_shape)))
     batch_strides.extend([0] * (6 - len(batch_strides)))
     stride_m, stride_n = out.stride()[-2:]
+    input_strides = list(input.stride()[:-2])
+    input_strides.extend([0] * (6 - len(input_strides)))
+    input_stride_m, input_stride_n = input.stride()[-2:]
 
     grid = (triton.cdiv(M, block_m), triton.cdiv(N, block_n), batch)
     with torch_device_fn.device(input.device):
         _tril_strided_out_tile_kernel[grid](
-            input_to_use,
+            input,
             out,
             int(diagonal),
             M,
@@ -691,8 +705,16 @@ def _launch_tril_strided_out(
             S3=batch_strides[3],
             S4=batch_strides[4],
             S5=batch_strides[5],
+            IS0=input_strides[0],
+            IS1=input_strides[1],
+            IS2=input_strides[2],
+            IS3=input_strides[3],
+            IS4=input_strides[4],
+            IS5=input_strides[5],
             STRIDE_M=stride_m,
             STRIDE_N=stride_n,
+            IN_STRIDE_M=input_stride_m,
+            IN_STRIDE_N=input_stride_n,
             BLOCK_M=block_m,
             BLOCK_N=block_n,
             num_warps=num_warps,
@@ -814,6 +836,10 @@ def tril(input: torch.Tensor, diagonal: int = 0):
     _check_input(input)
 
     out = _empty_contiguous_like(input)
+    if not input.is_contiguous():
+        return _launch_tril_strided_out(
+            input, out, int(diagonal), block_m=32, block_n=64, num_warps=4
+        )
     return _launch_tril(input, out, int(diagonal))
 
 
