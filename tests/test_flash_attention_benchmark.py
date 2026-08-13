@@ -102,7 +102,20 @@ def test_performance_baseline(
     )
     scale = float(1.0 / (head_dim ** 0.5))
 
-    # PyTorch 原生
+    # 预编译：匹配当前测试配置
+    flag_gems.precompile_flash_attention(
+        head_dims=[head_dim],
+        seq_lens=[seq_len],
+        gqa_configs=[(q_heads, kv_heads)],
+        batch_size=batch,
+        dtype=dtype,
+        device=device,
+        verbose=False,
+        scale=scale,
+    )
+
+    # PyTorch 原生（禁用 FlagGems）
+    flag_gems.disable_flash_attention()
     def run_pytorch():
         q_t, k_t, v_t = (x.transpose(1, 2) for x in (q, k, v))
         return torch.ops.aten._flash_attention_forward(
@@ -111,10 +124,11 @@ def test_performance_baseline(
             0.0, True, False, scale=scale,
         )
 
-    # FlagGems
+    # FlagGems（启用算子替换）
+    flag_gems.enable()
     def run_gems():
         q_t, k_t, v_t = (x.transpose(1, 2) for x in (q, k, v))
-        return flag_gems.flash_attention_forward(
+        return torch.ops.aten._flash_attention_forward(
             q_t, k_t, v_t, None, None,
             q_t.shape[-3], k_t.shape[-3],
             0.0, True, False, scale=scale,

@@ -52,6 +52,7 @@ def precompile_flash_attention(
     dtype=torch.bfloat16,
     device="cuda",
     verbose=True,
+    scale=None,
 ):
     """
     预编译 FlashAttention kernel，减少运行时 JIT 开销。
@@ -64,6 +65,7 @@ def precompile_flash_attention(
         dtype: 数据类型，默认 bfloat16
         device: 设备，默认 "cuda"
         verbose: 是否打印进度，默认 True
+        scale: 缩放因子，默认 None（自动计算为 1/sqrt(head_dim)）
 
     Returns:
         编译的配置总数
@@ -88,7 +90,11 @@ def precompile_flash_attention(
         for q_heads, kv_heads in gqa_configs:
             for seq_len in seq_lens:
                 try:
-                    # 创建输入张量（BNSD 布局）
+                    # 计算 scale（如果未指定）
+                    actual_scale = scale if scale is not None else float(1.0 / (head_dim ** 0.5))
+
+                    # 创建输入张量（BNSD 布局，和 PyTorch API 一致）
+                    # PyTorch _flash_attention_forward 期望 BNSD 格式
                     q = torch.randn(
                         batch_size, q_heads, seq_len, head_dim,
                         dtype=dtype, device=device
@@ -102,14 +108,23 @@ def precompile_flash_attention(
                         dtype=dtype, device=device
                     )
 
-                    # 触发编译（不需要保存结果）
-                    # 使用 _scaled_dot_product_flash_attention，它会调用内部 kernel
-                    _ = _scaled_dot_product_flash_attention(
+                    # 触发编译：调用注册的算子入口
+                    # 这和实际替换路径完全一致
+                    from flag_gems.ops._flash_attention_forward import _flash_attention_forward
+                    _ = _flash_attention_forward(
                         q, k, v,
+                        cumulative_sequence_length_q=None,
+                        cumulative_sequence_length_k=None,
+                        max_q=q_heads,
+                        max_k=kv_heads,
                         dropout_p=0.0,
                         is_causal=True,
                         return_debug_mask=False,
-                        scale=None,
+                        scale=actual_scale,
+                        window_size_left=None,
+                        window_size_right=None,
+                        seqused_k=None,
+                        alibi_slopes=None,
                     )
 
                     compiled += 1
