@@ -44,158 +44,75 @@ def replication_pad1d_backward_kernel(
     grad_in_stride_w,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_w = tl.program_id(axis=0)
-    pid_nc = tl.program_id(axis=1)
+    """
+    Backward pass for replication_pad1d.
+
+    Strategy:
+    - Each program handles one (N, C) slice
+    - Left edge (w_in=0): sum grad_out[0:pad_left+1]
+    - Middle (0 < w_in < W_in-1): direct copy grad_out[pad_left+w_in]
+    - Right edge (w_in=W_in-1): sum grad_out[pad_left+W_in-1:W_out]
+
+    Optimizations:
+    - Scalar accumulation for edges (2 elements) to minimize overhead
+    - Vectorized loads for middle elements (most data)
+    - No atomics required
+
+    Performance note: This operator is memory bandwidth bound with small
+    shapes where launch overhead dominates. PyTorch's native CUDA kernel
+    is highly optimized for this simple operation.
+    """
+    pid_nc = tl.program_id(axis=0)
 
     n = pid_nc // C
     c = pid_nc % C
-
-    off_w = pid_w * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = off_w < W_in
-
-    # For float16/bfloat16, use float32 for accumulation
-    if tl.constexpr(grad_out_ptr.dtype.element_ty == tl.float16) or tl.constexpr(
-        grad_out_ptr.dtype.element_ty == tl.bfloat16
-    ):
-        cdtype = tl.float32
-    else:
-        cdtype = grad_out_ptr.dtype.element_ty
 
     # Base offsets
     base_out = n.to(tl.int64) * grad_out_stride_n + c.to(tl.int64) * grad_out_stride_c
     base_in = n.to(tl.int64) * grad_in_stride_n + c.to(tl.int64) * grad_in_stride_c
 
-    w = off_w
+    # Handle left edge (w_in=0): accumulate grad_out[0:pad_left+1]
+    if W_in >= 1:
+        left_acc = 0.0
+        for i in range(min(pad_left + 1, W_out)):
+            ptr = grad_out_ptr + base_out + i * grad_out_stride_w
+            left_acc += tl.load(ptr)
+        ptr_in = grad_in_ptr + base_in
+        tl.store(ptr_in, left_acc.to(grad_out_ptr.dtype.element_ty))
 
-    # For middle positions, we need grad_output[pad_left + w]
-    middle_load_offsets = (pad_left + w).to(tl.int64) * grad_out_stride_w
-    middle_load_ptrs = grad_out_ptr + base_out + middle_load_offsets
-    middle_mask = (w > 0) & (w < W_in - 1) & ((w + pad_left) < W_out)
-    middle_val = tl.load(middle_load_ptrs, mask=middle_mask, other=0).to(cdtype)
+    # Handle middle elements: direct 1:1 mapping (vectorized)
+    for block_start in range(1, W_in - 1, BLOCK_SIZE):
+        w_in = block_start + tl.arange(0, BLOCK_SIZE)
+        mask = w_in < W_in - 1
 
-    # For left edge (w == 0): sum grad_output[0:pad_left+1]
-    left_sum = tl.zeros([BLOCK_SIZE], dtype=cdtype)
-    # Unroll positions 0-7 (max padding is typically 7)
-    p0 = grad_out_ptr + base_out + 0 * grad_out_stride_w
-    left_sum = left_sum + tl.where(
-        (w == 0) & (0 < W_out), tl.load(p0).to(cdtype), tl.zeros([], dtype=cdtype)
-    )
-    p1 = grad_out_ptr + base_out + 1 * grad_out_stride_w
-    left_sum = left_sum + tl.where(
-        (w == 0) & (1 <= pad_left) & (1 < W_out),
-        tl.load(p1).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    p2 = grad_out_ptr + base_out + 2 * grad_out_stride_w
-    left_sum = left_sum + tl.where(
-        (w == 0) & (2 <= pad_left) & (2 < W_out),
-        tl.load(p2).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    p3 = grad_out_ptr + base_out + 3 * grad_out_stride_w
-    left_sum = left_sum + tl.where(
-        (w == 0) & (3 <= pad_left) & (3 < W_out),
-        tl.load(p3).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    p4 = grad_out_ptr + base_out + 4 * grad_out_stride_w
-    left_sum = left_sum + tl.where(
-        (w == 0) & (4 <= pad_left) & (4 < W_out),
-        tl.load(p4).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    p5 = grad_out_ptr + base_out + 5 * grad_out_stride_w
-    left_sum = left_sum + tl.where(
-        (w == 0) & (5 <= pad_left) & (5 < W_out),
-        tl.load(p5).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    p6 = grad_out_ptr + base_out + 6 * grad_out_stride_w
-    left_sum = left_sum + tl.where(
-        (w == 0) & (6 <= pad_left) & (6 < W_out),
-        tl.load(p6).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    p7 = grad_out_ptr + base_out + 7 * grad_out_stride_w
-    left_sum = left_sum + tl.where(
-        (w == 0) & (7 <= pad_left) & (7 < W_out),
-        tl.load(p7).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
+        w_out = pad_left + w_in
+        out_mask = mask & (w_out < W_out)
 
-    # For right edge (w == W_in - 1): sum grad_output[pad_left + W_in - 1 : W_out]
-    right_start = pad_left + W_in - 1
-    right_sum = tl.zeros([BLOCK_SIZE], dtype=cdtype)
-    rp0 = grad_out_ptr + base_out + (right_start + 0).to(tl.int64) * grad_out_stride_w
-    right_sum = right_sum + tl.where(
-        (w == W_in - 1) & (right_start + 0 < W_out),
-        tl.load(rp0).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    rp1 = grad_out_ptr + base_out + (right_start + 1).to(tl.int64) * grad_out_stride_w
-    right_sum = right_sum + tl.where(
-        (w == W_in - 1) & (right_start + 1 < W_out),
-        tl.load(rp1).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    rp2 = grad_out_ptr + base_out + (right_start + 2).to(tl.int64) * grad_out_stride_w
-    right_sum = right_sum + tl.where(
-        (w == W_in - 1) & (right_start + 2 < W_out),
-        tl.load(rp2).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    rp3 = grad_out_ptr + base_out + (right_start + 3).to(tl.int64) * grad_out_stride_w
-    right_sum = right_sum + tl.where(
-        (w == W_in - 1) & (right_start + 3 < W_out),
-        tl.load(rp3).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    rp4 = grad_out_ptr + base_out + (right_start + 4).to(tl.int64) * grad_out_stride_w
-    right_sum = right_sum + tl.where(
-        (w == W_in - 1) & (right_start + 4 < W_out),
-        tl.load(rp4).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    rp5 = grad_out_ptr + base_out + (right_start + 5).to(tl.int64) * grad_out_stride_w
-    right_sum = right_sum + tl.where(
-        (w == W_in - 1) & (right_start + 5 < W_out),
-        tl.load(rp5).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    rp6 = grad_out_ptr + base_out + (right_start + 6).to(tl.int64) * grad_out_stride_w
-    right_sum = right_sum + tl.where(
-        (w == W_in - 1) & (right_start + 6 < W_out),
-        tl.load(rp6).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
-    rp7 = grad_out_ptr + base_out + (right_start + 7).to(tl.int64) * grad_out_stride_w
-    right_sum = right_sum + tl.where(
-        (w == W_in - 1) & (right_start + 7 < W_out),
-        tl.load(rp7).to(cdtype),
-        tl.zeros([], dtype=cdtype),
-    )
+        out_offset = w_out.to(tl.int64) * grad_out_stride_w
+        out_ptr = grad_out_ptr + base_out + out_offset
+        val = tl.load(out_ptr, mask=out_mask, other=0.0)
 
-    # Combine: use left_sum for w==0, middle_val for 0<w<W_in-1, right_sum for w==W_in-1
-    is_left = w == 0
-    is_right = w == W_in - 1
+        in_offset = w_in.to(tl.int64) * grad_in_stride_w
+        in_ptr = grad_in_ptr + base_in + in_offset
+        tl.store(in_ptr, val.to(grad_out_ptr.dtype.element_ty), mask=mask)
 
-    result = tl.where(is_left, left_sum, middle_val)
-    result = tl.where(is_right, right_sum, result)
-
-    # Handle case W_in == 1 (only one element)
-    only_one = W_in == 1
-    p_pad = grad_out_ptr + base_out + pad_left * grad_out_stride_w
-    pad_val = tl.load(p_pad, mask=(pad_left < W_out), other=0).to(cdtype)
-    single_sum = left_sum + right_sum - pad_val
-    result = tl.where(only_one, single_sum, result)
-
-    # Convert back to output dtype
-    result = result.to(grad_out_ptr.dtype.element_ty)
-
-    # Store result
-    in_offsets = w.to(tl.int64) * grad_in_stride_w
-    in_ptrs = grad_in_ptr + base_in + in_offsets
-    tl.store(in_ptrs, result, mask=mask)
+    # Handle right edge (w_in=W_in-1): accumulate grad_out[pad_left+W_in-1:W_out]
+    if W_in >= 2:
+        right_acc = 0.0
+        right_start = pad_left + W_in - 1
+        for i in range(right_start, W_out):
+            ptr = grad_out_ptr + base_out + i * grad_out_stride_w
+            right_acc += tl.load(ptr)
+        ptr_in = grad_in_ptr + base_in + (W_in - 1) * grad_in_stride_w
+        tl.store(ptr_in, right_acc.to(grad_out_ptr.dtype.element_ty))
+    elif W_in == 1:
+        # Special case: only one element, accumulate all output
+        acc = 0.0
+        for i in range(W_out):
+            ptr = grad_out_ptr + base_out + i * grad_out_stride_w
+            acc += tl.load(ptr)
+        ptr_in = grad_in_ptr + base_in
+        tl.store(ptr_in, acc.to(grad_out_ptr.dtype.element_ty))
 
 
 def _launch_replication_pad1d_backward_kernel(
@@ -246,9 +163,10 @@ def _launch_replication_pad1d_backward_kernel(
             f"grad_input has incorrect shape. Expected {tuple(self_tensor.shape)}, got {tuple(grad_input.shape)}"
         )
 
-    # grid over input width blocks and batch*channel; BLOCK_SIZE=256 balances
-    # memory coalescing and occupancy across typical padding sizes
-    grid = (triton.cdiv(W_in, 256), B * C)
+    # Grid: one block per (N, C) combination
+    grid = (B * C,)
+    BLOCK_SIZE = 256
+
     with torch_device_fn.device(grad_output.device):
         replication_pad1d_backward_kernel[grid](
             grad_output,
@@ -265,8 +183,7 @@ def _launch_replication_pad1d_backward_kernel(
             grad_in_s_n if dim == 3 else grad_in_s_n,
             grad_in_s_c,
             grad_in_s_w,
-            # BLOCK_SIZE=256 balances memory coalescing and occupancy across sizes
-            BLOCK_SIZE=256,
+            BLOCK_SIZE=BLOCK_SIZE,
         )
     return grad_input
 
