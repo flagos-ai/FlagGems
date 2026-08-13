@@ -1009,7 +1009,6 @@ __all__ = [
     "digamma",
     "digamma_",
     "dist",
-    "dist_out",
     "div_mode",
     "div_mode_",
     "dot",
