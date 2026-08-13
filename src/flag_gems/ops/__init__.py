@@ -63,6 +63,9 @@ from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._native_batch_norm_legit_functional import (
     _native_batch_norm_legit_functional,
 )
+from flag_gems.ops._native_batch_norm_legit_no_training import (
+    _native_batch_norm_legit_no_training,
+)
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
@@ -71,6 +74,9 @@ from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._scaled_dot_product_attention_math import (
+    _scaled_dot_product_attention_math,
+)
 from flag_gems.ops._scaled_dot_product_flash_attention import (
     _scaled_dot_product_flash_attention,
 )
@@ -99,7 +105,7 @@ from flag_gems.ops._weight_int4pack_mm_with_scales_and_zeros import (
 )
 from flag_gems.ops._weight_norm import _weight_norm
 from flag_gems.ops.abs import abs, abs_
-from flag_gems.ops.absolute import absolute
+from flag_gems.ops.absolute import absolute, absolute_
 from flag_gems.ops.acos import acos
 from flag_gems.ops.acosh import acosh, acosh_
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
@@ -132,6 +138,7 @@ from flag_gems.ops.arcsinh import arcsinh, arcsinh_out
 from flag_gems.ops.arcsinh_ import arcsinh_
 from flag_gems.ops.arctan2 import arctan2, arctan2_
 from flag_gems.ops.arctan_ import arctan, arctan_
+from flag_gems.ops.arctanh import arctanh, arctanh_out
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
@@ -350,8 +357,10 @@ from flag_gems.ops.hadamard_transform import (
 from flag_gems.ops.hardshrink import hardshrink, hardshrink_out
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardsigmoid_ import hardsigmoid_
+from flag_gems.ops.hardswish import hardswish, hardswish_out
 from flag_gems.ops.hardswish_ import hardswish_
 from flag_gems.ops.hardtanh_ import hardtanh_
+from flag_gems.ops.heaviside import heaviside
 from flag_gems.ops.heaviside_ import heaviside_
 from flag_gems.ops.histc import histc
 from flag_gems.ops.hstack import hstack
@@ -386,7 +395,12 @@ from flag_gems.ops.lcm import lcm, lcm_
 from flag_gems.ops.ldl_factor_ex import ldl_factor_ex
 from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.le_ import le_, le_scalar_
-from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
+from flag_gems.ops.leaky_relu import (
+    leaky_relu,
+    leaky_relu_,
+    leaky_relu_backward,
+    leaky_relu_out,
+)
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.less_ import less_, less_scalar_
 from flag_gems.ops.less_equal import less_equal, less_equal_scalar
@@ -454,6 +468,9 @@ from flag_gems.ops.max_pool3d_with_indices import (
     max_pool3d_backward,
     max_pool3d_with_indices,
 )
+from flag_gems.ops.max_pool3d_with_indices_backward import (
+    max_pool3d_with_indices_backward,
+)
 from flag_gems.ops.max_unpool2d import max_unpool2d
 from flag_gems.ops.max_unpool3d import max_unpool3d
 from flag_gems.ops.maximum import maximum
@@ -517,6 +534,7 @@ from flag_gems.ops.not_equal_ import not_equal_, not_equal_scalar_
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
+from flag_gems.ops.ormqr import ormqr
 from flag_gems.ops.pad import constant_pad_nd, pad
 from flag_gems.ops.pairwise_distance import pairwise_distance
 from flag_gems.ops.pdist import pdist
@@ -813,6 +831,7 @@ __all__ = [
     "_make_dep_token",
     "_masked_scale",
     "_native_batch_norm_legit_functional",
+    "_native_batch_norm_legit_no_training",
     "_nested_view_from_buffer_copy",
     "_pdist_backward",
     "_pdist_forward",
@@ -821,6 +840,7 @@ __all__ = [
     "_reshape_alias",
     "_resize_output",
     "_safe_softmax",
+    "_scaled_dot_product_attention_math",
     "_scaled_dot_product_flash_attention",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
@@ -844,6 +864,7 @@ __all__ = [
     "abs",
     "abs_",
     "absolute",
+    "absolute_",
     "acos",
     "acosh",
     "acosh_",
@@ -901,7 +922,9 @@ __all__ = [
     "arctan2",
     "arctan2_",
     "arctan_",
+    "arctanh",
     "arctanh_",
+    "arctanh_out",
     "argmax",
     "argmin",
     "argsort",
@@ -1150,8 +1173,11 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_out",
     "hardsigmoid_",
+    "hardswish",
     "hardswish_",
+    "hardswish_out",
     "hardtanh_",
+    "heaviside",
     "heaviside_",
     "histc",
     "hstack",
@@ -1201,6 +1227,7 @@ __all__ = [
     "le_scalar_",
     "leaky_relu",
     "leaky_relu_",
+    "leaky_relu_backward",
     "leaky_relu_out",
     "lerp_scalar",
     "lerp_scalar_",
@@ -1296,6 +1323,7 @@ __all__ = [
     "max_pool2d_with_indices_backward",
     "max_pool3d_backward",
     "max_pool3d_with_indices",
+    "max_pool3d_with_indices_backward",
     "max_unpool2d",
     "max_unpool3d",
     "maximum",
@@ -1373,6 +1401,7 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
+    "ormqr",
     "pad",
     "pairwise_distance",
     "pdist",
