@@ -9,6 +9,9 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.cudnn_batch_norm_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize(
     "shape",
     [
