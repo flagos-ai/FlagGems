@@ -138,6 +138,7 @@ from flag_gems.ops.arcsinh import arcsinh, arcsinh_out
 from flag_gems.ops.arcsinh_ import arcsinh_
 from flag_gems.ops.arctan2 import arctan2, arctan2_
 from flag_gems.ops.arctan_ import arctan, arctan_
+from flag_gems.ops.arctanh import arctanh, arctanh_out
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
@@ -921,7 +922,9 @@ __all__ = [
     "arctan2",
     "arctan2_",
     "arctan_",
+    "arctanh",
     "arctanh_",
+    "arctanh_out",
     "argmax",
     "argmin",
     "argsort",
