@@ -67,3 +67,23 @@ def test_argmax(shape, dim, keepdim, dtype):
         res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.argmax
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_argmax_full_reduction_noncontiguous(dtype):
+    # The flattened reduction kernel addresses the input linearly, so for a view
+    # whose storage still holds the discarded columns it read those elements
+    # instead. The values outside the view would change the result.
+    base = torch.full((4, 6), 100.0, dtype=dtype, device=flag_gems.device)
+    base[:, :3] = torch.arange(1, 13, dtype=dtype, device=flag_gems.device).reshape(
+        4, 3
+    )
+    inp = base[:, :3]
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.argmax(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.argmax(inp)
+
+    utils.gems_assert_equal(res_out, ref_out)
