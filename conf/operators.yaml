@@ -6445,6 +6445,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: max_pool3d_with_indices_backward
+    description: |
+      Backward pass for 3D max pooling with indices. Computes the gradient of the
+      input given the gradient of the output and the indices from the forward pass.
+    for:
+      - max_pool3d_with_indices_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.3'
   - id: max_unpool2d
     description: Computes a partial inverse of `MaxPool2d`.
     for:
@@ -7469,6 +7482,19 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: ormqr
+    description: |-
+      Computes the matrix-matrix multiplication of a product of Householder matrices
+      with a general matrix.
+    for:
+      - ormqr
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: outer
     description: |
       Computes outer product of self and the input vector.
