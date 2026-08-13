@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # Benchmark shapes for sym_numel - covering various tensor dimensionalities
@@ -29,7 +31,7 @@ class SymNumelBenchmark(base.Benchmark):
 
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
-            inp = torch.randn(shape, dtype=cur_dtype, device="cuda")
+            inp = torch.randn(shape, dtype=cur_dtype, device=flag_gems.device)
             yield inp,
 
     def get_bwd_input_iter(self, cur_dtype):
