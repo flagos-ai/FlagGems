@@ -25,17 +25,19 @@ def test_fake_quantize_per_channel_affine():
         Benchmark fake_quantize_per_channel_affine operator
         """
 
-        def set_more_shapes(self):
-            self.shapes = [
-                (4, 4),
-                (64, 64),
-                (128, 256),
-                (512, 512),
-                (1024, 1024),
-                (2, 3, 128, 128),
-                (8, 16, 64, 64),
-            ]
-            self.axis_configs = [0, 1]
+        axis_configs = (0, 1)
+        DEFAULT_SHAPES = [
+            (4, 4),
+            (64, 64),
+            (128, 256),
+            (512, 512),
+            (1024, 1024),
+            (2, 3, 128, 128),
+            (8, 16, 64, 64),
+        ]
+
+        def set_shapes(self, shape_file_path=None):
+            self.shapes = self.DEFAULT_SHAPES
 
         def get_input_iter(self, dtype):
             for shape in self.shapes:
