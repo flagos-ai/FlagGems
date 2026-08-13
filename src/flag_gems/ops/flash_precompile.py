@@ -13,14 +13,16 @@
 # limitations under the License.
 
 """
-FlashAttention 预编译：减少首次调用的 JIT 编译开销。
+FlashAttention precompilation: reduce the JIT compilation cost of the first call.
 
-问题：
-  Triton kernel 首次遇到新 shape 时会触发 JIT 编译（特别是 head_dim），
-  在 autoregressive 推理中 seq_len 持续变化会导致频繁编译。
+Problem:
+  A Triton kernel triggers JIT compilation the first time it sees a new shape
+  (head_dim in particular). During autoregressive inference the seq_len keeps
+  changing, which leads to frequent recompilation.
 
-解决：
-  预热常用的 head_dim（64/128）和典型 seq_len 档位，提前触发编译并缓存。
+Solution:
+  Warm up the common head_dims (64/128) and typical seq_len buckets ahead of
+  time so the kernels are compiled and cached before they are actually needed.
 """
 
 import logging
@@ -29,13 +31,13 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-# 主流模型的 head_dim（从分析报告得出）
+# Common head_dims for mainstream models (from the analysis report).
 COMMON_HEAD_DIMS = [64, 128]
 
-# 典型序列长度档位（覆盖 decode 到 prefill）
+# Typical sequence-length buckets (covering decode through prefill).
 COMMON_SEQ_LENS = [1, 16, 32, 64, 128, 256, 512, 1024, 2048]
 
-# 典型 GQA 配置（q_heads, kv_heads）
+# Typical GQA configs (q_heads, kv_heads).
 COMMON_GQA_CONFIGS = [
     (28, 4),   # Qwen2.5-7B
     (32, 8),   # Llama-3.2-3B
@@ -55,23 +57,22 @@ def precompile_flash_attention(
     scale=None,
 ):
     """
-    预编译 FlashAttention kernel，减少运行时 JIT 开销。
+    Precompile FlashAttention kernels to reduce runtime JIT overhead.
 
     Args:
-        head_dims: 要预编译的 head_dim 列表，默认 [64, 128]
-        seq_lens: 要预编译的 seq_len 列表，默认 [1, 16, ..., 2048]
-        gqa_configs: GQA 配置列表 [(q_heads, kv_heads), ...]，默认主流模型配置
-        batch_size: batch 大小，默认 1（推理场景）
-        dtype: 数据类型，默认 bfloat16
-        device: 设备，默认 "cuda"
-        verbose: 是否打印进度，默认 True
-        scale: 缩放因子，默认 None（自动计算为 1/sqrt(head_dim)）
+        head_dims: list of head_dim values to precompile, defaults to [64, 128]
+        seq_lens: list of seq_len values to precompile, defaults to [1, 16, ..., 2048]
+        gqa_configs: list of GQA configs [(q_heads, kv_heads), ...], defaults to
+            the mainstream-model configs
+        batch_size: batch size, defaults to 1 (inference scenario)
+        dtype: data type, defaults to bfloat16
+        device: device, defaults to "cuda"
+        verbose: whether to print progress, defaults to True
+        scale: scaling factor, defaults to None (computed as 1/sqrt(head_dim))
 
     Returns:
-        编译的配置总数
+        the total number of compiled configs
     """
-    from flag_gems.ops._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
-
     head_dims = head_dims or COMMON_HEAD_DIMS
     seq_lens = seq_lens or COMMON_SEQ_LENS
     gqa_configs = gqa_configs or COMMON_GQA_CONFIGS
@@ -81,20 +82,20 @@ def precompile_flash_attention(
 
     if verbose:
         logger.info(
-            f"开始预编译 FlashAttention kernel: "
-            f"{len(head_dims)} head_dims × {len(seq_lens)} seq_lens × "
-            f"{len(gqa_configs)} GQA configs = {total} 个配置"
+            f"Start precompiling FlashAttention kernels: "
+            f"{len(head_dims)} head_dims x {len(seq_lens)} seq_lens x "
+            f"{len(gqa_configs)} GQA configs = {total} configs"
         )
 
     for head_dim in head_dims:
         for q_heads, kv_heads in gqa_configs:
             for seq_len in seq_lens:
                 try:
-                    # 计算 scale（如果未指定）
+                    # Compute scale if it was not provided.
                     actual_scale = scale if scale is not None else float(1.0 / (head_dim ** 0.5))
 
-                    # 创建输入张量（BNSD 布局，和 PyTorch API 一致）
-                    # PyTorch _flash_attention_forward 期望 BNSD 格式
+                    # Create input tensors in BNSD layout to match the PyTorch API.
+                    # PyTorch _flash_attention_forward expects the BNSD format.
                     q = torch.randn(
                         batch_size, q_heads, seq_len, head_dim,
                         dtype=dtype, device=device
@@ -108,8 +109,8 @@ def precompile_flash_attention(
                         dtype=dtype, device=device
                     )
 
-                    # 触发编译：调用注册的算子入口
-                    # 这和实际替换路径完全一致
+                    # Trigger compilation through the registered operator entry.
+                    # This matches the actual replacement path exactly.
                     from flag_gems.ops._flash_attention_forward import _flash_attention_forward
                     _ = _flash_attention_forward(
                         q, k, v,
@@ -130,37 +131,37 @@ def precompile_flash_attention(
                     compiled += 1
 
                     if verbose and compiled % 10 == 0:
-                        logger.info(f"  已编译 {compiled}/{total} 个配置...")
+                        logger.info(f"  compiled {compiled}/{total} configs...")
 
                 except Exception as e:
                     logger.warning(
-                        f"  跳过配置 head_dim={head_dim}, q_heads={q_heads}, "
+                        f"  skipped config head_dim={head_dim}, q_heads={q_heads}, "
                         f"kv_heads={kv_heads}, seq_len={seq_len}: {e}"
                     )
 
     if verbose:
-        logger.info(f"✓ 预编译完成：成功 {compiled}/{total} 个配置")
+        logger.info(f"Precompilation done: {compiled}/{total} configs succeeded")
 
     return compiled
 
 
 def precompile_for_model(model_name, dtype=torch.bfloat16, device="cuda"):
     """
-    为特定模型预编译 FlashAttention kernel。
+    Precompile FlashAttention kernels for a specific model.
 
     Args:
-        model_name: 模型名称，支持：
+        model_name: model name, supported values:
             - "qwen2.5-7b"
             - "qwen2.5-1.5b"
             - "llama-3.2-3b"
             - "glm-4-9b"
-        dtype: 数据类型
-        device: 设备
+        dtype: data type
+        device: device
 
     Returns:
-        编译的配置总数
+        the total number of compiled configs
     """
-    # 模型特定配置
+    # Model-specific configs.
     MODEL_CONFIGS = {
         "qwen2.5-7b": {
             "head_dims": [128],
@@ -187,12 +188,12 @@ def precompile_for_model(model_name, dtype=torch.bfloat16, device="cuda"):
     model_key = model_name.lower()
     if model_key not in MODEL_CONFIGS:
         raise ValueError(
-            f"不支持的模型 '{model_name}'。支持的模型: "
+            f"Unsupported model '{model_name}'. Supported models: "
             f"{list(MODEL_CONFIGS.keys())}"
         )
 
     config = MODEL_CONFIGS[model_key]
-    logger.info(f"为模型 {model_name} 预编译 FlashAttention kernel...")
+    logger.info(f"Precompiling FlashAttention kernels for model {model_name}...")
 
     return precompile_flash_attention(
         head_dims=config["head_dims"],

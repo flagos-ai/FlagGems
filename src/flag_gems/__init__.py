@@ -1147,18 +1147,20 @@ def all_registered_keys():
 
 def disable_flash_attention():
     """
-    便捷函数：禁用 FlashAttention 相关算子，使用 PyTorch 原生实现。
+    Convenience helper: disable FlashAttention-related operators and fall back
+    to the native PyTorch implementation.
 
-    适用场景：
-    - FlagGems FlashAttention 性能不佳时（小 batch、频繁 JIT 编译）
-    - 需要对比 baseline 性能
+    When to use:
+    - When FlagGems FlashAttention underperforms (small batch, frequent JIT
+      compilation)
+    - When you need to compare against baseline performance
 
-    用法：
+    Usage:
         import flag_gems
-        flag_gems.disable_flash_attention()  # 先禁用 attention
-        flag_gems.enable()                   # 再启用其他算子
+        flag_gems.disable_flash_attention()  # disable attention first
+        flag_gems.enable()                   # then enable the other operators
 
-    或者用 enable(unused=...) 明确指定：
+    Or specify it explicitly via enable(unused=...):
         flag_gems.enable(unused=[
             "_flash_attention_forward",
             "_flash_attention_backward",
@@ -1176,9 +1178,10 @@ def disable_flash_attention():
 
 def disable_attention_all():
     """
-    便捷函数：禁用所有 attention 相关算子（包括 flash/cudnn/efficient）。
+    Convenience helper: disable all attention-related operators (including
+    flash/cudnn/efficient).
 
-    用法：
+    Usage:
         import flag_gems
         flag_gems.enable(unused=flag_gems.disable_attention_all())
     """

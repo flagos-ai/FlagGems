@@ -13,21 +13,25 @@
 # limitations under the License.
 
 """
-完善的 FlashAttention 测例：覆盖主流开源模型的真实 attention 配置。
+Comprehensive FlashAttention tests: cover the real attention configs of
+mainstream open-source models.
 
-重点：这些模型全部使用 GQA（Grouped-Query Attention），
-      即 Q head 数 != KV head 数，测例必须体现这一点，
-      否则测出来的性能和真实推理场景对不上。
+Key point: these models all use GQA (Grouped-Query Attention), i.e. the number
+of Q heads != the number of KV heads. The tests must reflect this, otherwise the
+measured performance will not match real inference scenarios.
 
-配置来源说明：
-  - Qwen2.5-7B：本地 /data/zhaizir/models/Qwen2.5-7B-Instruct/config.json 已确认
-  - 其余模型：依据各自 HuggingFace 官方 config.json 公开参数填写
-    （可用文件末尾的 config_from_hf() 下载模型后自行核对）
+Where the configs come from:
+  - Qwen2.5-7B: confirmed from the local
+    /data/zhaizir/models/Qwen2.5-7B-Instruct/config.json
+  - Other models: filled in from each model's official HuggingFace config.json
+    public parameters (use config_from_hf() at the end of this file to verify
+    after downloading a model).
 
-字段含义（每层 attention 单层的形状）：
-  q_heads   : num_attention_heads   —— Q 的注意力头数
-  kv_heads  : num_key_value_heads   —— KV 的头数（GQA 里通常远小于 q_heads）
-  head_dim  : hidden_size / q_heads —— 每个头的维度
+Field meaning (shape of a single attention layer):
+  q_heads   : num_attention_heads   -- number of Q attention heads
+  kv_heads  : num_key_value_heads   -- number of KV heads (usually far fewer
+                                       than q_heads under GQA)
+  head_dim  : hidden_size / q_heads -- dimension of each head
 """
 
 import time
@@ -39,41 +43,43 @@ import torch
 import flag_gems
 from flag_gems.runtime import torch_device_fn
 
-# ==================== 主流模型真实 attention 配置 ====================
-# 格式: (模型名, q_heads, kv_heads, head_dim, 备注)
-# 只描述"单层 attention 的头结构"，batch/seq_len 在测例里单独组合。
+# ==================== Real attention configs of mainstream models ====================
+# Format: (model_name, q_heads, kv_heads, head_dim, note)
+# Only describes the "head structure of a single attention layer"; batch/seq_len
+# are combined separately in the tests.
 MODEL_ARCH = [
-    # ---- Qwen2.5 系列（GQA, head_dim: 0.5B=64, 其余=128）----
+    # ---- Qwen2.5 series (GQA, head_dim: 0.5B=64, others=128) ----
     ("Qwen2.5-0.5B",            14,  2,  64,  "hidden=896,  layers=24"),
     ("Qwen2.5-1.5B",            12,  2, 128,  "hidden=1536, layers=28"),
     ("Qwen2.5-3B",              16,  2, 128,  "hidden=2048, layers=36"),
-    ("Qwen2.5-7B",              28,  4, 128,  "hidden=3584, layers=28（本地已确认）"),
+    ("Qwen2.5-7B",              28,  4, 128,  "hidden=3584, layers=28 (confirmed locally)"),
     ("Qwen2.5-14B",             40,  8, 128,  "hidden=5120, layers=48"),
-    # ---- DeepSeek-R1-Distill 系列（蒸馏自 Qwen/Llama，沿用其结构）----
-    ("DeepSeek-R1-Distill-Qwen-1.5B",  12, 2, 128, "蒸馏自 Qwen2.5-1.5B"),
-    ("DeepSeek-R1-Distill-Qwen-7B",    28, 4, 128, "蒸馏自 Qwen2.5-Math-7B"),
-    ("DeepSeek-R1-Distill-Llama-8B",   32, 8, 128, "蒸馏自 Llama-3.1-8B"),
-    # ---- GLM-4 系列（GQA，multi_query_group_num=2）----
+    # ---- DeepSeek-R1-Distill series (distilled from Qwen/Llama, same structure) ----
+    ("DeepSeek-R1-Distill-Qwen-1.5B",  12, 2, 128, "distilled from Qwen2.5-1.5B"),
+    ("DeepSeek-R1-Distill-Qwen-7B",    28, 4, 128, "distilled from Qwen2.5-Math-7B"),
+    ("DeepSeek-R1-Distill-Llama-8B",   32, 8, 128, "distilled from Llama-3.1-8B"),
+    # ---- GLM-4 series (GQA, multi_query_group_num=2) ----
     ("GLM-4-9B",                32,  2, 128,  "hidden=4096, layers=40"),
-    # ---- Llama-3.2 系列（GQA, head_dim: 1B=64, 3B=128）----
+    # ---- Llama-3.2 series (GQA, head_dim: 1B=64, 3B=128) ----
     ("Llama-3.2-1B",            32,  8,  64,  "hidden=2048, layers=16"),
     ("Llama-3.2-3B",            24,  8, 128,  "hidden=3072, layers=28"),
 ]
 
-# 序列长度档位：覆盖 decode（短）到 prefill（长）
+# Sequence-length buckets: cover decode (short) through prefill (long).
 SEQ_LENS = [128, 256, 512, 1024]
 
-# batch 档位：单请求到中等并发
+# Batch buckets: single request through moderate concurrency.
 BATCH_SIZES = [1, 4]
 
 
 def _build_correctness_configs():
-    """笛卡尔组合出正确性测试用例，控制规模避免爆炸。"""
+    """Build the Cartesian product of correctness test cases, keeping the size bounded."""
     configs = []
     for name, q_h, kv_h, hd, note in MODEL_ARCH:
         for bs in BATCH_SIZES:
             for sl in SEQ_LENS:
-                # 大 batch 只配短序列，避免显存和耗时过大
+                # Only pair large batch with short sequences to avoid excessive
+                # memory use and runtime.
                 if bs > 1 and sl > 512:
                     continue
                 configs.append((name, bs, q_h, kv_h, sl, hd, note))
@@ -82,28 +88,31 @@ def _build_correctness_configs():
 
 CORRECTNESS_CONFIGS = _build_correctness_configs()
 
-# 性能回归：每个模型取一个代表性配置（batch=1, seq_len=1024 长上下文最能暴露问题）
+# Performance regression: pick one representative config per model
+# (batch=1, seq_len=1024; long context best exposes problems).
 PERF_CONFIGS = [
     (name, 1, q_h, kv_h, 1024, hd, note)
     for name, q_h, kv_h, hd, note in MODEL_ARCH
 ]
 
-# 动态序列长度：模拟 Qwen2.5-7B autoregressive 生成（decode 阶段 seq 从 1 涨到 1024）
+# Dynamic sequence length: simulate Qwen2.5-7B autoregressive generation
+# (during decode the seq grows from 1 up to 1024).
 DYNAMIC_SEQ_CONFIGS = [
     ("Qwen2.5-7B", 1, 28, 4, sl, 128, f"seq_len={sl}")
     for sl in [1, 16, 32, 64, 128, 256, 512, 1024]
 ]
 
 
-# ==================== 工具函数 ====================
+# ==================== Utility functions ====================
 
 def make_gqa_input(batch, q_heads, kv_heads, seq_len, head_dim, dtype, device):
     """
-    生成 GQA 输入：Q 用 q_heads，K/V 用 kv_heads（数量更少）。
-    返回的张量布局为 [batch, heads, seq_len, head_dim]（BNSD）。
+    Generate GQA inputs: Q uses q_heads, K/V use kv_heads (fewer heads).
+    The returned tensors use the [batch, heads, seq_len, head_dim] (BNSD) layout.
     """
     assert q_heads % kv_heads == 0, (
-        f"q_heads({q_heads}) 必须能被 kv_heads({kv_heads}) 整除，这是 GQA 的约束"
+        f"q_heads({q_heads}) must be divisible by kv_heads({kv_heads}); "
+        f"this is the GQA constraint"
     )
     torch.manual_seed(1234567890)
     q = torch.empty(
@@ -120,9 +129,10 @@ def make_gqa_input(batch, q_heads, kv_heads, seq_len, head_dim, dtype, device):
 
 def run_pytorch_fa(q, k, v, scale, is_causal):
     """
-    PyTorch 原生 FlashAttention。
-    _flash_attention_forward 期望布局 [batch, seq_len, heads, head_dim]（BSND），
-    所以 BNSD -> BSND 需要 transpose(1, 2)。原生实现内部处理 GQA。
+    Native PyTorch FlashAttention.
+    _flash_attention_forward expects the [batch, seq_len, heads, head_dim] (BSND)
+    layout, so BNSD -> BSND requires transpose(1, 2). The native implementation
+    handles GQA internally.
     """
     q_t, k_t, v_t = (x.transpose(1, 2) for x in (q, k, v))
     out = torch.ops.aten._flash_attention_forward(
@@ -134,7 +144,7 @@ def run_pytorch_fa(q, k, v, scale, is_causal):
 
 
 def run_gems_fa(q, k, v, scale, is_causal):
-    """FlagGems FlashAttention，同样走 BSND 布局。"""
+    """FlagGems FlashAttention, also using the BSND layout."""
     q_t, k_t, v_t = (x.transpose(1, 2) for x in (q, k, v))
     out = flag_gems.flash_attention_forward(
         q_t, k_t, v_t, None, None,
@@ -145,7 +155,7 @@ def run_gems_fa(q, k, v, scale, is_causal):
 
 
 def benchmark(fn, warmup=10, iters=50):
-    """返回单次平均耗时（ms）。"""
+    """Return the average time per call (ms)."""
     for _ in range(warmup):
         fn()
     torch.cuda.synchronize()
@@ -156,7 +166,7 @@ def benchmark(fn, warmup=10, iters=50):
     return (time.time() - start) / iters * 1000
 
 
-# ==================== 测试用例 ====================
+# ==================== Test cases ====================
 
 @pytest.mark.flash_attention_mainstream
 @pytest.mark.parametrize(
@@ -168,7 +178,7 @@ def benchmark(fn, warmup=10, iters=50):
 def test_correctness(
     model_name, batch, q_heads, kv_heads, seq_len, head_dim, note, is_causal, dtype
 ):
-    """正确性：FlagGems GQA 结果需与 PyTorch 原生一致。"""
+    """Correctness: FlagGems GQA results must match native PyTorch."""
     device = torch_device_fn.current_device()
     q, k, v = make_gqa_input(
         batch, q_heads, kv_heads, seq_len, head_dim, dtype, device
@@ -192,7 +202,7 @@ def test_correctness(
 def test_dynamic_sequence(
     model_name, batch, q_heads, kv_heads, seq_len, head_dim, note, dtype
 ):
-    """动态序列长度：模拟真实 autoregressive 推理，causal=True。"""
+    """Dynamic sequence length: simulate real autoregressive inference, causal=True."""
     device = torch_device_fn.current_device()
     q, k, v = make_gqa_input(
         batch, q_heads, kv_heads, seq_len, head_dim, dtype, device
@@ -214,12 +224,15 @@ def test_performance_regression(
     model_name, batch, q_heads, kv_heads, seq_len, head_dim, note, dtype
 ):
     """
-    性能回归：FlagGems 不应显著慢于 PyTorch 原生。
+    Performance regression: FlagGems should not be significantly slower than
+    native PyTorch.
 
-    阈值来自环境变量 FA_MAX_SLOWDOWN_PCT（默认 100，即慢一倍才失败）。
-    已知当前 Triton 实现在小 batch 下偏慢，先用宽阈值收集基线数据，
-    随优化推进逐步收紧。设置 FA_PERF_RECORD_ONLY=1 可只记录不失败，
-    方便一次性跑完所有模型拿到完整性能表。
+    The threshold comes from the FA_MAX_SLOWDOWN_PCT environment variable
+    (default 100, i.e. it only fails when twice as slow). The current Triton
+    implementation is known to be slower at small batch sizes, so start with a
+    wide threshold to collect baseline data and tighten it as optimization
+    progresses. Set FA_PERF_RECORD_ONLY=1 to record only without failing, which
+    is handy for running all models in one pass to get a full performance table.
     """
     import os
 
@@ -239,25 +252,26 @@ def test_performance_regression(
     print(
         f"\n[{model_name}] Q{q_heads}/KV{kv_heads} d{head_dim} seq{seq_len} "
         f"| PyTorch {pt_ms:.4f}ms | FlagGems {gems_ms:.4f}ms "
-        f"| {'慢' if slowdown > 0 else '快'}{abs(slowdown):.1f}%"
+        f"| {'slower' if slowdown > 0 else 'faster'} {abs(slowdown):.1f}%"
     )
 
     if slowdown > MAX_SLOWDOWN_PCT and not RECORD_ONLY:
         pytest.fail(
-            f"{model_name} 性能回归：FlagGems 慢了 {slowdown:.1f}% "
-            f"(阈值 {MAX_SLOWDOWN_PCT}%) | PyTorch {pt_ms:.4f}ms, "
+            f"{model_name} performance regression: FlagGems is {slowdown:.1f}% "
+            f"slower (threshold {MAX_SLOWDOWN_PCT}%) | PyTorch {pt_ms:.4f}ms, "
             f"FlagGems {gems_ms:.4f}ms"
         )
 
 
-# ==================== 辅助：从 HF config 提取真实配置 ====================
+# ==================== Helper: extract real config from HF config ====================
 
 def config_from_hf(model_path):
     """
-    从模型目录的 config.json 读取真实 attention 配置，
-    方便下载模型后核对上面 MODEL_ARCH 里的手填参数。
+    Read the real attention config from a model directory's config.json, to make
+    it easy to verify the hand-filled parameters in MODEL_ARCH above after
+    downloading a model.
 
-    用法:
+    Usage:
         python -c "from test_flash_attention_mainstream_models import config_from_hf; \
                    config_from_hf('/data/zhaizir/models/Qwen2.5-7B-Instruct')"
     """
@@ -270,23 +284,24 @@ def config_from_hf(model_path):
     hidden = cfg.get("hidden_size")
     q_heads = cfg.get("num_attention_heads")
     kv_heads = cfg.get("num_key_value_heads", q_heads)
-    # 优先用显式 head_dim，否则用 hidden/q_heads 推算
+    # Prefer the explicit head_dim, otherwise derive it from hidden/q_heads.
     head_dim = cfg.get("head_dim", hidden // q_heads if hidden and q_heads else None)
     layers = cfg.get("num_hidden_layers")
 
-    print(f"模型: {model_path}")
+    print(f"Model: {model_path}")
     print(f"  q_heads (num_attention_heads) = {q_heads}")
     print(f"  kv_heads (num_key_value_heads) = {kv_heads}")
     print(f"  head_dim = {head_dim}")
     print(f"  layers = {layers}")
-    print(f"  是否 GQA: {'是' if kv_heads != q_heads else '否'}")
+    print(f"  is GQA: {'yes' if kv_heads != q_heads else 'no'}")
     return q_heads, kv_heads, head_dim, layers
 
 
 if __name__ == "__main__":
-    # 快速自检：用真实 GQA 配置跑几个代表模型的性能对比
+    # Quick self-check: run a performance comparison for a few representative
+    # models using their real GQA configs.
     print("=" * 84)
-    print("FlashAttention 主流模型 GQA 性能自检 (batch=1, seq_len=1024, causal)")
+    print("FlashAttention mainstream-model GQA self-check (batch=1, seq_len=1024, causal)")
     print("=" * 84)
 
     device = "cuda"

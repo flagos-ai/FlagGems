@@ -15,19 +15,19 @@
 # limitations under the License.
 
 """
-FlashAttention 性能基准测试：防止性能倒退。
+FlashAttention performance benchmark: guard against performance regressions.
 
-用法：
-    # 运行所有基准测试
+Usage:
+    # Run all benchmarks
     pytest tests/test_flash_attention_benchmark.py -v
 
-    # 只运行 Qwen2.5-7B
+    # Run only Qwen2.5-7B
     pytest tests/test_flash_attention_benchmark.py -k "Qwen2.5-7B" -v
 
-    # 设置更严格的阈值（默认允许慢 100%）
+    # Set a stricter threshold (default allows a 100% slowdown)
     FA_MAX_SLOWDOWN_PCT=50 pytest tests/test_flash_attention_benchmark.py -v
 
-    # 只记录性能不失败（用于收集基线）
+    # Record performance only, never fail (used to collect a baseline)
     FA_PERF_RECORD_ONLY=1 pytest tests/test_flash_attention_benchmark.py -v
 """
 
@@ -40,16 +40,16 @@ import torch
 import flag_gems
 from flag_gems.runtime import torch_device_fn
 
-# ==================== 基准配置 ====================
-# 从真实模型中选取代表性配置
+# ==================== Benchmark configs ====================
+# Representative configs taken from real models.
 BENCHMARK_CONFIGS = [
-    # (模型名, batch, q_heads, kv_heads, seq_len, head_dim, 说明)
-    ("Qwen2.5-7B", 1, 28, 4, 1024, 128, "长上下文推理"),
-    ("Qwen2.5-7B", 1, 28, 4, 256, 128, "中等长度"),
-    ("Qwen2.5-1.5B", 1, 12, 2, 1024, 128, "小模型长上下文"),
-    ("GLM-4-9B", 1, 32, 2, 1024, 128, "GQA 比例极端（16:1）"),
-    ("Llama-3.2-3B", 1, 24, 8, 1024, 128, "Llama 架构"),
-    ("Llama-3.2-1B", 1, 32, 8, 512, 64, "小 head_dim"),
+    # (model_name, batch, q_heads, kv_heads, seq_len, head_dim, note)
+    ("Qwen2.5-7B", 1, 28, 4, 1024, 128, "long-context inference"),
+    ("Qwen2.5-7B", 1, 28, 4, 256, 128, "medium length"),
+    ("Qwen2.5-1.5B", 1, 12, 2, 1024, 128, "small model long context"),
+    ("GLM-4-9B", 1, 32, 2, 1024, 128, "extreme GQA ratio (16:1)"),
+    ("Llama-3.2-3B", 1, 24, 8, 1024, 128, "Llama architecture"),
+    ("Llama-3.2-1B", 1, 32, 8, 512, 64, "small head_dim"),
 ]
 
 WARMUP = 10
@@ -57,7 +57,7 @@ ITERS = 50
 
 
 def make_gqa_input(batch, q_heads, kv_heads, seq_len, head_dim, dtype, device):
-    """生成 GQA 输入张量（BNSD 布局）"""
+    """Generate GQA input tensors (BNSD layout)."""
     torch.manual_seed(1234567890)
     q = torch.randn(batch, q_heads, seq_len, head_dim, dtype=dtype, device=device)
     k = torch.randn(batch, kv_heads, seq_len, head_dim, dtype=dtype, device=device)
@@ -66,7 +66,7 @@ def make_gqa_input(batch, q_heads, kv_heads, seq_len, head_dim, dtype, device):
 
 
 def benchmark(fn, warmup=WARMUP, iters=ITERS):
-    """返回单次平均耗时（ms）"""
+    """Return the average time per call (ms)."""
     for _ in range(warmup):
         fn()
     torch.cuda.synchronize()
@@ -87,11 +87,13 @@ def test_performance_baseline(
     model_name, batch, q_heads, kv_heads, seq_len, head_dim, note, dtype
 ):
     """
-    性能基准测试：FlagGems 不应显著慢于 PyTorch 原生。
+    Performance baseline: FlagGems should not be significantly slower than
+    native PyTorch.
 
-    环境变量：
-        FA_MAX_SLOWDOWN_PCT: 最大允许的性能下降百分比（默认 100，即慢一倍才失败）
-        FA_PERF_RECORD_ONLY: 设为 1 时只记录不失败
+    Environment variables:
+        FA_MAX_SLOWDOWN_PCT: max allowed slowdown percentage (default 100, i.e.
+            it only fails when twice as slow)
+        FA_PERF_RECORD_ONLY: set to 1 to record only and never fail
     """
     MAX_SLOWDOWN_PCT = float(os.environ.get("FA_MAX_SLOWDOWN_PCT", "100.0"))
     RECORD_ONLY = os.environ.get("FA_PERF_RECORD_ONLY", "0") == "1"
@@ -102,7 +104,7 @@ def test_performance_baseline(
     )
     scale = float(1.0 / (head_dim ** 0.5))
 
-    # 预编译：匹配当前测试配置
+    # Precompile to match the current test config.
     flag_gems.precompile_flash_attention(
         head_dims=[head_dim],
         seq_lens=[seq_len],
@@ -114,7 +116,7 @@ def test_performance_baseline(
         scale=scale,
     )
 
-    # PyTorch 原生（禁用 FlagGems）
+    # Native PyTorch (FlagGems disabled).
     flag_gems.disable_flash_attention()
     def run_pytorch():
         q_t, k_t, v_t = (x.transpose(1, 2) for x in (q, k, v))
@@ -124,7 +126,7 @@ def test_performance_baseline(
             0.0, True, False, scale=scale,
         )
 
-    # FlagGems（启用算子替换）
+    # FlagGems (operator replacement enabled).
     flag_gems.enable()
     def run_gems():
         q_t, k_t, v_t = (x.transpose(1, 2) for x in (q, k, v))
@@ -142,27 +144,27 @@ def test_performance_baseline(
         f"\n[{model_name}] {note} | "
         f"Q{q_heads}/KV{kv_heads} d{head_dim} seq{seq_len} | "
         f"PyTorch {pt_ms:.4f}ms | FlagGems {gems_ms:.4f}ms | "
-        f"{'慢' if slowdown > 0 else '快'}{abs(slowdown):.1f}%"
+        f"{'slower' if slowdown > 0 else 'faster'} {abs(slowdown):.1f}%"
     )
 
     if slowdown > MAX_SLOWDOWN_PCT and not RECORD_ONLY:
         pytest.fail(
-            f"{model_name} 性能回归：FlagGems 慢了 {slowdown:.1f}% "
-            f"(阈值 {MAX_SLOWDOWN_PCT}%) | PyTorch {pt_ms:.4f}ms, "
+            f"{model_name} performance regression: FlagGems is {slowdown:.1f}% "
+            f"slower (threshold {MAX_SLOWDOWN_PCT}%) | PyTorch {pt_ms:.4f}ms, "
             f"FlagGems {gems_ms:.4f}ms"
         )
 
 
 if __name__ == "__main__":
-    # 快速自检：直接运行本文件时跑一个代表性配置
+    # Quick self-check: run one representative config when invoked directly.
     print("=" * 80)
-    print("FlashAttention 性能基准自检")
+    print("FlashAttention performance benchmark self-check")
     print("=" * 80)
 
     device = "cuda"
     dtype = torch.bfloat16
 
-    # Qwen2.5-7B 长上下文
+    # Qwen2.5-7B long context
     q, k, v = make_gqa_input(1, 28, 4, 1024, 128, dtype, device)
     scale = float(1.0 / 128 ** 0.5)
 
