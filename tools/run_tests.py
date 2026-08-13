@@ -637,6 +637,41 @@ def parse_perf_data(op, result_file):
 
     bench_res = {}
     records = data.get("details", [])
+    if not any(item.get("native_baseline_skip_reason") for item in records):
+        for item in records:
+            dtype = consts.DTYPE_MAP.get(item["dtype"], item["dtype"])
+            details = {}
+            total = 0.0
+            count = 0
+            for res in item.get("result", []):
+                shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
+                details.setdefault(shape, {})
+                details[shape]["base"] = res.get("latency_base", 0.0)
+                details[shape]["gems"] = res.get("latency", 0.0)
+                speedup = res.get("speedup", 0.0)
+                details[shape]["speedup"] = speedup
+                count += 1
+                total += speedup
+
+            if details:
+                bench_res[dtype] = {
+                    "result": "OK",
+                    "details": details,
+                    "speedup": total / count,
+                }
+            else:
+                bench_res[dtype] = {
+                    "result": "Unknown",
+                    "details": {},
+                    "speedup": 0,
+                }
+
+        return {
+            "status": result.title(),
+            "data": bench_res,
+            "test_case": data.get("test_case", "Unknown"),
+        }
+
     native_baseline_skip_reasons = []
     speedup_totals = {}
     speedup_counts = {}

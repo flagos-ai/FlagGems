@@ -140,6 +140,26 @@ def _get_native_baseline_skip_reason(marker, current_vendor):
     return reason.strip()
 
 
+def _deactivate_inactive_native_marker(item, current_vendor):
+    marker = item.get_closest_marker("skip_native")
+    if marker is None:
+        return
+
+    try:
+        reason = _get_native_baseline_skip_reason(marker, current_vendor)
+    except pytest.UsageError:
+        # Keep invalid markers visible so the setup fixture reports the error.
+        return
+
+    if reason is not None:
+        return
+
+    for node in reversed(item.listchain()):
+        if marker in node.own_markers:
+            node.own_markers.remove(marker)
+            return
+
+
 def pytest_addoption(parser):
     parser.addoption(
         (
@@ -468,6 +488,10 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 
     with open(REPORT_FILE, "w") as f:
         json.dump(data, f, indent=2, default=str)
+
+
+def pytest_itemcollected(item):
+    _deactivate_inactive_native_marker(item, vendor_name)
 
 
 def pytest_collection_modifyitems(session, config, items):
