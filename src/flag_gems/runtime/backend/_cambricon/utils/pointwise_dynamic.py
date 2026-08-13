@@ -276,6 +276,12 @@ class KernelGenerator:
         code.newline()
         code.writeline("def config_prune(configs, named_args, **kwargs):")
         with code.indent():
+            code.writeline("num_buffers = 0")
+            for i in range(self.fx.num_input_tensors()):
+                code.writeline(f"num_buffers += 1  # in{i}_ptr")
+            for i in range(self.fx.num_output_tensors()):
+                code.writeline(f"num_buffers += 1  # out{i}_ptr")
+            code.writeline("num_stages = 2 if num_buffers >= 4 else 3")
             code.writeline("new_configs = []")
             code.writeline("elem_sizes = []")
             for i in range(self.fx.num_input_tensors()):
@@ -305,7 +311,7 @@ class KernelGenerator:
                         f"({tile_sizes}, ) = heuristics_for_tile_size(max_tile_size, {shape})"
                     )
                     code.writeline(
-                        f"new_configs.append(triton.Config({{{tile_size_dict}}}, num_stages=3, num_warps=1))"
+                        f"new_configs.append(triton.Config({{{tile_size_dict}}}, num_stages=num_stages, num_warps=1))"
                     )
             code.writeline("else:")
             with code.indent():
@@ -316,7 +322,7 @@ class KernelGenerator:
                         f"({tile_sizes}, ) = heuristics_for_tile_size(max_tile_size, {shape})"
                     )
                     code.writeline(
-                        f"new_configs.append(triton.Config({{{tile_size_dict}}}, num_stages=3, num_warps=1))"
+                        f"new_configs.append(triton.Config({{{tile_size_dict}}}, num_stages=num_stages, num_warps=1))"
                     )
 
             code.writeline("return new_configs")
