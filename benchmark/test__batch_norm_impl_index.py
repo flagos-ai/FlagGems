@@ -34,7 +34,7 @@ def test__batch_norm_impl_index():
         torch_op=torch._batch_norm_impl_index,
         dtypes=consts.FLOAT_DTYPES,
     )
-    from flag_gems.ops._batch_norm_impl_index import _batch_norm_impl_index as gems_bn
+    from flag_gems.ops._batch_norm_impl_index import batch_norm_impl_index as gems_bn
 
     bench.set_gems(gems_bn)
     bench.run()

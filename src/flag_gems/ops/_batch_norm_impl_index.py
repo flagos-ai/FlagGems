@@ -190,7 +190,7 @@ def batch_norm_forward_kernel(
             )
 
 
-def _batch_norm_impl_index(
+def batch_norm_impl_index(
     input: Tensor,
     weight=None,
     bias=None,
