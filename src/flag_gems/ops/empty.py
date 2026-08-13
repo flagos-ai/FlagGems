@@ -81,7 +81,17 @@ def empty(
         device=device,
         pin_memory=pin_memory,
     )
+    # Skip triton kernel for complex dtypes — triton cannot canonicalize complex
+    # pointer types on some backends, and empty() returns uninitialized memory
+    # anyway so skipping the store is functionally safe for all backends.
+    if dtype.is_complex:
+        return out
     N = volume(shape)
+    # Skip kernel launch for zero-element tensors to avoid invalid grid size on
+    # backends that validate coreDim > 0 (e.g., Ascend NPU). With N=0 the kernel's
+    # store is fully masked out anyway, so skipping is semantically identical.
+    if N == 0:
+        return out
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(device):
         empty_kernel[grid_fn](out, N, BLOCK_SIZE=1024)

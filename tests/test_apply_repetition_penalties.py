@@ -32,7 +32,7 @@ def _init_vllm():
         )
         fn(t, m, m, torch.full((2,), 1.2, device="cuda"))
         return fn, True
-    except (ImportError, RuntimeError):
+    except (ImportError, RuntimeError, AttributeError):
 
         def fallback(logits, pm, om, pens):
             for i in range(logits.shape[0]):

@@ -26,6 +26,12 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+# DispatchKeySet to redispatch to the native ATen implementation,
+# bypassing our registered dispatch override (avoids recursion).
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
+
 
 @libentry()
 @libtuner(
@@ -155,7 +161,7 @@ def bmm(A, B):
     batch, M, K = A.shape
     _, _, N = B.shape
     logger.debug(
-        "GEMS_METAX ADDMM_OUT, [shape info]: [%s, %s, %s, %s](batch, M, N, K), "
+        "GEMS_METAX BMM, [shape info]: [%s, %s, %s, %s](batch, M, N, K), "
         "[A column-major]: %s, [B column-major]: %s",
         batch,
         M,
@@ -164,6 +170,16 @@ def bmm(A, B):
         A.stride(0) == 1,
         B.stride(0) == 1,
     )
+
+    # MetaX workaround: fall back to torch.bmm for shapes that trigger
+    # genSwiMask assertion in the MetaX compiler (small M/N < 32)
+    MIN_TILE = 32
+    if M < MIN_TILE or N < MIN_TILE:
+        logger.debug("GEMS_METAX BMM falling back to torch (small M=%s or N=%s)", M, N)
+        return torch.ops.aten.bmm.default.redispatch(
+            _FALLBACK_KEYSET, A.contiguous(), B.contiguous()
+        )
+
     A = A.contiguous()
     B = B.contiguous()
     out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
@@ -173,6 +189,21 @@ def bmm(A, B):
         triton.cdiv(meta["N"], meta["TILE_N"]),
         batch,
     )
-    with torch_device_fn.device(A.device):
-        bmm_kernel[grid_fn](A, B, out, M, N, K, batch)
-    return out
+    try:
+        with torch_device_fn.device(A.device):
+            bmm_kernel[grid_fn](A, B, out, M, N, K, batch)
+        return out
+    except RuntimeError as e:
+        # MetaX compiler may fail on certain shape/tile combinations
+        # (e.g., genSwiMask assertion with async pipeline passes).
+        # Fall back to torch.bmm for correctness.
+        logger.warning(
+            "GEMS_METAX BMM kernel compilation failed for shape (%s,%s,%s,%s), "
+            "falling back to torch.bmm: %s",
+            batch,
+            M,
+            N,
+            K,
+            e,
+        )
+        return torch.ops.aten.bmm.default.redispatch(_FALLBACK_KEYSET, A, B)

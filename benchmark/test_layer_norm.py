@@ -42,6 +42,25 @@ def input_fn(shape, dtype, device):
     yield inp, layer_shape, weight, bias
 
 
+def native_layer_norm_input_fn(shape, dtype, device):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    normalized_shape = shape[1:]
+    weight = torch.randn(normalized_shape, dtype=dtype, device=device)
+    bias = torch.randn(normalized_shape, dtype=dtype, device=device)
+    yield inp, normalized_shape, weight, bias, 1e-5
+
+
+@pytest.mark.native_layer_norm
+def test_native_layer_norm():
+    bench = NormBenchmark(
+        op_name="native_layer_norm",
+        input_fn=native_layer_norm_input_fn,
+        torch_op=torch.ops.aten.native_layer_norm.default,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.layer_norm
 def test_layer_norm():
     bench = NormBenchmark(

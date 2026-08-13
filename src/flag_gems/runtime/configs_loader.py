@@ -200,12 +200,18 @@ class TunedConfigLoader(object):
             ]
 
         if op_name == "mm":
+            has_pipeline = "PIPELINE" in ranges
+            has_scenario = "SCENARIO" in ranges
+            pipelines = ranges.get("PIPELINE", [None])
+            scenarios = ranges.get("SCENARIO", [None])
             return [
                 triton.Config(
                     {
                         "BLOCK_M": block_m,
                         "BLOCK_N": block_n,
                         "BLOCK_K": block_k,
+                        **({"pipeline": pipeline} if has_pipeline else {}),
+                        **({"scenario": scenario} if has_scenario else {}),
                     },
                     num_stages=s,
                     num_warps=w,
@@ -214,6 +220,37 @@ class TunedConfigLoader(object):
                 for block_m in ranges["BLOCK_M"]
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
+                for pipeline in pipelines
+                for scenario in scenarios
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name in ("mm_nn", "mm_nt"):
+            # "scenario" is optional so older expand yamls stay loadable, but
+            # once present it must be set on every generated config: the tuner's
+            # SQL config cache builds its schema from the first config it stores
+            # and marks the columns NOT NULL, so a key that appears on only some
+            # configs makes lookups for the others raise KeyError.
+            scenarios = ranges.get("SCENARIO", [""])
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "pipeline": pipeline,
+                        "scenario": scenario,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for pipeline in ranges["PIPELINE"]
+                for scenario in scenarios
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -237,7 +274,7 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "gemv":
+        if op_name in ("gemv", "gemv_k_parallel"):
             return [
                 triton.Config(
                     {"BLOCK_M": block_m, "BLOCK_K": block_k},
@@ -247,6 +284,27 @@ class TunedConfigLoader(object):
                 )
                 for block_m in ranges["BLOCK_M"]
                 for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name == "mm_splitk_two_step":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "pipeline": pipeline,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for pipeline in ranges["PIPELINE"]
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -405,6 +463,7 @@ class TunedConfigLoader(object):
                         "BLOCK_N": block_n,
                         "BLOCK_K": block_k,
                         "SPLIT_K": split_k,
+                        "pipeline": pipeline,
                     },
                     num_stages=s,
                     num_warps=w,
@@ -414,6 +473,7 @@ class TunedConfigLoader(object):
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
                 for split_k in ranges["SPLIT_K"]
+                for pipeline in ranges["PIPELINE"]
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -504,8 +564,16 @@ class TunedConfigLoader(object):
                 ),
             ),
             "gemv": self._build_single_expand_spec("gemv"),
+            "gemv_k_parallel": self._build_single_expand_spec(
+                "gemv", yaml_op_name="gemv_k_parallel"
+            ),
             "mm": self._build_single_expand_spec(
                 "mm", expand_yaml_path=self._get_expand_config_path("mm")
+            ),
+            "mm_nn": self._build_single_expand_spec("mm_nn"),
+            "mm_nt": self._build_single_expand_spec("mm_nt"),
+            "mm_splitk_two_step": self._build_single_expand_spec(
+                "mm", yaml_op_name="mm_splitk_two_step"
             ),
             "mm_sqmma": self._build_single_expand_spec(
                 "mm_sqmma", yaml_op_name="mm_general_tma"

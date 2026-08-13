@@ -55,6 +55,9 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
 
     if flag_gems.vendor_name == "tsingmicro" and dtype in (
         torch.float16,

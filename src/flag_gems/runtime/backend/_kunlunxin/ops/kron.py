@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import math
 
 import torch
@@ -21,6 +22,8 @@ import triton.language as tl
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
 
 
 def prepare_tensor_for_kron(tensor_a, tensor_b):
@@ -150,6 +153,7 @@ def kron_kernel(
 
 
 def kron(A, B):
+    logger.debug("GEMS_KUNLUNXIN KRON")
     if A.dim() == 0 and B.dim() == 0:
         return A * B
 
