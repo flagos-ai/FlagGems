@@ -5,7 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 logger = logging.getLogger(__name__)
@@ -18,12 +17,70 @@ _PARAM_CACHE = {}
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("quantized_lstm"),
+    configs=[
+        # Original narrow BLOCK_N configs with deeper pipelining: each K iteration
+        # loads four separate gate weight tiles, so a narrow N keeps the loads
+        # in flight and lets num_stages hide the latency.
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=4, num_stages=4
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=8, num_stages=3
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 32}, num_warps=4, num_stages=4
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=8, num_stages=4
+        ),
+        # Smaller tiles for small batch / small hidden shapes
+        triton.Config(
+            {"BLOCK_M": 32, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=4, num_stages=4
+        ),
+        triton.Config(
+            {"BLOCK_M": 32, "BLOCK_N": 32, "BLOCK_K": 32}, num_warps=4, num_stages=3
+        ),
+        triton.Config(
+            {"BLOCK_M": 16, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=2, num_stages=4
+        ),
+        # Wider N fallback
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 64}, num_warps=4, num_stages=4
+        ),
+        triton.Config(
+            {"BLOCK_M": 32, "BLOCK_N": 64, "BLOCK_K": 64}, num_warps=4, num_stages=3
+        ),
+        # Aggressive: larger BLOCK_K to increase arithmetic intensity and amortize
+        # the 4x weight load overhead. Higher num_stages compensates for longer
+        # load latency. These target medium-to-large shapes (hidden >= 256).
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 256}, num_warps=8, num_stages=5
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 128}, num_warps=8, num_stages=5
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=8, num_stages=4
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64}, num_warps=8, num_stages=3
+        ),
+        # Very aggressive: maximize tile size for large batches (batch >= 64)
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=8, num_stages=5
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 128}, num_warps=8, num_stages=4
+        ),
+        # High pipeline depth for memory-bound cases
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=4, num_stages=6
+        ),
+        triton.Config(
+            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=4, num_stages=6
+        ),
+    ],
     key=["batch_size", "input_size", "hidden_size"],
-    strategy=["align32", "align32", "align32"],
-    warmup=5,
-    rep=10,
-    flagtune_op_name="quantized_lstm",
 )
 @triton.jit
 def quantized_lstm_step_kernel(
