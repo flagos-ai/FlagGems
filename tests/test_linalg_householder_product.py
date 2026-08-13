@@ -20,8 +20,9 @@ HOUSEHOLDER_BATCH_SHAPES = [
     (3, 8, 5),
 ]
 
-# Only float32 supported: torch.linalg.householder_product doesn't support float16/bfloat16 on CUDA
-HOUSEHOLDER_DTYPES = [torch.float32]
+# PyTorch supports float32 and float64 for linalg.householder_product
+# float16/bfloat16 are not supported on CUDA
+HOUSEHOLDER_DTYPES = [torch.float32, torch.float64]
 
 
 @pytest.mark.linalg_householder_product
