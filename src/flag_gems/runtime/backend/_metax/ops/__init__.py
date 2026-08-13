@@ -6,7 +6,7 @@ from .arange import arange, arange_start
 from .bmm import bmm
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 =======
-from .dist import dist, dist_out
+from .dist import dist
 from .exponential_ import exponential_
 from .full import full
 from .full_like import full_like
