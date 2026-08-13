@@ -24,6 +24,13 @@ import triton.language.extra.libdevice as libdevice
 logger = logging.getLogger(__name__)
 
 
+_SCALAR_TYPE_NAMES = {
+    torch.float16: "Half",
+    torch.bfloat16: "BFloat16",
+    torch.float64: "Double",
+}
+
+
 @triton.jit
 def _init_minmax(cmin_ptr, cmax_ptr, C, BLOCK: tl.constexpr):
     off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -308,6 +315,13 @@ def _fused_moving_avg_obs_fq_helper(
     place to match the native op's mutating contract.
     """
     logger.debug("GEMS _FUSED_MOVING_AVG_OBS_FQ_HELPER")
+    # The native ATen operator is intentionally restricted to float32 input.
+    # Keep this check at the dispatch boundary instead of silently converting
+    # unsupported inputs, which would make FlagGems diverge from ATen.
+    if self.dtype is not torch.float32:
+        scalar_type = _SCALAR_TYPE_NAMES.get(self.dtype, str(self.dtype))
+        raise RuntimeError(f"expected scalar type Float but found {scalar_type}")
+
     x = self
     dev = x.device
     obs = int(observer_on)

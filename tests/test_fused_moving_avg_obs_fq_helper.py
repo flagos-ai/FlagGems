@@ -28,6 +28,8 @@ FMAOFQ_SHAPES = [
     ((8, 1024), 0),
 ]
 
+UNSUPPORTED_DTYPES = [torch.float16, torch.bfloat16, torch.float64]
+
 
 def _run_reference(x, observer_on, fake_quant_on, per_channel, ch_axis, symmetric):
     """Reference via native aten on the reference device (CPU or CUDA)."""
@@ -126,3 +128,38 @@ def test_fused_moving_avg_obs_fq_helper(
     utils.gems_assert_close(running_max, ref_rmax, torch.float32)
     utils.gems_assert_close(scale, ref_scale, torch.float32)
     assert torch.equal(zero_point.cpu(), ref_zp.cpu()), "zero_point mismatch"
+
+
+@pytest.mark.fused_moving_avg_obs_fq_helper
+@pytest.mark.parametrize("dtype", UNSUPPORTED_DTYPES)
+def test_fused_moving_avg_obs_fq_helper_rejects_non_fp32(dtype):
+    """Match ATen's float32-only input contract."""
+    dev = flag_gems.device
+    x = torch.randn((16, 32), dtype=dtype, device=dev)
+    obs = torch.tensor(1, dtype=torch.long, device=dev)
+    fq = torch.tensor(1, dtype=torch.long, device=dev)
+    running_min = torch.full((1,), -0.5, dtype=torch.float32, device=dev)
+    running_max = torch.full((1,), 0.5, dtype=torch.float32, device=dev)
+    scale = torch.ones((1,), dtype=torch.float32, device=dev)
+    zero_point = torch.zeros((1,), dtype=torch.int32, device=dev)
+
+    args = (
+        obs,
+        fq,
+        running_min,
+        running_max,
+        scale,
+        zero_point,
+        0.01,
+        0,
+        255,
+        0,
+        False,
+        False,
+    )
+    error = "expected scalar type Float but found"
+
+    with pytest.raises(RuntimeError, match=error):
+        torch.ops.aten._fused_moving_avg_obs_fq_helper(x, *args)
+    with flag_gems.use_gems(), pytest.raises(RuntimeError, match=error):
+        torch.ops.aten._fused_moving_avg_obs_fq_helper(x, *args)
