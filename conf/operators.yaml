@@ -2326,6 +2326,7 @@ ops:
     labels:
       - aten
       - NoCPU
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
