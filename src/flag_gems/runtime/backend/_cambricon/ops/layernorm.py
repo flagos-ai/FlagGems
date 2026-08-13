@@ -213,7 +213,7 @@ def layer_norm_kernel_inner(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + block_col_size
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _mean += a
         _var += a * a
@@ -232,7 +232,7 @@ def layer_norm_kernel_inner(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + block_col_size
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
         if W is None:
             w = 1
         else:
@@ -306,7 +306,7 @@ def input_backward_kernel(
         for off in range(0, N, BLOCK_COL_SIZE):
             cols = off + tl.arange(0, BLOCK_COL_SIZE)
             col_mask = cols[None, :] < N
-            mask = row_mask and col_mask
+            mask = row_mask & col_mask
             dy = tl.load(new_dY + cols[None, :], mask, other=0.0).to(tl.float32)
             x = tl.load(new_X + cols[None, :], mask, other=0.0).to(tl.float32)
             x_hat = (x - mean) * rstd
@@ -326,7 +326,7 @@ def input_backward_kernel(
         for off in range(0, N, BLOCK_COL_SIZE):
             cols = off + tl.arange(0, BLOCK_COL_SIZE)
             col_mask = cols[None, :] < N
-            mask = row_mask and col_mask
+            mask = row_mask & col_mask
             dy = tl.load(new_dY + cols[None, :], mask, other=0.0).to(tl.float32)
             x = tl.load(new_X + cols[None, :], mask, other=0.0).to(tl.float32)
             if W is None:
@@ -379,7 +379,7 @@ def weight_bias_backward_kernel(
         for off in range(0, M, BLOCK_ROW_SIZE):
             rows = off + tl.arange(0, BLOCK_ROW_SIZE)
             row_mask = rows[:, None] < M
-            mask = row_mask and col_mask
+            mask = row_mask & col_mask
             dy = tl.load(new_dY + rows[:, None] * N, mask, other=0.0).to(tl.float32)
             x = tl.load(new_X + rows[:, None] * N, mask, other=0.0).to(tl.float32)
             mean = tl.load(Mean + rows, mask=rows < M, other=0.0)[:, None].to(
@@ -530,6 +530,17 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
         with torch_device_fn.device(input.device):
             layer_norm_kernel_inner[grid](input, y, weight, bias, mean, rstd, M, eps, N)
     return y, mean, rstd
+
+
+_native_layer_norm_logger = logging.getLogger("flag_gems.ops.native_layer_norm")
+
+
+def native_layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
+    _native_layer_norm_logger.debug("GEMS NATIVE_LAYER_NORM")
+    logger.debug("GEMS_CAMBRICON NATIVE_LAYER_NORM")
+    output, mean, rstd = layer_norm(input, normalized_shape, weight, bias, eps)
+    stats_shape = input.shape[: -len(normalized_shape)] + (1,) * len(normalized_shape)
+    return output, mean.to(input.dtype).view(stats_shape), rstd.to(input.dtype).view(stats_shape)
 
 
 def layer_norm_backward(
