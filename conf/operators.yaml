@@ -5413,6 +5413,14 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: linalg_diagonal
+    description: Extracts the diagonal elements of a tensor along specified dimensions.
+    for:
+      - linalg_diagonal
+    labels:
+      - aten
+    kind:
+      - LinearAlg
   - id: cholesky_solve
     description: |-
       Solves a system of linear equations with a symmetric positive-definite matrix
