@@ -227,7 +227,7 @@ class FunctionSchema:
         else:
             for _ in range(self.num_outputs()):
                 output_types.append("StridedBuffer")
-        sig = f'Pointwise: {", ".join(input_types)} -> {", ".join(output_types)}'
+        sig = f"Pointwise: {', '.join(input_types)} -> {', '.join(output_types)}"
         return sig
 
     def _compute_input_id(self):

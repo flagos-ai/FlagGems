@@ -123,6 +123,9 @@ class KernelEntry:
         num_non_tensor_inputs: Number of scalar (non-tensor) inputs.
         num_outputs: Number of output tensors.
         promotion_rules: Dtype-promotion rules for each output.
+        is_tensor_mask: The actual is_tensor ordering from the schema
+            (e.g. [True, False] for tensor-scalar, [False, True] for
+            scalar-tensor). Needed to correctly build the C++ mask.
         is_1d_tile: Whether the kernel uses the 1D-tile codegen path
             (no stride_order args, single tile_size constexpr).
         is_block_pointer: Whether the kernel uses block pointers
@@ -141,6 +144,7 @@ class KernelEntry:
     num_non_tensor_inputs: int
     num_outputs: int
     promotion_rules: List[PromotionRule]
+    is_tensor_mask: List[bool]
     is_1d_tile: bool
     is_block_pointer: bool
     max_tile_size: int
@@ -289,6 +293,7 @@ def prebuild_from_function(
                 num_non_tensor_inputs=num_non_tensor_inputs,
                 num_outputs=num_outputs,
                 promotion_rules=promotion_rules,
+                is_tensor_mask=schema._is_tensor,
                 is_1d_tile=is_1d_tile,
                 is_block_pointer=is_block_pointer,
                 max_tile_size=cfg_max_tile_size,
@@ -505,26 +510,30 @@ def generate_manifest_header(entries: List[KernelEntry], max_rank: int) -> str:
     return "\n".join(lines)
 
 
-def _build_is_tensor_mask(num_tensors: int, num_scalars: int) -> str:
-    """Build the ``is_tensor_mask`` C++ initializer from counts.
+def _build_is_tensor_mask(is_tensor_list: List[bool]) -> str:
+    """Build the ``is_tensor_mask`` C++ initializer from the schema's is_tensor list.
 
-    The mask reflects the *original* argument order in the Python
-    ``@pointwise_dynamic`` schema.  For simplicity, we assume tensors
-    come first, followed by scalars — which matches how
-    ``FunctionSchema`` orders them for all standard FlagGems ops.
+    The mask order MUST match the @pointwise_dynamic decorator's is_tensor
+    parameter: if is_tensor=[False, True] (scalar first), the mask is
+    {false, true}. Passing {true, false} to such a kernel causes the
+    dispatcher to pass the tensor pointer into the scalar slot (crash).
+
+    Previously assumed tensors-first, which broke scalar-first ops like
+    rem_st (remainder.Scalar_Tensor).
 
     Args:
-        num_tensors: Number of tensor inputs.
-        num_scalars: Number of scalar (non-tensor) inputs.
+        is_tensor_list: The actual is_tensor ordering from the schema.
 
     Returns:
         A brace-enclosed C++ bool initializer, e.g. ``"{true, true, false}"``.
     """
-    parts = ["true"] * num_tensors + ["false"] * num_scalars
-    return "{" + ", ".join(parts) + "}"
+    mask_parts = ["true" if is_t else "false" for is_t in is_tensor_list]
+    return "{" + ", ".join(mask_parts) + "}"
 
 
-def _generate_wrapper(op_name: str, num_tensors: int, num_scalars: int) -> str:
+def _generate_wrapper(
+    op_name: str, num_tensors: int, num_scalars: int, is_tensor_mask: List[bool]
+) -> str:
     """Generate a pair of inline C++ wrappers for a single op.
 
     Produces both a normal version (allocates output) and an ``_out``
@@ -536,6 +545,7 @@ def _generate_wrapper(op_name: str, num_tensors: int, num_scalars: int) -> str:
         op_name: The op name used as the registry key.
         num_tensors: Number of tensor inputs.
         num_scalars: Number of scalar (non-tensor) inputs.
+        is_tensor_mask: The actual is_tensor ordering from the schema.
 
     Returns:
         A C++ code string containing both wrapper functions, or an
@@ -551,7 +561,7 @@ def _generate_wrapper(op_name: str, num_tensors: int, num_scalars: int) -> str:
         - (3,1) Ternary + 1 scalar
     """
     nt, ns = num_tensors, num_scalars
-    mask = _build_is_tensor_mask(nt, ns)
+    mask = _build_is_tensor_mask(is_tensor_mask)
 
     # --- tensor parameter lists ---
     tensor_params = {
@@ -654,7 +664,10 @@ namespace pointwise_dynamic {
             continue
         sample = op_entries[0]
         header += _generate_wrapper(
-            op_name, sample.num_input_tensors, sample.num_non_tensor_inputs
+            op_name,
+            sample.num_input_tensors,
+            sample.num_non_tensor_inputs,
+            sample.is_tensor_mask,
         )
 
     header += "}  // namespace pointwise_dynamic\n"
