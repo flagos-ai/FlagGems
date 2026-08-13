@@ -58,7 +58,6 @@ __all__ = [
     "cholesky_solve",
     "cholesky_solve_out",
     "dist",
-    "dist_out",
     "exponential_",
     "full",
     "full_like",
