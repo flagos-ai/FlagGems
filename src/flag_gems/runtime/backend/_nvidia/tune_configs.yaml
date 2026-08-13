@@ -2605,7 +2605,7 @@ index_select_backward:
     num_warps: 8
     num_stages: 1
 
-fused_marlin_moe_mxfp4:
+fused_marlin_moe_w4a16_mxfp4:
   - gen: true
     param_map:
       META:
@@ -2654,7 +2654,7 @@ fused_marlin_moe_mxfp4:
     stages: [2, 3, 4]
     warps: [4, 8]
 
-fused_marlin_moe_mxfp4_gemm_silu:
+fused_marlin_moe_w4a16_mxfp4_gemm_silu:
   - META: {BLOCK_SIZE_N: 32, GROUP_SIZE_M: 1}
     num_warps: 2
     num_stages: 4

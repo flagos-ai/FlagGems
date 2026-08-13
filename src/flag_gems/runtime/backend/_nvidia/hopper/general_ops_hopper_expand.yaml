@@ -163,7 +163,7 @@ mv:
       stride_an: default
       stride_am: default
       dtype: default
-fused_marlin_moe_mxfp4:
+fused_marlin_moe_w4a16_mxfp4:
   - config:
     param_map:
       META:
@@ -200,7 +200,7 @@ fused_marlin_moe_mxfp4:
       EM_BUCKET: align32
       BLOCK_SIZE_M: align32
       SWAP_AB: default
-fused_marlin_moe_mxfp4_gemm_silu:
+fused_marlin_moe_w4a16_mxfp4_gemm_silu:
   - config:
     param_map:
       META:
