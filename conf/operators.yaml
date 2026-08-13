@@ -2586,18 +2586,6 @@ ops:
       - Math
     stages:
       - stable: '5.0'
-  - id: dist_out
-    description: |
-      A variant of dist that writes the result to the provided out tensor.
-    for:
-      - dist.out
-    labels:
-      - aten
-      - Reduction
-    kind:
-      - Math
-    stages:
-      - stable: '5.0'
   - id: dispatch_fused_moe_kernel
     description: |
       Accelerates neural network training by combining token routing (dispatch/all-to-all communication),

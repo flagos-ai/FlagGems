@@ -284,24 +284,3 @@ def dist(
         other,
         p,
     )
-
-
-def dist_out(
-    input,
-    other,
-    p=2,
-    *,
-    out=None,
-):
-    result = dist(
-        input,
-        other,
-        p,
-    )
-
-    if out is None:
-        return result
-
-    out.copy_(result)
-
-    return out
