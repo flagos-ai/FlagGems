@@ -101,6 +101,8 @@ def test_accuracy_lstm_cell_no_bias(shape, dtype):
     with flag_gems.use_gems():
         res_hy, res_cy = torch.lstm_cell(input_tensor, [h_prev, c_prev], w_ih, w_hh)
 
+    # Kernel computes in fp32 (all inputs cast to fp32 before tl.dot)
+    # Error comes only from fp32 associativity differences in tiling
     atol = 1e-3
     utils.gems_assert_close(res_hy, ref_hy, dtype, atol=atol)
     utils.gems_assert_close(res_cy, ref_cy, dtype, atol=atol)
