@@ -32,6 +32,10 @@ from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
+from flag_gems.ops.flash_precompile import (
+    precompile_flash_attention,
+    precompile_for_model,
+)
 
 try:
     from flag_gems._version import version as __version__
@@ -1141,11 +1145,65 @@ def all_registered_keys():
     return current_work_registrar.get_all_keys()
 
 
+def disable_flash_attention():
+    """
+    便捷函数：禁用 FlashAttention 相关算子，使用 PyTorch 原生实现。
+
+    适用场景：
+    - FlagGems FlashAttention 性能不佳时（小 batch、频繁 JIT 编译）
+    - 需要对比 baseline 性能
+
+    用法：
+        import flag_gems
+        flag_gems.disable_flash_attention()  # 先禁用 attention
+        flag_gems.enable()                   # 再启用其他算子
+
+    或者用 enable(unused=...) 明确指定：
+        flag_gems.enable(unused=[
+            "_flash_attention_forward",
+            "_flash_attention_backward",
+            "_scaled_dot_product_flash_attention",
+            "_scaled_dot_product_flash_attention_backward",
+        ])
+    """
+    return [
+        "_flash_attention_forward",
+        "_flash_attention_backward",
+        "_scaled_dot_product_flash_attention",
+        "_scaled_dot_product_flash_attention_backward",
+    ]
+
+
+def disable_attention_all():
+    """
+    便捷函数：禁用所有 attention 相关算子（包括 flash/cudnn/efficient）。
+
+    用法：
+        import flag_gems
+        flag_gems.enable(unused=flag_gems.disable_attention_all())
+    """
+    return [
+        "_flash_attention_forward",
+        "_flash_attention_backward",
+        "_scaled_dot_product_flash_attention",
+        "_scaled_dot_product_flash_attention_backward",
+        "_cudnn_attention_forward",
+        "scaled_dot_product_cudnn_attention_backward",
+        "efficient_attention_backward",
+        "_scaled_dot_product_efficient_attention_backward",
+        "_scaled_dot_product_fused_attention_overrideable",
+    ]
+
+
 __all__ = [
     "all_registered_keys",
     "all_registered_ops",
+    "disable_attention_all",
+    "disable_flash_attention",
     "enable",
     "flagtune",
     "only_enable",
+    "precompile_flash_attention",
+    "precompile_for_model",
     "use_gems",
 ]
