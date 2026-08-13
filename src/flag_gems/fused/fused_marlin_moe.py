@@ -821,35 +821,13 @@ def _write_zeros_to_output(
     tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
-@triton.autotune(
-    configs=[
-        triton.Config(
-            {"BLOCK_SIZE_N": 64, "GROUP_SIZE_M": 1}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 128, "GROUP_SIZE_M": 1}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 128, "GROUP_SIZE_M": 4}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 128, "GROUP_SIZE_M": 4}, num_warps=8, num_stages=3
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 256, "GROUP_SIZE_M": 4}, num_warps=8, num_stages=3
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 256, "GROUP_SIZE_M": 4}, num_warps=8, num_stages=2
-        ),
-    ],
-    key=[
-        "N",
-        "K",
-        "EM",
-        "BLOCK_SIZE_M",
-        "MUL_ROUTED_WEIGHT",
-        "top_k",
-    ],
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("fused_marlin_moe_w4a16_int4"),
+    key=["N", "K", "EM", "BLOCK_SIZE_M", "MUL_ROUTED_WEIGHT", "top_k"],
+    strategy=["align32", "align32", "align32", "align32", "default", "default"],
+    flagtune_op_name="fused_marlin_moe_w4a16_int4",
+    flagtune_expand_op_name="fused_marlin_moe_w4a16_int4",
 )
 @triton.jit
 def _w4a16_int4_moe_gemm_kernel(
@@ -990,27 +968,9 @@ def _w4a16_int4_moe_gemm_kernel(
     tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
-@triton.autotune(
-    configs=[
-        triton.Config(
-            {"BLOCK_SIZE_N": 64, "GROUP_SIZE_M": 1}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 128, "GROUP_SIZE_M": 1}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 128, "GROUP_SIZE_M": 4}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 128, "GROUP_SIZE_M": 4}, num_warps=8, num_stages=3
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 256, "GROUP_SIZE_M": 4}, num_warps=8, num_stages=3
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_N": 256, "GROUP_SIZE_M": 4}, num_warps=8, num_stages=2
-        ),
-    ],
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("fused_marlin_moe_w4a16_int4_gemm_silu"),
     key=[
         "N",
         "K",
@@ -1020,6 +980,17 @@ def _w4a16_int4_moe_gemm_kernel(
         "APPLY_ROUTER_WEIGHT_AFTER_SILU",
         "top_k",
     ],
+    strategy=[
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "default",
+        "default",
+        "default",
+    ],
+    flagtune_op_name="fused_marlin_moe_w4a16_int4_gemm_silu",
+    flagtune_expand_op_name="fused_marlin_moe_w4a16_int4_gemm_silu",
 )
 @triton.jit
 def _w4a16_int4_moe_gemm_silu_kernel(

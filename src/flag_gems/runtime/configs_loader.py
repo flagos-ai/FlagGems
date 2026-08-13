@@ -323,6 +323,8 @@ class TunedConfigLoader(object):
             ]
 
         if op_name in (
+            "fused_marlin_moe_w4a16_int4",
+            "fused_marlin_moe_w4a16_int4_gemm_silu",
             "fused_marlin_moe_w4a16_mxfp4",
             "fused_marlin_moe_w4a16_mxfp4_gemm_silu",
         ):
@@ -553,6 +555,18 @@ class TunedConfigLoader(object):
                 "bmm", expand_yaml_path=self._get_expand_config_path("bmm")
             ),
             "bmm_sqmma": self._build_single_expand_spec("bmm_sqmma"),
+            "fused_marlin_moe_w4a16_int4": self._build_single_expand_spec(
+                "fused_marlin_moe_w4a16_int4",
+                expand_yaml_path=self._get_expand_config_path(
+                    "fused_marlin_moe_w4a16_int4"
+                ),
+            ),
+            "fused_marlin_moe_w4a16_int4_gemm_silu": self._build_single_expand_spec(
+                "fused_marlin_moe_w4a16_int4_gemm_silu",
+                expand_yaml_path=self._get_expand_config_path(
+                    "fused_marlin_moe_w4a16_int4_gemm_silu"
+                ),
+            ),
             "fused_marlin_moe_w4a16_mxfp4": self._build_single_expand_spec(
                 "fused_marlin_moe_w4a16_mxfp4",
                 expand_yaml_path=self._get_expand_config_path(
