@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 
 import torch
@@ -21,6 +22,8 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -1534,6 +1537,7 @@ def _unique2(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
+    logger.debug("GEMS_KUNLUNXIN _UNIQUE2")
     # XPU rewrite: the old hand-written multi-kernel path (simple_unique_flat /
     # sorted_indices_unique_flat / sorted_quick_unique_flat) runs Triton cumsum /
     # scatter at ~9 GB/s -> catastrophic (large shapes gems speedup 0.08-0.28).

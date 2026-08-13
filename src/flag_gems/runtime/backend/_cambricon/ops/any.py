@@ -35,8 +35,8 @@ def reduce_any(a, b):
     return a or b
 
 
-@libentry()
 @triton.autotune(configs=runtime.get_tuned_config("any"), key=["M", "N"])
+@libentry()
 @triton.jit
 def any_kernel_dim(
     inp,
@@ -65,8 +65,8 @@ def any_kernel_dim(
     tl.store(out, any[:, None], row_mask)
 
 
-@libentry()
 @triton.autotune(configs=cfggen_reduce_op2(), key=["M"])
+@libentry()
 @triton.jit
 def any_kernel_1(
     inp,
@@ -126,6 +126,7 @@ def any_dim(inp, dim=None, keepdim=False):
         M = inp.numel() // N
 
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+        inp = inp.to(torch.bool)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
@@ -152,6 +153,7 @@ def any_dims(inp, dim=None, keepdim=False):
     M = inp.numel() // N
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+    inp = inp.to(torch.bool)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):

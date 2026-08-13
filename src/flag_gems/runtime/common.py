@@ -63,6 +63,8 @@ DEFAULT_STRATEGIES = {
     ],
     "gemv": ["align32", "align32", "align32", "default"],
     "mm": ["align32", "align32", "align32", "align32", "align32"],
+    "mm_nn": ["align32", "align32", "align32"],
+    "mm_nt": ["align32", "align32", "align32"],
     "mm_sqmma": ["align32", "align32", "align32", "default"],
     "mm_general_tma": [
         "align32",
@@ -140,6 +142,8 @@ OP_KEY_ORDERS = {
     ],
     "gemv": ["M", "K", "stride_am", "stride_bk"],
     "mm": ["M", "N", "K", "stride_am", "stride_bk"],
+    "mm_nn": ["M", "N", "K"],
+    "mm_nt": ["M", "N", "K"],
     "mm_sqmma": ["M", "N", "K", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mv": ["M", "N"],
