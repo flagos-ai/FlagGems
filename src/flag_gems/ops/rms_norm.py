@@ -153,6 +153,58 @@ def rms_norm_loop_kernel(
 
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
+def rms_norm_grad_dx_loop_kernel(
+    X,  # pointer to the input
+    DY,
+    INV_RMS,  # pointer to inverse rms
+    DX,  # pointer to the output
+    W,  # pointer to the weights
+    dx_stride_r,
+    dx_stride_c,
+    x_stride_r,  # how much to increase the pointer when moving by 1 row
+    x_stride_c,  # how much to increase the pointer when moving by 1 col
+    N,  # number of columns in X
+    eps,  # epsilon to avoid division by zero
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    DX += pid * dx_stride_r
+    X += pid * x_stride_r
+    DY += pid * x_stride_r
+    INV_RMS += pid
+
+    inv_rms = tl.load(INV_RMS).to(tl.float32)
+
+    # First pass: compute row_sum_stats = sum(x * inv_rms * dy * w)
+    row_sum_stats = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    for start_n in range(0, N, BLOCK_SIZE):
+        cols = start_n + tl.arange(0, BLOCK_SIZE)
+        mask = cols < N
+        x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+        dy = tl.load(DY + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+        w = tl.load(W + cols, mask=mask, other=0.0)
+        dy = dy * w
+        normalized_buf = x * inv_rms
+        row_sum_stats += normalized_buf * dy
+
+    row_sum_stats_scalar = tl.sum(row_sum_stats, axis=0)
+
+    # Second pass: compute and store dx
+    for start_n in range(0, N, BLOCK_SIZE):
+        cols = start_n + tl.arange(0, BLOCK_SIZE)
+        mask = cols < N
+        x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+        dy = tl.load(DY + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+        w = tl.load(W + cols, mask=mask, other=0.0)
+        dy = dy * w
+        normalized_buf = x * inv_rms
+        norm_val = normalized_buf / N
+        dx = (dy - norm_val * row_sum_stats_scalar) * inv_rms
+        tl.store(DX + cols * dx_stride_c, dx, mask=mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
 def rms_norm_grad_dx_kernel(
     X,  # pointer to the input
     DY,
@@ -281,16 +333,22 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
 
-    BLOCK_SIZE = triton.next_power_of_2(N)
     x = x.contiguous()
     dy = dy.contiguous()
     weight = weight.contiguous()
     dx = torch.empty_like(x)
 
     with torch_device_fn.device(x.device):
-        rms_norm_grad_dx_kernel[M,](
-            x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
-        )
+        if N <= 4096:
+            BLOCK_SIZE = triton.next_power_of_2(N)
+            rms_norm_grad_dx_kernel[M,](
+                x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
+            )
+        else:
+            BLOCK_SIZE = 1024
+            rms_norm_grad_dx_loop_kernel[M,](
+                x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
+            )
 
     ROW_BLOCK_SIZE = 16
     COL_BLOCK_SIZE = 256
