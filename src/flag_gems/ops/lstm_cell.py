@@ -5,14 +5,13 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import tl_extra_shim
-from flag_gems.utils.libentry import libentry
+from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=[
         # Original narrow BLOCK_N configs with deeper pipelining: each K iteration
         # loads four separate gate weight tiles, so a narrow N keeps the loads
