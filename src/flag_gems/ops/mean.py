@@ -24,6 +24,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils.codegen_config_utils import get_codegen_config
 
 logger = logging.getLogger(__name__)
 
@@ -352,7 +353,11 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
                     K,
                     BLOCK_SIZE_K=BLOCK_SIZE_K,
                     VEC_SIZE=VEC_SIZE,
-                    num_warps=8 if BLOCK_SIZE_K <= 128 else 16,
+                    num_warps=(
+                        8
+                        if BLOCK_SIZE_K <= 128
+                        else min(16, get_codegen_config().max_num_warps_per_cta)
+                    ),
                 )
             elif K > 1:
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)

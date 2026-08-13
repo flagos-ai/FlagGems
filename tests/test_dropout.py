@@ -54,8 +54,11 @@ def test_dropout(shape, p, dtype):
     )
     ref_inp = utils.to_reference(res_inp)
 
-    p = np.float32(p)
-    one_minus_p = np.float32(1.0) - p
+    if flag_gems.vendor_name == "cambricon":
+        one_minus_p = 1.0 - p
+    else:
+        p = np.float32(p)
+        one_minus_p = np.float32(1.0) - p
 
     ref_out = torch.nn.functional.dropout(ref_inp, p, True)
     with flag_gems.use_gems():
