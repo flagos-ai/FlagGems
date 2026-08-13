@@ -520,6 +520,7 @@ from flag_gems.ops.not_equal_ import not_equal_, not_equal_scalar_
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
+from flag_gems.ops.ormqr import ormqr
 from flag_gems.ops.pad import constant_pad_nd, pad
 from flag_gems.ops.pairwise_distance import pairwise_distance
 from flag_gems.ops.pdist import pdist
@@ -1377,6 +1378,7 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
+    "ormqr",
     "pad",
     "pairwise_distance",
     "pdist",
