@@ -52,7 +52,38 @@ def _scaled_randn(shape, dtype):
     return torch.randn(shape, dtype=dtype, device=flag_gems.device) / math.sqrt(n)
 
 
+def _small_ops_det(A):
+    n = A.shape[-1]
+    batch_shape = A.shape[:-2]
+    B = math.prod(batch_shape) if batch_shape else 1
+    LU = A.clone().reshape(B, n, n)
+    sign = torch.ones(B, dtype=A.dtype, device=A.device)
+    bidx = torch.arange(B, device=A.device)
+    for k in range(n):
+        p = LU[:, k:, k].abs().argmax(dim=-1) + k
+        swap = p != k
+        sign = torch.where(swap, -sign, sign)
+        row_k = LU[:, k, :].clone()
+        row_p = LU[bidx, p, :].clone()
+        LU[:, k, :] = row_p
+        LU[bidx[swap], p[swap], :] = row_k[swap]
+        pivot = LU[:, k, k]
+        safe_pivot = torch.where(pivot == 0, torch.ones_like(pivot), pivot)
+        col = LU[:, k + 1 :, k]
+        mult = torch.where(
+            (pivot == 0).unsqueeze(-1),
+            torch.zeros_like(col),
+            col / safe_pivot.unsqueeze(-1),
+        )
+        LU[:, k + 1 :, k] = mult
+        LU[:, k + 1 :, k + 1 :] -= mult.unsqueeze(-1) * LU[:, k : k + 1, k + 1 :]
+    det = LU.diagonal(dim1=-2, dim2=-1).prod(dim=-1) * sign
+    return det.reshape(batch_shape)
+
+
 def _ref_det(A):
+    if A.device.type == "npu":
+        return _small_ops_det(A)
     prev = torch.get_num_threads()
     torch.set_num_threads(min(prev, 64))
     try:

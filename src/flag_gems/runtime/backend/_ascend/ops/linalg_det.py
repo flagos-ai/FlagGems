@@ -11,71 +11,12 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
-_DET_BLOCK_MAX = 64
+_ASCEND_MAX_GRID_BLOCKS = 40
 
 
 @triton.jit
 def _reduce_mul(a, b):
     return a * b
-
-
-@libentry()
-@triton.jit
-def _det_register_kernel(
-    A,
-    out,
-    N: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid = tle.program_id(0)
-    rows = tl.arange(0, BLOCK_N)
-    cols = tl.arange(0, BLOCK_N)
-
-    base = pid * N * N
-    offsets = base + rows[:, None] * N + cols[None, :]
-    load_mask = (rows[:, None] < N) & (cols[None, :] < N)
-    work = tl.load(A + offsets, mask=load_mask, other=0.0)
-
-    swap_count = tl.zeros((), dtype=tl.int32)
-
-    for k in range(N):
-        col_k = tl.reshape(
-            tl.gather(work, tl.full((BLOCK_N, 1), k, tl.int32), axis=1), (BLOCK_N,)
-        )
-        abs_col = tl.abs(col_k)
-        abs_col = tl.where((rows < k) | (rows >= N), -1.0, abs_col)
-        pivot_val = tl.max(abs_col, axis=0)
-        pivot_row = tl.min(tl.where(abs_col == pivot_val, rows, BLOCK_N), axis=0)
-
-        row_k = tl.reshape(
-            tl.gather(work, tl.full((1, BLOCK_N), k, tl.int32), axis=0), (BLOCK_N,)
-        )
-        row_p = tl.reshape(
-            tl.gather(work, tl.full((1, BLOCK_N), pivot_row, tl.int32), axis=0),
-            (BLOCK_N,),
-        )
-        work = tl.where(rows[:, None] == k, row_p[None, :], work)
-        work = tl.where(rows[:, None] == pivot_row, row_k[None, :], work)
-        swap_count += (pivot_row != k).to(tl.int32)
-
-        col_k = tl.reshape(
-            tl.gather(work, tl.full((BLOCK_N, 1), k, tl.int32), axis=1), (BLOCK_N,)
-        )
-        pivot = tl.sum(col_k * (rows == k).to(tl.float32), axis=0)
-        safe_pivot = pivot + (pivot == 0.0).to(tl.float32)
-        l_col = col_k / safe_pivot * (rows > k).to(tl.float32)
-        u_row = tl.reshape(
-            tl.gather(work, tl.full((1, BLOCK_N), k, tl.int32), axis=0), (BLOCK_N,)
-        )
-
-        mask2d = (rows[:, None] > k) & (cols[None, :] > k)
-        work = tl.where(mask2d, work - l_col[:, None] * u_row[None, :], work)
-
-    diag = tl.reshape(tl.gather(work, rows[:, None], axis=1), (BLOCK_N,))
-    diag = diag * (cols < N).to(tl.float32) + (cols >= N).to(tl.float32)
-    det = tl.reduce(diag, 0, combine_fn=_reduce_mul)
-    det = det * (1.0 - 2.0 * (swap_count % 2).to(tl.float32))
-    tl.store(out + pid, det)
 
 
 @libentry()
@@ -208,13 +149,9 @@ def _linalg_det_impl(A):
     A_work = A.clone(memory_format=torch.contiguous_format).reshape(batch_count, n, n)
     out = torch.empty(batch_count, dtype=A.dtype, device=A.device)
 
-    grid = (batch_count,)
     with torch_device_fn.device(A.device):
-        if n <= _DET_BLOCK_MAX:
-            _det_register_kernel[grid](
-                A_work, out, n, BLOCK_N=max(16, triton.next_power_of_2(n))
-            )
-        else:
-            _det_blocked_kernel[grid](A_work, out, n, BLOCK=64)
+        for b_start in range(0, batch_count, _ASCEND_MAX_GRID_BLOCKS):
+            chunk = min(_ASCEND_MAX_GRID_BLOCKS, batch_count - b_start)
+            _det_blocked_kernel[(chunk,)](A_work[b_start:], out[b_start:], n, BLOCK=64)
 
     return out.reshape(batch_shape)
