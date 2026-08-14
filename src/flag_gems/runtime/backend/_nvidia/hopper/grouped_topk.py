@@ -280,8 +280,6 @@ def grouped_topk(
     if scoring_func not in (0, 1):
         raise ValueError("scoring_func must be 0 (none) or 1 (sigmoid)")
 
-    if bias.dtype != scores.dtype:
-        bias = bias.to(scores.dtype)
     if bias.ndim != 1:
         bias = bias.flatten()
     if len(bias) != num_experts:
@@ -291,19 +289,16 @@ def grouped_topk(
 
     num_experts_per_group = num_experts // n_group
 
-    if scores.dtype == torch.float32:
-        INPUT_DTYPE = tl.float32
-    elif scores.dtype == torch.float16:
-        INPUT_DTYPE = tl.float16
-    elif scores.dtype == torch.bfloat16:
-        INPUT_DTYPE = tl.bfloat16
-    else:
+    if scores.dtype not in (torch.float32, torch.float16, torch.bfloat16):
         raise ValueError(f"Unsupported dtype: {scores.dtype}")
+
+    scores_f32 = scores.float()
+    bias_f32 = bias.float()
 
     group_scores = torch.empty(
         (num_tokens, n_group),
         device=scores.device,
-        dtype=scores.dtype,
+        dtype=torch.float32,
     )
 
     topk_values = torch.empty(
@@ -322,16 +317,16 @@ def grouped_topk(
     grid1 = (num_tokens * n_group,)
 
     topk_with_k2_triton[grid1](
-        scores,
-        bias,
+        scores_f32,
+        bias_f32,
         group_scores,
         num_experts_per_group,
         n_group,
-        scores.stride(0),
+        scores_f32.stride(0),
         group_scores.stride(0),
         scoring_func,
         BLOCK_SIZE=BLOCK1,
-        INPUT_DTYPE=INPUT_DTYPE,
+        INPUT_DTYPE=tl.float32,
     )
 
     BLOCK_GROUP = triton.next_power_of_2(n_group)
@@ -339,11 +334,11 @@ def grouped_topk(
     grid2 = (num_tokens,)
 
     group_idx_and_topk_triton[grid2](
-        scores,
+        scores_f32,
         group_scores,
         topk_values,
         topk_indices,
-        bias,
+        bias_f32,
         num_tokens,
         n_group,
         topk_group,
@@ -352,7 +347,7 @@ def grouped_topk(
         num_experts_per_group,
         routed_scaling_factor,
         scoring_func,
-        scores.stride(0),
+        scores_f32.stride(0),
         group_scores.stride(0),
         topk_values.stride(0),
         N_GROUP=n_group,
@@ -360,7 +355,7 @@ def grouped_topk(
         TOPK=topk,
         BLOCK_GROUP=BLOCK_GROUP,
         BLOCK_EXPERT=BLOCK_EXPERT,
-        INPUT_DTYPE=INPUT_DTYPE,
+        INPUT_DTYPE=tl.float32,
         renormalize=int(renormalize),
     )
 
