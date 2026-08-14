@@ -97,7 +97,14 @@ def test_feature_alpha_dropout_p_one_special_values():
         output = torch.ops.aten.feature_alpha_dropout(input, 1.0, True)
 
     utils.gems_assert_equal(output, reference, equal_nan=True)
-    utils.gems_assert_equal(torch.signbit(output), torch.signbit(reference))
+    # CPU and CUDA can produce NaNs with different sign bits for inf * 0. NaN
+    # sign is not part of the operator contract, but signed zero still is.
+    output_not_nan = ~torch.isnan(output)
+    reference_not_nan = ~torch.isnan(reference)
+    utils.gems_assert_equal(
+        torch.signbit(output)[output_not_nan],
+        torch.signbit(reference)[reference_not_nan],
+    )
 
 
 @pytest.mark.feature_alpha_dropout
