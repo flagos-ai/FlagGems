@@ -37,12 +37,7 @@ ref = torch.dist(ref_x, ref_y, ref_p)
     else:
         rtol = 1e-3
 
-    torch.testing.assert_close(
-        out,
-        ref,
-        rtol=rtol,
-        atol=1e-3,
-    )
+utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 def test_dist_empty():
