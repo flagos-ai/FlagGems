@@ -5704,6 +5704,26 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_vecdot
+    description: 'Computes the dot product of two vectors along a specified dimension.'
+    for:
+      - linalg.vecdot
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_vecdot_out
+    description: 'Computes the dot product of two vectors along a specified dimension.'
+    for:
+      - linalg.vecdot.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.
@@ -9782,6 +9802,29 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: sparse_sampled_addmm
+    description: |
+      Computes alpha * (mat1 @ mat2) * spy(input) + beta * input, where input is a sparse CSR tensor
+      and spy(input) keeps only its sparsity pattern. The result shares the CSR pattern with input.
+    for:
+      - sparse_sampled_addmm
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: sparse_sampled_addmm_out
+    description: |
+      A variant of sparse_sampled_addmm that assigns the result to the provided sparse CSR out tensor.
+    for:
+      - sparse_sampled_addmm.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: sparse_semi_structured_mm
     description: >
       Performs a sparse semi-structured matrix multiplication of a dense matrix
