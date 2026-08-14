@@ -75,3 +75,52 @@ def test_nll_loss_backward(shape, dtype, ignore_index, reduction, weight):
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.nll_loss_backward
+@pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+@pytest.mark.parametrize("weight", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("ignore_index", [-100, 4])
+def test_nll_loss_backward_ignore_index_out_of_range(
+    dtype, ignore_index, reduction, weight
+):
+    # ignore_index may be outside [0, C) -- torch's own default is -100 -- and target
+    # then really does hold that sentinel on the ignored rows. The backward kernel must
+    # not derive a store address from it: with C = 4 and ignore_index = 4, ignored row n
+    # would address n * C + 4, which is row n + 1's own gradient cell.
+    N, C = 6, 4
+    valid = [0, 1, 3]
+    target = torch.tensor(
+        [ignore_index, valid[0], valid[1], ignore_index, valid[0], valid[2]],
+        device=flag_gems.device,
+    )
+
+    inp = torch.randn((N, C), dtype=dtype, device=flag_gems.device, requires_grad=True)
+    if weight:
+        # strictly positive so the 'mean' reduction's total weight cannot land near
+        # zero and make the comparison flaky
+        weight = torch.rand(C, dtype=dtype, device=flag_gems.device) + 0.5
+    else:
+        weight = None
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_target = utils.to_reference(target)
+    ref_weight = utils.to_reference(weight, True)
+
+    ref_out = torch.nn.functional.nll_loss(
+        ref_inp, ref_target, ref_weight, reduction=reduction, ignore_index=ignore_index
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.nll_loss(
+            inp, target, weight, reduction=reduction, ignore_index=ignore_index
+        )
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = utils.to_reference(out_grad, True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=C)
