@@ -13,6 +13,27 @@
 # limitations under the License.
 
 ops:
+  - id: _ctc_loss
+    description: |
+      Computes the CTC (Connectionist Temporal Classification) loss.
+      This is the lower-level operator that returns both neg_log_likelihood
+      and log_alpha, unlike ctc_loss which only returns the reduced loss.
+    for:
+      - _ctc_loss
+      - _ctc_loss.Tensor
+      - _ctc_loss.out
+      - _ctc_loss.Tensor_out
+    marks:
+      - ctc_loss_internal
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+    device:
+      - nvidia
   - id: _reshape_alias
     description: |
       Creates a view of the input tensor with the given size and stride,
