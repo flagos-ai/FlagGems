@@ -47,6 +47,5 @@ def test_dist_empty():
     with flag_gems.use_gems():
         out = torch.dist(x, y)
 
-    ref = torch.dist(x, y)
 
     torch.testing.assert_close(out, ref)
