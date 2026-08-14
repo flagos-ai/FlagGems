@@ -2746,7 +2746,6 @@ ops:
       is an alias of `torch.div()` with `rounding_mode=None`.
     for:
       - div.Tensor
-      - divide.Tensor
     labels:
       - aten
       - pointwise
