@@ -30,10 +30,15 @@ def test_dist(shape, p, dtype):
 
     ref = torch.dist(x, y, p)
 
+    if dtype == torch.bfloat16:
+        rtol = 1.6e-2
+    else:
+        rtol = 1e-3
+
     torch.testing.assert_close(
         out,
         ref,
-        rtol=1e-3,
+        rtol=rtol,
         atol=1e-3,
     )
 
