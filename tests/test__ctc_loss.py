@@ -202,7 +202,7 @@ def test__ctc_loss_2d_targets():
 
 
 @pytest.mark.ctc_loss_internal
-def test__ctc_loss_int_list_lengths():
+def test__ctc_loss_int_list_lengths(caplog):
     """The default/out schemas take int[] lengths, not tensors."""
     T, N, C = 20, 3, 10
 
@@ -222,10 +222,13 @@ def test__ctc_loss_int_list_lengths():
         ref_log_probs, ref_targets, input_lengths, target_lengths
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._ctc_loss(
-            log_probs, targets, input_lengths, target_lengths
-        )
+    with caplog.at_level("DEBUG", logger="flag_gems.ops._ctc_loss"):
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten._ctc_loss(
+                log_probs, targets, input_lengths, target_lengths
+            )
+
+    assert "GEMS _CTC_LOSS" in caplog.text
 
     utils.gems_assert_close(
         res_out[0], ref_out[0], dtype=log_probs.dtype, equal_nan=True
@@ -244,7 +247,7 @@ def test__ctc_loss_int_list_lengths():
 
 @pytest.mark.ctc_loss_internal
 @pytest.mark.parametrize("overload", ["out", "Tensor_out"])
-def test__ctc_loss_out_variants(overload):
+def test__ctc_loss_out_variants(overload, caplog):
     """The out variants must write into and return the caller's buffers."""
     T, N, C = 20, 3, 10
 
@@ -285,8 +288,11 @@ def test__ctc_loss_out_variants(overload):
 
     out0 = torch.empty(0, device=flag_gems.device)
     out1 = torch.empty(0, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = ref_op(log_probs, targets, *lengths_arg, out0=out0, out1=out1)
+    with caplog.at_level("DEBUG", logger="flag_gems.ops._ctc_loss"):
+        with flag_gems.use_gems():
+            res_out = ref_op(log_probs, targets, *lengths_arg, out0=out0, out1=out1)
+
+    assert "GEMS _CTC_LOSS" in caplog.text
 
     assert res_out[0].data_ptr() == out0.data_ptr()
     assert res_out[1].data_ptr() == out1.data_ptr()
