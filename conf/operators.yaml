@@ -2207,7 +2207,7 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
-  - id: ctc_loss_internal
+  - id: _ctc_loss
     description: Internal CTC loss forward that returns (neg_log_likelihood, log_alpha).
     for:
       - _ctc_loss.default
