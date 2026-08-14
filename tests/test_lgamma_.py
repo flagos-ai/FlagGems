@@ -92,14 +92,12 @@ def test_fallback_lgamma():
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_lgamma(shape, dtype):
     torch.manual_seed(0)
-    inp = (
-        torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
-    )  # lgamma requires positive values
-    ref_inp = utils.to_reference(inp)
+    # Build the reference on CPU because Sunrise does not provide aten::lgamma.
+    ref_inp = torch.rand(shape, dtype=dtype) + 0.1
+    inp = ref_inp.to(flag_gems.device)
     ref_out = ref_inp.lgamma()
-    with flag_gems.use_gems():
-        res_out = inp.lgamma()
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    res_out = flag_gems.lgamma(inp)
+    utils.gems_assert_close(res_out.cpu(), ref_out, dtype)
 
 
 @pytest.mark.lgamma_
@@ -107,12 +105,10 @@ def test_lgamma(shape, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_lgamma_(shape, dtype):
     torch.manual_seed(0)
-    inp = (
-        torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
-    )  # lgamma requires positive values
-    ref_inp = utils.to_reference(inp.clone())
+    # Keep input generation and the unavailable native reference off the PTPU.
+    ref_inp = torch.rand(shape, dtype=dtype) + 0.1
+    inp = ref_inp.clone().to(flag_gems.device)
     ref_out = ref_inp.lgamma_()
-    with flag_gems.use_gems():
-        res_out = inp.lgamma_()
-    utils.gems_assert_close(res_out, ref_out, dtype)
-    utils.gems_assert_close(inp, ref_inp, dtype)
+    res_out = flag_gems.lgamma_(inp)
+    utils.gems_assert_close(res_out.cpu(), ref_out, dtype)
+    utils.gems_assert_close(inp.cpu(), ref_inp, dtype)
