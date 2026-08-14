@@ -787,3 +787,10 @@ repeat_interleave_tensor:
     - [128, 256, 256]
     - [64, 64, 64, 64]
   shape_desc: "M, N, K"
+
+argwhere:
+  shapes:
+    - [4096, 65536]
+    - [8192, 65536]
+    - [10000, 65536]
+  shape_desc: "M, N"
