@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
@@ -26,6 +28,14 @@ if cfg.QUICK_MODE:
 else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
     LAYER_NORM_SHAPES = [(200, 36), (4096, 100), (1, 40999), (100, 40499), (4096, 256)]
+
+LAYER_NORM_BACKWARD_CONFIGS = [(shape, shape[1:]) for shape in LAYER_NORM_SHAPES] + [
+    # Regression for inputs with more than one leading, non-normalized dimension.
+    ((4, 7, 64), (64,)),
+    # Empty normalized and leading dimensions are both valid LayerNorm inputs.
+    ((2, 0), (0,)),
+    ((0, 64), (64,)),
+]
 
 
 @pytest.mark.native_layer_norm
@@ -108,10 +118,10 @@ def test_layer_norm(shape, dtype, wb_none):
 
 
 @pytest.mark.layer_norm_backward
-@pytest.mark.parametrize("shape", LAYER_NORM_SHAPES)
+@pytest.mark.parametrize("shape, normalized_shape", LAYER_NORM_BACKWARD_CONFIGS)
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_layer_norm_backward(monkeypatch, shape, dtype, wb_none):
+def test_layer_norm_backward(monkeypatch, shape, normalized_shape, dtype, wb_none):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -122,18 +132,18 @@ def test_layer_norm_backward(monkeypatch, shape, dtype, wb_none):
 
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_grad = torch.randn_like(res_inp)
-    res_mean = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
-    res_rstd = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
+    normalized_start = res_inp.ndim - len(normalized_shape)
+    M = math.prod(res_inp.shape[:normalized_start])
+    res_mean = torch.randn(M, dtype=dtype, device=flag_gems.device)
+    res_rstd = torch.randn(M, dtype=dtype, device=flag_gems.device)
     if wb_none:
         res_weight = None
         res_bias = None
         output_mask = [True, False, False]
     else:
-        res_weight = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
-        res_bias = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
+        res_weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+        res_bias = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
         output_mask = [True, True, True]
-
-    normalized_shape = shape[1:]
 
     ref_inp = utils.to_reference(res_inp, True)
     ref_grad = utils.to_reference(res_grad, True)
@@ -174,9 +184,5 @@ def test_layer_norm_backward(monkeypatch, shape, dtype, wb_none):
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
     if not wb_none:
-        utils.gems_assert_close(
-            res_weight_grad, ref_weight_grad, dtype, reduce_dim=shape[0]
-        )
-        utils.gems_assert_close(
-            res_bias_grad, ref_bias_grad, dtype, reduce_dim=shape[0]
-        )
+        utils.gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
+        utils.gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)

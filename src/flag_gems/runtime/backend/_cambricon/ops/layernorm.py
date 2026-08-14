@@ -550,8 +550,16 @@ def layer_norm_backward(
     weight = None if weight is None else weight.contiguous()
     bias = None if bias is None else bias.contiguous()
 
-    M = input.shape[0]
-    N = input.numel() // M
+    normalized_start = input.ndim - len(normalized_shape)
+    M = math.prod(input.shape[:normalized_start])
+    N = math.prod(normalized_shape)
+
+    if input.numel() == 0:
+        return (
+            torch.empty_like(input),
+            None if weight is None else torch.zeros_like(weight),
+            None if bias is None else torch.zeros_like(bias),
+        )
 
     if N <= MAX_C_MLU_LAYERNORM_BACKWARD:
         in_grad = torch.empty_like(grad_out)
