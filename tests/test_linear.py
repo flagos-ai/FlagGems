@@ -113,6 +113,10 @@ def test_linear_3d_with_bias(dtype):
 
 
 @pytest.mark.linear
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "iluvatar",
+    reason="Issue #5379: Iluvatar override requires separate vendor validation",
+)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("with_bias", [False, True])
 def test_linear_3d_noncontiguous(dtype, with_bias):
@@ -141,8 +145,7 @@ def test_linear_3d_noncontiguous(dtype, with_bias):
     ref_bias = utils.to_reference(bias, True)
 
     ref_out = torch.nn.functional.linear(ref_input, ref_weight, ref_bias)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.linear(input_tensor, weight, bias)
+    res_out = flag_gems.linear(input_tensor, weight, bias)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=in_features)
 

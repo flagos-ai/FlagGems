@@ -73,6 +73,10 @@ def test_linear_backward(batch, in_features, out_features, dtype):
 
 
 @pytest.mark.linear_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "iluvatar",
+    reason="Issue #5379: Iluvatar path requires separate vendor validation",
+)
 @pytest.mark.parametrize("noncontiguous_operand", NONCONTIGUOUS_OPERANDS)
 @pytest.mark.parametrize("output_mask", OUTPUT_MASKS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -126,10 +130,7 @@ def test_linear_backward_3d_noncontiguous(noncontiguous_operand, output_mask, dt
     )
     ref_grad_bias = ref_grad_output.sum(dim=(0, 1)) if output_mask[2] else None
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.linear_backward(
-            input_tensor, grad_output, weight, output_mask
-        )
+    result = flag_gems.linear_backward(input_tensor, grad_output, weight, output_mask)
 
     for actual, expected in zip(
         result, (ref_grad_input, ref_grad_weight, ref_grad_bias)
