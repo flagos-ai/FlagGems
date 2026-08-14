@@ -30,8 +30,8 @@ def topk_with_k2_triton(
     n_group,
     stride_scores_token,
     stride_group_scores_token,
+    scoring_func: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
-    INPUT_DTYPE: tl.constexpr,
 ):
     pid = tl.program_id(0)
 
@@ -48,34 +48,32 @@ def topk_with_k2_triton(
         scores_ptr + scores_offset + lane,
         mask=mask,
         other=-float("inf"),
-    )
+    ).to(tl.float32)
 
     b = tl.load(
         bias_ptr + bias_offset + lane,
         mask=mask,
         other=0.0,
-    )
+    ).to(tl.float32)
 
-    x = x + b
+    if scoring_func == 1:
+        x = tl.sigmoid(x)
 
-    x_f32 = x.to(tl.float32)
+    x = tl.where(mask, x + b, -float("inf"))
 
-    max1 = tl.max(x_f32, axis=0)
-    is_max1 = (x_f32 == max1) & mask
+    max1 = tl.max(x, axis=0)
+    is_max1 = (x == max1) & mask
     count_max1 = tl.sum(is_max1.to(tl.int32), axis=0)
 
     x2 = tl.where(
         is_max1 & (count_max1 == 1),
         -float("inf"),
-        x_f32,
+        x,
     )
     max2 = tl.max(x2, axis=0)
 
     group_scores_offset = token_id * stride_group_scores_token + group_id
-    tl.store(
-        group_scores_ptr + group_scores_offset,
-        (max1 + max2).to(INPUT_DTYPE),
-    )
+    tl.store(group_scores_ptr + group_scores_offset, max1 + max2)
 
 
 @triton.jit
@@ -92,6 +90,7 @@ def group_idx_and_topk_triton(
     num_experts,
     num_experts_per_group,
     routed_scaling_factor,
+    scoring_func: tl.constexpr,
     stride_scores_token,
     stride_group_scores_token,
     stride_out_token,
@@ -100,7 +99,6 @@ def group_idx_and_topk_triton(
     TOPK: tl.constexpr,
     BLOCK_GROUP: tl.constexpr,
     BLOCK_EXPERT: tl.constexpr,
-    INPUT_DTYPE: tl.constexpr,
     renormalize: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -116,18 +114,15 @@ def group_idx_and_topk_triton(
         group_scores_ptr + pid * stride_group_scores_token + group_offsets,
         mask=valid_group,
         other=neg_inf,
-    )
+    ).to(tl.float32)
 
-    group_scores_f32 = group_scores.to(tl.float32)
-    is_finite = (group_scores_f32 == group_scores_f32) & (
-        group_scores_f32 != float("inf")
-    )
-    group_scores_f32 = tl.where(is_finite & valid_group, group_scores_f32, neg_inf)
+    is_finite = (group_scores == group_scores) & (group_scores != float("inf"))
+    group_scores = tl.where(is_finite & valid_group, group_scores, neg_inf)
 
-    max_group_score = tl.max(group_scores_f32, axis=0)
+    max_group_score = tl.max(group_scores, axis=0)
     if_proceed = max_group_score != neg_inf
 
-    value = group_scores_f32
+    value = group_scores
     target_num_min = BLOCK_GROUP - n_group + topk_group
     count_equal_to_top_value = BLOCK_GROUP - n_group
     pre_count_equal_to_top_value = 0
@@ -152,8 +147,8 @@ def group_idx_and_topk_triton(
 
     num_equalto_topkth_group = target_num_min - pre_count_equal_to_top_value
 
-    group_gt = group_scores_f32 > topk_group_value
-    group_eq = group_scores_f32 == topk_group_value
+    group_gt = group_scores > topk_group_value
+    group_eq = group_scores == topk_group_value
 
     eq_i = group_eq.to(tl.int32)
     prefix_eq = tl.cumsum(eq_i, axis=0) - eq_i
@@ -171,23 +166,26 @@ def group_idx_and_topk_triton(
         tl.sum((expert_in_group & group_selected[None, :]).to(tl.int32), axis=1) > 0
     ) & valid_expert
 
-    scored = tl.load(
+    raw_scores = tl.load(
         scores_ptr + pid * stride_scores_token + expert_offsets,
         mask=expert_selected,
         other=neg_inf,
-    )
+    ).to(tl.float32)
 
     expert_bias = tl.load(
         bias_ptr + expert_offsets,
         mask=valid_expert,
         other=0.0,
-    )
+    ).to(tl.float32)
 
-    selection_scores_native = scored + expert_bias
+    if scoring_func == 1:
+        scored = tl.sigmoid(raw_scores)
+    else:
+        scored = raw_scores
 
     selection_scores = tl.where(
         expert_selected,
-        selection_scores_native.to(tl.float32),
+        scored + expert_bias,
         neg_inf,
     )
 
@@ -207,6 +205,9 @@ def group_idx_and_topk_triton(
             mask=selected_idx < num_experts,
             other=neg_inf,
         ).to(tl.float32)
+
+        if scoring_func == 1:
+            selected_score = tl.sigmoid(selected_score)
 
         topk_vals = tl.where(pos_range == i, selected_score, topk_vals)
         topk_idx = tl.where(pos_range == i, selected_idx.to(tl.int32), topk_idx)
@@ -277,14 +278,6 @@ def grouped_topk(
     if scores.dtype not in (torch.float32, torch.float16, torch.bfloat16):
         raise ValueError(f"Unsupported dtype: {scores.dtype}")
 
-    scores_f32 = scores.float()
-    bias_f32 = bias.float()
-
-    if scoring_func == 1:
-        scores_processed = torch.sigmoid(scores_f32)
-    else:
-        scores_processed = scores_f32
-
     group_scores = torch.empty(
         (num_tokens, n_group),
         device=scores.device,
@@ -307,15 +300,15 @@ def grouped_topk(
     grid1 = (num_tokens * n_group,)
 
     topk_with_k2_triton[grid1](
-        scores_processed,
-        bias_f32,
+        scores,
+        bias,
         group_scores,
         num_experts_per_group,
         n_group,
-        scores_processed.stride(0),
+        scores.stride(0),
         group_scores.stride(0),
+        scoring_func,
         BLOCK_SIZE=BLOCK1,
-        INPUT_DTYPE=tl.float32,
     )
 
     BLOCK_GROUP = triton.next_power_of_2(n_group)
@@ -323,11 +316,11 @@ def grouped_topk(
     grid2 = (num_tokens,)
 
     group_idx_and_topk_triton[grid2](
-        scores_processed,
+        scores,
         group_scores,
         topk_values,
         topk_indices,
-        bias_f32,
+        bias,
         num_tokens,
         n_group,
         topk_group,
@@ -335,7 +328,8 @@ def grouped_topk(
         num_experts,
         num_experts_per_group,
         routed_scaling_factor,
-        scores_processed.stride(0),
+        scoring_func,
+        scores.stride(0),
         group_scores.stride(0),
         topk_values.stride(0),
         N_GROUP=n_group,
@@ -343,7 +337,6 @@ def grouped_topk(
         TOPK=topk,
         BLOCK_GROUP=BLOCK_GROUP,
         BLOCK_EXPERT=BLOCK_EXPERT,
-        INPUT_DTYPE=tl.float32,
         renormalize=int(renormalize),
     )
 
