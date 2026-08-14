@@ -82,7 +82,7 @@ def test_feature_alpha_dropout_(shape, p, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_feature_alpha_dropout__identity(p, train, dtype):
     input = torch.randn((2, 3, 4), dtype=dtype, device=flag_gems.device)
-    original = input.clone()
+    original = utils.to_reference(input.clone())
     data_ptr = input.data_ptr()
     with flag_gems.use_gems():
         output = torch.ops.aten.feature_alpha_dropout_(input, p, train)
@@ -108,7 +108,14 @@ def test_feature_alpha_dropout__p_one_special_values():
     assert output is input
     assert output.data_ptr() == data_ptr
     utils.gems_assert_equal(output, reference, equal_nan=True)
-    utils.gems_assert_equal(torch.signbit(output), torch.signbit(reference))
+    # CPU and CUDA can produce NaNs with different sign bits for inf * 0. NaN
+    # sign is not part of the operator contract, but signed zero still is.
+    output_not_nan = ~torch.isnan(output)
+    reference_not_nan = ~torch.isnan(reference)
+    utils.gems_assert_equal(
+        torch.signbit(output)[output_not_nan],
+        torch.signbit(reference)[reference_not_nan],
+    )
 
 
 @pytest.mark.inplace
