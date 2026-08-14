@@ -70,8 +70,8 @@ def linear_backward(
         batch_size *= dim
 
     # Flatten batch dimensions
-    input_flat = input.view(batch_size, in_features).contiguous()
-    grad_output_flat = grad_output.view(batch_size, out_features).contiguous()
+    input_flat = input.reshape(batch_size, in_features).contiguous()
+    grad_output_flat = grad_output.reshape(batch_size, out_features).contiguous()
 
     grad_input = None
     grad_weight = None

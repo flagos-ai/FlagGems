@@ -132,7 +132,7 @@ def linear(input, weight, bias=None):
     K = input.shape[-1]
     N = weight.shape[0]
 
-    input_flat = input.view(M, K)
+    input_flat = input.reshape(M, K)
     weight = weight.contiguous()
     output = torch.empty((M, N), device=input.device, dtype=input.dtype)
 
