@@ -31,7 +31,6 @@ ref = torch.dist(ref_x, ref_y, ref_p)
     with flag_gems.use_gems():
         out = torch.dist(x, y, p)
 
-    ref = torch.dist(x, y, p)
 
     if dtype == torch.bfloat16:
         rtol = 1.6e-2
