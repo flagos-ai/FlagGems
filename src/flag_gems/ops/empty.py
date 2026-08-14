@@ -87,6 +87,11 @@ def empty(
     if dtype.is_complex:
         return out
     N = volume(shape)
+    # Skip kernel launch for zero-element tensors to avoid invalid grid size on
+    # backends that validate coreDim > 0 (e.g., Ascend NPU). With N=0 the kernel's
+    # store is fully masked out anyway, so skipping is semantically identical.
+    if N == 0:
+        return out
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(device):
         empty_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
