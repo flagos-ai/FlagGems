@@ -5693,6 +5693,26 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_vecdot
+    description: 'Computes the dot product of two vectors along a specified dimension.'
+    for:
+      - linalg.vecdot
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_vecdot_out
+    description: 'Computes the dot product of two vectors along a specified dimension.'
+    for:
+      - linalg.vecdot.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linear
     description: |
       Applies a linear transformation to the incoming data: y = x @ W^T + b.

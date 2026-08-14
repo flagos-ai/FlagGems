@@ -424,6 +424,7 @@ from flag_gems.ops.linalg_solve_triangular import (
     linalg_solve_triangular_out,
 )
 from flag_gems.ops.linalg_svdvals import linalg_svdvals
+from flag_gems.ops.linalg_vecdot import linalg_vecdot, linalg_vecdot_out
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linear_backward import linear_backward
 from flag_gems.ops.linspace import linspace
@@ -1269,6 +1270,8 @@ __all__ = [
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svdvals",
+    "linalg_vecdot",
+    "linalg_vecdot_out",
     "linear",
     "linear_backward",
     "linspace",
