@@ -43,7 +43,9 @@ utils.gems_assert_close(res_out, ref_out, dtype)
 def test_dist_empty():
     x = torch.empty(0, device="cuda")
     y = torch.empty(0, device="cuda")
-
+ref_x = utils.to_reference(x)
+ref_y = utils.to_reference(y)
+ref_out = torch.dist(ref_x, ref_y)
     with flag_gems.use_gems():
         out = torch.dist(x, y)
 
