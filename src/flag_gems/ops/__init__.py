@@ -263,7 +263,6 @@ from flag_gems.ops.div import (
     div_mode_,
     floor_divide,
     floor_divide_,
-    true_divide,
     true_divide_,
     true_divide_out,
 )
@@ -413,6 +412,7 @@ from flag_gems.ops.lift import lift, lift_out
 from flag_gems.ops.lift_fresh import lift_fresh
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
+from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_ldl_solve import linalg_ldl_solve
 from flag_gems.ops.linalg_lstsq import linalg_lstsq
@@ -422,7 +422,12 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex_out,
 )
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
+from flag_gems.ops.linalg_solve_triangular import (
+    linalg_solve_triangular,
+    linalg_solve_triangular_out,
+)
 from flag_gems.ops.linalg_svdvals import linalg_svdvals
+from flag_gems.ops.linalg_vecdot import linalg_vecdot, linalg_vecdot_out
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linear_backward import linear_backward
 from flag_gems.ops.linspace import linspace
@@ -663,6 +668,10 @@ from flag_gems.ops.softmax import (
 from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.sort import sort, sort_stable
+from flag_gems.ops.sparse_sampled_addmm import (
+    sparse_sampled_addmm,
+    sparse_sampled_addmm_out,
+)
 from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
 from flag_gems.ops.special_bessel_j0 import special_bessel_j0
 from flag_gems.ops.special_bessel_j1 import special_bessel_j1
@@ -701,6 +710,7 @@ from flag_gems.ops.special_modified_bessel_k1 import (
     special_modified_bessel_k1,
     special_modified_bessel_k1_out,
 )
+from flag_gems.ops.special_multigammaln import special_multigammaln
 from flag_gems.ops.special_round import special_round, special_round_out
 from flag_gems.ops.special_scaled_modified_bessel_k1 import (
     special_scaled_modified_bessel_k1,
@@ -745,6 +755,7 @@ from flag_gems.ops.trace import trace
 from flag_gems.ops.transpose import transpose
 from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.triu import triu, triu_
+from flag_gems.ops.true_divide import true_divide, true_divide_tensor
 from flag_gems.ops.trunc_ import trunc, trunc_
 from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
@@ -1251,6 +1262,8 @@ __all__ = [
     "lift_fresh_copy_out",
     "lift_out",
     "linalg_cholesky",
+    "linalg_cross",
+    "linalg_cross_out",
     "linalg_ldl_solve",
     "linalg_lstsq",
     "linalg_lu_factor",
@@ -1258,7 +1271,11 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_slogdet",
+    "linalg_solve_triangular",
+    "linalg_solve_triangular_out",
     "linalg_svdvals",
+    "linalg_vecdot",
+    "linalg_vecdot_out",
     "linear",
     "linear_backward",
     "linspace",
@@ -1558,6 +1575,8 @@ __all__ = [
     "scalar_tensor",
     "sort",
     "sort_stable",
+    "sparse_sampled_addmm",
+    "sparse_sampled_addmm_out",
     "special_airy_ai",
     "special_airy_ai_out",
     "special_bessel_j0",
@@ -1592,6 +1611,7 @@ __all__ = [
     "special_modified_bessel_k0_out",
     "special_modified_bessel_k1",
     "special_modified_bessel_k1_out",
+    "special_multigammaln",
     "special_round",
     "special_round_out",
     "special_scaled_modified_bessel_k1",
@@ -1648,6 +1668,7 @@ __all__ = [
     "true_divide",
     "true_divide_",
     "true_divide_out",
+    "true_divide_tensor",
     "trunc",
     "trunc_",
     "unbind",
