@@ -291,6 +291,7 @@ from flag_gems.ops.fill import (
     fill_tensor_,
     fill_tensor_out,
 )
+from flag_gems.ops.fill_diagonal_ import fill_diagonal_
 from flag_gems.ops.fix import fix
 from flag_gems.ops.fix_ import fix_
 from flag_gems.ops.flash_attention_backward import (
@@ -1098,6 +1099,7 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fft",
+    "fill_diagonal_",
     "fill_scalar",
     "fill_scalar_",
     "fill_scalar_out",
