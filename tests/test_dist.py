@@ -24,7 +24,10 @@ import flag_gems
 def test_dist(shape, p, dtype):
     x = torch.randn(shape, device=flag_gems.device, dtype=dtype)
     y = torch.randn(shape, device=flag_gems.device, dtype=dtype)
-
+ref_x = utils.to_reference(x)
+ref_y = utils.to_reference(y)
+ref_p = utils.to_reference(p)
+ref = torch.dist(ref_x, ref_y, ref_p)
     with flag_gems.use_gems():
         out = torch.dist(x, y, p)
 
