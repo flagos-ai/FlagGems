@@ -1,4 +1,5 @@
 from typing import List, Tuple
+
 import torch
 
 
@@ -56,7 +57,7 @@ def _meshgrid_4d_npu(tensors, indexing):
 def _meshgrid_nd_npu(tensors, indexing):
     """NPU-specific implementation for N-D meshgrid using as_strided."""
     ndim = len(tensors)
-    
+
     if indexing == "xy":
         tensors_ordered = list(tensors)
         tensors_ordered[0], tensors_ordered[1] = tensors_ordered[1], tensors_ordered[0]
@@ -68,20 +69,20 @@ def _meshgrid_nd_npu(tensors, indexing):
         sizes = [t.numel() for t in tensors]
         out_shape = sizes
         in_tensors = tensors
-    
+
     strides = []
     for i in range(ndim):
         stride = [0] * ndim
         stride[i] = 1
         strides.append(tuple(stride))
-    
+
     out_tensors = []
     for i, t in enumerate(in_tensors):
         out_tensors.append(t.as_strided(tuple(out_shape), strides[i]))
-    
+
     if indexing == "xy":
         out_tensors[0], out_tensors[1] = out_tensors[1], out_tensors[0]
-    
+
     return tuple(out_tensors)
 
 
@@ -104,7 +105,7 @@ def meshgrid(
 ) -> Tuple[torch.Tensor, ...]:
     """
     Create coordinate grids from 1D tensors.
-    
+
     Uses as_strided for zero-copy operations.
     """
     if not tensors:
@@ -126,7 +127,9 @@ def meshgrid(
     device = tensors[0].device
     for t in tensors[1:]:
         if t.device != device:
-            raise RuntimeError(f"All tensors must be on the same device, got {device} and {t.device}")
+            raise RuntimeError(
+                f"All tensors must be on the same device, got {device} and {t.device}"
+            )
 
     return _dispatch_npu_meshgrid(tensors, indexing, rank)
 
