@@ -22,7 +22,7 @@ import flag_gems
     ],
 )
 def test_dist(shape, p, dtype):
-    x = torch.randn(shape, device="cuda", dtype=dtype)
+    x = torch.randn(shape, device=flag_gems.device, dtype=dtype)
     y = torch.randn(shape, device="cuda", dtype=dtype)
 
     with flag_gems.use_gems():
