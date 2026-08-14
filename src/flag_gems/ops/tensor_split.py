@@ -33,6 +33,7 @@ def split_copy_kernel(
     split_dim: tl.constexpr,
     dim_prod_pre: tl.constexpr,
     dim_prod_post: tl.constexpr,
+    dim_start,
     BLOCK_SIZE: tl.constexpr,
 ):
     """Kernel to copy a split from input to output tensor."""
@@ -57,9 +58,11 @@ def split_copy_kernel(
     post_idx = idx % dim_prod_post
 
     # Compute input index
-    # The split dimension offset is already accounted for in the output tensor layout
+    # Offset the split-dimension index by this split's start in the input
     input_idx = (
-        pre_idx * dim_size_input * dim_prod_post + split_idx * dim_prod_post + post_idx
+        pre_idx * dim_size_input * dim_prod_post
+        + (dim_start + split_idx) * dim_prod_post
+        + post_idx
     )
 
     # Load from input and store to output
@@ -217,6 +220,7 @@ def tensor_split(
             dim,  # split_dim
             dim_prod_pre,
             dim_prod_post,
+            current_dim_idx,  # dim_start
             BLOCK_SIZE=BLOCK_SIZE,
         )
 
