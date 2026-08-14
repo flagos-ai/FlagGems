@@ -109,16 +109,18 @@ def argmax_kernel(
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS_ASCEND ARGMAX")
     if dim is None:
+        inp = inp.contiguous()
         M = inp.numel()
         if dtype is None:
             dtype = inp.dtype
-        block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+        block_size = min(1024, triton.next_power_of_2(math.ceil(math.sqrt(M))))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
 
         mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
-        out = torch.empty([], dtype=torch.int64, device=inp.device)
+        out_shape = [1] * inp.dim() if keepdim else []
+        out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
 
         with torch_device_fn.device(inp.device):
             argmax_kernel_1[(mid_size, 1, 1)](
