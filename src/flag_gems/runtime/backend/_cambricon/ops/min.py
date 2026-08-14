@@ -43,7 +43,6 @@ def min_kernel_float_once(
     tl.store(out, min_val)
 
 
-@libentry()
 @triton.autotune(
     configs=cfggen_reduce_op(),
     key=["M"],
@@ -55,6 +54,7 @@ def min_kernel_float_once(
         <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
     }
 )
+@libentry()
 @triton.jit
 def min_kernel_float(
     inp, out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
@@ -80,7 +80,6 @@ def min_kernel_float(
     tl.atomic_min(out, res)
 
 
-@libentry()
 @triton.autotune(
     configs=cfggen_reduce_op(),
     key=["M"],
@@ -92,6 +91,7 @@ def min_kernel_float(
         <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
     }
 )
+@libentry()
 @triton.jit
 def min_kernel_int(
     inp, out, FILL_VALUE, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
@@ -118,7 +118,6 @@ def min_kernel_int(
     tl.atomic_min(out, res)
 
 
-@libentry()
 @triton.autotune(
     configs=cfggen_reduce_op(),
     key=["M"],
@@ -130,6 +129,7 @@ def min_kernel_int(
         <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
     }
 )
+@libentry()
 @triton.jit
 def min_kernel_int64_1(
     inp, mid, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
@@ -171,7 +171,6 @@ def heur_block_n(args):
     return triton.next_power_of_2(args["N"])
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("min"),
     key=[
@@ -179,6 +178,7 @@ def heur_block_n(args):
         "N",
     ],
 )
+@libentry()
 @triton.jit
 def min_kernel(
     inp,

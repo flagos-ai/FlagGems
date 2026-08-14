@@ -28,8 +28,8 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.autotune(configs=runtime.get_tuned_config("triu"), key=["M", "N"])
+@libentry()
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_kernel(
     X,
@@ -78,11 +78,11 @@ def triu_kernel(
             tl.store(Y + offset, write, mask=n_mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("triu_batch"),
     key=["batch", "MN", "N", "diagonal"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_batch_kernel(
     X,

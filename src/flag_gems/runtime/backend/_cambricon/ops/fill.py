@@ -26,7 +26,6 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config(kwargs={"BLOCK_SIZE": 1024}, num_stages=1, num_warps=1),
@@ -36,6 +35,7 @@ logger = logging.getLogger(__name__)
     key=["N"],
     strategy=["log"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["value_scalar"])
 def fill_scalar_kernel(
     out_ptr,
@@ -53,7 +53,6 @@ def fill_scalar_kernel(
         tl.store(out_ptr + offset, value_scalar, mask=offset < N)
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config(kwargs={"BLOCK_SIZE": 1024}, num_stages=1, num_warps=1),
@@ -63,6 +62,7 @@ def fill_scalar_kernel(
     ],
     key=["N"],
 )
+@libentry()
 @triton.jit
 def fill_tensor_kernel(
     out_ptr,
