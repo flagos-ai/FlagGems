@@ -22,10 +22,18 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-from ..utils import MAX_GRID_SIZE_X, cfggen_reduce_op
+from ..utils import MAX_GRID_SIZE_X
 
 logger = logging.getLogger(__name__)
-MAX_NRAM_C_FORWARD = 16384 * 2
+MAX_NRAM_C_FORWARD = 16384
+
+
+def cfggen_rms_norm_c_split():
+    return [
+        triton.Config({"BLOCK_SIZE": block_size}, num_warps=1, num_stages=num_stages)
+        for block_size in [1024, 2048, 4096, 8192, 16384]
+        for num_stages in [1, 3]
+    ]
 
 
 def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
@@ -76,17 +84,24 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
                 x, dy, inv_rms, dx, weight, N, 1, N, 1, N, eps, M
             )
 
-    ROW_BLOCK_SIZE = 16
+    is_bfloat16 = x.dtype == torch.bfloat16
+    ROW_BLOCK_SIZE = 1 if is_bfloat16 else 16
     COL_BLOCK_SIZE = 256
     row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
     col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
+    grid_dw = (
+        min(row_block_num, MAX_GRID_SIZE_X),
+        triton.cdiv(row_block_num, MAX_GRID_SIZE_X),
+        col_block_num,
+    )
 
+    partial_dtype = x.dtype if is_bfloat16 else torch.float32
     partial_buffer = torch.empty(
-        (row_block_num, N), dtype=torch.float32, device=x.device
+        (row_block_num, N), dtype=partial_dtype, device=x.device
     )
 
     with torch_device_fn.device(x.device):
-        rms_norm_grad_dw_kernel[row_block_num, col_block_num](
+        rms_norm_grad_dw_kernel[grid_dw](
             x,
             dy,
             inv_rms,
@@ -97,10 +112,12 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
             1,
             M,
             N,
+            row_block_num,
             ROW_BLOCK_SIZE,
             COL_BLOCK_SIZE,
         )
-        dw = torch.sum(partial_buffer, dim=0, dtype=x.dtype).reshape(-1)
+        sum_dtype = x.dtype if is_bfloat16 else torch.float32
+        dw = torch.sum(partial_buffer, dim=0, dtype=sum_dtype).to(x.dtype).reshape(-1)
 
     return dx, dw
 
@@ -136,17 +153,20 @@ def rms_norm_kernel(
         rrms = 1 / tl.sqrt(var + eps)
 
         w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
-        y = (x * rrms).to(Y_.dtype.element_ty) * w
+        # Cast x_normed back to input dtype before multiplying with weight
+        # to align with vLLM native: x.to(weight.dtype) * weight
+        x_normed = (x * rrms).to(X_.dtype.element_ty)
+        y = x_normed * w
         tl.store(Y_ + cols * y_stride_c, y, mask=mask)
         tl.store(INV_RMS + pid, rrms)
         pid += prog_num
 
 
-@libentry()
 @triton.autotune(
-    configs=cfggen_reduce_op(),
+    configs=cfggen_rms_norm_c_split(),
     key=["N"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def rms_norm_kernel_C_split(
     Y,  # pointer to the output
@@ -184,7 +204,9 @@ def rms_norm_kernel_C_split(
             mask = cols < N
             w = tl.load(W + cols, mask=mask, other=0.0)
             x = tl.load(X_ + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-            y = (x * rrms).to(Y_.dtype.element_ty) * w
+            # Cast x_normed back to input dtype before multiplying with weight
+            x_normed = (x * rrms).to(X_.dtype.element_ty)
+            y = x_normed * w
             tl.store(Y_ + cols * y_stride_c, y, mask=mask)
         tl.store(INV_RMS + pid, rrms)
         pid += prog_num
@@ -221,9 +243,9 @@ def rms_norm_grad_dx_kernel(
         x = tl.load(X_ + cols * x_stride_c, mask, other=0.0).to(tl.float32)
         inv_rms = tl.load(INV_RMS_).to(tl.float32)
         dy = tl.load(DY_ + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-        w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
+        w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0).to(tl.float32)
 
-        dy = dy * w
+        dy = (dy * w).to(DY_.dtype.element_ty).to(tl.float32)
 
         normalized_buf = x * inv_rms
         row_sum_stats = tl.sum(normalized_buf * dy, axis=0)
@@ -235,11 +257,11 @@ def rms_norm_grad_dx_kernel(
         pid += prog_num
 
 
-@libentry()
 @triton.autotune(
-    configs=cfggen_reduce_op(),
+    configs=cfggen_rms_norm_c_split(),
     key=["N"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def rms_norm_grad_dx_kernel_C_split(
     X,  # pointer to the input
@@ -273,8 +295,8 @@ def rms_norm_grad_dx_kernel_C_split(
             x = tl.load(X_ + cols * x_stride_c, mask=mask, other=0.0).to(tl.float32)
             inv_rms = tl.load(INV_RMS_).to(tl.float32)
             dy = tl.load(DY_ + cols * x_stride_c, mask=mask, other=0.0).to(tl.float32)
-            w = tl.load(W + cols, mask=mask, other=0.0)
-            dy = dy * w
+            w = tl.load(W + cols, mask=mask, other=0.0).to(tl.float32)
+            dy = (dy * w).to(DY_.dtype.element_ty).to(tl.float32)
             normalized = x * inv_rms
             acc += normalized * dy
 
@@ -286,8 +308,8 @@ def rms_norm_grad_dx_kernel_C_split(
             x = tl.load(X_ + cols * x_stride_c, mask=mask, other=0.0).to(tl.float32)
             inv_rms = tl.load(INV_RMS_).to(tl.float32)
             dy = tl.load(DY_ + cols * x_stride_c, mask=mask, other=0.0).to(tl.float32)
-            w = tl.load(W + cols, mask=mask, other=0.0)
-            dy = dy * w
+            w = tl.load(W + cols, mask=mask, other=0.0).to(tl.float32)
+            dy = (dy * w).to(DY_.dtype.element_ty).to(tl.float32)
             normalized = x * inv_rms
             norm_val = normalized / N
             dx = (dy - norm_val * row_sum_stats) * inv_rms
@@ -308,11 +330,12 @@ def rms_norm_grad_dw_kernel(
     x_stride_c,  # how much to increase the pointer when moving by 1 col
     M,  # number of rows in X
     N,  # number of columns in X
+    ROW_BLOCK_NUM,
     ROW_BLOCK_SIZE: tl.constexpr,
     COL_BLOCK_SIZE: tl.constexpr,
 ):
-    row_pid = tl.program_id(0)
-    col_pid = tl.program_id(1)
+    row_pid = tl.program_id(0) + tl.program_id(1) * tl.num_programs(0)
+    col_pid = tl.program_id(2)
 
     row_start = row_pid * ROW_BLOCK_SIZE
     col_start = col_pid * COL_BLOCK_SIZE
@@ -340,13 +363,14 @@ def rms_norm_grad_dw_kernel(
         other=0.0,
     ).to(tl.float32)
 
-    d_weight = x * dy * inv_rms[:, None]
+    normalized = (x * inv_rms[:, None]).to(DY.dtype.element_ty).to(tl.float32)
+    d_weight = normalized * dy
     partial_dweight_sum = tl.sum(d_weight, axis=0)
 
     tl.store(
         DW + row_pid * N + col_start + cols,
         partial_dweight_sum,
-        mask=col_mask,
+        mask=(row_pid < ROW_BLOCK_NUM) & col_mask,
     )
 
 

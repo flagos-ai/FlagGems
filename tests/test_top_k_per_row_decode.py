@@ -23,7 +23,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused import top_k_per_row_decode
+from flag_gems import top_k_per_row_decode
 
 from . import conftest as cfg
 

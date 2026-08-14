@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
 device_ = device
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config(kwargs={"BLOCK_SIZE": 1024}, num_stages=1, num_warps=1),
@@ -39,6 +38,7 @@ device_ = device
     key=["n_elements"],
     strategy=["align32"],
 )
+@libentry()
 @triton.jit
 def ones_kernel(
     output_ptr,
