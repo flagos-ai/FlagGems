@@ -32,23 +32,16 @@ def shifted_chebyshev_polynomial_t_kernel(x, n):
     # Where T_n(y) = cos(n * arccos(y))
     # The shifted polynomial is defined on [0, 1]
 
-    # Convert to float32 for computation, then convert back
-    x_f32 = x.to(tl.float32)
-    n_f32 = n.to(tl.float32)
-
+    # Compute in the promoted input precision so float64 keeps full accuracy.
     # Shift from [0, 1] to [-1, 1]
-    x_shifted = x_f32 * 2.0 - 1.0
+    x_shifted = x * 2.0 - 1.0
 
     # Clamp to valid range for acos to avoid numerical issues
     x_shifted = tl.where(x_shifted > 1.0, 1.0, x_shifted)
     x_shifted = tl.where(x_shifted < -1.0, -1.0, x_shifted)
 
     # T_n(y) = cos(n * arccos(y))
-    acos_val = tl_extra_shim.acos(x_shifted)
-    result = tl_extra_shim.cos(n_f32 * acos_val)
-
-    # Convert back to original dtype
-    return result.to(x.dtype)
+    return tl_extra_shim.cos(n * tl_extra_shim.acos(x_shifted))
 
 
 # Kernel for scalar n (n is not a tensor)
@@ -56,25 +49,22 @@ def shifted_chebyshev_polynomial_t_kernel(x, n):
 @triton.jit
 def shifted_chebyshev_polynomial_t_kernel_scalar_n(x, n):
     # Same as above but n is a scalar
-    x_f32 = x.to(tl.float32)
-    n_f32 = n.to(tl.float32)
-
-    x_shifted = x_f32 * 2.0 - 1.0
+    x_shifted = x * 2.0 - 1.0
 
     x_shifted = tl.where(x_shifted > 1.0, 1.0, x_shifted)
     x_shifted = tl.where(x_shifted < -1.0, -1.0, x_shifted)
 
-    acos_val = tl_extra_shim.acos(x_shifted)
-    result = tl_extra_shim.cos(n_f32 * acos_val)
-
-    return result.to(x.dtype)
+    return tl_extra_shim.cos(n * tl_extra_shim.acos(x_shifted))
 
 
 def special_shifted_chebyshev_polynomial_t(x, n):
     logger.debug("GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T")
-    # shifted_chebyshev_polynomial_t_cuda only supports float32
-    if x.dtype not in (torch.float32,):
-        raise ValueError(f"Unsupported dtype {x.dtype}, only float32 is supported")
+    # Matches the eager CUDA kernel, which has no Half/BFloat16 implementation.
+    if x.dtype in (torch.float16, torch.bfloat16):
+        raise ValueError(
+            f"Unsupported dtype {x.dtype}: "
+            "shifted_chebyshev_polynomial_t has no Half/BFloat16 implementation"
+        )
     # Handle scalar n
     if not isinstance(n, torch.Tensor):
         return shifted_chebyshev_polynomial_t_kernel_scalar_n(x, n)
