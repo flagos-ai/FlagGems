@@ -2207,6 +2207,23 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: ctc_loss_internal
+    description: Internal CTC loss forward that returns (neg_log_likelihood, log_alpha).
+    for:
+      - _ctc_loss.default
+      - _ctc_loss.Tensor
+      - _ctc_loss.out
+      - _ctc_loss.Tensor_out
+    labels:
+      - aten
+      - KernelGen
+    mark: ctc_loss_internal
+    kind:
+      - NeuralNetwork
+    device:
+      - nvidia
+    stages:
+      - alpha: '5.4'
   - id: copy
     description: |
       As a wrapper of `copy_`, this operator copies elements from `src` to `out`
