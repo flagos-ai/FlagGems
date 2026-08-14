@@ -74,6 +74,7 @@ from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pairwise_distance import pairwise_distance
 from .polar import polar
 from .polygamma import polygamma_
 from .pow import (
@@ -193,6 +194,7 @@ __all__ = [
     "ones",
     "ones_like",
     "outer",
+    "pairwise_distance",
     "polar",
     "polygamma_",
     "pow_scalar",
