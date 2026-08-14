@@ -34,7 +34,6 @@ logger = logging.getLogger(__name__)
 UNROLL = 4
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config(kwargs={"BLOCK": 1024}, num_stages=3, num_warps=1),
@@ -44,6 +43,7 @@ UNROLL = 4
     ],
     key=["N"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
 def dropout_forward_kernel(
     X,
@@ -86,7 +86,6 @@ def dropout_forward_kernel(
         i4_start += num_jobs * BLOCK
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config(kwargs={"BLOCK": 1024}, num_stages=3, num_warps=1),
@@ -96,6 +95,7 @@ def dropout_forward_kernel(
     ],
     key=["N"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["scale"])
 def dropout_backward_kernel(
     DY,
