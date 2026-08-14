@@ -57,7 +57,13 @@ def test_fake_quantize_per_tensor_affine_cachemask_backward_mask_semantics():
         )
 
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
-    utils.gems_assert_equal(torch.signbit(res_out), torch.signbit(ref_out))
+    # CPU and CUDA can produce NaNs with different sign bits for inf * 0. NaN
+    # sign is not part of the operator contract, but signed zero still is.
+    res_not_nan = ~torch.isnan(res_out)
+    ref_not_nan = ~torch.isnan(ref_out)
+    utils.gems_assert_equal(
+        torch.signbit(res_out)[res_not_nan], torch.signbit(ref_out)[ref_not_nan]
+    )
 
 
 @pytest.mark.fake_quantize_per_tensor_affine_cachemask_backward
