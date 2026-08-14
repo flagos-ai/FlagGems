@@ -55,9 +55,7 @@ def grid_sampler_2d_kernel(
     # Coordinate math is done in fp32 (tl.floor requires fp32/fp64 and the
     # extra precision avoids indexing errors for fp16/bf16 inputs).
     grid_x = tl.load(ptr_g + grid_offset, mask=idx_mask, other=0.0).to(tl.float32)
-    grid_y = tl.load(ptr_g + grid_offset + 1, mask=idx_mask, other=0.0).to(
-        tl.float32
-    )
+    grid_y = tl.load(ptr_g + grid_offset + 1, mask=idx_mask, other=0.0).to(tl.float32)
 
     # Unnormalize grid coordinates from [-1, 1] to pixel space, matching
     # PyTorch's grid_sampler_unnormalize:
@@ -134,10 +132,7 @@ def grid_sampler_2d_kernel(
         # Validity is based on the nearest pixel itself (only relevant for
         # zeros padding; border/reflection already produced in-range coords).
         in_bounds = (
-            (x_nearest >= 0)
-            & (x_nearest < IW)
-            & (y_nearest >= 0)
-            & (y_nearest < IH)
+            (x_nearest >= 0) & (x_nearest < IW) & (y_nearest >= 0) & (y_nearest < IH)
         )
         x_nearest_c = tl.minimum(tl.maximum(x_nearest, 0), IW - 1)
         y_nearest_c = tl.minimum(tl.maximum(y_nearest, 0), IH - 1)
