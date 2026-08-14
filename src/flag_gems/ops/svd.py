@@ -1525,9 +1525,9 @@ def _small_jacobi_singular_values(input):
     block_r = triton.next_power_of_2(rows)
     block_k = triton.next_power_of_2(k)
     # One-sided Jacobi needs enough sweeps for the smallest singular values to
-    # converge. Empirically k<=4 converges in 3 sweeps; larger k (up to 16)
-    # requires ~6 sweeps to reach atol=1e-3, so use 8 for margin.
-    sweeps = 3 if k <= 4 else 8
+    # converge; the trailing singular values are the slowest. Use 8 sweeps for
+    # all sizes up to 16, which leaves atol=1e-3 margin on the smallest value.
+    sweeps = 8
     with torch_device_fn.device(input.device):
         _small_jacobi_svals_kernel[(batch,)](
             a,
@@ -1559,9 +1559,9 @@ def _small_jacobi_svd(input):
     block_r = triton.next_power_of_2(rows)
     block_k = triton.next_power_of_2(k)
     # One-sided Jacobi needs enough sweeps for the smallest singular values to
-    # converge. Empirically k<=4 converges in 3 sweeps; larger k (up to 16)
-    # requires ~6 sweeps to reach atol=1e-3, so use 8 for margin.
-    sweeps = 3 if k <= 4 else 8
+    # converge; the trailing singular values are the slowest. Use 8 sweeps for
+    # all sizes up to 16, which leaves atol=1e-3 margin on the smallest value.
+    sweeps = 8
     with torch_device_fn.device(input.device):
         _small_jacobi_svd_kernel[(batch,)](
             a,
