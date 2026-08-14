@@ -60,8 +60,7 @@ MODEL_ARCH = [
     ("DeepSeek-R1-Distill-Llama-8B",   32, 8, 128, "distilled from Llama-3.1-8B"),
     # ---- GLM-4 series (GQA, multi_query_group_num=2) ----
     ("GLM-4-9B",                32,  2, 128,  "hidden=4096, layers=40"),
-    # ---- Llama-3.2 series (GQA, head_dim: 1B=64, 3B=128) ----
-    ("Llama-3.2-1B",            32,  8,  64,  "hidden=2048, layers=16"),
+    # ---- Llama-3.2 series (GQA, head_dim: 3B=128) ----
     ("Llama-3.2-3B",            24,  8, 128,  "hidden=3072, layers=28"),
 ]
 

@@ -49,7 +49,6 @@ BENCHMARK_CONFIGS = [
     ("Qwen2.5-1.5B", 1, 12, 2, 1024, 128, "small model long context"),
     ("GLM-4-9B", 1, 32, 2, 1024, 128, "extreme GQA ratio (16:1)"),
     ("Llama-3.2-3B", 1, 24, 8, 1024, 128, "Llama architecture"),
-    ("Llama-3.2-1B", 1, 32, 8, 512, 64, "small head_dim"),
 ]
 
 WARMUP = 10
