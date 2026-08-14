@@ -196,6 +196,88 @@ def _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_kernel(
 
 @libentry()
 @triton.jit
+def _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_grouped_kernel(
+    q,
+    k,
+    v,
+    g,
+    beta,
+    o,
+    state_fp8,
+    cu_seqlens,
+    state_indices,
+    scale,
+    stride_q_t: tl.constexpr,
+    stride_q_h: tl.constexpr,
+    stride_k_t: tl.constexpr,
+    stride_k_h: tl.constexpr,
+    stride_v_t: tl.constexpr,
+    stride_v_h: tl.constexpr,
+    stride_g_t: tl.constexpr,
+    stride_g_h: tl.constexpr,
+    stride_beta_t: tl.constexpr,
+    stride_beta_h: tl.constexpr,
+    stride_o_t: tl.constexpr,
+    stride_o_h: tl.constexpr,
+    stride_state_s: tl.constexpr,
+    stride_state_h: tl.constexpr,
+    stride_state_k: tl.constexpr,
+    H: tl.constexpr,
+    HV: tl.constexpr,
+    BK: tl.constexpr,
+    V: tl.constexpr,
+    BV: tl.constexpr,
+):
+    i_v = tl.program_id(0)
+    i_nh = tl.program_id(1)
+    i_n = i_nh // H
+    i_h = i_nh % H
+    i_hv_base = i_h * (HV // H)
+    i_t = tl.load(cu_seqlens + i_n).to(tl.int64)
+    state_index = tl.load(state_indices + i_n).to(tl.int64)
+    if state_index < 0:
+        return
+
+    o_k = tl.arange(0, BK)
+    o_v = i_v * BV + tl.arange(0, BV)
+    b_q = tl.load(q + i_t * stride_q_t + i_h * stride_q_h + o_k).to(tl.float32)
+    b_k = tl.load(k + i_t * stride_k_t + i_h * stride_k_h + o_k).to(tl.float32)
+    b_q *= tl.rsqrt(tl.sum(b_q * b_q, axis=0) + 1e-6) * scale
+    b_k *= tl.rsqrt(tl.sum(b_k * b_k, axis=0) + 1e-6)
+
+    for i_group in tl.range(0, HV // H, loop_unroll_factor=1):
+        i_hv = i_hv_base + i_group
+        g_offset = i_t * stride_g_t + i_hv * stride_g_h
+        beta_offset = i_t * stride_beta_t + i_hv * stride_beta_h
+        decay = exp(tl.load(g + g_offset).to(tl.float32))
+        b_beta = tl.load(beta + beta_offset).to(tl.float32)
+
+        state_offsets = (
+            state_index * stride_state_s
+            + i_hv * stride_state_h
+            + o_k[:, None] * stride_state_k
+            + o_v[None, :]
+        )
+        b_h = tl.load(state_fp8 + state_offsets).to(tl.float32)
+        b_v = tl.load(v + i_t * stride_v_t + i_hv * stride_v_h + o_v).to(tl.float32)
+
+        b_h *= decay
+        b_v = (b_v - tl.sum(b_h * b_k[:, None], axis=0)) * b_beta
+        b_h += b_k[:, None] * b_v[None, :]
+        b_o = tl.sum(b_h * b_q[:, None], axis=0)
+
+        tl.store(
+            o + i_t * stride_o_t + i_hv * stride_o_h + o_v,
+            b_o.to(o.dtype.element_ty),
+        )
+        tl.store(
+            state_fp8 + state_offsets,
+            tl.clamp(b_h, -448.0, 448.0).to(state_fp8.dtype.element_ty),
+        )
+
+
+@libentry()
+@triton.jit
 def _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_persistent_kernel(
     q,
     k,
@@ -484,9 +566,61 @@ def fused_recurrent_gated_delta_rule_fp8_w8a16_decode(
         "USE_QK_L2NORM": use_qk_l2norm_in_kernel,
     }
 
+    optimized_shape = K == 128 and V == 128
+    use_grouped_kernel = (
+        optimized_shape
+        and (48 <= N < 80 or N >= 160)
+        and use_packed_input
+        and state_indices is not None
+        and use_qk_l2norm_in_kernel
+        and HV // H == 2
+        and q.stride(-1) == 1
+        and k.stride(-1) == 1
+        and v.stride(-1) == 1
+        and g.stride(-1) == 1
+        and beta.stride(-1) == 1
+    )
+    # Group value heads without serializing V tiles when enough CTAs are available.
+    if use_grouped_kernel:
+        block_v = 32 if N < 64 else 64
+        _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_grouped_kernel[
+            (triton.cdiv(V, block_v), N * H)
+        ](
+            q,
+            k,
+            v,
+            g,
+            beta,
+            o,
+            state_fp8,
+            cu_seqlens,
+            state_indices,
+            scale,
+            q.stride(1),
+            q.stride(2),
+            k.stride(1),
+            k.stride(2),
+            v.stride(1),
+            v.stride(2),
+            g.stride(1),
+            g.stride(2),
+            beta.stride(1),
+            beta.stride(2),
+            o.stride(1),
+            o.stride(2),
+            state_fp8.stride(0),
+            state_fp8.stride(1),
+            state_fp8.stride(2),
+            H,
+            HV,
+            BK,
+            V,
+            block_v,
+            num_warps=1,
+            num_stages=1,
+        )
     # BV64 reuses normalized q/k; skip the short second-wave range on H20.
-    use_persistent_kernel = K == 128 and V == 128 and (48 <= N < 80 or N >= 96)
-    if use_persistent_kernel:
+    elif optimized_shape and (48 <= N < 80 or N >= 96):
         group_hv = 2 if 96 <= N < 160 and HV // H == 2 else 1
         _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_persistent_kernel[
             (N * (HV // group_hv),)
