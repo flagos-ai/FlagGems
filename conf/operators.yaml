@@ -9348,6 +9348,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: sigmoid_out
+    description: |
+      A variant of `sigmoid` that supports an output tensor to receive the result.
+    for:
+      - sigmoid.out
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: sign
     description: |
       Returns a new tensor with the sign of the elements of input.

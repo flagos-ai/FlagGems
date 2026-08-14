@@ -882,6 +882,7 @@ _FULL_CONFIG = (
     ("sgn.out", sgn_out),
     ("sgn_", sgn_),
     ("sigmoid", sigmoid),
+    ("sigmoid.out", sigmoid_out),
     ("sigmoid_", sigmoid_),
     ("sigmoid_backward", sigmoid_backward),
     ("sign", sign),
