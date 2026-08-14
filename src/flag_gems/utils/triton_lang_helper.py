@@ -425,6 +425,7 @@ tl_extra_shim = _patch_missing_symbols(
     tl_extra_shim,
     (
         "acos",
+        "asin",
         "atan",
         "j0",
         "j1",
