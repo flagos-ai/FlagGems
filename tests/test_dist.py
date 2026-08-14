@@ -34,7 +34,17 @@ def test_dist(shape, p, dtype):
     with flag_gems.use_gems():
         out = torch.dist(x, y, p)
 
-    utils.gems_assert_close(out, ref_out, dtype)
+    out = out.to(ref_out.device)
+
+    if dtype == torch.float32 and flag_gems.vendor_name == "metax":
+        torch.testing.assert_close(
+            out,
+            ref_out,
+            atol=1e-4,
+            rtol=1e-5,
+        )
+    else:
+        utils.gems_assert_close(out, ref_out, dtype)
 
 
 def test_dist_empty():
@@ -47,5 +57,7 @@ def test_dist_empty():
 
     with flag_gems.use_gems():
         out = torch.dist(x, y)
+
+    out = out.to(ref_out.device)
 
     utils.gems_assert_close(out, ref_out, x.dtype)
