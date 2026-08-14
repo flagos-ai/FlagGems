@@ -15,6 +15,7 @@
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .addmm import addmm, addmm_out
 from .arccosh_ import arccosh_
+from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .div import div_mode, div_mode_
@@ -41,6 +42,8 @@ __all__ = [
     "addmm",
     "addmm_out",
     "arccosh_",
+    "cholesky_solve",
+    "cholesky_solve_out",
     "conv_transpose1d",
     "div_mode",
     "div_mode_",

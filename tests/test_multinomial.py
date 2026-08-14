@@ -81,8 +81,21 @@ def test_multinomial_with_replacement_1(shape, dtype, n_samples):
     # Do a simple Chi-square test
     assert torch.equal(inp_counts.sum(-1), out_counts.sum(-1))
 
-    _, pvalue = scipy.stats.chisquare(out_counts.tolist(), inp_counts.tolist(), axis=-1)
-    assert np.sum(pvalue < 0.05) / len(pvalue) < 0.1
+    if flag_gems.vendor_name == "cambricon":
+        # Avoid scipy.stats import failure in the Cambricon test environment.
+        valid_counts = inp_counts > 0
+        chi_square = torch.where(
+            valid_counts, (out_counts - inp_counts).float().square() / inp_counts, 0
+        ).sum(-1)
+        df = (valid_counts.sum(-1).float() - 1).cpu()
+        chi_square = chi_square.cpu()
+        pvalue = torch.special.gammaincc(df / 2, chi_square / 2)
+        assert torch.sum(pvalue < 0.05) / pvalue.numel() < 0.1
+    else:
+        _, pvalue = scipy.stats.chisquare(
+            out_counts.tolist(), inp_counts.tolist(), axis=-1
+        )
+        assert np.sum(pvalue < 0.05) / len(pvalue) < 0.1
 
 
 @pytest.mark.multinomial
