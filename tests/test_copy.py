@@ -107,6 +107,14 @@ def test_copy_inplace_dtype_fallback():
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="mthreads does not support float8_e8m0fnu dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "metax",
+    reason="MetaX does not support float8_e8m0fnu dtype",
+)
 @pytest.mark.parametrize("shape", [(8,), (4, 4), (2, 3, 4)])
 def test_copy_inplace_float8_e8m0fnu(shape):
     """Test that copy_ works correctly with float8_e8m0fnu (e8m0) dtype tensors.
@@ -117,14 +125,29 @@ def test_copy_inplace_float8_e8m0fnu(shape):
     device = flag_gems.device
 
     # e8m0 is an exponent-only format, create via view from uint8
-    src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support uint8 generation.
+        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device="cpu").to(
+            device
+        )
+    else:
+        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
     src = src_uint8.view(torch.float8_e8m0fnu)
     ref_src = utils.to_reference(src)
 
-    ref_dst = utils.to_reference(
-        torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
-    )
-    res_dst = torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support float8_e8m0fnu generation.
+        ref_dst = utils.to_reference(
+            torch.zeros(shape, dtype=torch.float8_e8m0fnu, device="cpu").to(device)
+        )
+        res_dst = torch.zeros(shape, dtype=torch.float8_e8m0fnu, device="cpu").to(
+            device
+        )
+    else:
+        ref_dst = utils.to_reference(
+            torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
+        )
+        res_dst = torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
     ref_dst.copy_(ref_src)
 
     with flag_gems.use_gems():
@@ -141,12 +164,26 @@ def test_copy_inplace_float8_e8m0fnu(shape):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="mthreads does not support float8_e8m0fnu dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "metax",
+    reason="MetaX does not support float8_e8m0fnu dtype",
+)
 def test_copy_inplace_float8_e8m0fnu_to_float32():
     """Test copy_ from float8_e8m0fnu to float32."""
     device = flag_gems.device
     shape = (8,)
 
-    src_uint8 = torch.randint(1, 200, shape, dtype=torch.uint8, device=device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support uint8 generation.
+        src_uint8 = torch.randint(1, 200, shape, dtype=torch.uint8, device="cpu").to(
+            device
+        )
+    else:
+        src_uint8 = torch.randint(1, 200, shape, dtype=torch.uint8, device=device)
     src = src_uint8.view(torch.float8_e8m0fnu)
     ref_src = utils.to_reference(src)
 

@@ -43,7 +43,6 @@ def max_kernel_float_once(
     tl.store(out, max_val)
 
 
-@libentry()
 @libtuner(
     configs=cfggen_reduce_op(),
     key=["M"],
@@ -56,6 +55,7 @@ def max_kernel_float_once(
         <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
     }
 )
+@libentry()
 @triton.jit
 def max_kernel_float(
     inp, out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
@@ -83,7 +83,6 @@ def max_kernel_float(
         tl.atomic_max(out, res)
 
 
-@libentry()
 @libtuner(
     configs=cfggen_reduce_op(),
     key=["M"],
@@ -96,6 +95,7 @@ def max_kernel_float(
         <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
     }
 )
+@libentry()
 @triton.jit
 def max_kernel_int(
     inp, out, M, FILL_VALUE, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
@@ -122,7 +122,6 @@ def max_kernel_int(
     tl.atomic_max(out, res)
 
 
-@libentry()
 @libtuner(
     configs=cfggen_reduce_op(),
     key=["M"],
@@ -135,6 +134,7 @@ def max_kernel_int(
         <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
     }
 )
+@libentry()
 @triton.jit
 def max_kernel_int64_1(
     inp, mid, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
@@ -175,7 +175,6 @@ def heur_block_n(args):
     return triton.next_power_of_2(args["N"])
 
 
-@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("max"),
     key=[
@@ -184,6 +183,7 @@ def heur_block_n(args):
     ],
     strategy=["log", "log"],
 )
+@libentry()
 @triton.jit
 def max_kernel(
     inp,
