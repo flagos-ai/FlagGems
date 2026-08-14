@@ -2210,7 +2210,7 @@ ops:
   - id: _ctc_loss
     description: Internal CTC loss forward that returns (neg_log_likelihood, log_alpha).
     for:
-      - _ctc_loss.default
+      - _ctc_loss
       - _ctc_loss.Tensor
       - _ctc_loss.out
       - _ctc_loss.Tensor_out
