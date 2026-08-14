@@ -606,6 +606,8 @@ _FULL_CONFIG = (
     ("linalg_cholesky", linalg_cholesky),
     ("linalg_cross", linalg_cross),
     ("linalg_cross.out", linalg_cross_out),
+    ("linalg_eigvals", linalg_eigvals),
+    ("linalg_eigvals.out", linalg_eigvals_out),
     ("linalg_ldl_factor", ldl_factor),
     ("linalg_ldl_factor_ex", ldl_factor_ex),
     ("linalg_lu_factor", linalg_lu_factor),

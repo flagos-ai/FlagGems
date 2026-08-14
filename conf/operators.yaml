@@ -5549,7 +5549,19 @@ ops:
   - id: linalg_eigvals
     description: Computes the eigenvalues of a square matrix.
     for:
+      - linalg_eigvals
       - _linalg_eigvals
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_eigvals_out
+    description: A variant of `linalg_eigvals` that allows the output to be assigned to `out`.
+    for:
+      - linalg_eigvals.out
     labels:
       - aten
       - KernelGen
