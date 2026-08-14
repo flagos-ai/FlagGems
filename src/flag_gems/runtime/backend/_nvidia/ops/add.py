@@ -39,6 +39,8 @@ def _can_use_fast_path(x, y, alpha):
     return (
         isinstance(x, torch.Tensor)
         and isinstance(y, torch.Tensor)
+        and isinstance(alpha, (int, float))
+        and not isinstance(alpha, bool)
         and alpha == 1
         and x.device == y.device
         and x.dtype == y.dtype

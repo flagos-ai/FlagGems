@@ -28,22 +28,42 @@ from . import accuracy_utils as utils
 @pytest.mark.skipif(
     flag_gems.vendor_name != "nvidia", reason="NVIDIA-specific contiguous fast path"
 )
-@pytest.mark.parametrize("shape", [(0,), (1, 4096), (16, 4096)])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("shape", [(0,), (17,), (1, 4096), (16, 4096)])
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_add_nvidia_contiguous_fast_path(shape, dtype, monkeypatch):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     expected = utils.to_reference(inp1, True) + utils.to_reference(inp2, True)
 
-    nvidia_add = importlib.import_module("flag_gems.runtime.backend._nvidia.ops.add")
+    nvidia_add = importlib.import_module(flag_gems.add.__module__)
 
     def fail_generic_add(*args, **kwargs):
         raise AssertionError("contiguous default-alpha add did not use the fast path")
 
     monkeypatch.setattr(nvidia_add, "generic_add", fail_generic_add)
-    with flag_gems.use_gems():
-        actual = torch.add(inp1, inp2)
+    actual = flag_gems.add(inp1, inp2)
     utils.gems_assert_close(actual, expected, dtype)
+
+
+@pytest.mark.add
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia", reason="NVIDIA-specific contiguous fast path"
+)
+@pytest.mark.parametrize("alpha", [True, 1 + 0j])
+def test_add_nvidia_invalid_alpha_uses_generic_path(alpha, monkeypatch):
+    inp1 = torch.ones((1, 4096), device=flag_gems.device)
+    inp2 = torch.ones_like(inp1)
+    nvidia_add = importlib.import_module(flag_gems.add.__module__)
+
+    class GenericPathCalled(Exception):
+        pass
+
+    def fail_generic_add(*args, **kwargs):
+        raise GenericPathCalled
+
+    monkeypatch.setattr(nvidia_add, "generic_add", fail_generic_add)
+    with pytest.raises(GenericPathCalled):
+        flag_gems.add(inp1, inp2, alpha=alpha)
 
 
 @pytest.mark.add
