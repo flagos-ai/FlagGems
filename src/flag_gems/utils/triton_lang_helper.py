@@ -194,6 +194,39 @@ def _fallback_log2(x):
 
 
 @triton.jit
+def _fallback_lgamma(x):
+    # Lanczos approximation with reflection for x < 0.5.  This uses only core
+    # Triton math operations so vendor forks whose libdevice does not expose
+    # lgamma (for example Sunrise's tang backend) can still import and compile
+    # operators which reference tl_extra_shim.lgamma.
+    reflect = x < 0.5
+    y = tl.where(reflect, 1.0 - x, x)
+    z = y - 1.0
+    a = 0.9999999999998099
+    a += 676.5203681218851 / (z + 1.0)
+    a += -1259.1392167224028 / (z + 2.0)
+    a += 771.3234287776531 / (z + 3.0)
+    a += -176.6150291621406 / (z + 4.0)
+    a += 12.507343278686905 / (z + 5.0)
+    a += -0.13857109526572012 / (z + 6.0)
+    a += 9.984369578019572e-6 / (z + 7.0)
+    a += 1.5056327351493116e-7 / (z + 8.0)
+    t = z + 7.5
+    result = 0.9189385332046727 + (z + 0.5) * tl.log(t) - t + tl.log(a)
+
+    pi = 3.141592653589793
+    reflected = tl.log(pi) - tl.log(tl.abs(tl.sin(pi * x))) - result
+    result = tl.where(reflect, reflected, result)
+
+    # The reflection formula's finite-precision sin(pi*x) is not exactly zero
+    # at negative integers, so mark Gamma's poles explicitly.  lgamma(+/-inf)
+    # is +inf; NaNs naturally propagate through the approximation.
+    is_pole = (x <= 0.0) & (x == tl.floor(x))
+    result = tl.where(is_pole | (tl.abs(x) == float("inf")), float("inf"), result)
+    return result
+
+
+@triton.jit
 def _fallback_j0(x):
     # Bessel J0(x) for float32/float64, used when a backend's libdevice lacks a
     # native j0 (e.g. the cambricon mlu fork).  Body adapted verbatim from the
@@ -349,6 +382,7 @@ _FALLBACK_SYMBOLS = {
     "floor": _fallback_floor,
     "j0": _fallback_j0,
     "j1": _fallback_j1,
+    "lgamma": _fallback_lgamma,
     "log2": _fallback_log2,
     "nextafter": _fallback_nextafter,
     "sinpi": _fallback_sinpi,

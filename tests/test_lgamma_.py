@@ -14,10 +14,62 @@
 
 import pytest
 import torch
+import triton
+import triton.language as tl
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.triton_lang_helper import _fallback_lgamma, _patch_missing_symbols
 
 from . import accuracy_utils as utils
+
+
+@triton.jit
+def fallback_lgamma_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    tl.store(out_ptr + offsets, _fallback_lgamma(x), mask=mask)
+
+
+def test_missing_lgamma_uses_fallback():
+    class EmptyLibdevice:
+        pass
+
+    libdevice = _patch_missing_symbols(EmptyLibdevice(), ("lgamma",))
+    assert libdevice.lgamma is _fallback_lgamma
+
+
+def test_fallback_lgamma():
+    inp = torch.tensor(
+        [
+            -float("inf"),
+            -4.0,
+            -3.75,
+            -2.5,
+            -1.25,
+            -0.5,
+            -0.0,
+            0.0,
+            0.1,
+            0.5,
+            1.0,
+            1.5,
+            3.0,
+            8.0,
+            32.0,
+            float("inf"),
+            float("nan"),
+        ],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    expected = torch.lgamma(inp)
+    actual = torch.empty_like(inp)
+    block_size = triton.next_power_of_2(inp.numel())
+    with torch_device_fn.device(inp.device):
+        fallback_lgamma_kernel[(1,)](inp, actual, inp.numel(), BLOCK_SIZE=block_size)
+    torch.testing.assert_close(actual, expected, rtol=2e-5, atol=2e-5, equal_nan=True)
 
 
 @pytest.mark.lgamma
