@@ -27,7 +27,7 @@ def test_fake_quantize_per_channel_affine_cachemask_backward(shape, dtype):
     grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.randint(0, 2, shape, dtype=torch.bool, device=flag_gems.device)
     ref_grad = utils.to_reference(grad)
-    ref_mask = mask.to(torch.bool)
+    ref_mask = utils.to_reference(mask)
 
     ref_out = torch.ops.aten.fake_quantize_per_channel_affine_cachemask_backward(
         ref_grad, ref_mask
