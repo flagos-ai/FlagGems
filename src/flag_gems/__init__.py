@@ -98,6 +98,8 @@ _FULL_CONFIG = (
     ),
     ("_assert_async", _assert_async),
     ("_batch_norm_no_update", _batch_norm_no_update),
+    ("_conj_physical", _conj_physical),
+    ("_conj_physical.out", _conj_physical_out),
     ("_functional_assert_async.msg", _functional_assert_async),
     ("_cdist_backward", _cdist_backward),
     ("_cdist_forward", _cdist_forward),
