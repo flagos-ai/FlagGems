@@ -50,4 +50,4 @@ ref_out = torch.dist(ref_x, ref_y)
         out = torch.dist(x, y)
 
 
-    torch.testing.assert_close(out, ref)
+    utils.gems_assert_close(res_out, ref_out, dtype)
