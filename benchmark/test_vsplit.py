@@ -29,6 +29,13 @@ def vsplit_input_fn(shape, dtype, device):
         yield inp, 4
 
 
+def vsplit_array_input_fn(shape, dtype, device):
+    inp = base.generate_tensor_input(shape, dtype, device)
+    # Use list-of-indices split
+    indices = [shape[0] // 3, 2 * shape[0] // 3]
+    yield inp, indices
+
+
 class VsplitBenchmark(base.GenericBenchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         shapes = [
@@ -51,6 +58,20 @@ def test_perf_vsplit():
         input_fn=vsplit_input_fn,
         op_name="vsplit",
         torch_op=vsplit_wrapper,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.vsplit
+def test_perf_vsplit_array():
+    def vsplit_array_wrapper(input, indices):
+        return torch.ops.aten.vsplit.array(input, indices)
+
+    bench = VsplitBenchmark(
+        input_fn=vsplit_array_input_fn,
+        op_name="vsplit",
+        torch_op=vsplit_array_wrapper,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
