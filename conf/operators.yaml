@@ -4316,6 +4316,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.3'
+  - id: grid_sampler_2d_backward
+    description: Computes gradients for 2D grid sampling operation. Returns gradients with respect to input tensor and/or sampling grid.
+    for:
+      - grid_sampler_2d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: group_norm
     description: An internal IR for applying Group Normalization for last certain number of dimensions.
     for:
