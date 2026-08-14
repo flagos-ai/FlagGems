@@ -36,7 +36,7 @@ def test_dist(shape, p, dtype):
 
     out = out.to(ref_out.device)
 
-    if dtype == torch.float32 and flag_gems.vendor_name == "metax":
+    if dtype == torch.float32:
         torch.testing.assert_close(
             out,
             ref_out,
