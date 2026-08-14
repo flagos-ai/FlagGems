@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.DSA.sparse_mla import triton_sparse_mla_fwd_interface
+from flag_gems import triton_sparse_mla_fwd_interface
 
 from .torch_src.sparse_mla_fwd import (
     ref_sparse_mla_fwd_interface,  # , sparse_mla_fwd_interface

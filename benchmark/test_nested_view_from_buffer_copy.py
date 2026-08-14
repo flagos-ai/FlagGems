@@ -2,23 +2,26 @@ import sys
 
 # The concurrent agent runner may leave a stale editable install redirector pointing to
 # a different worktree. Remove it so our worktree's flag_gems is loaded.
-sys.meta_path = [
-    m for m in sys.meta_path if "ScikitBuildRedirectingFinder" not in str(type(m))
-]
+import flag_gems
 
-# Swap our worktree's src to the front of sys.path.
-_our_src = "/tmp/flaggems_agent_worktrees/agent__nested_view_from_buffer_copy_179605-1781252494/src"
-sys.path = [_our_src] + [p for p in sys.path if p != _our_src]
+if flag_gems.vendor_name != "cambricon":
+    sys.meta_path = [
+        m for m in sys.meta_path if "ScikitBuildRedirectingFinder" not in str(type(m))
+    ]
 
-# Clear any cached flag_gems modules.
-for _k in list(sys.modules):
-    if "flag_gems" in _k:
-        del sys.modules[_k]
+    # Swap our worktree's src to the front of sys.path.
+    _our_src = "/tmp/flaggems_agent_worktrees/agent__nested_view_from_buffer_copy_179605-1781252494/src"
+    sys.path = [_our_src] + [p for p in sys.path if p != _our_src]
+
+    # Clear any cached flag_gems modules.
+    for _k in list(sys.modules):
+        if "flag_gems" in _k:
+            del sys.modules[_k]
+
+    import flag_gems  # noqa: E402
 
 import pytest  # noqa: E402
 import torch  # noqa: E402
-
-import flag_gems  # noqa: E402
 
 from . import base, consts  # noqa: E402
 

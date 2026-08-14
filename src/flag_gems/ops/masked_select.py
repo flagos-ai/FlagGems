@@ -20,6 +20,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable, libentry
+from flag_gems.utils.codegen_config_utils import get_codegen_config
 from flag_gems.utils.shape_utils import bracket_next_power_of_2
 
 logger = logging.getLogger(__name__)
@@ -42,12 +43,13 @@ def masked_select_single_pass_kernel(
 
 def masked_select_single_pass(inp, mask, out, N):
     BLOCK_SIZE = triton.next_power_of_2(N)
+    max_warps = get_codegen_config().max_num_warps_per_cta
     if BLOCK_SIZE <= 512:
         num_warps = 4
     elif BLOCK_SIZE <= 2048:
         num_warps = 8
     else:
-        num_warps = 16
+        num_warps = min(16, max_warps)
     masked_select_single_pass_kernel[(1,)](
         inp, mask, out, N, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps
     )
@@ -161,7 +163,8 @@ def masked_select(inp, mask):
     # return mask_select(inp, mask)
 
     BLOCK_SIZE = bracket_next_power_of_2(N, 128, 4096)
-    num_warps = min(16, BLOCK_SIZE // 32)
+    max_warps = get_codegen_config().max_num_warps_per_cta
+    num_warps = min(16, max_warps, BLOCK_SIZE // 32)
 
     # max degree of parallelism
     np = torch_device_fn.get_device_properties(mask.device).multi_processor_count

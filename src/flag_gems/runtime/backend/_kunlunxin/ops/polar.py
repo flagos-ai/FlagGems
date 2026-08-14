@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(
@@ -34,6 +38,7 @@ def polar_kernel(abs, angle):
 
 
 def polar(abs, angle):
+    logger.debug("GEMS_KUNLUNXIN POLAR")
     output = torch.empty((*abs.shape, 2), dtype=abs.dtype, device=abs.device)
 
     polar_kernel(abs, angle, out0=output[..., 0], out1=output[..., 1])

@@ -31,6 +31,7 @@ from .attention import (
 from .baddbmm import baddbmm
 from .bmm import bmm
 from .cat import cat, cat_out
+from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
@@ -53,6 +54,10 @@ from .index import index
 from .index_add import index_add, index_add_
 from .index_select import index_select
 from .isin import isin
+from .linalg_cross import linalg_cross, linalg_cross_out
+from .linalg_lstsq import linalg_lstsq
+from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
+from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linspace import linspace
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .masked_fill import masked_fill, masked_fill_
@@ -65,10 +70,14 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .multinomial import multinomial
+from .nansum import nansum, nansum_out
+from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pairwise_distance import pairwise_distance
 from .polar import polar
+from .polygamma import polygamma_
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -121,6 +130,8 @@ __all__ = [
     "bmm",
     "cat",
     "cat_out",
+    "cholesky_solve",
+    "cholesky_solve_out",
     "count_nonzero",
     "cummax",
     "cummin",
@@ -151,7 +162,14 @@ __all__ = [
     "index_add_",
     "index_select",
     "isin",
+    "linalg_lstsq",
+    "linalg_lu_factor",
+    "linalg_lu_factor_out",
+    "linalg_lu_factor_ex",
+    "linalg_lu_factor_ex_out",
     "linspace",
+    "linalg_cross",
+    "linalg_cross_out",
     "log_softmax",
     "log_softmax_backward",
     "log_softmax_out",
@@ -171,11 +189,17 @@ __all__ = [
     "mm",
     "mm_out",
     "multinomial",
+    "nansum",
+    "nansum_out",
+    "nonzero_static",
+    "nonzero_static_out",
     "normed_cumsum",
     "ones",
     "ones_like",
     "outer",
+    "pairwise_distance",
     "polar",
+    "polygamma_",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",

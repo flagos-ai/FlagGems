@@ -68,7 +68,6 @@ def ld_st_1(indices, N: tl.constexpr, weight_ptr, in_mask, in_offsets, out_ptr):
     tl.store(out_ptr + out_offsets, embedding_weight, in_mask[:, None])
 
 
-@libentry()
 @libtuner(
     configs=[
         # [512, 65536]
@@ -80,6 +79,7 @@ def ld_st_1(indices, N: tl.constexpr, weight_ptr, in_mask, in_offsets, out_ptr):
         "early_config_prune": config_prune,
     },
 )
+@libentry()
 @triton.jit
 def one_batch_index_select_kernel(  # 2D
     out_ptr,
@@ -208,12 +208,12 @@ def ld_st_2(
     tl.store(out + output_offsets, selected, mask=input_output_mask)
 
 
-@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("index_select"),
     key=["batch_dim", "index_dim", "c_dim"],
     prune_configs_by={"early_config_prune": config_prune},
 )
+@libentry()
 @triton.jit
 def multi_batch_index_select_kernel(
     inp,
