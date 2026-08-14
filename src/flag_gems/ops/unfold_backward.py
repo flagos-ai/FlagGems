@@ -59,6 +59,8 @@ def unfold_backward(
     grad_in: torch.Tensor, input_sizes, dim: int, size: int, step: int
 ) -> torch.Tensor:
     logger.debug("GEMS UNFOLD BACKWARD")
+    size = int(size)
+    step = int(step)
     if step <= 0:
         raise ValueError("step must be > 0")
 
@@ -69,17 +71,24 @@ def unfold_backward(
     d = dim % ndim
 
     D = int(input_sizes[d])
-    L = (D - int(size)) // int(step) + 1
-
-    prod_after = 1
-    for s_ in input_sizes[d + 1 :]:
-        prod_after *= int(s_)
-    inner_total = int(L) * int(prod_after) * int(size)
+    L = (D - size) // step + 1
+    expected_grad_shape = tuple(input_sizes[:d] + [L] + input_sizes[d + 1 :] + [size])
+    if tuple(grad_in.shape) != expected_grad_shape:
+        raise RuntimeError("unfold_backward(): grad_in sizes unexpected")
 
     device = grad_in.device
     grad_out_f32 = torch.zeros(input_sizes, dtype=torch.float32, device=device)
 
     numel_in = grad_in.numel()
+    if numel_in == 0:
+        if grad_in.dtype != torch.float32:
+            return grad_out_f32.to(grad_in.dtype)
+        return grad_out_f32
+
+    prod_after = 1
+    for s_ in input_sizes[d + 1 :]:
+        prod_after *= int(s_)
+    inner_total = int(L) * int(prod_after) * size
 
     BLOCK = 128
     grid = lambda meta: (triton.cdiv(numel_in, meta["BLOCK"]),)
