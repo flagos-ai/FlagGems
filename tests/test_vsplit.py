@@ -43,7 +43,7 @@ VSPLIT_CONFIGS = [
 
 @pytest.mark.vsplit
 @pytest.mark.parametrize("shape, indices_or_sections", VSPLIT_CONFIGS)
-def test_accuracy_vsplit(shape, indices_or_sections):
+def test_accuracy_vsplit(shape, indices_or_sections, caplog):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
@@ -52,11 +52,13 @@ def test_accuracy_vsplit(shape, indices_or_sections):
     else:
         ref_out = torch.ops.aten.vsplit.array(ref_inp, indices_or_sections)
 
-    with flag_gems.use_gems():
-        if isinstance(indices_or_sections, int):
-            res_out = torch.ops.aten.vsplit.int(inp, indices_or_sections)
-        else:
-            res_out = torch.ops.aten.vsplit.array(inp, indices_or_sections)
+    with caplog.at_level("DEBUG", logger="flag_gems.ops.vsplit"):
+        with flag_gems.use_gems():
+            if isinstance(indices_or_sections, int):
+                res_out = torch.ops.aten.vsplit.int(inp, indices_or_sections)
+            else:
+                res_out = torch.ops.aten.vsplit.array(inp, indices_or_sections)
+    assert "GEMS VSPLIT" in caplog.text
 
     assert len(res_out) == len(
         ref_out
