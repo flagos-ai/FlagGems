@@ -14,6 +14,11 @@ else:
 vendor_name = flag_gems.vendor_name
 
 
+def _out_shape(shape, dim):
+    dim = dim % len(shape)
+    return shape[:dim] + shape[dim + 1 :]
+
+
 @pytest.mark.linalg_vecdot
 @pytest.mark.parametrize("shape", utils.UT_SHAPES_2D + utils.UT_SHAPES_1D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -56,10 +61,15 @@ def test_linalg_vecdot_out(shape, dtype, dim):
     ref_x = utils.to_reference(x)
     ref_y = utils.to_reference(y)
 
-    ref_out = torch.linalg.vecdot(ref_x, ref_y, dim=dim, out=?)
+    out_shape = _out_shape(shape, dim)
+
+    ref_out = torch.empty(out_shape, dtype=ref_x.dtype, device=ref_x.device)
+    torch.linalg.vecdot(ref_x, ref_y, dim=dim, out=ref_out)
+
+    out = torch.empty(out_shape, dtype=x.dtype, device=x.device)
     with flag_gems.use_gems():
-        out = torch.linalg.vecdot(x, y, dim=dim, out=?)
-        
+        torch.linalg.vecdot(x, y, dim=dim, out=out)
+
     if dim < 0:
         dim = dim % len(shape)
     vec_dim = shape[dim]
