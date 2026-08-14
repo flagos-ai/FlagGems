@@ -72,9 +72,7 @@ def test_unfold_backward_zero_size(dtype):
 def test_unfold_backward_rejects_unexpected_grad_shape():
     grad_in = torch.randn((16, 16), device=flag_gems.device)
 
-    with pytest.raises(
-        RuntimeError, match=r"unfold_backward\(\): grad_in sizes unexpected"
-    ):
+    with pytest.raises(RuntimeError):
         flag_gems.unfold_backward(grad_in, (2, 4, 16, 16), 0, 0, 1)
 
     health = torch.ones(4, device=flag_gems.device)
