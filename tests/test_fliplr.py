@@ -29,7 +29,7 @@ from . import accuracy_utils as utils
 def test_accuracy_fliplr(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
-    original = inp.clone()
+    original = utils.to_reference(inp.clone(), False)
 
     expected = torch.fliplr(ref_inp)
     with flag_gems.use_gems():
