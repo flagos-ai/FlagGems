@@ -38,3 +38,27 @@ def test_linalg_eigvals():
         dtypes=[torch.float32],
     )
     bench.run()
+
+
+@pytest.mark.linalg_eigvals
+def test_linalg_eigvals_default():
+    bench = LinalgEigvalsBenchmark(
+        op_name="linalg_eigvals.default",
+        torch_op=torch.ops.aten.linalg_eigvals.default,
+        dtypes=[torch.float32],
+    )
+    bench.run()
+
+
+@pytest.mark.linalg_eigvals_out
+def test_linalg_eigvals_out():
+    def op(x):
+        out = torch.empty(x.shape[0], dtype=torch.complex64, device=x.device)
+        return torch.ops.aten.linalg_eigvals.out(x, out=out)
+
+    bench = LinalgEigvalsBenchmark(
+        op_name="linalg_eigvals.out",
+        torch_op=op,
+        dtypes=[torch.float32],
+    )
+    bench.run()
