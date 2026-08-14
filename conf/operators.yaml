@@ -13,7 +13,7 @@
 # limitations under the License.
 
 ops:
-  - id: _assert_tensor_metadata
+  - id: assert_tensor_metadata
     description: |
       Asserts that the input tensor's metadata (size, stride, dtype, device,
       layout) matches the provided expected values. Raises a RuntimeError on
