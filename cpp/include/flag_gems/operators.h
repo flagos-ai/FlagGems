@@ -271,4 +271,10 @@ at::Tensor to_copy(const at::Tensor &self,
 
 at::Tensor &copy_(at::Tensor &dst, const at::Tensor &src, bool non_blocking = false);
 
+// Apex-aligned weight-gradient GEMM into fp32 main_grad via cublasGemmEx.
+// Expects already-collapsed 2D input / grad_output.
+void wgrad_gemm_accum_fp32(const at::Tensor &input_2d,
+                           const at::Tensor &grad_output_2d,
+                           at::Tensor &main_grad);
+
 }  // namespace flag_gems

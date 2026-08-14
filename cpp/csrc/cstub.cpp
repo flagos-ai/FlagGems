@@ -86,6 +86,11 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("exponential_", &flag_gems::exponential_);
   m.def("addmm", &flag_gems::addmm);
   m.def("mm", &flag_gems::mm_tensor);
+  m.def("wgrad_gemm_accum_fp32",
+        &flag_gems::wgrad_gemm_accum_fp32,
+        py::arg("input_2d"),
+        py::arg("grad_output_2d"),
+        py::arg("main_grad"));
   m.def("zeros", &flag_gems::zeros);
   m.def(
       "sum_dim",
@@ -203,6 +208,9 @@ TORCH_LIBRARY(flag_gems, m) {
   // blas
   m.def("addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor");
   m.def("mm(Tensor self, Tensor mat2) -> Tensor");
+  m.def(
+      "wgrad_gemm_accum_fp32(Tensor input_2d, Tensor grad_output_2d, Tensor(a!) main_grad) "
+      "-> ()");
 
   m.def(
       "zeros(SymInt[] size, ScalarType? dtype=None,Layout? layout=None, Device? device=None, bool? "
@@ -350,6 +358,7 @@ TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
   m.impl("addmm", TORCH_FN(addmm));
   m.impl("bmm", TORCH_FN(bmm));
   m.impl("mm", TORCH_FN(mm_tensor));
+  m.impl("wgrad_gemm_accum_fp32", TORCH_FN(wgrad_gemm_accum_fp32));
   m.impl("zeros", TORCH_FN(zeros));
   m.impl("sum.dim_IntList", TORCH_FN(sum_dim));
   m.impl("sum", TORCH_FN(sum));

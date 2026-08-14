@@ -111,7 +111,10 @@ jobs:
 
   python-op:
     needs: preprocess
-    if: contains(needs.preprocess.outputs.labels, 'tests')
+    # `tests` covers direct test/bench edits; `ops/aten` covers ops/ + JIT csrc/
+    # so changing an implementation without touching tests/ still runs python-op.
+    if: contains(needs.preprocess.outputs.labels, 'tests') ||
+      contains(needs.preprocess.outputs.labels, 'ops/aten')
     concurrency:
       group: python-op-${{ needs.preprocess.outputs.pr_id }}
       cancel-in-progress: true
