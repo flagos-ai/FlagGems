@@ -75,12 +75,16 @@ def test_fallback_lgamma():
         dtype=torch.float32,
         device=flag_gems.device,
     )
-    expected = torch.lgamma(utils.to_reference(inp, True))
+    # Sunrise does not provide an ATen lgamma reference, so evaluate the
+    # high-precision reference explicitly on CPU.
+    expected = torch.lgamma(inp.cpu().double()).float()
     actual = torch.empty_like(inp)
     block_size = triton.next_power_of_2(inp.numel())
     with torch_device_fn.device(inp.device):
         fallback_lgamma_kernel[(1,)](inp, actual, inp.numel(), BLOCK_SIZE=block_size)
-    utils.gems_assert_close(actual, expected, torch.float32, atol=2e-5, equal_nan=True)
+    utils.gems_assert_close(
+        actual.cpu(), expected, torch.float32, atol=2e-5, equal_nan=True
+    )
 
 
 @pytest.mark.lgamma
