@@ -68,13 +68,13 @@ def im2col_kernel(
     outW,
     rows_total,  # C * kH * kW
     L,  # outH * outW
-    num_row_tiles,  # ceil_div(rows_total, BLOCK_M)
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     pid0 = tl.program_id(0)
     pid1 = tl.program_id(1)
 
+    num_row_tiles = tl.cdiv(rows_total, BLOCK_M)
     n = pid0 // num_row_tiles
     row_tile = pid0 % num_row_tiles
 
@@ -131,7 +131,6 @@ def im2col_kernel(
 
 
 def _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW):
-    assert x.is_cuda and out.is_cuda, "Inputs must be CUDA tensors"
     x = x.contiguous()
     out = out.contiguous()
 
@@ -143,9 +142,14 @@ def _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW):
     if rows_total == 0 or L == 0 or N == 0:
         return  # Nothing to do
 
-    num_row_tiles = triton.cdiv(rows_total, 64)  # BLOCK_M default
-    num_col_tiles = triton.cdiv(L, 128)  # BLOCK_N default
-    grid = (N * num_row_tiles, num_col_tiles)
+    # BLOCK_M / BLOCK_N are chosen by autotune, so the grid and num_row_tiles
+    # must be derived from the selected meta-parameters. Using fixed block sizes
+    # here would under- or over-cover the output whenever autotune picks a
+    # different tiling (e.g. BLOCK_N=32 would leave half of L unwritten).
+    def grid(meta):
+        num_row_tiles = triton.cdiv(rows_total, meta["BLOCK_M"])
+        num_col_tiles = triton.cdiv(L, meta["BLOCK_N"])
+        return (N * num_row_tiles, num_col_tiles)
 
     im2col_kernel[grid](
         x,
@@ -166,7 +170,6 @@ def _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW):
         outW,
         rows_total,
         L,
-        num_row_tiles,
     )
 
 
@@ -193,3 +196,38 @@ def im2col(input, kernel_size, dilation=1, padding=0, stride=1):
 
     _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW)
     return out if input.ndim == 4 else out.squeeze(0)
+
+
+def im2col_out(input, kernel_size, dilation=1, padding=0, stride=1, out=None):
+    logger.debug("GEMS IM2COL_OUT")
+    x = input
+    if x.ndim == 3:
+        x = x.unsqueeze(0)
+    if x.ndim != 4:
+        raise ValueError("im2col_out expects input of shape (N, C, H, W) or (C, H, W)")
+    kH, kW = _parse_2tuple(kernel_size, "kernel_size")
+    dH, dW = _parse_2tuple(dilation, "dilation")
+    pH, pW = _parse_2tuple(padding, "padding")
+    sH, sW = _parse_2tuple(stride, "stride")
+
+    N, C, H, W = x.shape
+    outH, outW = _compute_output_dims(H, W, kH, kW, dH, dW, pH, pW, sH, sW)
+    rows_total = C * kH * kW
+    L = outH * outW
+
+    if out is None:
+        out = torch.empty((N, rows_total, L), device=x.device, dtype=x.dtype)
+    else:
+        # Ensure `out` has enough storage before the kernel writes into it. Some
+        # torch versions do not pre-resize a registered python out kernel's out
+        # argument, so an empty/mis-shaped out would otherwise be written out of
+        # bounds. The dispatcher still decides the final user-visible shape (it
+        # differs by torch version for 3D inputs), which does not affect the
+        # rows_total * L elements we lay out contiguously here.
+        out.resize_((N, rows_total, L))
+
+    if L == 0 or rows_total == 0 or N == 0:
+        return out
+
+    _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW)
+    return out
