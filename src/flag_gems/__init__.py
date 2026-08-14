@@ -465,6 +465,7 @@ _FULL_CONFIG = (
     ("exponential_", exponential_),
     ("eye", eye),
     ("eye.m", eye_m),
+    ("feature_alpha_dropout", feature_alpha_dropout),
     ("feature_dropout", feature_dropout),
     ("feature_dropout_", feature_dropout_),
     ("fill.Scalar", fill_scalar),
