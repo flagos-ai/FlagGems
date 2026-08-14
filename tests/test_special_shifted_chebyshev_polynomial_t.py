@@ -56,24 +56,3 @@ def test_special_shifted_chebyshev_polynomial_t_scalar_n(shape, dtype):
         res_out = torch.special.shifted_chebyshev_polynomial_t(x, n)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.special_shifted_chebyshev_polynomial_t_
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-# shifted_chebyshev_polynomial_t_cuda does not support Half/BFloat16
-@pytest.mark.parametrize("dtype", [torch.float32])
-def test_special_shifted_chebyshev_polynomial_t_(shape, dtype):
-    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
-    n = torch.randint(0, 10, shape, dtype=torch.long, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, True)
-    ref_n = n.to(ref_inp.device).to(ref_inp.dtype)
-
-    ref_out = torch.special.shifted_chebyshev_polynomial_t(ref_inp, ref_n)
-    ref_inp.copy_(ref_out)
-
-    with flag_gems.use_gems():
-        res_out = torch.special.shifted_chebyshev_polynomial_t(inp, n, out=inp)
-
-    utils.gems_assert_close(inp, ref_inp, dtype, atol=5e-3)
-    utils.gems_assert_close(res_out, ref_inp, dtype, atol=5e-3)

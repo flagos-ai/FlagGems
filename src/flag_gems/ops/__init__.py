@@ -673,7 +673,6 @@ from flag_gems.ops.special_scaled_modified_bessel_k1 import (
 )
 from flag_gems.ops.special_shifted_chebyshev_polynomial_t import (
     special_shifted_chebyshev_polynomial_t,
-    special_shifted_chebyshev_polynomial_t_,
 )
 from flag_gems.ops.special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
@@ -1537,7 +1536,6 @@ __all__ = [
     "special_scaled_modified_bessel_k1",
     "special_scaled_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_t",
-    "special_shifted_chebyshev_polynomial_t_",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
     "special_shifted_chebyshev_polynomial_v",

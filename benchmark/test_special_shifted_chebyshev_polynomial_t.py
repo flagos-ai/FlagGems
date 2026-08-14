@@ -27,15 +27,3 @@ def test_special_shifted_chebyshev_polynomial_t():
         dtypes=[torch.float32],
     )
     bench.run()
-
-
-@pytest.mark.special_shifted_chebyshev_polynomial_t_
-def test_special_shifted_chebyshev_polynomial_t_():
-    bench = base.BinaryPointwiseBenchmark(
-        op_name="special_shifted_chebyshev_polynomial_t_",
-        torch_op=torch.special.shifted_chebyshev_polynomial_t,
-        # shifted_chebyshev_polynomial_t_cuda only supports float32
-        dtypes=[torch.float32],
-        is_inplace=True,
-    )
-    bench.run()

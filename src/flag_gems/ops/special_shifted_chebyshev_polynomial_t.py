@@ -79,13 +79,3 @@ def special_shifted_chebyshev_polynomial_t(x, n):
     if not isinstance(n, torch.Tensor):
         return shifted_chebyshev_polynomial_t_kernel_scalar_n(x, n)
     return shifted_chebyshev_polynomial_t_kernel(x, n)
-
-
-def special_shifted_chebyshev_polynomial_t_(x, n):
-    logger.debug("GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T_")
-    # shifted_chebyshev_polynomial_t_cuda only supports float32
-    if x.dtype not in (torch.float32,):
-        raise ValueError(f"Unsupported dtype {x.dtype}, only float32 is supported")
-    if not isinstance(n, torch.Tensor):
-        return shifted_chebyshev_polynomial_t_kernel_scalar_n(x, n, out0=x)
-    return shifted_chebyshev_polynomial_t_kernel(x, n, out0=x)
