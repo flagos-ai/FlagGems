@@ -4364,6 +4364,20 @@ ops:
       - MoE
     stages:
       - stable: '5.0'
+  - id: te_fused_topk_with_score_function_fwd
+    description: |
+      Forward pass for TransformerEngine-compatible fused top-k routing with score function.
+      Produces sparse routing probabilities, routing map, and intermediate values for backward.
+      Supports sigmoid, softmax, and sqrtsoftplus score functions.
+    for:
+      - te_fused_topk_with_score_function_fwd
+    labels:
+      - fused
+      - MoE
+    kind:
+      - MoE
+    stages:
+      - alpha: '5.4'
   - id: gt
     description: Computes that `input` is greater than `other` element-wise.
     for:
