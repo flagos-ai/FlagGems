@@ -2605,7 +2605,43 @@ index_select_backward:
     num_warps: 8
     num_stages: 1
 
-fused_marlin_moe_mxfp4:
+fused_marlin_moe_w4a16_int4:
+  - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 4}
+    num_warps: 4
+    num_stages: 2
+    maxnreg: 96
+  - META: {BLOCK_SIZE_N: 256, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 3
+    maxnreg: 96
+  - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 4}
+    num_warps: 4
+    num_stages: 3
+    maxnreg: 96
+  - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 4
+    maxnreg: 96
+  - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 4
+    maxnreg: 255
+
+fused_marlin_moe_w4a16_int4_gemm_silu:
+  - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 4}
+    num_warps: 4
+    num_stages: 4
+    maxnreg: 255
+  - META: {BLOCK_SIZE_N: 64, GROUP_SIZE_M: 4}
+    num_warps: 4
+    num_stages: 3
+    maxnreg: 96
+  - META: {BLOCK_SIZE_N: 128, GROUP_SIZE_M: 1}
+    num_warps: 4
+    num_stages: 2
+    maxnreg: 96
+
+fused_marlin_moe_w4a16_mxfp4:
   - gen: true
     param_map:
       META:
@@ -2654,7 +2690,7 @@ fused_marlin_moe_mxfp4:
     stages: [2, 3, 4]
     warps: [4, 8]
 
-fused_marlin_moe_mxfp4_gemm_silu:
+fused_marlin_moe_w4a16_mxfp4_gemm_silu:
   - META: {BLOCK_SIZE_N: 32, GROUP_SIZE_M: 1}
     num_warps: 2
     num_stages: 4

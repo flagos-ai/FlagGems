@@ -51,7 +51,7 @@ backends:
     python: "3.12"
     cmake_backend: CUDA
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0
+    flagtree: flagtree==0.6.1
     env:
       PATH: /usr/local/cuda/bin:$PATH
       LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
@@ -64,7 +64,7 @@ backends:
     python: "3.12"
     cmake_backend: CUDA
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0
+    flagtree: flagtree==0.6.1
     env:
       PATH: /usr/local/cuda/bin:$PATH
       LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
@@ -90,7 +90,7 @@ backends:
     triton: triton==3.5.0
     triton_post_install:
       - triton_ascend==3.2.1
-    flagtree: flagtree==0.6.0+ascend3.5
+    flagtree: flagtree==0.6.1+ascend3.5
     env_source:
       - /usr/local/Ascend/cann/set_env.sh
     deps:
