@@ -108,6 +108,10 @@ if (FLAGGEMS_INSTALL)
   install(
     DIRECTORY "${PROJECT_SOURCE_DIR}/include/flag_gems"
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  install(
+    DIRECTORY "${PROJECT_SOURCE_DIR}/triton_src"
+    DESTINATION triton_src
+    FILES_MATCHING PATTERN "*.py")
   install(TARGETS operators
     EXPORT FlagGemsTargets
     DESTINATION ${CMAKE_INSTALL_LIBDIR})
