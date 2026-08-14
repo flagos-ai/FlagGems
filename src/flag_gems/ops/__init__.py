@@ -64,6 +64,9 @@ from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._native_batch_norm_legit_functional import (
     _native_batch_norm_legit_functional,
 )
+from flag_gems.ops._native_batch_norm_legit_no_training import (
+    _native_batch_norm_legit_no_training,
+)
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
@@ -72,6 +75,9 @@ from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._safe_softmax import _safe_softmax
+from flag_gems.ops._scaled_dot_product_attention_math import (
+    _scaled_dot_product_attention_math,
+)
 from flag_gems.ops._scaled_dot_product_flash_attention import (
     _scaled_dot_product_flash_attention,
 )
@@ -100,7 +106,7 @@ from flag_gems.ops._weight_int4pack_mm_with_scales_and_zeros import (
 )
 from flag_gems.ops._weight_norm import _weight_norm
 from flag_gems.ops.abs import abs, abs_
-from flag_gems.ops.absolute import absolute
+from flag_gems.ops.absolute import absolute, absolute_
 from flag_gems.ops.acos import acos
 from flag_gems.ops.acosh import acosh, acosh_
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
@@ -133,6 +139,7 @@ from flag_gems.ops.arcsinh import arcsinh, arcsinh_out
 from flag_gems.ops.arcsinh_ import arcsinh_
 from flag_gems.ops.arctan2 import arctan2, arctan2_
 from flag_gems.ops.arctan_ import arctan, arctan_
+from flag_gems.ops.arctanh import arctanh, arctanh_out
 from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
@@ -351,8 +358,10 @@ from flag_gems.ops.hadamard_transform import (
 from flag_gems.ops.hardshrink import hardshrink, hardshrink_out
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardsigmoid_ import hardsigmoid_
+from flag_gems.ops.hardswish import hardswish, hardswish_out
 from flag_gems.ops.hardswish_ import hardswish_
 from flag_gems.ops.hardtanh_ import hardtanh_
+from flag_gems.ops.heaviside import heaviside
 from flag_gems.ops.heaviside_ import heaviside_
 from flag_gems.ops.histc import histc
 from flag_gems.ops.hstack import hstack
@@ -387,7 +396,12 @@ from flag_gems.ops.lcm import lcm, lcm_
 from flag_gems.ops.ldl_factor_ex import ldl_factor_ex
 from flag_gems.ops.le import le, le_scalar
 from flag_gems.ops.le_ import le_, le_scalar_
-from flag_gems.ops.leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
+from flag_gems.ops.leaky_relu import (
+    leaky_relu,
+    leaky_relu_,
+    leaky_relu_backward,
+    leaky_relu_out,
+)
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from flag_gems.ops.less_ import less_, less_scalar_
 from flag_gems.ops.less_equal import less_equal, less_equal_scalar
@@ -397,6 +411,7 @@ from flag_gems.ops.lift import lift, lift_out
 from flag_gems.ops.lift_fresh import lift_fresh
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
+from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_ldl_solve import linalg_ldl_solve
 from flag_gems.ops.linalg_lstsq import linalg_lstsq
@@ -406,6 +421,10 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex_out,
 )
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
+from flag_gems.ops.linalg_solve_triangular import (
+    linalg_solve_triangular,
+    linalg_solve_triangular_out,
+)
 from flag_gems.ops.linalg_svdvals import linalg_svdvals
 from flag_gems.ops.linear import linear
 from flag_gems.ops.linear_backward import linear_backward
@@ -685,6 +704,7 @@ from flag_gems.ops.special_modified_bessel_k1 import (
     special_modified_bessel_k1,
     special_modified_bessel_k1_out,
 )
+from flag_gems.ops.special_multigammaln import special_multigammaln
 from flag_gems.ops.special_round import special_round, special_round_out
 from flag_gems.ops.special_scaled_modified_bessel_k1 import (
     special_scaled_modified_bessel_k1,
@@ -819,6 +839,7 @@ __all__ = [
     "_make_dep_token",
     "_masked_scale",
     "_native_batch_norm_legit_functional",
+    "_native_batch_norm_legit_no_training",
     "_nested_view_from_buffer_copy",
     "_pdist_backward",
     "_pdist_forward",
@@ -827,6 +848,7 @@ __all__ = [
     "_reshape_alias",
     "_resize_output",
     "_safe_softmax",
+    "_scaled_dot_product_attention_math",
     "_scaled_dot_product_flash_attention",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
@@ -850,6 +872,7 @@ __all__ = [
     "abs",
     "abs_",
     "absolute",
+    "absolute_",
     "acos",
     "acosh",
     "acosh_",
@@ -907,7 +930,9 @@ __all__ = [
     "arctan2",
     "arctan2_",
     "arctan_",
+    "arctanh",
     "arctanh_",
+    "arctanh_out",
     "argmax",
     "argmin",
     "argsort",
@@ -1156,8 +1181,11 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_out",
     "hardsigmoid_",
+    "hardswish",
     "hardswish_",
+    "hardswish_out",
     "hardtanh_",
+    "heaviside",
     "heaviside_",
     "histc",
     "hstack",
@@ -1207,6 +1235,7 @@ __all__ = [
     "le_scalar_",
     "leaky_relu",
     "leaky_relu_",
+    "leaky_relu_backward",
     "leaky_relu_out",
     "lerp_scalar",
     "lerp_scalar_",
@@ -1226,6 +1255,8 @@ __all__ = [
     "lift_fresh_copy_out",
     "lift_out",
     "linalg_cholesky",
+    "linalg_cross",
+    "linalg_cross_out",
     "linalg_ldl_solve",
     "linalg_lstsq",
     "linalg_lu_factor",
@@ -1233,6 +1264,8 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_slogdet",
+    "linalg_solve_triangular",
+    "linalg_solve_triangular_out",
     "linalg_svdvals",
     "linear",
     "linear_backward",
@@ -1567,6 +1600,7 @@ __all__ = [
     "special_modified_bessel_k0_out",
     "special_modified_bessel_k1",
     "special_modified_bessel_k1_out",
+    "special_multigammaln",
     "special_round",
     "special_round_out",
     "special_scaled_modified_bessel_k1",

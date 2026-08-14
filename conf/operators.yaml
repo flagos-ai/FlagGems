@@ -79,6 +79,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: absolute_
+    description: The in-place version of `absolute()`.
+    for:
+      - absolute_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: acos
     description: Returns a new tensor with the arccosine (in radians) of each element in `input`.
     for:
@@ -888,6 +899,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: arctanh
+    description: |
+      Computes the element-wise inverse hyperbolic tangent of a given input tensor.
+    for:
+      - arctanh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: arctanh_
     description: |
       Computes the element-wise inverse hyperbolic tangent of a given input tensor.
@@ -902,6 +925,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.4'
+  - id: arctanh_out
+    description: |
+      A variant of `arctanh` that assigns the output to the provided `out` parameter.
+    for:
+      - arctanh.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: argmax
     description: Returns the indices of the maximum value of all elements in the `input` tensor.
     for:
@@ -4465,6 +4500,22 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: hardswish
+    description: |
+      Applies the Hard Swish activation function, commonly used in models like MobileNetV3
+      to improve accuracy while reducing computational cost compared to traditional Swish.
+    for:
+      - hardswish
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: hardswish_
     description: |
       Applies the Hard Swish activation function, commonly used in models like MobileNetV3
@@ -4481,6 +4532,21 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: hardswish_out
+    description: |
+      A variant of `hardswish` that supports an output tensor to receive the result.
+    for:
+      - hardswish.out
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: hardtanh_
     description: |
       An activation function that clips input values to lie within a fixed range
@@ -4542,6 +4608,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: heaviside
+    description: |
+      The heaviside step function. Computes 0 where input < 0, 1 where input > 0,
+      and values where input == 0. Supports tensor values.
+    for:
+      - heaviside
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: heaviside_
     description: |
       In-place version of heaviside. For each element: 0 if x < 0, 1 if x > 0,
@@ -5215,6 +5294,17 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: leaky_relu_backward
+    description: A variant of `leaky_relu()` for backward case.
+    for:
+      - leaky_relu_backward
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.3'
   - id: lerp_scalar
     description: The scalar version of `lerp()`.
     for:
@@ -5450,6 +5540,26 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: linalg_cross
+    description: Computes the cross product of two 3-dimensional vectors along a specified dimension.
+    for:
+      - linalg_cross
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_cross_out
+    description: A variant of `linalg_cross` that allows the output to be assigned to `out`.
+    for:
+      - linalg_cross.out
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_eigvals
     description: Computes the eigenvalues of a square matrix.
     for:
@@ -5557,6 +5667,33 @@ ops:
       - KernelGen
     kind:
       - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_solve_triangular
+    description: |-
+      Solves a triangular system of linear equations with a unique solution, returning
+      a tensor X such that A*X = B (or X*A = B when right=True) for a triangular
+      matrix A and matrix of right-hand sides B.
+    for:
+      - linalg_solve_triangular
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+      - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: linalg_solve_triangular_out
+    description: |-
+      Out-of-place variant of linalg_solve_triangular: solves a triangular system
+      of linear equations and writes the result into the provided out tensor.
+    for:
+      - linalg_solve_triangular.out
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+      - BLAS
     stages:
       - alpha: '5.4'
   - id: linalg_svdvals
@@ -6999,6 +7136,20 @@ ops:
       inverse standard deviation, along with updated running estimates.
     for:
       - _native_batch_norm_legit_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: native_batch_norm_legit_no_training
+    description: >
+      Inference-only batch normalization using precomputed running_mean and
+      running_var without updating them; returns the normalized output plus two
+      empty save_mean/save_var tensors matching the aten schema.
+    for:
+      - _native_batch_norm_legit_no_training
     labels:
       - aten
       - KernelGen
@@ -8728,6 +8879,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.2'
+  - id: scaled_dot_product_attention_math
+    description: |
+      Computes scaled dot-product attention using the math-based implementation.
+    for:
+      - _scaled_dot_product_attention_math
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: scaled_dot_product_cudnn_attention_backward
     description: |
       Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
@@ -10058,6 +10221,20 @@ ops:
     description: A variant of `special_modified_bessel_k1` that allows the output to be assigned to another tensor.
     for:
       - special_modified_bessel_k1.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_multigammaln
+    description: |
+      Computes the multivariate log-gamma function for each element of the input.
+      Out-of-place counterpart of mvlgamma_; delegates to the mvlgamma kernel,
+      which supports orders p up to 12.
+    for:
+      - special_multigammaln
     labels:
       - aten
       - KernelGen
@@ -11417,13 +11594,26 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
-  - id: xor__
+  - id: xor
     description: |
-      Computes the bitwise XOR of input tensors or a tensor and a scalar.
+      Computes the bitwise XOR of input tensors or a tensor and a scalar (non-inplace).
     for:
       - __xor__
       - __xor__.Tensor
       - __xor__.Scalar
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: ixor
+    description: |
+      Computes the bitwise XOR of input tensors or a tensor and a scalar (inplace).
+    for:
+      - __ixor__
       - __ixor__.Tensor
       - __ixor__.Scalar
     labels:
