@@ -501,7 +501,7 @@ HEURISTICS_CONFIGS = {
     },
     "mha_block_128": {
         "BLOCK_M": lambda args: 128,
-        "BLOCK_N": lambda args: 32,
+        "BLOCK_N": lambda args: 16,
         "num_warps": lambda args: 4,
         "num_stages": lambda args: 3,
     },

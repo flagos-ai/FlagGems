@@ -3,6 +3,7 @@ from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
+from .attention import flash_attn_varlen_func
 from .bmm import bmm
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .exponential_ import exponential_
@@ -57,6 +58,7 @@ __all__ = [
     "cholesky_solve",
     "cholesky_solve_out",
     "exponential_",
+    "flash_attn_varlen_func",
     "full",
     "full_like",
     "group_norm",
