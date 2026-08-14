@@ -77,6 +77,11 @@ class CtcLossInternalBenchmark(base.GenericBenchmark):
     ]
     DEFAULT_SHAPE_DESC = "T, N, C, S"
 
+    def set_shapes(self, shape_file_path=None):
+        # Override to use our custom shapes directly, ignoring core_shapes.yaml
+        self.shapes = self.DEFAULT_SHAPES
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
+
     def set_more_shapes(self):
         return []
 
