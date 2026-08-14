@@ -473,6 +473,7 @@ _FULL_CONFIG = (
     ("fill.Tensor_out", fill_tensor_out),
     ("fill_.Scalar", fill_scalar_),
     ("fill_.Tensor", fill_tensor_),
+    ("fill_diagonal_", fill_diagonal_),
     ("fix", fix),
     ("fix_", fix_),
     ("flatten.using_ints", flatten),
