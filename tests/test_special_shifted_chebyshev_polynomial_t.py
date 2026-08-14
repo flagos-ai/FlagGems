@@ -24,7 +24,7 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # shifted_chebyshev_polynomial_t_cuda does not support Half/BFloat16
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_special_shifted_chebyshev_polynomial_t(shape, dtype):
+def test_special_shifted_chebyshev_polynomial_t(shape, dtype, caplog):
     # x in [0, 1] for shifted Chebyshev polynomial
     x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     n = torch.randint(0, 10, shape, dtype=torch.long, device=flag_gems.device)
@@ -32,9 +32,12 @@ def test_special_shifted_chebyshev_polynomial_t(shape, dtype):
     ref_x = utils.to_reference(x, True)
     ref_n = n.to(ref_x.device).to(ref_x.dtype)
 
-    ref_out = torch.special.shifted_chebyshev_polynomial_t(ref_x, ref_n)
-    with flag_gems.use_gems():
-        res_out = torch.special.shifted_chebyshev_polynomial_t(x, n)
+    ref_out = torch.ops.aten.special_shifted_chebyshev_polynomial_t(ref_x, ref_n)
+    logger_name = "flag_gems.ops.special_shifted_chebyshev_polynomial_t"
+    with caplog.at_level("DEBUG", logger=logger_name):
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.special_shifted_chebyshev_polynomial_t(x, n)
+    assert "GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T" in caplog.text
 
     # Use larger tolerance for float32 due to trigonometric function precision
     utils.gems_assert_close(res_out, ref_out, dtype, atol=5e-3)
@@ -44,15 +47,19 @@ def test_special_shifted_chebyshev_polynomial_t(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # shifted_chebyshev_polynomial_t_cuda does not support Half/BFloat16
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_special_shifted_chebyshev_polynomial_t_scalar_n(shape, dtype):
-    # Test with scalar n (same n for all elements)
+def test_special_shifted_chebyshev_polynomial_t_scalar_n(shape, dtype, caplog):
+    # Scalar n reaches the same wrapper: aten decomposes the .n_scalar overload
+    # onto the registered .default overload, so no separate registration exists.
     x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     n = 3  # scalar
 
     ref_x = utils.to_reference(x, True)
 
-    ref_out = torch.special.shifted_chebyshev_polynomial_t(ref_x, n)
-    with flag_gems.use_gems():
-        res_out = torch.special.shifted_chebyshev_polynomial_t(x, n)
+    ref_out = torch.ops.aten.special_shifted_chebyshev_polynomial_t(ref_x, n)
+    logger_name = "flag_gems.ops.special_shifted_chebyshev_polynomial_t"
+    with caplog.at_level("DEBUG", logger=logger_name):
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.special_shifted_chebyshev_polynomial_t(x, n)
+    assert "GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T" in caplog.text
 
     utils.gems_assert_close(res_out, ref_out, dtype)
