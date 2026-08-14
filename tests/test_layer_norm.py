@@ -166,21 +166,20 @@ def test_layer_norm_backward(monkeypatch, shape, normalized_shape, dtype, wb_non
         ref_bias,
         output_mask,
     )
-    with flag_gems.use_gems():
-        (
-            res_in_grad,
-            res_weight_grad,
-            res_bias_grad,
-        ) = torch.ops.aten.native_layer_norm_backward(
-            res_grad,
-            res_inp,
-            normalized_shape,
-            res_mean,
-            res_rstd,
-            res_weight,
-            res_bias,
-            output_mask,
-        )
+    (
+        res_in_grad,
+        res_weight_grad,
+        res_bias_grad,
+    ) = flag_gems.layer_norm_backward(
+        res_grad,
+        res_inp,
+        normalized_shape,
+        res_mean,
+        res_rstd,
+        res_weight,
+        res_bias,
+        output_mask,
+    )
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
     if not wb_none:
