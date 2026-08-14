@@ -18,8 +18,10 @@ import triton
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
+from ._bitwise_scalar_tensor_fallback import ensure_scalar_tensor_fallbacks
 
 logger = logging.getLogger(__name__)
+ensure_scalar_tensor_fallbacks()
 
 config_ = CodeGenConfig(
     512,

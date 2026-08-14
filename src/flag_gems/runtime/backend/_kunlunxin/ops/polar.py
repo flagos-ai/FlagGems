@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
+from ._fp64_compat import empty_fp64
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +33,21 @@ logger = logging.getLogger(__name__)
 )
 @triton.jit
 def polar_kernel(abs, angle):
-    real = abs * tl.cos(angle)
-    imag = abs * tl.sin(angle)
+    # XPU libdevice does not provide f64 sin/cos.  Keep f64 storage metadata,
+    # but evaluate the operation in the backend's supported compute dtype.
+    abs_f32 = abs.to(tl.float32)
+    angle_f32 = angle.to(tl.float32)
+    real = abs_f32 * tl.cos(angle_f32)
+    imag = abs_f32 * tl.sin(angle_f32)
     return real, imag
 
 
 def polar(abs, angle):
     logger.debug("GEMS_KUNLUNXIN POLAR")
-    output = torch.empty((*abs.shape, 2), dtype=abs.dtype, device=abs.device)
+    if abs.dtype == torch.float64:
+        output = empty_fp64((*abs.shape, 2), device=abs.device)
+    else:
+        output = torch.empty((*abs.shape, 2), dtype=abs.dtype, device=abs.device)
 
     polar_kernel(abs, angle, out0=output[..., 0], out1=output[..., 1])
 

@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from . import _native_compat  # noqa: F401
 from ._euclidean_dist import _euclidean_dist
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
 from ._is_all_true import _is_all_true
+from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .abs import abs, abs_
 from .absolute import absolute
@@ -271,7 +273,7 @@ from .rsub import rsub, rsub_scalar, rsub_tensor
 from .safe_softmax import _safe_softmax
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
-from .scatter_add_ import scatter_add_
+from .scatter_add_ import scatter_add, scatter_add_
 from .select_scatter import select_scatter
 from .selu import selu, selu_
 from .sgn_ import sgn_
@@ -318,6 +320,7 @@ from .vdot import vdot
 from .vector_norm import vector_norm
 from .view_copy import view_copy
 from .vstack import vstack
+from .weight_norm import weight_norm as _weight_norm
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .xlogy import (
@@ -337,6 +340,7 @@ __all__ = [
     "_functional_sym_constrain_range_for_size",
     "_euclidean_dist",
     "_is_all_true",
+    "_scaled_dot_product_flash_attention",
     "_thnn_fused_lstm_cell_backward_impl",
     "_conv_depthwise2d",
     "_safe_softmax",
@@ -693,6 +697,7 @@ __all__ = [
     "scaled_softmax_forward",
     "scatter",
     "scatter_",
+    "scatter_add",
     "scatter_add_",
     "select_scatter",
     "selu",
@@ -764,6 +769,7 @@ __all__ = [
     "vector_norm",
     "view_copy",
     "vstack",
+    "_weight_norm",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",

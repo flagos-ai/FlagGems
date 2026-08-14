@@ -26,6 +26,8 @@ from flag_gems.utils.random_utils import (
 )
 from flag_gems.utils.shape_utils import volume
 
+from ._fp64_compat import empty_fp64
+
 logger = logging.getLogger(__name__)
 device_ = device
 
@@ -168,7 +170,14 @@ def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     if device is None:
         device = torch.device(device_.name)
 
-    out = torch.empty(size, device=device, dtype=dtype)
+    if dtype == torch.float64:
+        if layout not in (None, torch.strided):
+            raise RuntimeError("rand only supports torch.strided layout")
+        if pin_memory not in (None, False):
+            raise RuntimeError("pin_memory is not supported for CUDA rand")
+        out = empty_fp64(size, device=device)
+    else:
+        out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     # grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
     cluster_num = 12

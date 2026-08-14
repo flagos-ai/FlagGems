@@ -29,6 +29,10 @@ from flag_gems.utils.shape_utils import (
 
 logger = logging.getLogger(__name__)
 
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeImplicitAutograd
+)
+
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import torch")
@@ -365,14 +369,13 @@ _scatter_func = ScatterFunction()
 
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_KUNLUNXIN SCATTER")
+    if reduce is not None:
+        return torch.ops.aten.scatter.reduce.redispatch(
+            _FALLBACK_KEYSET, inp, dim, index, src, reduce=reduce
+        )
     if dim < 0:
         dim += inp.ndim
     out = inp.clone()
-
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
 
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
@@ -402,14 +405,13 @@ def scatter(inp, dim, index, src, reduce=None):
 
 def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_KUNLUNXIN SCATTER_")
+    if reduce is not None:
+        return torch.ops.aten.scatter_.reduce.redispatch(
+            _FALLBACK_KEYSET, inp, dim, index, src, reduce=reduce
+        )
     if dim < 0:
         dim += inp.ndim
     out = inp
-
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
 
     assert (
         has_internal_overlapping(out) != MemOverlap.Yes

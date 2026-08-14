@@ -227,6 +227,16 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
+
+    if inp.numel() == 0:
+        if out is not None:
+            return out
+        if dtype is None:
+            dtype = inp.dtype
+            if is_integer_dtype(dtype) or is_boolean_dtype(dtype):
+                dtype = torch.int64
+        return torch.empty_like(inp, dtype=dtype)
+
     M = 1
     N = shape[dim]
     for i in range(dim):

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import logging
-import os
+from dataclasses import replace
 
 import torch
 import triton
@@ -24,6 +24,7 @@ from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
+from ..utils.codegen_config_utils import get_codegen_config
 from ..utils.pointwise_dynamic import pointwise_dynamic
 from .all import all, all_kernel_2, reduce_all
 
@@ -31,10 +32,13 @@ logger = logging.getLogger(__name__)
 _isfinited = tl_extra_shim.isfinited
 _finitef = tl_extra_shim.finitef
 
+_isclose_config = replace(get_codegen_config(), isOpenCmpNan=True)
+
 
 @pointwise_dynamic(
     is_tensor=[True, True, False, False, False, False],
     promotion_methods=[(0, 1, "ALWAYS_BOOL")],
+    config=_isclose_config,
 )
 @triton.jit
 def isclose_func(
@@ -69,11 +73,6 @@ def isclose(
     equal_nan: bool = False,
 ) -> torch.Tensor:
     logger.debug("GEMS_KUNLUNXIN ISCLOSE")
-    if not equal_nan:
-        os.environ["XPU_cmp_nan"] = "1"
-    else:
-        if "XPU_cmp_nan" in os.environ:
-            del os.environ["XPU_cmp_nan"]
     # note: Int8 is not supported in isclose_func, because the result of int8 == int8 is wrong
     # in triton jit function, and needs to be fixed in triton. The same is true for bool.
     if A.dtype == torch.bool:
@@ -152,11 +151,6 @@ def allclose(
     equal_nan: bool = False,
 ) -> bool:
     logger.debug("GEMS_KUNLUNXIN ALLCLOSE")
-    if not equal_nan:
-        os.environ["XPU_cmp_nan"] = "1"
-    else:
-        if "XPU_cmp_nan" in os.environ:
-            del os.environ["XPU_cmp_nan"]
     if A.dtype != B.dtype:
         raise RuntimeError("{} did not match {}".format(A.dtype, B.dtype))
     if A.is_quantized or B.is_quantized:
@@ -188,11 +182,9 @@ def allclose(
 
     mid = torch.empty((mid_size,), dtype=torch.bool, device=A.device)
     out = torch.empty([], dtype=torch.bool, device=A.device)
-    # NaN comparison mode is a KERNEL LAUNCH flag on XPU (isOpenCmpNan), NOT the
-    # os.environ["XPU_cmp_nan"] read at op time. The generic pointwise codegen
-    # injects `isOpenCmpNan=True` into its launch when the env var is "1"
-    # (see utils/pointwise_dynamic.py); a hand-written @libentry kernel must pass
-    # it explicitly or its `x == y` uses the default non-IEEE mode where
+    # NaN comparison mode is a per-kernel XPU launch flag. The pointwise path
+    # receives it from `_isclose_config`; a hand-written @libentry kernel must
+    # pass it explicitly or its `x == y` uses the default non-IEEE mode where
     # NaN == NaN is True -> wrong for equal_nan=False. With equal_nan=False we
     # want IEEE (NaN != NaN) so pass isOpenCmpNan=True; with equal_nan=True the
     # explicit `(x != x) & (y != y)` term handles NaN so default mode is fine.

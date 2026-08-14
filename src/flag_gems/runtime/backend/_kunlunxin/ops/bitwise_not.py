@@ -14,37 +14,24 @@
 
 import logging
 
-import triton
-from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
-
-from ..utils.pointwise_dynamic import pointwise_dynamic
+import torch
 
 logger = logging.getLogger(__name__)
 
-config_ = CodeGenConfig(
-    512,
-    (65536, 65536, 65536),
-    32,
-    True,
-    prefer_1d_tile=True,
-    isCloseMemoryAsync=False,
-    kunlunAutoGrid=True,
-    unroll_num=8,
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeImplicitAutograd
 )
-
-
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=config_)
-@triton.jit
-def bitwise_not_func(x):
-    return ~x
 
 
 def bitwise_not(A):
     logger.debug("GEMS_KUNLUNXIN BITWISE_NOT")
-    return bitwise_not_func(A)
+    # The Triton integer paths are not reliable in the current XPU toolchain:
+    # ``~x`` emits an instruction rejected by elfconv for large tiles, while the
+    # arithmetic identity ``-x - 1`` can hang even on a 266-element int32 tile.
+    # The vendor kernel covers integer and bool dtypes and is also faster.
+    return torch.ops.aten.bitwise_not.default.redispatch(_FALLBACK_KEYSET, A)
 
 
 def bitwise_not_(A):
     logger.debug("GEMS_KUNLUNXIN BITWISE_NOT_")
-    bitwise_not_func(A, out0=A)
-    return A
+    return torch.ops.aten.bitwise_not_.default.redispatch(_FALLBACK_KEYSET, A)

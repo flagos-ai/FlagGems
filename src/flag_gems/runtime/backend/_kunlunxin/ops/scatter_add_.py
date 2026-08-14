@@ -401,3 +401,14 @@ def scatter_add_(x, dim, index, src):
         return scatter_add_1(x, dim, index, src)
     else:
         return scatter_add_0(x, dim, index, src)
+
+
+def scatter_add(inp, dim, index, src):
+    """Kunlunxin functional scatter-add using the backend in-place kernel.
+
+    The generic functional wrapper closes over the generic ``scatter_add_``
+    implementation, so overriding only the in-place operator does not redirect
+    it.  Clone the input here and explicitly use the Kunlunxin implementation,
+    which promotes fp16/bf16 accumulation to fp32 before issuing atomics.
+    """
+    return scatter_add_(inp.clone(), dim, index, src)

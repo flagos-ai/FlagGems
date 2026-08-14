@@ -23,7 +23,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-from ..ops import weight_norm_interface, weight_norm_interface_backward
+from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 
 logger = logging.getLogger(__name__)
 

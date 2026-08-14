@@ -22,6 +22,9 @@ from flag_gems import runtime
 from flag_gems.utils import dim_compress, libentry
 
 logger = logging.getLogger(__name__)
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeImplicitAutograd
+)
 # def cfggen():
 #     block_m = [1, 2, 4]
 #     block_n = [128, 1024, 2048, 4096]
@@ -106,6 +109,15 @@ def index_add(inp, dim, index, src, alpha=1):
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
 
+    # This tiled kernel uses direct stores and is only valid for a single index.
+    # For multiple indices, duplicates are legal and cannot be ruled out without
+    # synchronizing. Atomic scatter-add does not compile on the current XPU
+    # Triton backend, so preserve the general semantics with the vendor kernel.
+    if index.numel() != 1:
+        return torch.ops.aten.index_add.default.redispatch(
+            _FALLBACK_KEYSET, inp, dim, index, src, alpha=alpha
+        )
+
     inp = inp.contiguous()
     index = index.contiguous()
     src = src.contiguous()
@@ -148,6 +160,11 @@ def index_add_(inp, dim, index, src, alpha=1):
     assert (
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
+
+    if index.numel() != 1:
+        return torch.ops.aten.index_add_.default.redispatch(
+            _FALLBACK_KEYSET, inp, dim, index, src, alpha=alpha
+        )
 
     inp_cont = inp.clone()
     inp_cont = inp_cont.contiguous()
