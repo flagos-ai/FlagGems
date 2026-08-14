@@ -481,6 +481,7 @@ from flag_gems.ops.max_unpool3d import max_unpool3d
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
+from flag_gems.ops.meshgrid import meshgrid
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.miopen_batch_norm_backward import miopen_batch_norm_backward
@@ -1350,6 +1351,7 @@ __all__ = [
     "median_dim",
     "median_dim_values",
     "median_out",
+    "meshgrid",
     "min",
     "min_dim",
     "minimum",
