@@ -465,6 +465,10 @@ _FULL_CONFIG = (
     ("exponential_", exponential_),
     ("eye", eye),
     ("eye.m", eye_m),
+    (
+        "fake_quantize_per_tensor_affine_cachemask_backward",
+        fake_quantize_per_tensor_affine_cachemask_backward,
+    ),
     ("feature_dropout", feature_dropout),
     ("feature_dropout_", feature_dropout_),
     ("fill.Scalar", fill_scalar),
