@@ -5,7 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
 
 device = device.name
@@ -13,7 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 @triton.autotune(
-    configs=runtime.get_tuned_config("grid_sampler_2d"),
+    configs=[
+        triton.Config({"BLOCK_SIZE": 256}),
+        triton.Config({"BLOCK_SIZE": 512}),
+        triton.Config({"BLOCK_SIZE": 1024}),
+        triton.Config({"BLOCK_SIZE": 2048}),
+    ],
     key=["N", "C", "OH", "OW"],
 )
 @triton.jit
@@ -41,75 +45,70 @@ def grid_sampler_2d_kernel(
 
     # Compute output position index
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    idx_mask = idx < OH * OW
     ow = idx % OW
-    oh = idx // OW % OH
+    oh = idx // OW
 
-    # Load grid coordinates
-    # Grid shape: (N, OH, OW, 2), but grid is the same for all channels
-    # grid offset: (oh * OW + ow) * 2 (use same grid for all n in a batch)
-    grid_offset = (oh * OW + ow) * 2
-    grid_x = tl.load(ptr_g + n * OH * OW * 2 + grid_offset)
-    grid_y = tl.load(ptr_g + n * OH * OW * 2 + grid_offset + 1)
+    # Load grid coordinates.
+    # Grid shape: (N, OH, OW, 2); the grid is shared across channels.
+    grid_offset = (n * OH * OW + oh * OW + ow) * 2
+    # Coordinate math is done in fp32 (tl.floor requires fp32/fp64 and the
+    # extra precision avoids indexing errors for fp16/bf16 inputs).
+    grid_x = tl.load(ptr_g + grid_offset, mask=idx_mask, other=0.0).to(tl.float32)
+    grid_y = tl.load(ptr_g + grid_offset + 1, mask=idx_mask, other=0.0).to(
+        tl.float32
+    )
 
-    # Convert grid coordinates from [-1, 1] to pixel space
-    # With align_corners=True: grid in [-1, 1] maps to [0, IH-1] or [0, IW-1]
-    # With align_corners=False: grid in [-1, 1] maps to [-0.5, IH-0.5] or [-0.5, IW-0.5]
+    # Unnormalize grid coordinates from [-1, 1] to pixel space, matching
+    # PyTorch's grid_sampler_unnormalize:
+    #   align_corners=True : ((coord + 1) / 2) * (size - 1)
+    #   align_corners=False: ((coord + 1) * size - 1) / 2
     if align_corners:
-        x = (grid_x + 1) * (IW - 1) / 2
-        y = (grid_y + 1) * (IH - 1) / 2
+        x = (grid_x + 1) * 0.5 * (IW - 1)
+        y = (grid_y + 1) * 0.5 * (IH - 1)
     else:
-        x = (grid_x + 1) * IW / 2 - 0.5
-        y = (grid_y + 1) * IH / 2 - 0.5
+        x = ((grid_x + 1) * IW - 1) * 0.5
+        y = ((grid_y + 1) * IH - 1) * 0.5
 
-    # Compute integer and fractional parts for bilinear interpolation
-    x0 = tl.floor(x).to(tl.int32)
-    y0 = tl.floor(y).to(tl.int32)
-    x1 = x0 + 1
-    y1 = y0 + 1
-
-    # Compute weights
-    xfrac = x - tl.floor(x)
-    yfrac = y - tl.floor(y)
-
-    # Compute clamped coordinates based on padding mode
+    # Apply the padding transform on the continuous coordinates, mirroring the
+    # order PyTorch uses (reflect/clip happen before interpolation sampling).
     # padding_mode: 0=Zeros, 1=Border, 2=Reflection
-    if padding_mode == 0:
-        # Zero padding - coordinates outside bounds will be masked
-        x0_clamped = x0
-        y0_clamped = y0
-        x1_clamped = x1
-        y1_clamped = y1
-    elif padding_mode == 1:
-        # Border extension
-        x0_clamped = tl.minimum(tl.maximum(x0, 0), IW - 1)
-        y0_clamped = tl.minimum(tl.maximum(y0, 0), IH - 1)
-        x1_clamped = tl.minimum(tl.maximum(x1, 0), IW - 1)
-        y1_clamped = tl.minimum(tl.maximum(y1, 0), IH - 1)
-    else:
-        # Reflection (padding_mode == 2)
-        x0_ref = tl.where(x0 < 0, -x0 - 1, x0)
-        y0_ref = tl.where(y0 < 0, -y0 - 1, y0)
-        x1_ref = tl.where(x1 < 0, -x1 - 1, x1)
-        y1_ref = tl.where(y1 < 0, -y1 - 1, y1)
-
-        # Handle coordinates >= size with reflection
-        x0_mirror = tl.where(x0_ref >= IW, 2 * IW - x0_ref - 2, x0_ref)
-        y0_mirror = tl.where(y0_ref >= IH, 2 * IH - y0_ref - 2, y0_ref)
-        x1_mirror = tl.where(x1_ref >= IW, 2 * IW - x1_ref - 2, x1_ref)
-        y1_mirror = tl.where(y1_ref >= IH, 2 * IH - y1_ref - 2, y1_ref)
-
-        x0_clamped = tl.minimum(tl.maximum(x0_mirror, 0), IW - 1)
-        y0_clamped = tl.minimum(tl.maximum(y0_mirror, 0), IH - 1)
-        x1_clamped = tl.minimum(tl.maximum(x1_mirror, 0), IW - 1)
-        y1_clamped = tl.minimum(tl.maximum(y1_mirror, 0), IH - 1)
-
-    # Compute validity masks for zero padding
-    in_bounds_x0 = (x0 >= 0) & (x0 < IW)
-    in_bounds_x1 = (x1 >= 0) & (x1 < IW)
-    in_bounds_y0 = (y0 >= 0) & (y0 < IH)
-    in_bounds_y1 = (y1 >= 0) & (y1 < IH)
-
-    in_bounds = in_bounds_x0 & in_bounds_x1 & in_bounds_y0 & in_bounds_y1
+    if padding_mode == 1:
+        # Border: clip continuous coordinates into [0, size - 1].
+        x = tl.minimum(tl.maximum(x, 0.0), (IW - 1).to(tl.float32))
+        y = tl.minimum(tl.maximum(y, 0.0), (IH - 1).to(tl.float32))
+    elif padding_mode == 2:
+        # Reflection: fold coordinates back into range with a triangle wave,
+        # then clip to guard against tiny out-of-range values at the borders.
+        if align_corners:
+            # Reflect across [0, size - 1] with period 2 * (size - 1).
+            span_x = (IW - 1).to(tl.float32)
+            span_y = (IH - 1).to(tl.float32)
+            px = 2.0 * span_x
+            py = 2.0 * span_y
+            # Guard the size == 1 case (period 0) to avoid division by zero.
+            px_safe = tl.where(px > 0.0, px, 1.0)
+            py_safe = tl.where(py > 0.0, py, 1.0)
+            ax = tl.abs(x)
+            ay = tl.abs(y)
+            ax = ax - tl.floor(ax / px_safe) * px
+            ay = ay - tl.floor(ay / py_safe) * py
+            x = span_x - tl.abs(ax - span_x)
+            y = span_y - tl.abs(ay - span_y)
+            x = tl.where(px > 0.0, x, 0.0)
+            y = tl.where(py > 0.0, y, 0.0)
+        else:
+            # Reflect across [-0.5, size - 0.5] with period 2 * size.
+            px = 2.0 * IW
+            py = 2.0 * IH
+            ax = tl.abs(x + 0.5)
+            ay = tl.abs(y + 0.5)
+            ax = ax - tl.floor(ax / px) * px
+            ay = ay - tl.floor(ay / py) * py
+            x = (IW - tl.abs(ax - IW)) - 0.5
+            y = (IH - tl.abs(ay - IH)) - 0.5
+        x = tl.minimum(tl.maximum(x, 0.0), (IW - 1).to(tl.float32))
+        y = tl.minimum(tl.maximum(y, 0.0), (IH - 1).to(tl.float32))
 
     # Compute output offset
     offset_o = (nc * OH + oh) * OW + ow
@@ -117,30 +116,70 @@ def grid_sampler_2d_kernel(
 
     # interpolation_mode: 0=Bilinear, 1=Nearest
     if interpolation_mode == 1:
-        # Nearest neighbor - just round to nearest integer
-        x_nearest = tl.where(x - tl.floor(x) < 0.5, x0, x1)
-        y_nearest = tl.where(y - tl.floor(y) < 0.5, y0, y1)
-        x_nearest_clamped = tl.minimum(tl.maximum(x_nearest, 0), IW - 1)
-        y_nearest_clamped = tl.minimum(tl.maximum(y_nearest, 0), IH - 1)
-
-        offset_i = offset_i_base + y_nearest_clamped * IW + x_nearest_clamped
+        # Nearest neighbor: round half to even, matching PyTorch's nearbyint.
+        xr = tl.floor(x)
+        yr = tl.floor(y)
+        xd = x - xr
+        yd = y - yr
+        x_nearest = tl.where(
+            xd < 0.5,
+            xr,
+            tl.where(xd > 0.5, xr + 1, xr + (xr - 2 * tl.floor(xr * 0.5))),
+        ).to(tl.int32)
+        y_nearest = tl.where(
+            yd < 0.5,
+            yr,
+            tl.where(yd > 0.5, yr + 1, yr + (yr - 2 * tl.floor(yr * 0.5))),
+        ).to(tl.int32)
+        # Validity is based on the nearest pixel itself (only relevant for
+        # zeros padding; border/reflection already produced in-range coords).
+        in_bounds = (
+            (x_nearest >= 0)
+            & (x_nearest < IW)
+            & (y_nearest >= 0)
+            & (y_nearest < IH)
+        )
+        x_nearest_c = tl.minimum(tl.maximum(x_nearest, 0), IW - 1)
+        y_nearest_c = tl.minimum(tl.maximum(y_nearest, 0), IH - 1)
+        offset_i = offset_i_base + y_nearest_c * IW + x_nearest_c
 
         if padding_mode == 0:
             result = tl.load(ptr_i + offset_i, mask=in_bounds, other=0.0)
         else:
             result = tl.load(ptr_i + offset_i)
     else:
-        # Bilinear interpolation
-        offset_i00 = offset_i_base + y0_clamped * IW + x0_clamped
-        offset_i01 = offset_i_base + y0_clamped * IW + x1_clamped
-        offset_i10 = offset_i_base + y1_clamped * IW + x0_clamped
-        offset_i11 = offset_i_base + y1_clamped * IW + x1_clamped
+        # Bilinear interpolation on the (possibly padded) continuous coords.
+        x0 = tl.floor(x).to(tl.int32)
+        y0 = tl.floor(y).to(tl.int32)
+        x1 = x0 + 1
+        y1 = y0 + 1
+
+        xfrac = x - tl.floor(x)
+        yfrac = y - tl.floor(y)
+
+        # Validity masks for zeros padding (evaluated on raw coordinates,
+        # which are only left untouched when padding_mode == 0).
+        in_x0 = (x0 >= 0) & (x0 < IW)
+        in_x1 = (x1 >= 0) & (x1 < IW)
+        in_y0 = (y0 >= 0) & (y0 < IH)
+        in_y1 = (y1 >= 0) & (y1 < IH)
+
+        # Clamp corner indices for safe addressing.
+        x0_c = tl.minimum(tl.maximum(x0, 0), IW - 1)
+        y0_c = tl.minimum(tl.maximum(y0, 0), IH - 1)
+        x1_c = tl.minimum(tl.maximum(x1, 0), IW - 1)
+        y1_c = tl.minimum(tl.maximum(y1, 0), IH - 1)
+
+        offset_i00 = offset_i_base + y0_c * IW + x0_c
+        offset_i01 = offset_i_base + y0_c * IW + x1_c
+        offset_i10 = offset_i_base + y1_c * IW + x0_c
+        offset_i11 = offset_i_base + y1_c * IW + x1_c
 
         if padding_mode == 0:
-            mask00 = in_bounds_x0 & in_bounds_y0
-            mask01 = in_bounds_x1 & in_bounds_y0
-            mask10 = in_bounds_x0 & in_bounds_y1
-            mask11 = in_bounds_x1 & in_bounds_y1
+            mask00 = in_x0 & in_y0
+            mask01 = in_x1 & in_y0
+            mask10 = in_x0 & in_y1
+            mask11 = in_x1 & in_y1
 
             data00 = tl.load(ptr_i + offset_i00, mask=mask00, other=0.0)
             data01 = tl.load(ptr_i + offset_i01, mask=mask01, other=0.0)
@@ -152,7 +191,6 @@ def grid_sampler_2d_kernel(
             data10 = tl.load(ptr_i + offset_i10)
             data11 = tl.load(ptr_i + offset_i11)
 
-        # Bilinear interpolation
         result = (
             data00 * (1 - xfrac) * (1 - yfrac)
             + data01 * xfrac * (1 - yfrac)
@@ -160,7 +198,7 @@ def grid_sampler_2d_kernel(
             + data11 * xfrac * yfrac
         )
 
-    tl.store(ptr_o + offset_o, result)
+    tl.store(ptr_o + offset_o, result, mask=idx_mask)
 
 
 def grid_sampler_2d(
@@ -185,9 +223,15 @@ def grid_sampler_2d(
     N, C, IH, IW = input.shape
     _, OH, OW, _ = grid.shape
 
+    # The kernel computes flat offsets assuming contiguous layouts.
+    input = input.contiguous()
+    grid = grid.contiguous()
+
     # allocate output
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
     total_threads = OH * OW
+    if output.numel() == 0:
+        return output
     grid_lambda = lambda META: (
         triton.cdiv(total_threads, META["BLOCK_SIZE"]),
         N * C,
