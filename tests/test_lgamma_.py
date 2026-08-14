@@ -32,6 +32,7 @@ def fallback_lgamma_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr)
     tl.store(out_ptr + offsets, _fallback_lgamma(x), mask=mask)
 
 
+@pytest.mark.lgamma
 def test_missing_lgamma_uses_fallback():
     class EmptyLibdevice:
         pass
@@ -40,15 +41,25 @@ def test_missing_lgamma_uses_fallback():
     assert libdevice.lgamma is _fallback_lgamma
 
 
+@pytest.mark.lgamma
 def test_fallback_lgamma():
     inp = torch.tensor(
         [
             -float("inf"),
+            -100.0001,
+            -99.9999,
             -4.0,
+            -9.000000953674316,
+            -8.999999046325684,
+            -9.0001,
+            -8.9999,
             -3.75,
             -2.5,
             -1.25,
             -0.5,
+            -1e-6,
+            -1e-7,
+            -1e-8,
             -0.0,
             0.0,
             0.1,
@@ -64,12 +75,12 @@ def test_fallback_lgamma():
         dtype=torch.float32,
         device=flag_gems.device,
     )
-    expected = torch.lgamma(inp)
+    expected = torch.lgamma(utils.to_reference(inp, True))
     actual = torch.empty_like(inp)
     block_size = triton.next_power_of_2(inp.numel())
     with torch_device_fn.device(inp.device):
         fallback_lgamma_kernel[(1,)](inp, actual, inp.numel(), BLOCK_SIZE=block_size)
-    torch.testing.assert_close(actual, expected, rtol=2e-5, atol=2e-5, equal_nan=True)
+    utils.gems_assert_close(actual, expected, torch.float32, atol=2e-5, equal_nan=True)
 
 
 @pytest.mark.lgamma

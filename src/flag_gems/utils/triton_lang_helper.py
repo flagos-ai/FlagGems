@@ -199,6 +199,7 @@ def _fallback_lgamma(x):
     # Triton math operations so vendor forks whose libdevice does not expose
     # lgamma (for example Sunrise's tang backend) can still import and compile
     # operators which reference tl_extra_shim.lgamma.
+    x = x.to(tl.float32)
     reflect = x < 0.5
     y = tl.where(reflect, 1.0 - x, x)
     z = y - 1.0
@@ -215,7 +216,16 @@ def _fallback_lgamma(x):
     result = 0.9189385332046727 + (z + 0.5) * tl.log(t) - t + tl.log(a)
 
     pi = 3.141592653589793
-    reflected = tl.log(pi) - tl.log(tl.abs(tl.sin(pi * x))) - result
+    # Reduce the sine argument around the nearest integer.  Direct evaluation
+    # of sin(pi*x) loses precision near distant negative poles, while some
+    # backends also flush very small sin arguments around zero.  A short Taylor
+    # expansion is accurate in that latter range and uses only core arithmetic.
+    reduced = x - tl.floor(x + 0.5)
+    angle = pi * reduced
+    angle2 = angle * angle
+    sin_taylor = angle * (1.0 - angle2 / 6.0 + angle2 * angle2 / 120.0)
+    sin_pi_x = tl.where(tl.abs(angle) < 0.01, sin_taylor, tl.sin(angle))
+    reflected = tl.log(pi) - tl.log(tl.abs(sin_pi_x)) - result
     result = tl.where(reflect, reflected, result)
 
     # The reflection formula's finite-precision sin(pi*x) is not exactly zero
