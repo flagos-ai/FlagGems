@@ -13,7 +13,7 @@
 # limitations under the License.
 
 ops:
-  - id: _batch_norm_with_update_functional
+  - id: batch_norm_with_update_functional
     description: Functional variant of _batch_norm_with_update that applies training-mode Batch Normalization and updates running statistics.
     for:
       - _batch_norm_with_update_functional
