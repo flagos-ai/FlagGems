@@ -271,4 +271,37 @@ at::Tensor to_copy(const at::Tensor &self,
 
 at::Tensor &copy_(at::Tensor &dst, const at::Tensor &src, bool non_blocking = false);
 
+// adaptive_max_pool3d C++ wrapper (sort.cpp pattern)
+void capture_native_kernels();
+std::tuple<at::Tensor, at::Tensor> adaptive_max_pool3d_global(const at::Tensor &self);
+// Full C++ handler — replaces the Python/Triton handler at the dispatch key.
+std::tuple<at::Tensor, at::Tensor> adaptive_max_pool3d(const at::Tensor &self, at::IntArrayRef output_size);
+
+// Manual kernel config structs (mirror Python _select_* functions).
+struct KernelDirectCfg {
+  int ob, cb, nw, ns;
+};
+struct TinyKernelCfg {
+  int bs, nw, ns;
+};
+struct CooperativeCfg {
+  int ct, nw, ns;
+};
+struct UniformFusedCfg {
+  int bh, bw, nw, ns;
+};
+
+KernelDirectCfg select_kernel_direct(int64_t mwd,
+                                     int64_t mwh,
+                                     int64_t mww,
+                                     int64_t ic,
+                                     int64_t inn,
+                                     int64_t od,
+                                     int64_t oh,
+                                     int64_t ow,
+                                     c10::ScalarType dtype);
+TinyKernelCfg select_tiny_kernel(int64_t total_output);
+CooperativeCfg select_cooperative(int64_t mwd, int64_t mwh, int64_t mww);
+UniformFusedCfg select_uniform_fused(int64_t ow, int64_t oh, int64_t inn, int64_t ic, int64_t od);
+
 }  // namespace flag_gems

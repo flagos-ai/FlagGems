@@ -172,6 +172,7 @@ namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {
 #ifdef FLAGGEMS_POINTWISE_DYNAMIC
   // add
+  m.def("adaptive_max_pool3d(Tensor self, int[] output_size) -> (Tensor, Tensor)");
   m.def("add_tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor", {at::Tag::pt2_compliant_tag});
   m.def("add_scalar(Tensor self, Scalar other, Scalar alpha=1) -> Tensor", {at::Tag::pt2_compliant_tag});
   m.def("add_tensor_inplace(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)",
@@ -347,6 +348,7 @@ TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
 #endif
 
   m.impl("exponential_", TORCH_FN(exponential_));
+  m.impl("adaptive_max_pool3d", TORCH_FN(adaptive_max_pool3d));
   m.impl("addmm", TORCH_FN(addmm));
   m.impl("bmm", TORCH_FN(bmm));
   m.impl("mm", TORCH_FN(mm_tensor));

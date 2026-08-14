@@ -14,6 +14,7 @@
 
 add_library(operators
             SHARED
+            adaptive_max_pool3d.cpp
             device_info.cpp
             act_quant.cpp
             zeros.cpp
