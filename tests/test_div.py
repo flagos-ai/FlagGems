@@ -337,18 +337,26 @@ def test_div_complex_complex(shape, complex_dtype):
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
 
-    ref_inp1 = utils.to_reference(inp1, True)
-    ref_inp2 = utils.to_reference(inp2, True)
+    # mthreads and cambricon MLU have issues with complex division on device.
+    # mthreads: returns incorrect results for complex / complex.
+    # cambricon: type promotion error for complex types.
+    # Also, mthreads does not support torch.isclose for complex types on device.
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
+        # CPU doesn't support complex32, so convert to complex64 first
+        if complex_dtype == torch.complex32:
+            ref_out = torch.div(inp1.to("cpu").to(torch.complex64), inp2.to("cpu").to(torch.complex64)).to(torch.complex32)
+        else:
+            ref_out = torch.div(inp1.to("cpu"), inp2.to("cpu")).to(dtype=complex_dtype)
+    else:
+        ref_inp1 = utils.to_reference(inp1, True)
+        ref_inp2 = utils.to_reference(inp2, True)
+        ref_out = torch.div(ref_inp1, ref_inp2)
 
-    ref_out = torch.div(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2)
 
-    # mthreads does not support torch.isclose for complex types on device,
-    # so move to CPU before comparison.
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
         res_out = res_out.to("cpu")
-        ref_out = ref_out.to("cpu")
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
 
 
@@ -383,8 +391,13 @@ def test_div_complex_float_tensor(shape, complex_dtype):
     # mthreads native torch.div returns incorrect results for complex / float,
     # so compute ref on CPU to get correct baseline.
     # Also, mthreads does not support torch.isclose for complex types on device.
-    if flag_gems.vendor_name == "mthreads":
-        ref_out = torch.div(inp1.to("cpu"), inp2.to("cpu")).to(dtype=complex_dtype)
+    # cambricon MLU does not support type promotion for complex / float division.
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
+        # CPU doesn't support complex32, so convert to complex64 first
+        if complex_dtype == torch.complex32:
+            ref_out = torch.div(inp1.to("cpu").to(torch.complex64), inp2.to("cpu").to(torch.float32)).to(torch.complex32)
+        else:
+            ref_out = torch.div(inp1.to("cpu"), inp2.to("cpu")).to(dtype=complex_dtype)
     else:
         ref_inp1 = utils.to_reference(inp1, True)
         ref_inp2 = utils.to_reference(inp2, True)
@@ -393,7 +406,7 @@ def test_div_complex_float_tensor(shape, complex_dtype):
     with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2)
 
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
         res_out = res_out.to("cpu")
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
 
@@ -420,8 +433,13 @@ def test_div_tensor_int(shape, complex_dtype):
     # mthreads native torch.div returns incorrect results for complex / int,
     # so compute ref on CPU to get correct baseline.
     # Also, mthreads does not support torch.isclose for complex types on device.
-    if flag_gems.vendor_name == "mthreads":
-        ref_out = torch.div(inp1.to("cpu"), inp2.to("cpu")).to(dtype=complex_dtype)
+    # cambricon MLU does not support type promotion for complex / int division.
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
+        # CPU doesn't support complex32, so convert to complex64 first
+        if complex_dtype == torch.complex32:
+            ref_out = torch.div(inp1.to("cpu").to(torch.complex64), inp2.to("cpu")).to(torch.complex32)
+        else:
+            ref_out = torch.div(inp1.to("cpu"), inp2.to("cpu")).to(dtype=complex_dtype)
     else:
         ref_inp1 = utils.to_reference(inp1, True)
         ref_inp2 = utils.to_reference(inp2, True)
@@ -430,7 +448,7 @@ def test_div_tensor_int(shape, complex_dtype):
     with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2)
 
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
         res_out = res_out.to("cpu")
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
 
@@ -452,16 +470,23 @@ def test_div_complex_int_scalar(shape, complex_dtype):
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
     inp2 = 3
 
-    ref_inp1 = utils.to_reference(inp1, True)
-    ref_inp2 = inp2
+    # cambricon MLU does not support type promotion for complex / int scalar division.
+    if flag_gems.vendor_name == "cambricon":
+        if complex_dtype == torch.complex32:
+            ref_out = torch.div(inp1.to("cpu").to(torch.complex64), inp2).to(torch.complex32)
+        else:
+            ref_out = torch.div(inp1.to("cpu"), inp2)
+    else:
+        ref_inp1 = utils.to_reference(inp1, True)
+        ref_inp2 = inp2
+        ref_out = torch.div(ref_inp1, ref_inp2)
 
-    ref_out = torch.div(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2)
 
     # mthreads does not support torch.isclose for complex types on device,
     # so move to CPU before comparison.
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
         res_out = res_out.to("cpu")
         ref_out = ref_out.to("cpu")
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)

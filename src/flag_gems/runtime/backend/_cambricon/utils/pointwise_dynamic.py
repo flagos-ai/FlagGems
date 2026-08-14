@@ -1839,7 +1839,9 @@ class PointwiseDynamicFunction:
             else:
                 a = a.to(torch.float32)
                 cdtype = torch.complex64
-            return torch.complex(a, torch.zeros_like(a)).to(cdtype)
+            # Use view_as_real/view_as_complex to avoid torch.complex which falls back to CPU
+            real_imag = torch.stack([a, torch.zeros_like(a)], dim=-1)
+            return torch.view_as_complex(real_imag).to(cdtype)
         elif isinstance(a, complex):
             return torch.tensor(a, dtype=target_dtype, device=device)
         elif isinstance(a, (int, float)):
