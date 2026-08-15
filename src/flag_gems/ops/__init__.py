@@ -31,6 +31,7 @@ from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
 from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
 from flag_gems.ops._conj import _conj
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
+from flag_gems.ops._dirichlet_grad import _dirichlet_grad
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
@@ -815,6 +816,7 @@ __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_no_update",
+    "_dirichlet_grad",
     "_functional_assert_async",
     "_cdist_backward",
     "_cdist_forward",
