@@ -105,6 +105,7 @@ _FULL_CONFIG = (
     ("_conj", _conj),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
+    ("_cummax_helper", _cummax_helper),
     ("_cudnn_attention_forward", cudnn_attention_forward),
     ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
     ("_efficient_attention_backward", efficient_attention_backward),
