@@ -2991,6 +2991,18 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: embedding_bag_sparse_backward
+    description: |
+      Computes the sparse (COO) gradient for the backward pass of embedding_bag.
+    for:
+      - _embedding_bag_sparse_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: embedding_dense_backward
     description: Calculates the gradient of the weight matrix for a dense embedding layer during backpropagation.
     for:

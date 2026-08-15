@@ -36,6 +36,7 @@ from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_bac
 from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
 )
+from flag_gems.ops._embedding_bag_sparse_backward import _embedding_bag_sparse_backward
 from flag_gems.ops._euclidean_dist import _euclidean_dist
 from flag_gems.ops._flash_attention_forward import _flash_attention_forward
 from flag_gems.ops._functional_sym_constrain_range import (
@@ -815,6 +816,7 @@ __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_no_update",
+    "_embedding_bag_sparse_backward",
     "_functional_assert_async",
     "_cdist_backward",
     "_cdist_forward",
