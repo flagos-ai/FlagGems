@@ -114,6 +114,10 @@ _FULL_CONFIG = (
         _embedding_bag_per_sample_weights_backward,
     ),
     ("_euclidean_dist", _euclidean_dist),
+    (
+        "_fake_quantize_learnable_per_channel_affine",
+        _fake_quantize_learnable_per_channel_affine,
+    ),
     ("_flash_attention_backward", flash_attention_backward),
     ("_flash_attention_forward", _flash_attention_forward),
     (

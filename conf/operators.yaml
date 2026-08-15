@@ -3305,6 +3305,19 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: fake_quantize_learnable_per_channel_affine
+    description: |
+      Triton kernel implementation for _fake_quantize_learnable_per_channel_affine,
+      the per-channel fake-quantize affine operator with learnable scale and zero point.
+    for:
+      - _fake_quantize_learnable_per_channel_affine
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: feature_dropout
     description: |
       Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.
