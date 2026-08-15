@@ -3305,6 +3305,21 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+    description: |
+      Fake-quantizes `input` per-tensor with affine mapping given by `scale` and
+      `zero_point`, clamping the quantized integer into `[quant_min, quant_max]`,
+      and returns both the dequantized output and a boolean mask indicating which
+      elements fell inside the quantized range.
+    for:
+      - _fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: feature_dropout
     description: |
       Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.
