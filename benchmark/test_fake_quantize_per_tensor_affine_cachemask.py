@@ -23,28 +23,48 @@ def fake_quantize_per_tensor_affine_cachemask_input_fn(shape, dtype, device):
     yield input, 0.125, 3, 0, 255
 
 
+def fake_quantize_per_tensor_affine_cachemask_out_input_fn(shape, dtype, device):
+    input = utils.generate_tensor_input(shape, dtype, device)
+    out0 = torch.empty_like(input)
+    out1 = torch.empty_like(input, dtype=torch.bool)
+    yield input, 0.125, 3, 0, 255, {"out0": out0, "out1": out1}
+
+
+class BenchmarkFakeQuantizePerTensorAffineCachemask(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (4, 4),
+            (64, 64),
+            (128, 256),
+            (512, 512),
+            (1024, 1024),
+            (2048, 2048),
+            (4096, 4096),
+            (8192, 8192),
+            (2, 3, 128, 128),
+            (8, 16, 64, 64),
+            (32, 64, 128, 128),
+        ]
+
+
 @pytest.mark.fake_quantize_per_tensor_affine_cachemask
 def test_fake_quantize_per_tensor_affine_cachemask():
-    class BenchmarkFakeQuantizePerTensorAffineCachemask(base.GenericBenchmark):
-        def set_shapes(self, shape_file_path=None):
-            self.shapes = [
-                (4, 4),
-                (64, 64),
-                (128, 256),
-                (512, 512),
-                (1024, 1024),
-                (2048, 2048),
-                (4096, 4096),
-                (8192, 8192),
-                (2, 3, 128, 128),
-                (8, 16, 64, 64),
-                (32, 64, 128, 128),
-            ]
 
     bench = BenchmarkFakeQuantizePerTensorAffineCachemask(
         op_name="fake_quantize_per_tensor_affine_cachemask",
         torch_op=torch.ops.aten.fake_quantize_per_tensor_affine_cachemask,
         input_fn=fake_quantize_per_tensor_affine_cachemask_input_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.fake_quantize_per_tensor_affine_cachemask_out
+def test_fake_quantize_per_tensor_affine_cachemask_out():
+    bench = BenchmarkFakeQuantizePerTensorAffineCachemask(
+        op_name="fake_quantize_per_tensor_affine_cachemask_out",
+        torch_op=torch.ops.aten.fake_quantize_per_tensor_affine_cachemask.out,
+        input_fn=fake_quantize_per_tensor_affine_cachemask_out_input_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

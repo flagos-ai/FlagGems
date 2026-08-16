@@ -64,7 +64,7 @@ def test_accuracy_fake_quantize_per_tensor_affine_cachemask_boundaries(scale):
     utils.gems_assert_equal(cachemask, ref_mask)
 
 
-@pytest.mark.fake_quantize_per_tensor_affine_cachemask
+@pytest.mark.fake_quantize_per_tensor_affine_cachemask_out
 def test_accuracy_fake_quantize_per_tensor_affine_cachemask_out():
     input = torch.randn((8, 16), device=flag_gems.device)
     ref_output, ref_mask = torch.ops.aten.fake_quantize_per_tensor_affine_cachemask(
