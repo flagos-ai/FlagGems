@@ -302,6 +302,7 @@ from flag_gems.ops.flash_attention_backward import (
 )
 from flag_gems.ops.flatten import flatten
 from flag_gems.ops.flip import flip
+from flag_gems.ops.flipud import flipud
 from flag_gems.ops.float_power_ import (
     float_power_tensor_scalar,
     float_power_tensor_scalar_,
@@ -1117,6 +1118,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",
+    "flipud",
     "float_power_tensor_scalar",
     "float_power_tensor_scalar_",
     "float_power_tensor_tensor",
