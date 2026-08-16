@@ -92,7 +92,7 @@ def test_accuracy_fake_quantize_per_channel_affine_cachemask_noncontiguous():
     gems_assert_equal(mask, ref_mask)
 
 
-@pytest.mark.fake_quantize_per_channel_affine_cachemask
+@pytest.mark.fake_quantize_per_channel_affine_cachemask_out
 def test_accuracy_fake_quantize_per_channel_affine_cachemask_out():
     input = torch.randn((2, 3, 5), device=flag_gems.device) * 20
     scale = torch.tensor([0.1, 0.2, 0.3], device=flag_gems.device)

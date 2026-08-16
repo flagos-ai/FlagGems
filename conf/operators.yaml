@@ -3310,6 +3310,17 @@ ops:
     description: Applies per-channel affine fake quantization and returns the quantization-range mask.
     for:
       - fake_quantize_per_channel_affine_cachemask
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
+  - id: fake_quantize_per_channel_affine_cachemask_out
+    description: A variant of `fake_quantize_per_channel_affine_cachemask` that assigns the results to the provided output tensors.
+    for:
       - fake_quantize_per_channel_affine_cachemask.out
     labels:
       - aten
