@@ -13,6 +13,28 @@
 # limitations under the License.
 
 ops:
+  - id: _aminmax
+    description: |
+      Computes the minimum and maximum values of the `input` tensor.
+    for:
+      - _aminmax
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+  - id: _aminmax_out
+    description: |
+      A variant of _aminmax() that writes the result into the out tensor.
+    for:
+      - _aminmax.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
   - id: _reshape_alias
     description: |
       Creates a view of the input tensor with the given size and stride,
