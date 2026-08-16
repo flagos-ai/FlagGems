@@ -12,27 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
-import torch
+# Only names bound here are picked up: the arch loader collects every function in
+# this namespace with inspect.getmembers and overwrites the same-named generic op,
+# so helpers must not be re-exported from here.
+from .softmax import softmax, softmax_out
 
-from . import base, consts
-
-
-@pytest.mark.special_multigammaln
-def test_special_multigammaln():
-    bench = base.UnaryPointwiseBenchmark(
-        op_name="special_multigammaln",
-        torch_op=lambda a: torch.special.multigammaln(a, 5),
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.mvlgamma_
-def test_mvlgamma_():
-    bench = base.UnaryPointwiseBenchmark(
-        op_name="mvlgamma_",
-        torch_op=lambda a: a.mvlgamma_(5),
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+__all__ = [
+    "softmax",
+    "softmax_out",
+]
