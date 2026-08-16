@@ -13,32 +13,6 @@
 # limitations under the License.
 
 ops:
-  - id: _conj_physical
-    description: |
-      Computes the element-wise conjugate of the given `input` tensor as a
-      physical (non-view) tensor. For non-complex dtypes the input is
-      returned unchanged.
-    for:
-      - _conj_physical
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
-  - id: _conj_physical_out
-    description: |
-      A variant of `_conj_physical()` that writes the result into the `out` tensor.
-    for:
-      - _conj_physical.out
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: _reshape_alias
     description: |
       Creates a view of the input tensor with the given size and stride,
@@ -2098,6 +2072,32 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.3'
+  - id: _conj_physical
+    description: |
+      Computes the element-wise conjugate of the given `input` tensor as a
+      physical (non-view) tensor. For non-complex dtypes the input is
+      returned unchanged.
+    for:
+      - _conj_physical
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: _conj_physical_out
+    description: |
+      A variant of `_conj_physical()` that writes the result into the `out` tensor.
+    for:
+      - _conj_physical.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: constant_pad_nd
     description: |
       Pads the input tensor boundaries with a constant value.
