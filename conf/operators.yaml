@@ -24,6 +24,7 @@ ops:
     kind:
       - Reduction
     stages:
+      - alpha: '5.4'
   - id: _aminmax_out
     description: |
       A variant of _aminmax() that writes the result into the out tensor.
@@ -35,6 +36,7 @@ ops:
     kind:
       - Reduction
     stages:
+      - alpha: '5.4'
   - id: _reshape_alias
     description: |
       Creates a view of the input tensor with the given size and stride,
