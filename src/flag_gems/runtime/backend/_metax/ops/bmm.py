@@ -180,6 +180,24 @@ def bmm(A, B):
             _FALLBACK_KEYSET, A.contiguous(), B.contiguous()
         )
 
+    # MACA backend K dimension constraint: tl.dot requires K >= 16
+    # Pad K dimension with zeros if necessary
+    _MIN_DOT_K = 16
+    original_K = K
+    if K < _MIN_DOT_K:
+        pad_k = _MIN_DOT_K - K
+        logger.debug(
+            "GEMS_METAX BMM padding K dimension: %s -> %s (pad_k=%s)",
+            K,
+            _MIN_DOT_K,
+            pad_k,
+        )
+        # Pad A: [batch, M, K] -> [batch, M, _MIN_DOT_K]
+        A = torch.nn.functional.pad(A, (0, pad_k), mode="constant", value=0)
+        # Pad B: [batch, K, N] -> [batch, _MIN_DOT_K, N]
+        B = torch.nn.functional.pad(B, (0, 0, 0, pad_k), mode="constant", value=0)
+        K = _MIN_DOT_K
+
     A = A.contiguous()
     B = B.contiguous()
     out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
