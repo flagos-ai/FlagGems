@@ -393,6 +393,7 @@ _FULL_CONFIG = (
     ("cosh", cosh),
     ("cosh.out", cosh_out),
     ("cosh_", cosh_),
+    ("cosine_embedding_loss", cosine_embedding_loss),
     ("count_nonzero", count_nonzero),
     ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),

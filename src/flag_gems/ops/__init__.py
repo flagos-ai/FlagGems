@@ -238,6 +238,7 @@ from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.copysign_ import copysign_
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
+from flag_gems.ops.cosine_embedding_loss import cosine_embedding_loss
 from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
@@ -1041,6 +1042,7 @@ __all__ = [
     "cosh",
     "cosh_",
     "cosh_out",
+    "cosine_embedding_loss",
     "count_nonzero",
     "ctc_loss",
     "cudnn_attention_forward",
