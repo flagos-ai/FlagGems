@@ -42,15 +42,21 @@ def _make_targets(batch, max_target, classes, device, target_layout):
     return targets, target_lengths
 
 
-def _ctc_loss_input_fn(shape, dtype, device):
+def _base_inputs(shape, dtype, device, target_layout):
     t_steps, batch, classes, max_target = shape
     raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
     log_probs = raw.log_softmax(-1).to(dtype)
     input_lengths = torch.full((batch,), t_steps, dtype=torch.long, device=device)
-
-    # 1D concatenated targets hit the default overload.
     targets, target_lengths = _make_targets(
-        batch, max_target, classes, device, "concatenated"
+        batch, max_target, classes, device, target_layout
+    )
+    return log_probs, targets, input_lengths, target_lengths
+
+
+def _ctc_loss_input_fn(shape, dtype, device):
+    # 1D concatenated targets hit the default overload.
+    log_probs, targets, input_lengths, target_lengths = _base_inputs(
+        shape, dtype, device, "concatenated"
     )
     yield log_probs, targets, input_lengths, target_lengths, {
         "blank": 0,
@@ -58,14 +64,37 @@ def _ctc_loss_input_fn(shape, dtype, device):
     }
 
     if base.Config.bench_level.value == consts.BenchLevel.COMPREHENSIVE.value:
-        # 2D padded targets hit the Tensor overload.
-        targets, target_lengths = _make_targets(
-            batch, max_target, classes, device, "padded"
-        )
         yield log_probs, targets, input_lengths, target_lengths, {
             "blank": 0,
-            "zero_infinity": False,
+            "zero_infinity": True,
         }
+
+
+def _ctc_loss_tensor_input_fn(shape, dtype, device):
+    # 2D padded targets hit the Tensor overload.
+    log_probs, targets, input_lengths, target_lengths = _base_inputs(
+        shape, dtype, device, "padded"
+    )
+    yield log_probs, targets, input_lengths, target_lengths, {
+        "blank": 0,
+        "zero_infinity": False,
+    }
+
+
+def _ctc_loss_out_input_fn(shape, dtype, device):
+    # aten::_ctc_loss.out takes int[] lengths, so pass plain Python lists and
+    # let the wrapper allocate through the caller-provided out buffers.
+    log_probs, targets, input_lengths, target_lengths = _base_inputs(
+        shape, dtype, device, "concatenated"
+    )
+    out0 = torch.empty(0, dtype=log_probs.dtype, device=device)
+    out1 = torch.empty(0, dtype=log_probs.dtype, device=device)
+    yield log_probs, targets, input_lengths.tolist(), target_lengths.tolist(), {
+        "blank": 0,
+        "zero_infinity": False,
+        "out0": out0,
+        "out1": out1,
+    }
 
 
 class CtcLossInternalBenchmark(base.GenericBenchmark):
@@ -78,9 +107,8 @@ class CtcLossInternalBenchmark(base.GenericBenchmark):
     DEFAULT_SHAPE_DESC = "T, N, C, S"
 
     def set_shapes(self, shape_file_path=None):
-        # core_shapes.yaml has no `_ctc_loss` entry, so the base implementation
-        # falls back along the MRO and picks up generic 1-D/2-D shapes. CTC needs
-        # (T, N, C, S) 4-tuples, so pin them instead of consulting the yaml.
+        # core_shapes.yaml has no entry for the `_ctc_loss` op names, and the
+        # generic fallback yields 1D/3D shapes that cannot describe (T, N, C, S).
         self.shapes = [tuple(shape) for shape in self.DEFAULT_SHAPES]
         self.shape_desc = self.DEFAULT_SHAPE_DESC
 
@@ -88,7 +116,7 @@ class CtcLossInternalBenchmark(base.GenericBenchmark):
         return []
 
 
-@pytest.mark.ctc_loss_internal
+@pytest.mark.underscore_ctc_loss
 def test_perf__ctc_loss():
     bench = CtcLossInternalBenchmark(
         op_name="_ctc_loss",
@@ -97,4 +125,28 @@ def test_perf__ctc_loss():
         dtypes=CTC_DTYPES,
     )
     bench.set_gems(flag_gems._ctc_loss)
+    bench.run()
+
+
+@pytest.mark.underscore_ctc_loss
+def test_perf__ctc_loss_tensor():
+    bench = CtcLossInternalBenchmark(
+        op_name="_ctc_loss.Tensor",
+        input_fn=_ctc_loss_tensor_input_fn,
+        torch_op=torch.ops.aten._ctc_loss.Tensor,
+        dtypes=CTC_DTYPES,
+    )
+    bench.set_gems(flag_gems._ctc_loss)
+    bench.run()
+
+
+@pytest.mark.underscore_ctc_loss
+def test_perf__ctc_loss_out():
+    bench = CtcLossInternalBenchmark(
+        op_name="_ctc_loss.out",
+        input_fn=_ctc_loss_out_input_fn,
+        torch_op=torch.ops.aten._ctc_loss.out,
+        dtypes=CTC_DTYPES,
+    )
+    bench.set_gems(flag_gems._ctc_loss_out)
     bench.run()

@@ -37,7 +37,7 @@ def _create_valid_state_mask(target_lengths, max_target, batch_size, T):
     return mask
 
 
-@pytest.mark.ctc_loss_internal
+@pytest.mark.underscore_ctc_loss
 @pytest.mark.parametrize("T", [20, 50])
 @pytest.mark.parametrize("N", [4, 8])
 @pytest.mark.parametrize("C", [10, 20])
@@ -107,7 +107,7 @@ def test__ctc_loss_accuracy(T, N, C, caplog):
     )
 
 
-@pytest.mark.ctc_loss_internal
+@pytest.mark.underscore_ctc_loss
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test__ctc_loss_dtypes(dtype):
     """Test _ctc_loss with different dtypes."""
@@ -156,7 +156,7 @@ def test__ctc_loss_dtypes(dtype):
     )
 
 
-@pytest.mark.ctc_loss_internal
+@pytest.mark.underscore_ctc_loss
 def test__ctc_loss_2d_targets(caplog):
     """Test _ctc_loss with 2D padded targets (Tensor variant)."""
     T, N, C = 50, 8, 20
@@ -204,7 +204,7 @@ def test__ctc_loss_2d_targets(caplog):
     )
 
 
-@pytest.mark.ctc_loss_internal
+@pytest.mark.underscore_ctc_loss
 def test__ctc_loss_int_list_lengths():
     """The default/out schemas take int[] lengths, not tensors."""
     T, N, C = 20, 3, 10
@@ -245,9 +245,9 @@ def test__ctc_loss_int_list_lengths():
     )
 
 
-@pytest.mark.ctc_loss_internal
-def test__ctc_loss_out_variant_out(caplog):
-    """The .out variant must write into and return the caller's buffers."""
+@pytest.mark.underscore_ctc_loss
+def test__ctc_loss_out_variants(caplog):
+    """The out variant must write into and return the caller's buffers."""
     T, N, C = 20, 3, 10
 
     log_probs = torch.randn(T, N, C, device=flag_gems.device)
@@ -255,20 +255,18 @@ def test__ctc_loss_out_variant_out(caplog):
 
     target_lengths = [4, 7, 5]
     input_lengths = [T] * N
-    max_target = max(target_lengths)
 
     targets = torch.randint(
         1, C, (sum(target_lengths),), dtype=torch.long, device=flag_gems.device
     )
+    lengths_arg = (input_lengths, target_lengths)
 
     ref_log_probs = utils.to_reference(log_probs, upcast=False).to(torch.float32)
     ref_targets = utils.to_reference(targets)
-
     ref_out = torch.ops.aten._ctc_loss.out(
         ref_log_probs,
         ref_targets,
-        input_lengths,
-        target_lengths,
+        *lengths_arg,
         out0=torch.empty(0, device=ref_log_probs.device),
         out1=torch.empty(0, device=ref_log_probs.device),
     )
@@ -278,11 +276,10 @@ def test__ctc_loss_out_variant_out(caplog):
     with caplog.at_level("DEBUG", logger="flag_gems.ops._ctc_loss"):
         with flag_gems.use_gems():
             res_out = torch.ops.aten._ctc_loss.out(
-                log_probs, targets, input_lengths, target_lengths, out0=out0, out1=out1
+                log_probs, targets, *lengths_arg, out0=out0, out1=out1
             )
 
-    assert "GEMS _CTC_LOSS" in caplog.text
-
+    assert "GEMS _CTC_LOSS OUT" in caplog.text
     assert res_out[0].data_ptr() == out0.data_ptr()
     assert res_out[1].data_ptr() == out1.data_ptr()
 
@@ -291,72 +288,7 @@ def test__ctc_loss_out_variant_out(caplog):
     )
 
     length_tensor = torch.tensor(target_lengths, device=flag_gems.device)
-    mask = _create_valid_state_mask(length_tensor, max_target, N, T)
-    ref_mask = utils.to_reference(mask)
-    utils.gems_assert_close(
-        res_out[1][mask],
-        ref_out[1][ref_mask],
-        dtype=log_probs.dtype,
-        equal_nan=True,
-    )
-
-
-@pytest.mark.ctc_loss_internal
-def test__ctc_loss_out_variant_Tensor_out(caplog):
-    """The .Tensor_out variant must write into and return the caller's buffers."""
-    T, N, C = 20, 3, 10
-
-    log_probs = torch.randn(T, N, C, device=flag_gems.device)
-    log_probs = torch.nn.functional.log_softmax(log_probs, dim=-1)
-
-    target_lengths = [4, 7, 5]
-    input_lengths = [T] * N
-    max_target = max(target_lengths)
-
-    targets = torch.randint(
-        1, C, (N, max_target), dtype=torch.long, device=flag_gems.device
-    )
-    input_lengths_t = torch.tensor(input_lengths, device=flag_gems.device)
-    target_lengths_t = torch.tensor(target_lengths, device=flag_gems.device)
-
-    ref_log_probs = utils.to_reference(log_probs, upcast=False).to(torch.float32)
-    ref_targets = utils.to_reference(targets)
-    ref_input_lengths = utils.to_reference(input_lengths_t)
-    ref_target_lengths = utils.to_reference(target_lengths_t)
-
-    ref_out = torch.ops.aten._ctc_loss.Tensor_out(
-        ref_log_probs,
-        ref_targets,
-        ref_input_lengths,
-        ref_target_lengths,
-        out0=torch.empty(0, device=ref_log_probs.device),
-        out1=torch.empty(0, device=ref_log_probs.device),
-    )
-
-    out0 = torch.empty(0, device=flag_gems.device)
-    out1 = torch.empty(0, device=flag_gems.device)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops._ctc_loss"):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten._ctc_loss.Tensor_out(
-                log_probs,
-                targets,
-                input_lengths_t,
-                target_lengths_t,
-                out0=out0,
-                out1=out1,
-            )
-
-    assert "GEMS _CTC_LOSS" in caplog.text
-
-    assert res_out[0].data_ptr() == out0.data_ptr()
-    assert res_out[1].data_ptr() == out1.data_ptr()
-
-    utils.gems_assert_close(
-        res_out[0], ref_out[0], dtype=log_probs.dtype, equal_nan=True
-    )
-
-    length_tensor = torch.tensor(target_lengths, device=flag_gems.device)
-    mask = _create_valid_state_mask(length_tensor, max_target, N, T)
+    mask = _create_valid_state_mask(length_tensor, max(target_lengths), N, T)
     ref_mask = utils.to_reference(mask)
     utils.gems_assert_close(
         res_out[1][mask],

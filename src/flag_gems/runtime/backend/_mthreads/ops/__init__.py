@@ -53,6 +53,7 @@ from .normal import normal_
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
+from .pad import constant_pad_nd
 from .prod import prod, prod_dim
 from .rand import rand
 from .rand_like import rand_like
@@ -119,6 +120,7 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
+    "constant_pad_nd",
     "prod",
     "prod_dim",
     "rand",
