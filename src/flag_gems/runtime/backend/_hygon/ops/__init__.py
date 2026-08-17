@@ -21,6 +21,7 @@ from .attention import (
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
 )
+from .conj_physical import conj_physical
 from .div import (
     div_mode,
     div_mode_,
@@ -72,6 +73,7 @@ from .upsample_nearest2d import upsample_nearest2d
 
 __all__ = [
     "_unique2",
+    "conj_physical",
     "ScaleDotProductAttention",
     "SUPPORTED_FP8_DTYPE",
     "any",
