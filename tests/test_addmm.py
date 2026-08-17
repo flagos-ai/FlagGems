@@ -43,9 +43,12 @@ else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 
-_common_addmm_only = pytest.mark.skipif(
-    flag_gems.vendor_name not in ("nvidia", "hygon", "thead"),
-    reason="Issue #5385: Common AddMM coverage",
+_ADDMM_LAYOUT_BIAS_VENDORS = ("nvidia", "hygon", "thead")
+
+# Extend this set as vendor implementations gain equivalent layout and bias support.
+_addmm_layout_bias_only = pytest.mark.skipif(
+    flag_gems.vendor_name not in _ADDMM_LAYOUT_BIAS_VENDORS,
+    reason="Issue #5385: AddMM layout and bias coverage is pending on this backend",
 )
 
 
@@ -87,7 +90,7 @@ def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
 
 
 @pytest.mark.addmm
-@_common_addmm_only
+@_addmm_layout_bias_only
 @pytest.mark.parametrize("M, N, K", VECTOR_BIAS_MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
@@ -111,7 +114,7 @@ def test_addmm_vector_bias_shapes(M, N, K, dtype, b_column_major):
 
 
 @pytest.mark.addmm
-@_common_addmm_only
+@_addmm_layout_bias_only
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm_scalar_bias(dtype, b_column_major):
@@ -135,7 +138,7 @@ def test_addmm_scalar_bias(dtype, b_column_major):
 
 
 @pytest.mark.addmm
-@_common_addmm_only
+@_addmm_layout_bias_only
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm_padded_vector_bias(dtype, b_column_major):
@@ -196,7 +199,7 @@ def test_addmm_out(M, N, K, scalar, dtype):
 
 
 @pytest.mark.addmm_out
-@_common_addmm_only
+@_addmm_layout_bias_only
 @pytest.mark.parametrize("M, N, K", VECTOR_BIAS_MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
@@ -221,7 +224,7 @@ def test_addmm_out_vector_bias_shapes(M, N, K, dtype, b_column_major):
 
 
 @pytest.mark.addmm_out
-@_common_addmm_only
+@_addmm_layout_bias_only
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm_out_noncontiguous(dtype, b_column_major):
@@ -247,7 +250,7 @@ def test_addmm_out_noncontiguous(dtype, b_column_major):
 
 
 @pytest.mark.addmm
-@_common_addmm_only
+@_addmm_layout_bias_only
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("bias_shape", [(), (1, 128), (128, 1)])
 def test_addmm_broadcast_bias(dtype, bias_shape):
