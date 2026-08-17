@@ -54,6 +54,12 @@ if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
     PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
   target_compile_definitions(test_remainder_scalar_first PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
   add_test(NAME test_remainder_scalar_first COMMAND test_remainder_scalar_first)
+
+  add_executable(test_high_rank_fallback test_high_rank_fallback.cpp)
+  target_link_libraries(test_high_rank_fallback
+    PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+  target_compile_definitions(test_high_rank_fallback PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
+  add_test(NAME test_high_rank_fallback COMMAND test_high_rank_fallback)
 endif()
 
 add_executable(test_triton_reduction test_triton_reduction.cpp)

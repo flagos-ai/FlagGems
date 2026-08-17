@@ -494,6 +494,17 @@ def generate_manifest_header(entries: List[KernelEntry], max_rank: int) -> str:
     lines.append("")
     lines.append(f"constexpr int MAX_RANK = {max_rank};")
     lines.append("")
+    lines.append(
+        "// POINTWISE_MAX_RANK: The C++ dispatch pre-generates kernels for ranks 0..5."
+    )
+    lines.append(
+        "// Inputs with effective rank > 5 that skip the fast path will error with a"
+    )
+    lines.append(
+        "// TORCH_CHECK. The Python path (torch.ops.flag_gems.*) codegens any rank on"
+    )
+    lines.append("// demand and does not have this limit.")
+    lines.append("")
     lines.append("// Lookup helper — returns nullptr when (op_name, rank) is not found")
     lines.append(
         "inline const KernelInfo* get_kernel_info(const std::string& op_name, int rank) {"

@@ -455,7 +455,20 @@ inline at::Tensor dispatch_pointwise_impl(const std::unordered_map<int, KernelIn
   // Lookup kernel by effective rank — direct map lookup, no string hash
   auto rank_it = op_registry.find(ndim);
   if (rank_it == op_registry.end()) {
-    throw std::runtime_error("No kernel for rank " + std::to_string(ndim));
+    TORCH_CHECK(false,
+                "FlagGems C++ pointwise dispatch: input rank ",
+                ndim,
+                " exceeds MAX_RANK (",
+                pointwise_dynamic::MAX_RANK,
+                "). ",
+                "The C++ path pre-generates kernels only for rank 0..",
+                pointwise_dynamic::MAX_RANK,
+                ". ",
+                "Workarounds: (1) collapse/reshape to rank ≤ ",
+                pointwise_dynamic::MAX_RANK,
+                ", ",
+                "(2) use the Python API (torch.ops.flag_gems.<op>), which codegens any rank on demand, ",
+                "(3) ensure the input is contiguous and dense (fast path bypasses per-rank kernels).");
   }
   const KernelInfo* info = &rank_it->second;
 
