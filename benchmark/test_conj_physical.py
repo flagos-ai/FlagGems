@@ -34,7 +34,6 @@ def _input_fn(shape, dtype, device):
 
 
 class Conj_physicalBenchmark(base.GenericBenchmarkExcluse3D):
-    # TODO(Qiming): Check if this is necessary
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -55,7 +54,14 @@ class Conj_physicalBenchmark(base.GenericBenchmarkExcluse3D):
 
 @pytest.mark.conj_physical
 def test_conj_physical():
-    dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.COMPLEX_DTYPES
+    if "npu" in flag_gems.device or "ascend" in flag_gems.device.lower():
+        # Ascend NPU: kernel mode event timing is unstable, use operator mode
+        from .conftest import Config
+
+        Config.mode = consts.BenchMode.OPERATOR
+        dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES
+    else:
+        dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.COMPLEX_DTYPES
 
     bench = Conj_physicalBenchmark(
         input_fn=_input_fn,
