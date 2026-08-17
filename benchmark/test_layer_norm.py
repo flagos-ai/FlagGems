@@ -31,6 +31,12 @@ class NormBenchmark(base.GenericBenchmark):
             # 4D shapes represented as [batch_size, channels, H, W]
             (1, 8, 4, 4),
             (16, 8, 128, 128),
+            # Medium normalized dimensions across representative row counts
+            (256, 512),
+            (4096, 256),
+            (4096, 512),
+            (2048, 1024),
+            (1024, 2048),
         ]
 
 

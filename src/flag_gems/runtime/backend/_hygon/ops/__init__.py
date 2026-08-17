@@ -21,6 +21,7 @@ from .attention import (
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
 )
+from .conj_physical import conj_physical
 from .div import (
     div_mode,
     div_mode_,
@@ -61,6 +62,10 @@ from .pow import (
     pow_tensor_tensor_,
 )
 from .randperm import randperm
+from .replication_pad2d_backward import (
+    replication_pad2d_backward,
+    replication_pad2d_backward_grad_input,
+)
 from .silu import silu, silu_, silu_backward
 from .sort import sort, sort_stable
 from .unique import _unique2
@@ -68,6 +73,7 @@ from .upsample_nearest2d import upsample_nearest2d
 
 __all__ = [
     "_unique2",
+    "conj_physical",
     "ScaleDotProductAttention",
     "SUPPORTED_FP8_DTYPE",
     "any",
@@ -108,6 +114,8 @@ __all__ = [
     "randperm",
     "remainder",
     "remainder_",
+    "replication_pad2d_backward",
+    "replication_pad2d_backward_grad_input",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",

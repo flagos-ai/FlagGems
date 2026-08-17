@@ -49,8 +49,15 @@
     "enabled": true
   },
   {
+    "backend": "metax-maca3720",
+    "runner_label": "maca372",
+    "label": "vendor/MetaX",
+    "gpu_check": "tools/gpu_check_metax.sh",
+    "enabled": true
+  },
+  {
     "backend": "metax-maca3810",
-    "runner_label": "metax",
+    "runner_label": "maca381",
     "label": "vendor/MetaX",
     "gpu_check": "tools/gpu_check_metax.sh",
     "enabled": true

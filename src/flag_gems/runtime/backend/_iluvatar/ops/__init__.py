@@ -15,6 +15,7 @@
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .addmm import addmm, addmm_out
 from .arccosh_ import arccosh_
+from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .div import div_mode, div_mode_
@@ -25,6 +26,7 @@ from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
 from .repeat import repeat
 from .scatter_add import scatter_add_
+from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_modified_bessel_k1 import (
     special_modified_bessel_k1,
     special_modified_bessel_k1_out,
@@ -41,6 +43,8 @@ __all__ = [
     "addmm",
     "addmm_out",
     "arccosh_",
+    "cholesky_solve",
+    "cholesky_solve_out",
     "conv_transpose1d",
     "div_mode",
     "div_mode_",
@@ -52,6 +56,8 @@ __all__ = [
     "mm_out",
     "repeat",
     "scatter_add_",
+    "sparse_sampled_addmm",
+    "sparse_sampled_addmm_out",
     "special_modified_bessel_k1",
     "special_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_w",

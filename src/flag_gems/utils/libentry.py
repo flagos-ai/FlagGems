@@ -938,13 +938,15 @@ class LibTuner(triton.runtime.Autotuner):
                     )
 
                 self.do_bench = benchmark_with_requested_quantiles
-                return list(
-                    self._bench(
-                        *benchmark_args,
-                        config=config,
-                        **benchmark_meta,
-                    )
+                bench_ret = self._bench(
+                    *benchmark_args,
+                    config=config,
+                    **benchmark_meta,
                 )
+                # Normalize scalar float to 3-element tuple for consistency
+                if isinstance(bench_ret, (int, float)):
+                    bench_ret = (bench_ret, bench_ret, bench_ret)
+                return list(bench_ret)
         finally:
             self.nargs = original_nargs
 
@@ -994,6 +996,13 @@ class LibTuner(triton.runtime.Autotuner):
                     ret = cache.get(config)
                     if ret is None:
                         ret = self._bench(*args, config=config, **kwargs)
+                        # Some Triton backends (e.g. tsingmicro with
+                        # use_cuda_graph=True) return a scalar float from
+                        # _bench instead of the standard (p50, p20, p80) tuple.
+                        # Normalize to a 3-element tuple for compatibility with
+                        # SQLPersistantModel.put_benchmark and other consumers.
+                        if isinstance(ret, (int, float)):
+                            ret = (ret, ret, ret)
                         if ret and all(math.isfinite(float(value)) for value in ret):
                             self.benchmark_success_count += 1
                         cache[config] = tuple(ret)
