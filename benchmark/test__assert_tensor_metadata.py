@@ -51,7 +51,7 @@ class AssertTensorMetadataBenchmark(base.Benchmark):
             yield inp, size, stride, cur_dtype
 
 
-@pytest.mark._assert_tensor_metadata
+@pytest.mark.assert_tensor_metadata
 def test__assert_tensor_metadata():
     bench = AssertTensorMetadataBenchmark(
         op_name="_assert_tensor_metadata",
