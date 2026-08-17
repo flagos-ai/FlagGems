@@ -58,6 +58,33 @@ def test_accuracy_flipud_non_float(dtype, high):
     utils.gems_assert_equal(result, expected)
 
 
+@pytest.mark.flipud
+@pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
+def test_accuracy_flipud_complex(dtype):
+    inp = torch.randn((3, 5), dtype=dtype, device=flag_gems.device).T
+    expected = torch.flipud(utils.to_reference(inp, False))
+
+    with flag_gems.use_gems():
+        result = torch.flipud(inp)
+
+    utils.gems_assert_equal(result, expected)
+    assert result.stride() == expected.stride()
+
+
+@pytest.mark.flipud
+def test_accuracy_flipud_autograd():
+    inp = torch.randn((3, 5), device=flag_gems.device, requires_grad=True)
+    weight = torch.arange(15, device=flag_gems.device).reshape(3, 5)
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    ref_weight = utils.to_reference(weight, False)
+
+    (torch.flipud(ref_inp) * ref_weight).sum().backward()
+    with flag_gems.use_gems():
+        (torch.flipud(inp) * weight).sum().backward()
+
+    utils.gems_assert_equal(inp.grad, ref_inp.grad)
+
+
 def _make_transposed(dtype):
     return torch.randn((5, 7), dtype=dtype, device=flag_gems.device).T
 

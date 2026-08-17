@@ -73,11 +73,12 @@ def flipud_strided_kernel(
     tl.store(output + output_offsets, values, mask=mask)
 
 
-def flipud(self: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS FLIPUD")
-
+def _flipud_impl(self: torch.Tensor) -> torch.Tensor:
     if self.ndim < 1:
         raise RuntimeError("Input must be >= 1-d.")
+
+    if self.is_complex():
+        return torch.view_as_complex(_flipud_impl(torch.view_as_real(self)))
 
     output = torch.empty_like(self)
     n_elements = self.numel()
@@ -109,3 +110,21 @@ def flipud(self: torch.Tensor) -> torch.Tensor:
             )
 
     return output
+
+
+class Flipud(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        return _flipud_impl(input)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return _flipud_impl(grad_output)
+
+
+def flipud(self: torch.Tensor) -> torch.Tensor:
+    logger.debug("GEMS FLIPUD")
+
+    if torch.is_grad_enabled() and self.requires_grad:
+        return Flipud.apply(self)
+    return _flipud_impl(self)
