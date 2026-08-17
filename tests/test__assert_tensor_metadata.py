@@ -58,7 +58,7 @@ def test__assert_tensor_metadata_size_mismatch(dtype):
             torch._assert_tensor_metadata(inp, size=[5, 5])
 
 
-@pytest.mark._assert_tensor_metadata
+@pytest.mark.assert_tensor_metadata
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test__assert_tensor_metadata_dtype_mismatch(dtype):
     other = torch.float16 if dtype == torch.float32 else torch.float32
