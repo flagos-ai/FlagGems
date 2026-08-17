@@ -24,8 +24,10 @@ from .linear import linear
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
+from .randperm import randperm
 from .repeat import repeat
 from .scatter_add import scatter_add_
+from .sort import sort, sort_stable
 from .special_modified_bessel_k1 import (
     special_modified_bessel_k1,
     special_modified_bessel_k1_out,
@@ -53,8 +55,11 @@ __all__ = [
     "matmul_int8",
     "mm",
     "mm_out",
+    "randperm",
     "repeat",
     "scatter_add_",
+    "sort",
+    "sort_stable",
     "special_modified_bessel_k1",
     "special_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_w",
