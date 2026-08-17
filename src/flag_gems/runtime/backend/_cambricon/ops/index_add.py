@@ -21,56 +21,109 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
 logger = logging.getLogger(__name__)
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    block_n = [128, 1024, 2048, 4096]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=1)
-        for m in block_m
-        for n in block_n
-    ]
-    return configs
+def _volume(shape):
+    value = 1
+    for item in shape:
+        value *= int(item)
+    return value
 
 
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+def _can_use_contiguous_suffix_path(inp, dim, index, src):
+    if src.numel() == 0:
+        return False
+    if not (
+        inp.ndim == src.ndim
+        and 0 <= dim < inp.ndim
+        and index.ndim == 1
+        and index.dtype in (torch.int32, torch.int64)
+        and inp.dtype == src.dtype
+        and index.numel() == src.size(dim)
+        and inp.is_contiguous()
+        and src.is_contiguous()
+        and all(inp.size(i) == src.size(i) for i in range(inp.ndim) if i != dim)
+    ):
+        return False
+    suffix_size = _volume(src.shape[dim + 1 :])
+    return suffix_size > 1
+
+
+
+from ..utils import TOTAL_CORE_NUM
+
+
+@libtuner(
+    configs=[
+        triton.Config(kwargs={"BLOCK_SIZE": 256}, num_stages=1, num_warps=1),
+        triton.Config(kwargs={"BLOCK_SIZE": 512}, num_stages=1, num_warps=1),
+        triton.Config(kwargs={"BLOCK_SIZE": 1024}, num_stages=1, num_warps=1),
+    ],
+    key=["total_count", "suffix_size"],
+    strategy=["log", "log"],
+    restore_value=["out"],
+    warmup=5,
+    rep=10,
+)
 @libentry()
 @triton.jit
-def index_add_kernel(
-    inp,
+def index_add_contiguous_suffix_kernel(
     out,
     index,
     src,
-    M,
-    N,
+    total_count,
+    index_len,
+    out_dim,
+    suffix_size,
     alpha,
-    inp_len,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
-    pid_x = tl.program_id(axis=0)
-    pid_y = tl.program_id(axis=1)
-    rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)
+    pid = tl.program_id(0)
+    num_jobs = tl.num_programs(0)
+    block_start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    block_start = block_start.to(tl.int64)
+    for off in range(block_start, total_count, step):
+        offsets = off + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < total_count
 
-    rows_mask = rows_offsets < M
-    index_mask = cols_offsets < N
-    block_mask = rows_mask and index_mask
+        cols = offsets % suffix_size
+        rows = offsets // suffix_size
+        src_dim_idx = rows % index_len
+        prefix_idx = rows // index_len
+        dst_dim_idx = tl.load(index + src_dim_idx, mask=mask, other=0).to(tl.int64)
+        valid = mask & (dst_dim_idx >= 0) & (dst_dim_idx < out_dim)
 
-    cur_indices = tl.load(index + cols_offsets, mask=index_mask, other=0)
-    inp_off = rows_offsets * inp_len + cur_indices[None, :]
-    cur_inp = tl.load(inp + inp_off, mask=block_mask, other=0.0)
-    src_off = rows_offsets * N + cols_offsets[None, :]
-    cur_src = tl.load(src + src_off, mask=block_mask, other=0.0)
-    cur_inp += alpha * cur_src
+        src_offsets = rows * suffix_size + cols
+        out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
+        values = tl.load(src + src_offsets, mask=mask, other=0.0)
+        tl.atomic_add(out + out_offsets, values * alpha, mask=valid, sem='relaxed')
 
-    tl.store(out + inp_off, cur_inp, mask=block_mask)
+
+def _run_contiguous_suffix_path(out, dim, index, src, alpha):
+    suffix_size = _volume(src.shape[dim + 1 :])
+    row_count = _volume(src.shape[:dim]) * index.numel()
+    total_count = row_count * suffix_size
+
+    def grid(meta):
+        return (min(triton.cdiv(total_count, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
+
+    index_add_contiguous_suffix_kernel[grid](
+        out,
+        index,
+        src,
+        total_count,
+        index.numel(),
+        out.size(dim),
+        suffix_size,
+        alpha,
+    )
+    return out
 
 
 def index_add(inp, dim, index, src, alpha=1):
@@ -89,37 +142,43 @@ def index_add(inp, dim, index, src, alpha=1):
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
 
-    inp = inp.contiguous()
-    index = index.contiguous()
-    src = src.contiguous()
-
-    dim = dim % inp.ndim
-    inp_len = inp.size(dim)
-    N = index.numel()
-    M = src.numel() // N
-    fine_dim = inp.ndim - 1
-    if dim != fine_dim:
-        inp = dim_compress(inp, dim)
-        src = dim_compress(src, dim)
     out = inp.clone()
+    normalized_dim = dim % inp.ndim
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        triton.cdiv(N, meta["BLOCK_N"]),
+    if _can_use_contiguous_suffix_path(out, normalized_dim, index, src):
+        return _run_contiguous_suffix_path(
+            out, normalized_dim, index.contiguous(), src, alpha
+        )
+
+    inp_stride_dim = out.stride(normalized_dim)
+    src_shape_dim = src.size(normalized_dim)
+    inp_shape_dim = out.size(normalized_dim)
+    delta = out.size(normalized_dim) - src_shape_dim
+    N = src.numel()
+
+    _index_add_func(
+        out,
+        index,
+        src,
+        normalized_dim,
+        inp_stride_dim,
+        inp_shape_dim,
+        src_shape_dim,
+        delta,
+        N,
+        out.numel(),
+        alpha,
     )
-    index_add_kernel[grid](inp, out, index, src, M, N, alpha, inp_len)
-    if dim != fine_dim:
-        order = [i for i in range(out.ndim - 1)]
-        order.insert(dim, fine_dim)
-        return out.permute(order).contiguous()
-    else:
-        return out
+    return out
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
     code.writeline("from flag_gems.utils import libentry")
+    code.writeline(
+        "from flag_gems.runtime.backend._cambricon.utils import TOTAL_CORE_NUM"
+    )
 
     code.newline()
     code.newline()
@@ -164,43 +223,46 @@ def generate_index_add_kernel(
         # Kernel Code
         with code.indent():
             code.writeline("pid = tl.program_id(axis=0)")
-            code.writeline("offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)")
-            code.writeline("mask = offsets < N")
+            code.writeline("num_jobs = tl.num_programs(0)")
+            code.writeline("block_start = pid * BLOCK_SIZE")
+            code.writeline("step = num_jobs * BLOCK_SIZE")
+            code.writeline("block_start = block_start.to(tl.int64)")
+            code.writeline("for off in range(block_start, N, step):")
+            with code.indent():
+                code.writeline("offsets = off + tl.arange(0, BLOCK_SIZE)")
+                code.writeline("mask = offsets < N")
 
-            for i in range(rank - 1, -1, -1):
-                code.writeline(f"src_offset{i} = offsets % src_shape_{i}")
-                code.writeline(f"offsets = offsets // src_shape_{i}")
-            code.newline()
-            comp = [f"src_offset{i} * src_stride_{i}" for i in range(rank)]
-            code.writeline(f"src_offset = {' + '.join(comp)}")
+                for i in range(rank - 1, -1, -1):
+                    code.writeline(f"src_offset{i} = offsets % src_shape_{i}")
+                    code.writeline(f"offsets = offsets // src_shape_{i}")
+                code.newline()
+                comp = [f"src_offset{i} * src_stride_{i}" for i in range(rank)]
+                code.writeline(f"src_offset = {' + '.join(comp)}")
 
-            code.writeline("pre_cal = (inp_stride_dim * src_shape_dim)")
+                code.writeline("pre_cal = (inp_stride_dim * src_shape_dim)")
 
-            # index add
-            code.writeline("pre_idx = (src_offset // pre_cal).to(tl.int64)")
-            code.writeline(
-                "dim_idx = (src_offset % pre_cal // inp_stride_dim).to(tl.int64)"
-            )
-            code.writeline(
-                "src_dim_idx = (tl.load(index + dim_idx, mask=mask, other=0)).to(tl.int64)"
-            )
-            code.writeline(
-                'assert src_dim_idx >= 0 and src_dim_idx < inp_shape_dim, "0 <= index < self.size(dim)"'
-            )
-            code.writeline(
-                "input_idx = (src_offset + (delta * pre_idx + src_dim_idx - dim_idx) * inp_stride_dim).to(tl.int64)"
-            )
+                # index add
+                code.writeline("pre_idx = (src_offset // pre_cal).to(tl.int64)")
+                code.writeline(
+                    "dim_idx = (src_offset % pre_cal // inp_stride_dim).to(tl.int64)"
+                )
+                code.writeline(
+                    "src_dim_idx = (tl.load(index + dim_idx, mask=mask, other=0)).to(tl.int64)"
+                )
+                code.writeline(
+                    'assert src_dim_idx >= 0 and src_dim_idx < inp_shape_dim, "0 <= index < self.size(dim)"'
+                )
+                code.writeline(
+                    "input_idx = (src_offset + (delta * pre_idx + src_dim_idx - dim_idx) * inp_stride_dim).to(tl.int64)"
+                )
 
-            code.writeline("input_mask = input_idx < inp_numel")
-            code.writeline(
-                "add_on = tl.load(src + src_offset, mask=mask, other=0) * alpha"
-            )
-            code.writeline(
-                "tl.atomic_add(out + input_idx, add_on, mask=input_mask, sem='relaxed')"
-            )
-            # TODO: tl.atomic_add doesn't support bfloat16! The following method may be unsafe.
-            # code.writeline("cur_out = tl.load(out + input_idx, mask=input_mask)")
-            # code.writeline("tl.store(out + input_idx, cur_out + add_on, mask=input_mask)")
+                code.writeline("input_mask = input_idx < inp_numel")
+                code.writeline(
+                    "add_on = tl.load(src + src_offset, mask=mask, other=0) * alpha"
+                )
+                code.writeline(
+                    "tl.atomic_add(out + input_idx, add_on, mask=input_mask, sem='relaxed')"
+                )
 
         code.newline()
         code.newline()
@@ -241,7 +303,7 @@ def generate_destination_passing_wrapper(
 
         # kernel launch
         code.writeline("BLOCK_SIZE = 640")  # BLOCK_SIZE setting
-        code.writeline("grid = (triton.cdiv(N, BLOCK_SIZE),)")
+        code.writeline("grid = (min(triton.cdiv(N, BLOCK_SIZE), TOTAL_CORE_NUM),)")
         kernel_launch: str = f"{kernel_name}[grid]("
         code.writeline(kernel_launch)
         with code.indent():
@@ -338,18 +400,25 @@ def index_add_(inp, dim, index, src, alpha=1):
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
 
-    dim %= inp.ndim
-    inp_stride_dim = inp.stride(dim)
-    src_shape_dim = src.size(dim)
-    inp_shape_dim = inp.size(dim)
-    delta = inp.size(dim) - src_shape_dim
+    normalized_dim = dim % inp.ndim
+
+    if _can_use_contiguous_suffix_path(inp, normalized_dim, index, src):
+        _run_contiguous_suffix_path(
+            inp, normalized_dim, index.contiguous(), src, alpha
+        )
+        return inp
+
+    inp_stride_dim = inp.stride(normalized_dim)
+    src_shape_dim = src.size(normalized_dim)
+    inp_shape_dim = inp.size(normalized_dim)
+    delta = inp.size(normalized_dim) - src_shape_dim
     N = src.numel()
 
     _index_add_func(
         inp,
         index,
         src,
-        dim,
+        normalized_dim,
         inp_stride_dim,
         inp_shape_dim,
         src_shape_dim,
