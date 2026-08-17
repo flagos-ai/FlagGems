@@ -22,7 +22,7 @@ from .logical_or import logical_or, logical_or_
 from .masked_fill import masked_fill, masked_fill_
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
-from .min import min, min_dim
+from .min import min
 from .mm import mm, mm_out
 from .nansum import nansum, nansum_out
 from .nonzero import nonzero
@@ -78,7 +78,7 @@ __all__ = [
     "matmul_int8",
     "masked_fill",
     "masked_fill_",
-    "min_dim",
+    "masked_scatter_backward" "min_dim",
     "min",
     "mm",
     "mm_out",
