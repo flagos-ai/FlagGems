@@ -68,7 +68,7 @@ def test__assert_tensor_metadata_dtype_mismatch(dtype):
             torch._assert_tensor_metadata(inp, dtype=other)
 
 
-@pytest.mark._assert_tensor_metadata
+@pytest.mark.assert_tensor_metadata
 def test__assert_tensor_metadata_stride_mismatch():
     inp = torch.randn((3, 4), dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
