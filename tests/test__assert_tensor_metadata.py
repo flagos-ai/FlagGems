@@ -31,7 +31,7 @@ setattr(
 )
 
 
-@pytest.mark._assert_tensor_metadata
+@pytest.mark.assert_tensor_metadata
 @pytest.mark.parametrize("shape", [(2, 3), (4, 5, 6), (128,)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_accuracy__assert_tensor_metadata(shape, dtype):
