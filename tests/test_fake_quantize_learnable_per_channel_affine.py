@@ -23,7 +23,7 @@ from . import accuracy_utils as utils
 
 # Per-channel fake-quant shapes: (shape, axis). Scale/zero-point live along axis.
 PER_CHANNEL_SHAPES = (
-    [(2, 19, 7)]
+    [((2, 19, 7), 1)]
     if utils.QUICK_MODE
     else [
         ((8,), 0),
