@@ -1044,6 +1044,7 @@ _FULL_CONFIG = (
     ("vdot", vdot),
     ("view_copy", view_copy),
     ("vstack", vstack),
+    ("weight_int8pack_mm", weight_int8pack_mm),
     ("where.self", where_self),
     ("where.self_out", where_self_out),
     ("xlogy.OutScalar_Other", xlogy_tensor_scalar_out),

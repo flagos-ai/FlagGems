@@ -6037,6 +6037,18 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: weight_int8pack_mm
+    description: |
+      Performs int8 weight-only quantized matrix multiplication with per-channel scales.
+    for:
+      - weight_int8pack_mm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: xlogy
     description: Computes `input * log(other)` element-wise, returning zero where `input` is zero (following PyTorch's `xlogy` semantics).
     for:

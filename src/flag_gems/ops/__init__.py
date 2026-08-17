@@ -783,6 +783,7 @@ from flag_gems.ops.vector_norm import vector_norm
 from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
+from flag_gems.ops.weight_int8pack_mm import weight_int8pack_mm
 from flag_gems.ops.weightnorm import (
     weight_norm_interface,
     weight_norm_interface_backward,
@@ -1697,6 +1698,7 @@ __all__ = [
     "view_copy",
     "vstack",
     "w8a8_block_fp8_matmul",
+    "weight_int8pack_mm",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_scalar_other",
