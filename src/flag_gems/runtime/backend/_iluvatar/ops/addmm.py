@@ -194,12 +194,42 @@ def addmm_kernel(
 
 def _launch_addmm(mat1, mat2, bias, out, M, N, K, alpha, beta):
     """Launch Triton addmm kernel; out must be pre-allocated."""
+    from .mm import _MAX_BLOCK_K, _MIN_TRITON_DIM
+
+    # Pad when any dim is below the minimum tile or K is not a multiple of
+    # _MAX_BLOCK_K (EVEN_K=False is broken on the Iluvatar compiler).
+    need_pad = (
+        M < _MIN_TRITON_DIM
+        or N < _MIN_TRITON_DIM
+        or K < _MIN_TRITON_DIM
+        or K % _MAX_BLOCK_K != 0
+    )
+    if need_pad:
+        pad_M = max(_MIN_TRITON_DIM - M, 0)
+        pad_N = max(_MIN_TRITON_DIM - N, 0)
+        new_K = K + max(_MIN_TRITON_DIM - K, 0)
+        remainder = new_K % _MAX_BLOCK_K
+        if remainder:
+            new_K += _MAX_BLOCK_K - remainder
+        pad_K = new_K - K
+        if pad_M or pad_K:
+            mat1 = torch.nn.functional.pad(mat1, (0, pad_K, 0, pad_M))
+        if pad_K or pad_N:
+            mat2 = torch.nn.functional.pad(mat2, (0, pad_N, 0, pad_K))
+        if pad_M or pad_N:
+            bias = torch.nn.functional.pad(bias, (0, pad_N, 0, pad_M))
+        pM, pN, pK = M + pad_M, N + pad_N, new_K
+        out_padded = torch.zeros((pM, pN), device=out.device, dtype=out.dtype)
+    else:
+        pM, pN, pK = M, N, K
+        out_padded = out
+
     ab_dtype = get_higher_dtype(mat1.dtype, mat2.dtype)
     acc_dtype_tl = tl.float32
     ab_dtype_tl = _to_tl_type(ab_dtype)
 
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        triton.cdiv(pM, META["BLOCK_M"]) * triton.cdiv(pN, META["BLOCK_N"]),
         META["SPLIT_K"],
     )
 
@@ -208,31 +238,34 @@ def _launch_addmm(mat1, mat2, bias, out, M, N, K, alpha, beta):
             mat1,
             mat2,
             bias,
-            out,
+            out_padded,
             alpha,
             beta,
-            M,
-            N,
-            K,
+            pM,
+            pN,
+            pK,
             mat1.stride(0),
             mat1.stride(1),
             mat2.stride(0),
             mat2.stride(1),
             bias.stride(0),
             bias.stride(1),
-            out.stride(0),
-            out.stride(1),
+            out_padded.stride(0),
+            out_padded.stride(1),
             acc_dtype=acc_dtype_tl,
             input_precision=None,
             fp8_fast_accum=True,
             GROUP_M=8,
             AB_DTYPE=ab_dtype_tl,
         )
+
+    if need_pad:
+        out.copy_(out_padded[:M, :N])
+
     return out
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
-    logger.debug("GEMS_ILUVATAR ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
@@ -247,13 +280,14 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
 
     out_dtype = get_higher_dtype(mat1.dtype, mat2.dtype)
     out = torch.empty((M, N), device=mat1.device, dtype=out_dtype)
+    # Zero the output since kernel may use atomic_add when SPLIT_K > 1
+    out.zero_()
     bias = bias.broadcast_to(out.shape).contiguous()
 
     return _launch_addmm(mat1, mat2, bias, out, M, N, K, alpha, beta)
 
 
 def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
-    logger.debug("GEMS_ILUVATAR ADDMM_OUT")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
         bias.shape, (mat1.shape[0], mat2.shape[1])
@@ -264,8 +298,12 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
         out = torch.empty(
             (M, N), device=mat1.device, dtype=get_higher_dtype(mat1.dtype, mat2.dtype)
         )
+        # Zero the output since kernel may use atomic_add when SPLIT_K > 1
+        out.zero_()
     else:
         assert out.shape == (M, N), "Incompatible output shape"
+        # Zero the output since kernel may use atomic_add when SPLIT_K > 1
+        out.zero_()
 
     if mat1.stride(0) > 1 and mat1.stride(1) > 1:
         mat1 = mat1.contiguous()

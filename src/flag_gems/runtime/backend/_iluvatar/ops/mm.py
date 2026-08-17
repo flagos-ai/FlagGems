@@ -203,14 +203,64 @@ def mm_kernel(
         tl.atomic_add(C, acc, mask=mask)
 
 
+# Minimum tile size from tuning configs.  When any matrix dimension is smaller
+# than this, the Triton kernel's tl.multiple_of / tl.max_contiguous hints become
+# invalid (they assume the range spans at least BLOCK elements) and the Iluvatar
+# compiler may crash or produce wrong results.  We pad the matrices to the
+# minimum size and then slice the result.
+_MIN_TRITON_DIM = 32
+
+# The Iluvatar Triton compiler produces incorrect results in the EVEN_K=False
+# (K remainder) code path.  To avoid this, K is always padded to a multiple of
+# the largest BLOCK_K used in the tuning configs so that EVEN_K is guaranteed
+# True regardless of which config the autotuner picks.
+_MAX_BLOCK_K = 128
+
+
+def _pad_dims(a, b, M, N, K):
+    """Pad a (M×K) and b (K×N) so all dims >= _MIN_TRITON_DIM and K is a
+    multiple of _MAX_BLOCK_K (ensures EVEN_K=True).
+
+    Returns (a_padded, b_padded, padded_M, padded_N, padded_K).
+    """
+    pad_M = max(_MIN_TRITON_DIM - M, 0)
+    pad_N = max(_MIN_TRITON_DIM - N, 0)
+    # Pad K to the next multiple of _MAX_BLOCK_K to guarantee EVEN_K=True.
+    new_K = K + max(_MIN_TRITON_DIM - K, 0)
+    remainder = new_K % _MAX_BLOCK_K
+    if remainder:
+        new_K += _MAX_BLOCK_K - remainder
+    pad_K = new_K - K
+    if pad_M or pad_K:
+        a = torch.nn.functional.pad(a, (0, pad_K, 0, pad_M))
+    if pad_K or pad_N:
+        b = torch.nn.functional.pad(b, (0, pad_N, 0, pad_K))
+    return a, b, M + pad_M, N + pad_N, new_K
+
+
 def _launch_mm(a, b, c, M, N, K):
     """Launch Triton matmul _kernel; c must be pre-allocated."""
+    # Pad when any dim is below the minimum tile or K is not a multiple of
+    # _MAX_BLOCK_K (EVEN_K=False is broken on the Iluvatar compiler).
+    need_pad = (
+        M < _MIN_TRITON_DIM
+        or N < _MIN_TRITON_DIM
+        or K < _MIN_TRITON_DIM
+        or K % _MAX_BLOCK_K != 0
+    )
+    if need_pad:
+        a, b, pM, pN, pK = _pad_dims(a, b, M, N, K)
+        c_padded = torch.empty((pM, pN), device=c.device, dtype=c.dtype)
+    else:
+        pM, pN, pK = M, N, K
+        c_padded = c
+
     ab_dtype = get_higher_dtype(a.dtype, b.dtype)
     acc_dtype_tl = tl.float32
     ab_dtype_tl = _to_tl_type(ab_dtype)
 
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        triton.cdiv(pM, META["BLOCK_M"]) * triton.cdiv(pN, META["BLOCK_N"]),
         META["SPLIT_K"],
     )
 
@@ -218,32 +268,54 @@ def _launch_mm(a, b, c, M, N, K):
         mm_kernel[grid](
             a,
             b,
-            c,
-            M,
-            N,
-            K,
+            c_padded,
+            pM,
+            pN,
+            pK,
             a.stride(0),
             a.stride(1),
             b.stride(0),
             b.stride(1),
-            c.stride(0),
-            c.stride(1),
+            c_padded.stride(0),
+            c_padded.stride(1),
             acc_dtype=acc_dtype_tl,
             input_precision=None,
             fp8_fast_accum=True,
             GROUP_M=8,
             AB_DTYPE=ab_dtype_tl,
         )
+
+    if need_pad:
+        c.copy_(c_padded[:M, :N])
+
     return c
+
+
+def _ensure_mm_layout(a, b):
+    """Ensure inputs have a valid layout for the Triton mm kernel.
+
+    The kernel requires that at least one stride equals 1 (row- or column-major).
+    Additionally, on the Iluvatar backend the compiler crashes when both matrices
+    reference the same storage with transposed strides (self-transpose pattern) and
+    dtype is float32.  Making at least one input contiguous avoids this.
+    """
+    # If both strides > 1, the tensor is neither row- nor column-major.
+    if a.stride(0) > 1 and a.stride(1) > 1:
+        a = a.contiguous()
+    if b.stride(0) > 1 and b.stride(1) > 1:
+        b = b.contiguous()
+    # Guard against the self-transpose compiler bug: when a and b share storage
+    # and both are transposed (stride != 1 in leading dim), make b contiguous to
+    # give the compiler a clean layout.
+    if a.data_ptr() == b.data_ptr():
+        b = b.contiguous()
+    return a, b
 
 
 def mm(a, b):
     logger.debug("GEMS_ILUVATAR MM")
     device = a.device
-    if a.stride(0) > 1 and a.stride(1) > 1:
-        a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
-        b = b.contiguous()
+    a, b = _ensure_mm_layout(a, b)
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
@@ -254,10 +326,7 @@ def mm(a, b):
 
 def mm_out(a, b, *, out):
     logger.debug("GEMS_ILUVATAR MM_OUT")
-    if a.stride(0) > 1 and a.stride(1) > 1:
-        a = a.contiguous()
-    if b.stride(0) > 1 and b.stride(1) > 1:
-        b = b.contiguous()
+    a, b = _ensure_mm_layout(a, b)
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
