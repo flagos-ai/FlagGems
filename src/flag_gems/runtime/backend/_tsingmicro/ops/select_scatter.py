@@ -25,13 +25,37 @@ except ImportError:
     class MemOverlap:
         Yes, No = "Yes", "No"
 
-    def has_internal_overlapping(_):
+    def has_internal_overlapping(x):
+        # Conservative fallback: at least detect broadcast-style zero-stride views.
+        # Returning No here lets overlapping inputs take the strided output path,
+        # which is unsafe for select_scatter on this backend.
+        if x.is_contiguous():
+            return MemOverlap.No
+        for size, stride in zip(x.size(), x.stride()):
+            if size > 1 and stride == 0:
+                return MemOverlap.Yes
         return MemOverlap.No
 
 
 logger = logging.getLogger(__name__)
 # 不要用 2**24：rel_off 会很大，片内 // % 仍慢且易丢精度
 _CHUNK = 65536
+
+
+def _materialize_input(x: torch.Tensor) -> torch.Tensor:
+    """Materialize tensors that may have internal overlap without calling contiguous()."""
+    if x.ndim == 0:
+        return x.clone()
+
+    for dim, (size, stride) in enumerate(zip(x.size(), x.stride())):
+        if size > 1 and stride == 0:
+            out = torch.empty(x.size(), dtype=x.dtype, device=x.device)
+            base = _materialize_input(x.select(dim, 0))
+            for i in range(size):
+                out.select(dim, i).copy_(base)
+            return out
+
+    return x.contiguous()
 
 
 @triton.jit
@@ -82,14 +106,20 @@ def select_scatter(inp, src, dim, index, chunk_elem=_CHUNK, block_size=1024):
     dim, index = dim % inp.ndim, index % inp.size(dim)
     assert list(src.shape) == [s for i, s in enumerate(inp.shape) if i != dim]
 
-    if has_internal_overlapping(inp) == MemOverlap.Yes:
+    overlap = has_internal_overlapping(inp)
+    if overlap == MemOverlap.Yes:
         out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
     else:
         out = torch.empty_strided(
             inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
         )
 
-    inp, src = inp.contiguous(), src.contiguous()
+    if overlap == MemOverlap.Yes:
+        inp = _materialize_input(inp)
+    else:
+        inp = inp.contiguous()
+
+    src = src.contiguous()
     flat_inp, flat_out = inp.reshape(-1), out.reshape(-1)
     dim_size = inp.size(dim)
     dim_prod_post = 1
