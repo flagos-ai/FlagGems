@@ -230,7 +230,10 @@ def test_nested_in_if_warns(caplog):
         extra_imports, plain_imports, alias_sources, local_sources = _collect(source)
 
     assert not any("_tensor = torch.Tensor" in src for src in alias_sources)
-    assert any("not a top-level" in record.message.lower() for record in caplog.records)
+    assert any(
+        "nested inside a module-level control-flow block" in record.message.lower()
+        for record in caplog.records
+    )
 
 
 def test_unrelated_assignment_does_not_warn(caplog):
@@ -252,6 +255,29 @@ def test_unrelated_assignment_does_not_warn(caplog):
         extra_imports, plain_imports, alias_sources, local_sources = _collect(source)
 
     assert alias_sources == []
+    assert caplog.records == []
+
+
+def test_function_body_assignment_does_not_warn(caplog):
+    """Ordinary local assignments inside a function (e.g.
+    ``pi = math.pi`` inside a @triton.jit kernel) must not warn, since
+    they are plain Python/Triton code, not module-level aliases the
+    generated standalone file needs to reproduce."""
+    source = """
+        import math
+
+        def my_kernel():
+            pi = math.pi
+            return pi
+
+        scalar_fn = my_kernel
+    """
+    with caplog.at_level("WARNING", logger="flag_gems.utils.pointwise_dynamic"):
+        extra_imports, plain_imports, alias_sources, local_sources = _collect(source)
+
+    # The assignment is inside a function body, so it's not collected as
+    # a module-level alias, and it must not produce any warning.
+    assert not any("pi = math.pi" in src for src in alias_sources)
     assert caplog.records == []
 
 

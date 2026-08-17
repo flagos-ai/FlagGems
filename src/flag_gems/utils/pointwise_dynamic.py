@@ -1258,13 +1258,36 @@ class ModuleGenerator:
                 asname = root_name if root_name != real_name else None
                 extra_imports.setdefault(module, set()).add((real_name, asname))
 
-        # Warn about alias-shaped assignments nested inside if/try blocks
-        # (i.e. not direct children of the module body). These are never
-        # collected above since only top-level statements are inspected, but
-        # they would silently produce a NameError in the standalone
-        # generated file if left unreported.
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Assign) or id(node) in top_level_assign_ids:
+        # Warn about alias-shaped assignments nested inside module-scope
+        # control-flow blocks (if/try/while/for/with), i.e. not direct
+        # children of the module body. These are never collected above
+        # since only top-level statements are inspected, but they would
+        # silently produce a NameError in the standalone generated file if
+        # left unreported.
+        #
+        # This deliberately does NOT descend into FunctionDef,
+        # AsyncFunctionDef, or ClassDef bodies: ordinary local assignments
+        # inside a function (e.g. ``pi = math.pi`` inside a @triton.jit
+        # kernel) are plain Python/Triton code, not module-level aliases
+        # that the generated standalone file needs to reproduce, and would
+        # otherwise cause log spam (such assignments are extremely common).
+        def _iter_module_scope_nested_assigns(stmts):
+            for stmt in stmts:
+                if isinstance(
+                    stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                ):
+                    continue
+                if isinstance(stmt, ast.Assign):
+                    yield stmt
+                for field in ("body", "orelse", "finalbody"):
+                    sub = getattr(stmt, field, None)
+                    if isinstance(sub, list):
+                        yield from _iter_module_scope_nested_assigns(sub)
+                for handler in getattr(stmt, "handlers", None) or []:
+                    yield from _iter_module_scope_nested_assigns(handler.body)
+
+        for node in _iter_module_scope_nested_assigns(tree.body):
+            if id(node) in top_level_assign_ids:
                 continue
             if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
                 continue
@@ -1272,9 +1295,10 @@ class ModuleGenerator:
             if depth == 0 or root_name not in imported_name_module:
                 continue
             logger.warning(
-                "Skipping alias assignment at %s:%d, it is not a top-level "
-                "statement and cannot be reproduced in the generated "
-                "standalone kernel file: %s",
+                "Skipping alias assignment at %s:%d, it is nested inside a "
+                "module-level control-flow block (if/try/while/for/with) "
+                "and cannot be reproduced in the generated standalone "
+                "kernel file: %s",
                 source_file,
                 node.lineno,
                 "".join(source_lines[node.lineno - 1 : node.end_lineno]).strip(),
