@@ -57,7 +57,7 @@ def batch_norm_with_update_functional_input_fn(shape, dtype, device):
     yield inp, weight, bias, running_mean, running_var, momentum, eps
 
 
-@pytest.mark._batch_norm_with_update_functional
+@pytest.mark.batch_norm_with_update_functional
 def test__batch_norm_with_update_functional():
     def batch_norm_with_update_functional_input_fn_wrapper(shape, dtype, device):
         C = shape[1]
