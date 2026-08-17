@@ -64,6 +64,13 @@ def _fused_adam_kernel(
     if maximize:
         grad_load = -grad_load
 
+    # Apply weight decay as an L2 penalty on the gradient (Adam, not AdamW):
+    # aten::_fused_adam couples the decay into the gradient *before* the moment
+    # updates, so it also feeds exp_avg / exp_avg_sq. The decoupled form
+    # (param -= lr * weight_decay * param) belongs to aten::_fused_adamw.
+    if weight_decay != 0:
+        grad_load = grad_load + weight_decay * param_load
+
     # Load first moment estimate (exp_avg)
     exp_avg_load = tl.load(exp_avg + offsets, mask=mask, other=0.0)
     # Load second moment estimate (exp_avg_sq)
@@ -91,17 +98,9 @@ def _fused_adam_kernel(
     else:
         denom = tl.sqrt(corrected_exp_avg_sq) + eps
 
-    # Compute the update step
-    # For weight decay, we use AdamW style (decay the parameters)
-    if weight_decay > 0:
-        # AdamW: param = param - lr * (m / denom + weight_decay * param)
-        update = corrected_exp_avg / denom + weight_decay * param_load
-    else:
-        # Adam: param = param - lr * m / denom
-        update = corrected_exp_avg / denom
-
-    # Update parameters
-    param_new = param_load - lr * update
+    # Update parameters: param = param - lr * m_hat / denom
+    # (weight decay is already folded into the gradient above)
+    param_new = param_load - lr * corrected_exp_avg / denom
 
     # Store updated values
     tl.store(param + offsets, param_new, mask=mask)
@@ -130,11 +129,12 @@ def _fused_adam(
     """Fused Adam optimizer step.
 
     Performs one step of the Adam optimizer algorithm:
+    - if maximize: g = -g
+    - if weight_decay != 0: g = g + weight_decay * p  (L2 penalty, Adam-style)
     - m = beta1 * m + (1 - beta1) * g
     - v = beta2 * v + (1 - beta2) * g^2
     - if amsgrad: v_hat = max(v_hat, v)
-    - p = p - lr * m / (sqrt(v_hat) + eps) - lr * weight_decay * p (AdamW)
-      or p = p - lr * m / (sqrt(v_hat) + eps) (Adam)
+    - p = p - lr * m / (sqrt(v_hat) + eps)
     """
     logger.debug("GEMS FUSED_ADAM")
 
