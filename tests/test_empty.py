@@ -23,6 +23,43 @@ from . import conftest as cfg
 device = flag_gems.device
 
 
+EMPTY_PERMUTED_LAYOUTS = [
+    ((8,), [0]),
+    ((4, 8), [0, 1]),
+    ((4, 8), [1, 0]),
+    ((2, 3, 4), [0, 1, 2]),
+    ((2, 3, 4), [2, 0, 1]),
+    ((2, 3, 4, 5), [0, 2, 3, 1]),
+]
+
+
+@pytest.mark.empty_permuted
+@pytest.mark.parametrize("shape,physical_layout", EMPTY_PERMUTED_LAYOUTS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_empty_permuted(shape, physical_layout, dtype, caplog):
+    # empty_permuted returns uninitialized memory, so the layout contract is
+    # verified against the reference instead of the element values. The
+    # reference is built on the same device to keep the comparison about the
+    # layout only.
+    ref_out = torch.ops.aten.empty_permuted(
+        shape, physical_layout, dtype=dtype, device=flag_gems.device
+    )
+    with caplog.at_level("DEBUG", logger="flag_gems.ops.empty_permuted"):
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.empty_permuted(
+                shape, physical_layout, dtype=dtype, device=flag_gems.device
+            )
+
+    assert "GEMS EMPTY_PERMUTED" in caplog.text
+    assert res_out.shape == ref_out.shape
+    assert res_out.stride() == ref_out.stride()
+    assert res_out.dtype == ref_out.dtype
+    assert res_out.numel() == ref_out.numel()
+    assert res_out.device == ref_out.device
+    # A permuted layout stays non-overlapping and dense.
+    assert torch.ops.aten.is_non_overlapping_and_dense(res_out)
+
+
 @pytest.mark.empty
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

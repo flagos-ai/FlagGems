@@ -26,6 +26,7 @@ from .matmul_int8 import matmul_int8
 from .mm import mm, mm_out
 from .repeat import repeat
 from .scatter_add import scatter_add_
+from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_modified_bessel_k1 import (
     special_modified_bessel_k1,
     special_modified_bessel_k1_out,
@@ -55,6 +56,8 @@ __all__ = [
     "mm_out",
     "repeat",
     "scatter_add_",
+    "sparse_sampled_addmm",
+    "sparse_sampled_addmm_out",
     "special_modified_bessel_k1",
     "special_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_w",
