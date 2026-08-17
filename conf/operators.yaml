@@ -412,6 +412,19 @@ ops:
       - BLAS
     stages:
       - stable: '4.0'
+  - id: addr_
+    description: |
+      In-place version of addr. Performs the outer-product of vectors `vec1` and `vec2`
+      and adds it to the matrix `input` in-place.
+    for:
+      - addr_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - stable: '4.0'
   - id: affine_grid_generator
     description: |
       Generates a 2D or 3D flow field (sampling grid), given a batch of affine matrices theta.
