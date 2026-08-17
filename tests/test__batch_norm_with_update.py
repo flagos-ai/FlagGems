@@ -33,7 +33,7 @@ setattr(
 )
 
 
-@pytest.mark._batch_norm_with_update
+@pytest.mark.batch_norm_with_update
 @pytest.mark.parametrize(
     "shape",
     [
