@@ -300,6 +300,9 @@ from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
 from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
+from flag_gems.ops.fake_quantize_per_channel_affine import (
+    fake_quantize_per_channel_affine,
+)
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.fft import fft
 from flag_gems.ops.fill import (
@@ -1140,6 +1143,7 @@ __all__ = [
     "exponential_",
     "eye",
     "eye_m",
+    "fake_quantize_per_channel_affine",
     "feature_dropout",
     "feature_dropout_",
     "fft",

@@ -484,6 +484,7 @@ _FULL_CONFIG = (
     ("exponential_", exponential_),
     ("eye", eye),
     ("eye.m", eye_m),
+    ("fake_quantize_per_channel_affine", fake_quantize_per_channel_affine),
     ("feature_dropout", feature_dropout),
     ("feature_dropout_", feature_dropout_),
     ("fill.Scalar", fill_scalar),
