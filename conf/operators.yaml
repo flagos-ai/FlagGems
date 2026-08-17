@@ -1757,6 +1757,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: cdist
+    description: |
+      Computes the p-norm distance between each pair of the two collections of row vectors.
+      This is the canonical user-facing API for cdist computation.
+    for:
+      - cdist.default
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: ceil
     description: |
       Returns a new tensor with the ceil of the elements of `input`, the smallest integer greater than

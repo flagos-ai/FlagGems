@@ -347,6 +347,7 @@ _FULL_CONFIG = (
     ("cat.out", cat_out),
     ("cauchy", cauchy),
     ("cauchy_", cauchy_),
+    ("cdist", cdist),
     ("ceil", ceil),
     ("ceil.out", ceil_out),
     ("ceil_", ceil_),
