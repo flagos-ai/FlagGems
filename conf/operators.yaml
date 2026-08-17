@@ -5770,6 +5770,26 @@ ops:
       - aten
     kind:
       - Math
+  - id: linalg_det
+    description: |
+      Computes the determinant of a square matrix via LU decomposition with partial pivoting.
+    for:
+      - linalg.det
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_det_out
+    description: |
+      A variant of linalg_det that writes the determinant to the provided out tensor.
+    for:
+      - linalg.det.out
+    labels:
+      - aten
+    kind:
+      - LinearAlg
     stages:
       - alpha: '5.4'
   - id: linalg_lu_factor_ex
