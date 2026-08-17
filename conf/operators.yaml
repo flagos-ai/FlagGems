@@ -13,6 +13,17 @@
 # limitations under the License.
 
 ops:
+  - id: batch_norm_impl_index
+    description: Applies Batch Normalization and returns the normalized output along with saved statistics, a reserve tensor, and the backend implementation index.
+    for:
+      - _batch_norm_impl_index
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: _reshape_alias
     description: |
       Creates a view of the input tensor with the given size and stride,
@@ -172,6 +183,32 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: _adaptive_avg_pool3d_backward
+    description: |
+      Computes the gradient of 3D adaptive average pooling.
+    for:
+      - _adaptive_avg_pool3d_backward
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: adaptive_avg_pool3d_backward
+    description: |
+      Computes the gradient of 3D adaptive average pooling.
+    for:
+      - adaptive_avg_pool3d_backward
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: add
     description: |
       Add a scalar or tensor to `self` tensor. If both `alpha` and `other` are specified,
@@ -228,6 +265,20 @@ ops:
       Formula: out = beta * input + alpha * (sum_i batch1_i @ batch2_i).
     for:
       - addbmm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: addbmm_
+    description: |
+      Inplace variant of addbmm. Performs a batch matrix-matrix product of matrices in
+      `batch1` and `batch2`, with a reduced add step, and stores the result in `self`.
+      Formula: self = beta * self + alpha * (sum_i batch1_i @ batch2_i).
+    for:
+      - addbmm_
     labels:
       - aten
       - KernelGen
@@ -408,6 +459,19 @@ ops:
       - addr
     labels:
       - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '4.0'
+  - id: addr_
+    description: |
+      In-place version of addr. Performs the outer-product of vectors `vec1` and `vec2`
+      and adds it to the matrix `input` in-place.
+    for:
+      - addr_
+    labels:
+      - aten
+      - KernelGen
     kind:
       - BLAS
     stages:
@@ -1149,6 +1213,23 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: avg_pool1d
+    description: |
+      Applies 1D average-pooling operation in kL regions by step size sL steps.
+      The number of output features is equal to the number of input planes.
+    for:
+      - avg_pool1d
+    marks:
+      - avg_pool1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+    device:
+      - nvidia
   - id: avg_pool2d
     description: |
       Applies 2D average-pooling operation in `kH \mul kW` regions by step size `sH \mul sW` steps.
@@ -1736,6 +1817,19 @@ ops:
       supporting p=2.0 (L2 norm).
     for:
       - _cdist_forward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: cdist
+    description: |
+      Computes the p-norm distance between each pair of the two collections of row vectors.
+      This is the canonical user-facing API for cdist computation.
+    for:
+      - cdist.default
     labels:
       - aten
       - KernelGen
@@ -2817,7 +2911,7 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
-  - id: dropout_backward
+  - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
       - native_dropout_backward
@@ -3022,6 +3116,20 @@ ops:
     description: Tensor factory operator — verifies dtype inference for newly allocated tensors.
     for:
       - empty
+    labels:
+      - aten
+      - KernelGen
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: empty_permuted
+    description: |
+      Tensor factory operator — allocates an uninitialized tensor whose memory
+      follows the given physical layout.
+    for:
+      - empty_permuted
     labels:
       - aten
       - KernelGen
@@ -3345,6 +3453,18 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.3'
+  - id: fake_quantize_per_channel_affine
+    description: Applies fake quantization per channel with affine parameters (scale and zero_point).
+    for:
+      - fake_quantize_per_channel_affine
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
   - id: fill_scalar
     description: Fills a scalar with the specified value.
     for:
@@ -4020,6 +4140,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: fused_moving_avg_obs_fq_helper
+    description: Fused moving-average observer with fake-quantize for QAT; updates running min/max, recomputes scale/zero_point, and fake-quantizes the input for both per-tensor and per-channel modes.
+    for:
+      - _fused_moving_avg_obs_fq_helper
+    labels:
+      - aten
+      - quantization
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: fused_q_kv_rmsnorm
     description: |
       Applies RMSNorm to Q and KV tensors in a single fused kernel for DeepSeekV4 attention.
@@ -4332,6 +4464,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.3'
+  - id: grid_sampler_3d_backward
+    description: Backward pass for 3D grid sampling with bilinear/nearest interpolation and multiple padding modes.
+    for:
+      - grid_sampler_3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: group_norm
     description: An internal IR for applying Group Normalization for last certain number of dimensions.
     for:
@@ -5628,6 +5771,26 @@ ops:
       - aten
     kind:
       - Math
+  - id: linalg_det
+    description: |
+      Computes the determinant of a square matrix via LU decomposition with partial pivoting.
+    for:
+      - linalg.det
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_det_out
+    description: |
+      A variant of linalg_det that writes the determinant to the provided out tensor.
+    for:
+      - linalg.det.out
+    labels:
+      - aten
+    kind:
+      - LinearAlg
     stages:
       - alpha: '5.4'
   - id: linalg_lu_factor_ex
@@ -6009,6 +6172,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: upsample_bilinear2d_aa_backward
+    description: A backward case for `_upsample_bilinear2d_aa()`.
+    for:
+      - _upsample_bilinear2d_aa_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: weight_int4pack_mm_with_scales_and_zeros
     description: |
       Int4 quantized matrix multiplication with separate scales and zeros. Computes
@@ -6016,6 +6190,18 @@ ops:
       the activation matrix, using per-group scale and zero-point quantization.
     for:
       - _weight_int4pack_mm_with_scales_and_zeros
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: weight_int8pack_mm
+    description: |
+      Performs int8 weight-only quantized matrix multiplication with per-channel scales.
+    for:
+      - weight_int8pack_mm
     labels:
       - aten
       - KernelGen
@@ -7152,12 +7338,58 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: native_batch_norm_legit
+    description: >
+      Batch normalization with in-place running statistics updates, returning the
+      normalized output along with the saved mean and inverse standard deviation.
+    for:
+      - _native_batch_norm_legit
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: native_batch_norm_legit_functional
     description: >
       Functional version of batch normalization that returns the saved mean and
       inverse standard deviation, along with updated running estimates.
     for:
       - _native_batch_norm_legit_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: native_batch_norm_legit_no_stats
+    description: Batch normalization without persistent running statistics.
+    for:
+      - _native_batch_norm_legit.no_stats
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: native_batch_norm_legit_no_stats_out
+    description: Out variant of batch normalization without running statistics.
+    for:
+      - _native_batch_norm_legit.no_stats_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: native_batch_norm_legit_out
+    description: Out variant of batch normalization with running statistics.
+    for:
+      - _native_batch_norm_legit.out
     labels:
       - aten
       - KernelGen
@@ -9854,6 +10086,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_bessel_y0
+    description: |
+      Computes the Bessel function of the second kind of order 0 for each element of input.
+    for:
+      - special_bessel_y0
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_airy_ai
     description: |
       Computes the Airy function Ai(x) for each element of the input tensor.
@@ -10305,6 +10550,19 @@ ops:
       A variant of `special_round()` with output saved to provided `out`.
     for:
       - special.round.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_shifted_chebyshev_polynomial_t
+    description: |
+      Computes the shifted Chebyshev polynomial of the first kind T_n^*(x)
+      for each pair of elements in `x` and `n`.
+    for:
+      - special_shifted_chebyshev_polynomial_t
     labels:
       - aten
       - KernelGen
