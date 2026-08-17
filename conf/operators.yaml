@@ -2636,7 +2636,7 @@ ops:
     kind:
       - Math
     stages:
-      - stable: '5.0'
+      - stable: '5.4'
   - id: dispatch_fused_moe_kernel
     description: |
       Accelerates neural network training by combining token routing (dispatch/all-to-all communication),
