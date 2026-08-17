@@ -49,7 +49,7 @@ def test_accuracy__assert_tensor_metadata(shape, dtype):
     assert res_out is None
 
 
-@pytest.mark._assert_tensor_metadata
+@pytest.mark.assert_tensor_metadata
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test__assert_tensor_metadata_size_mismatch(dtype):
     inp = torch.randn((3, 4), dtype=dtype, device=flag_gems.device)
