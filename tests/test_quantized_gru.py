@@ -29,7 +29,7 @@ def _make_dynamic_quantized_gru(
     params = [module.param for module in quantized_gru._all_weight_values]
     return quantized_gru, params
 
-
+@pytest.mark.quantized_gru
 @pytest.mark.parametrize("shape", [(4, 10, 16), (8, 32, 64)], ids=["small", "medium"])
 @pytest.mark.parametrize("hidden_size", [16, 32, 257])
 @pytest.mark.parametrize("weight_dtype", [torch.qint8, torch.float16])
