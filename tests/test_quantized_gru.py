@@ -83,7 +83,7 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
     torch.testing.assert_close(output.cpu(), ref_output, rtol=0.08, atol=atol)
     torch.testing.assert_close(out_hx.cpu(), ref_hx, rtol=0.08, atol=atol)
 
-
+@pytest.mark.quantized_gru
 @pytest.mark.parametrize("bidirectional", [False, True])
 def test_quantized_gru_packed_data(bidirectional):
     from flag_gems.ops.quantized_gru import quantized_gru_data
