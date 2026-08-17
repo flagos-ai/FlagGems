@@ -54,8 +54,12 @@ from .index import index
 from .index_add import index_add, index_add_
 from .index_select import index_select
 from .isin import isin
+from .layernorm import layer_norm, native_layer_norm
+from .linalg_cross import linalg_cross, linalg_cross_out
+from .linalg_det import linalg_det, linalg_det_out
 from .linalg_lstsq import linalg_lstsq
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
+from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linspace import linspace
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .masked_fill import masked_fill, masked_fill_
@@ -73,6 +77,7 @@ from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pairwise_distance import pairwise_distance
 from .polar import polar
 from .polygamma import polygamma_
 from .pow import (
@@ -84,6 +89,10 @@ from .pow import (
 )
 from .randperm import randperm
 from .repeat_interleave import repeat_interleave_self_int
+from .replication_pad2d_backward import (
+    replication_pad2d_backward,
+    replication_pad2d_backward_grad_input,
+)
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .scatter import scatter, scatter_
@@ -93,6 +102,7 @@ from .select_scatter import select_scatter
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .sort import sort
+from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .stack import stack
 from .threshold import threshold, threshold_backward
 from .triu import triu
@@ -159,10 +169,18 @@ __all__ = [
     "index_add_",
     "index_select",
     "isin",
+    "layer_norm",
+    "native_layer_norm",
     "linalg_lstsq",
     "linalg_lu_factor",
     "linalg_lu_factor_out",
+    "linalg_lu_factor_ex",
+    "linalg_lu_factor_ex_out",
+    "linalg_det",
+    "linalg_det_out",
     "linspace",
+    "linalg_cross",
+    "linalg_cross_out",
     "log_softmax",
     "log_softmax_backward",
     "log_softmax_out",
@@ -190,6 +208,7 @@ __all__ = [
     "ones",
     "ones_like",
     "outer",
+    "pairwise_distance",
     "polar",
     "polygamma_",
     "pow_scalar",
@@ -199,6 +218,8 @@ __all__ = [
     "pow_tensor_tensor_",
     "randperm",
     "repeat_interleave_self_int",
+    "replication_pad2d_backward",
+    "replication_pad2d_backward_grad_input",
     "resolve_neg",
     "rms_norm",
     "scatter",
@@ -216,6 +237,8 @@ __all__ = [
     "softmax_backward_out",
     "softmax_out",
     "sort",
+    "sparse_sampled_addmm",
+    "sparse_sampled_addmm_out",
     "stack",
     "threshold",
     "threshold_backward",
