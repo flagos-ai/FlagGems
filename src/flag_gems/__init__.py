@@ -91,6 +91,7 @@ _FULL_CONFIG = (
     ("__xor__.Tensor", xor),
     ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
     ("_adaptive_avg_pool2d_backward", _adaptive_avg_pool2d_backward),
+    ("_adaptive_avg_pool3d_backward", _adaptive_avg_pool3d_backward),
     ("_add_relu.Tensor", _add_relu),
     (
         "_amp_foreach_non_finite_check_and_unscale_",
@@ -239,6 +240,7 @@ _FULL_CONFIG = (
     ("acos", acos),
     ("acosh", acosh),
     ("acosh_", acosh_),
+    ("adaptive_avg_pool3d_backward", _adaptive_avg_pool3d_backward),
     ("adaptive_max_pool2d_backward", adaptive_max_pool2d_backward),
     ("adaptive_max_pool3d_backward", adaptive_max_pool3d_backward),
     ("add.Tensor", add),

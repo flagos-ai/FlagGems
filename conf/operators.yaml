@@ -183,6 +183,32 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: _adaptive_avg_pool3d_backward
+    description: |
+      Computes the gradient of 3D adaptive average pooling.
+    for:
+      - _adaptive_avg_pool3d_backward
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: adaptive_avg_pool3d_backward
+    description: |
+      Computes the gradient of 3D adaptive average pooling.
+    for:
+      - adaptive_avg_pool3d_backward
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: add
     description: |
       Add a scalar or tensor to `self` tensor. If both `alpha` and `other` are specified,
