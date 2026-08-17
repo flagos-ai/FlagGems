@@ -79,6 +79,7 @@ from flag_gems.ops._native_batch_norm_legit_no_training import (
     _native_batch_norm_legit_no_training,
 )
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
+from flag_gems.ops._pad_packed_sequence import _pad_packed_sequence
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
 from flag_gems.ops._prelu_kernel import _prelu_kernel
@@ -881,6 +882,7 @@ __all__ = [
     "_native_batch_norm_legit_out",
     "_native_batch_norm_legit_no_training",
     "_nested_view_from_buffer_copy",
+    "_pad_packed_sequence",
     "_pdist_backward",
     "_pdist_forward",
     "_prelu_kernel",
