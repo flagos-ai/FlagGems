@@ -126,6 +126,7 @@ _FULL_CONFIG = (
     ),
     ("_fused_adam", _fused_adam),
     ("_fused_adam_", _fused_adam_),
+    ("_fused_moving_avg_obs_fq_helper", _fused_moving_avg_obs_fq_helper),
     ("_fused_rms_norm", _fused_rms_norm),
     ("_grouped_mm", group_mm),
     (
