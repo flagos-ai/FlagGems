@@ -342,6 +342,7 @@ def _fallback_j0(x):
     return ans
 
 
+@triton.jit
 def _fallback_y0(x):
     # Bessel Y0(x) for float32/float64.  Adapted from fdlibm e_y0.c
     # (public-domain SunPro code, same source as glibc / CUDA libdevice).
