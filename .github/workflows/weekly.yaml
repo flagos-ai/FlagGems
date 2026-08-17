@@ -299,7 +299,8 @@ jobs:
             -F "file=@${ARCHIVE}" \
             -F "library_name=FlagGems" \
             -F "backend_name=${BACKEND_NAME}" \
-            -F "test_date=${DATE}"
+            -F "test_date=${DATE}" \
+            --compressed -o - -w "\nHTTP %{http_code}\n"
 
       - name: Send Feishu notification
         if: always()
@@ -422,7 +423,8 @@ jobs:
             -F "file=@${ARCHIVE}" \
             -F "library_name=FlagGems" \
             -F "backend_name=${BACKEND_NAME}" \
-            -F "test_date=${DATE}"
+            -F "test_date=${DATE}" \
+            --compressed -o - -w "\nHTTP %{http_code}\n"
 
       - name: Send Feishu notification
         if: always()
