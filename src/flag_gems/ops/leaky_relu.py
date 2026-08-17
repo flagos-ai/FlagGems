@@ -59,7 +59,11 @@ def _leaky_relu_autotune_configs():
 
 
 @libentry()
-@triton.autotune(configs=_leaky_relu_autotune_configs(), key=["n_elements"])
+@triton.autotune(
+    configs=_leaky_relu_autotune_configs(),
+    key=["n_elements"],
+    restore_value=["input_ptr"],
+)
 @triton.jit(do_not_specialize=["negative_slope"])
 def _leaky_relu_kernel(
     input_ptr,
