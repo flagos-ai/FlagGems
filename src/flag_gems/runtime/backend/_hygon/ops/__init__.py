@@ -48,6 +48,7 @@ from .gelu import gelu, gelu_
 from .hadamard_transform import hadamard_transform
 from .index_add import index_add, index_add_
 from .isin import isin
+from .masked_scatter_backward import masked_scatter_backward
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .mm import mm
@@ -130,4 +131,5 @@ __all__ = [
     "trunc_divide",
     "trunc_divide_",
     "upsample_nearest2d",
+    "masked_scatter_backward",
 ]
