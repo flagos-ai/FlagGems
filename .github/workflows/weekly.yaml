@@ -14,8 +14,6 @@
 
 # Weekly full-range test workflow
 #
-# Runs every Monday at 04:00 Beijing time (UTC 20:00 Sunday) against all
-# operator stages on all enabled backends in parallel.
 #
 # Main config: .github/configs/weekly/weekly-test.yaml
 # Per-backend config: .github/configs/weekly/<NAME>.yml
@@ -38,8 +36,8 @@ on:
         default: ''
 
   schedule:
-    # Sunday 00:10 Beijing time = Saturday 16:10 UTC
-    - cron: '10 16 * * 6'
+    # Wednesday and Saturday 21:30 Beijing time = 13:30 UTC
+    - cron: '30 13 * * 3,6'
 
 defaults:
   run:
