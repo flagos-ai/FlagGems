@@ -76,7 +76,7 @@ def test__assert_tensor_metadata_stride_mismatch():
             torch._assert_tensor_metadata(inp, stride=[1, 1])
 
 
-@pytest.mark._assert_tensor_metadata
+@pytest.mark.assert_tensor_metadata
 def test__assert_tensor_metadata_none_args():
     # All optional args are None: nothing is checked, returns None.
     inp = torch.randn((3, 4), dtype=torch.float32, device=flag_gems.device)
