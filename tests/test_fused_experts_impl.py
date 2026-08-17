@@ -102,6 +102,7 @@ def is_cuda_available():
 
 
 CUDA_AVAILABLE = is_cuda_available()
+print(CUDA_AVAILABLE)
 
 
 DISPATCH_FUSED_MOE_KERNEL_CONFIGS = [
