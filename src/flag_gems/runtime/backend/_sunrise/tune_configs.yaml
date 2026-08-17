@@ -173,14 +173,8 @@ mm:
   - 32
   - 64
   warps:
-  - 4
   - 8
-# - META:
-#     BLOCK_M: 128
-#     BLOCK_N: 256
-#     BLOCK_K: 32
-#   num_stages: 3
-#   num_warps: 8
+  - 16
 # - META:
 #     BLOCK_M: 256
 #     BLOCK_N: 128
@@ -1058,3 +1052,23 @@ mm_self_transpose:
   - 16
   num_stages:
   - 3
+
+scaled_mm:
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_stages: 2
+    num_warps: 8
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_stages: 2
+    num_warps: 8
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_stages: 2
+    num_warps: 16

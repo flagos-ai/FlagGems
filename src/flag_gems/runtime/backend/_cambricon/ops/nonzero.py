@@ -27,13 +27,13 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("nonzero"),
     key=[
         "n_elements",
     ],
 )
+@libentry()
 @triton.jit
 def nonzero_kernel(
     inp,

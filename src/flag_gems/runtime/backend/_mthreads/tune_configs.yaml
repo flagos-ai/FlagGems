@@ -631,8 +631,32 @@ var_mean:
 
 conv2d_forward:
   - META:
+      BLOCK_NI_HO_WO: 128
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
       BLOCK_NI_HO_WO: 32
       BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 32
+      BLOCK_CO: 16
       BLOCK_CI: 32
     num_warps: 4
     num_stages: 1
@@ -646,8 +670,126 @@ conv2d_backward_weight:
     num_stages: 1
 
 conv3d_forward:
+  # Large tile: maximize throughput for big inputs
+  - META:
+      BLOCK_NI_DO_HO_WO: 512
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 2
+  # Mid-large tiles: balance occupancy and throughput
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 2
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 1
+  # Mid tiles: good coverage for typical workloads
   - META:
       BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 16
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 3
+  # Small tiles: higher occupancy for small inputs
+  - META:
+      BLOCK_NI_DO_HO_WO: 64
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 64
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 64
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 64
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 32
+      BLOCK_CO: 16
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 32
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 32
       BLOCK_CO: 32
       BLOCK_CI: 32
     num_warps: 4

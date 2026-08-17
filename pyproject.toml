@@ -23,7 +23,7 @@
 # Combined with the setuptools<77 pin above, `pip install .` then fails during
 # "Getting requirements to build wheel" with
 # `AttributeError: ignore_egg_info_in_manifest`. 9.x has no such integration.
-requires = ["setuptools>=64.0,<77", "setuptools-scm>=8,<10", "wheel==0.45.0"]
+requires = ["setuptools>=64.0,<77", "setuptools-scm>=8,<10", "wheel==0.46.2"]
 
 build-backend = "setuptools.build_meta"
 
@@ -84,20 +84,43 @@ ascend-cann900 = [
     "torch-npu==2.10.0",
 ]
 
-cambricon = [
+cambricon-neuware443 = [
     "cambricon_dali==0.13.0",
     "torch==2.7.1+cpu",
     "torch-mlu==1.29.2+torch2.7.1",
     "torch-mlu-ops==1.8.0+torch2.7.1",
+    "numpy==2.2.6",
 ]
 
-enflame = [
+cambricon-neuware472 = [
+    "numpy==2.2.6",
+    "pandas==3.0.5",
+    "torch==2.11.0+cpu",
+    "torch-mlu==1.33.1+torch2.11.0",
+    "torch-mlu-ops==1.12.1+torch2.11.0",
+]
+
+enflame-tops1910 = [
     "pyefml==1.9.10",
     "torch==2.10.0+cpu",
     "torchaudio==2.10.0+cpu",
     "torchvision==0.25.0+cpu",
     "torch-gcu==2.10.0+3.7.20260408",
-    "flash-attn==2.7.2+torch.2.9.1.gcu.3.4.20260323",
+    "flash-attn==2.7.2+torch.2.10.0.gcu.3.4.20260506",
+]
+
+enflame-tops1106 = [
+    "enflame-modelopt==3.6.20260615+torch.2.11.0",
+    "numpy==2.3.5",
+    "pyefml==1.10.6",
+    "torch==2.11.0+cpu",
+    "torchaudio==2.11.0+cpu",
+    "torchvision==0.26.0+cpu",
+    "torch-gcu==2.11.0+3.8.20260713",
+    "torchcodec==3.8.20260624+torch.2.11.0",
+    "flash-attn==2.7.2+torch.2.11.0.gcu.3.8.20260706",
+    "tops-extension==3.6.20260529+torch.2.11.0",
+    "topstx==1.10.6",
 ]
 
 hygon = [
@@ -108,6 +131,7 @@ iluvatar = [
     "torch==2.7.1+corex.4.4.0",
     "torchaudio==2.7.1+corex.4.4.0",
     "torchvision==0.22.1+corex.4.4.0",
+    "numpy<2",
 ]
 
 kunlunxin = [
@@ -128,11 +152,25 @@ kunlunxin = [
     "xmlir==1.0.0.1",
 ]
 
-metax = [
+metax-maca3720 = [
     "torch==2.8.0+metax3.7.2.0",
     "torchaudio==2.4.1+metax3.7.2.0",
     "torchvision==0.15.1+metax3.7.2.0",
     "flash_attn==2.6.3+metax3.7.2.0torch2.8",
+    "numpy==2.3.5",
+]
+
+metax-maca3810 = [
+    "apex==0.1+metax3.8.1.0",
+    "flash_attn==2.6.3+metax3.8.1.0torch2.10",
+    "flashinfer==0.2.6+metax3.8.1.0torch2.10",
+    "flash_linear_attention==0.5.0+metax3.8.1.0torch2.10",
+    "flash_mla==1.0.1+metax3.8.1.0torch2.10",
+    "numpy==2.3.5",
+    "torch==2.10.0+metax3.8.1.0",
+    "torchcodec==0.6.0+metax3.8.1.0",
+    "torchaudio==2.4.1+metax3.8.1.0",
+    "torchvision==0.25.0+metax3.8.1.0"
 ]
 
 mthreads-musa436 = [
@@ -215,16 +253,23 @@ Documentation = "https://flagos-ai.github.io/FlagGems"
 "Bug Tracker" = "https://github.com/flagos-ai/FlagGems/issues"
 
 [project.scripts]
-flaggems-setup = "flag_gems._setup:main"
+# Top-level module (NOT flag_gems._setup): importing the flag_gems package
+# pulls in torch and triton at load time, but this bootstrap CLI runs *before*
+# those are installed, so its entry point must not import the package.
+flaggems-setup = "flaggems_setup:main"
 
 # Package discovery (including shipping the tests/ and benchmark/ suites under
 # collision-safe names) is defined in setup.py, so it is intentionally omitted
 # here — declaring `packages` in both places is an error.
+flaggems-flagtune-pretune = "flag_gems.flagtune.cli.pretune:main"
+flaggems-flagtune-train = "flag_gems.flagtune.cli.train:main"
+flaggems-flagtune-compare = "flag_gems.flagtune.cli.compare:main"
 
 [tool.setuptools.package-data]
 
 "flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
+"flag_gems.flagtune.contracts" = ["configs/*.yaml"]
 
 [tool.setuptools_scm]
 write_to = "src/flag_gems/_version.py"

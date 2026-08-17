@@ -22,6 +22,23 @@ def empty_input_fn(shape, dtype, device):
     yield shape
 
 
+def empty_permuted_input_fn(shape, dtype, device):
+    # Reverse the physical layout so the allocation exercises a non-contiguous
+    # memory ordering rather than the plain contiguous one.
+    yield shape, list(reversed(range(len(shape))))
+
+
+@pytest.mark.empty_permuted
+def test_empty_permuted():
+    bench = base.GenericBenchmark(
+        op_name="empty_permuted",
+        torch_op=torch.empty_permuted,
+        dtypes=consts.FLOAT_DTYPES,
+        input_fn=empty_permuted_input_fn,
+    )
+    bench.run()
+
+
 @pytest.mark.empty
 def test_empty():
     bench = base.GenericBenchmark(
