@@ -1153,6 +1153,21 @@ class ModuleGenerator:
             "flag_gems.runtime",
             "flag_gems.utils.pointwise_dynamic",
         }
+        # For modules in ALREADY_IMPORTED that `generate_imports` binds to a
+        # specific, fixed local name (as opposed to `from X import name`
+        # symbols, tracked separately via `extra_imports`), record that
+        # canonical name here. A plain `ast.Import` of one of these modules
+        # is only a redundant duplicate - and thus safe to skip re-emitting
+        # - if its local binding matches this exact canonical name; a
+        # noncanonical asname (e.g. ``import triton.language as lang``,
+        # ``import torch as t``) still needs its own import line, since the
+        # generated prelude does not define that name.
+        ALREADY_IMPORTED_CANONICAL_BINDING = {
+            "math": "math",
+            "torch": "torch",
+            "triton": "triton",
+            "triton.language": "tl",
+        }
         extra_imports = {}
         plain_imports = []
         # Map each local binding name -> (module_or_None, real_name), used
@@ -1168,16 +1183,32 @@ class ModuleGenerator:
         def _decompose_attribute_chain(value):
             """Walk a (possibly chained) Attribute node down to its root.
 
-            Returns (root_name_or_None, depth), where depth is the number of
-            attribute hops. depth == 1 means a simple ``root.attr`` access;
-            depth > 1 means a chained access like ``root.attr.attr2``.
+            Returns (root_name_or_None, attrs), where attrs is the list of
+            attribute names encountered, in root-to-leaf order (e.g. for
+            ``os.path.join``, attrs == ["path", "join"]). len(attrs) == 1
+            means a simple ``root.attr`` access; len(attrs) > 1 means a
+            chained access like ``root.attr.attr2``.
             """
-            depth = 0
+            attrs = []
             while isinstance(value, ast.Attribute):
+                attrs.append(value.attr)
                 value = value.value
-                depth += 1
+            attrs.reverse()
             root_name = value.id if isinstance(value, ast.Name) else None
-            return root_name, depth
+            return root_name, attrs
+
+        # For a local name bound by a dotted `ast.Import` without an
+        # asname (e.g. ``import os.path`` binds ``os``), the module's
+        # remaining dotted segments (``["path"]``) are implicitly
+        # accessible as attributes of the bound name, since the whole
+        # dotted path is guaranteed importable/bound by Python's import
+        # machinery. So ``os.path.join`` is really only a depth-1 alias
+        # (a single attribute access on the already-fully-qualified
+        # ``os.path``), not an unsupported chained attribute access. This
+        # is empty for names bound with an asname, since the asname is
+        # already bound directly to the full dotted module (no implicit
+        # extra segments to account for).
+        dotted_import_tail = {}
 
         for node in ast.iter_child_nodes(tree):
             if isinstance(node, ast.ImportFrom) and node.module:
@@ -1194,7 +1225,25 @@ class ModuleGenerator:
                 for alias in node.names:
                     local_name = alias.asname or alias.name.split(".")[0]
                     imported_name_module[local_name] = (None, alias.name)
-                    if alias.name in ALREADY_IMPORTED:
+                    if not alias.asname:
+                        dotted_segments = alias.name.split(".")[1:]
+                        if dotted_segments:
+                            dotted_import_tail[local_name] = dotted_segments
+                    canonical_binding = ALREADY_IMPORTED_CANONICAL_BINDING.get(
+                        alias.name
+                    )
+                    if canonical_binding is not None and (
+                        local_name == canonical_binding
+                    ):
+                        # Redundant with a name `generate_imports` already
+                        # defines under this exact local name; skip it.
+                        continue
+                    if alias.name in ALREADY_IMPORTED and canonical_binding is None:
+                        # Covered by ALREADY_IMPORTED but with no single
+                        # fixed local binding to compare against (e.g.
+                        # `flag_gems.utils`, `flag_gems.runtime`): keep the
+                        # historical behavior of treating any binding as a
+                        # redundant duplicate.
                         continue
                     if alias.asname:
                         plain_imports.append(f"import {alias.name} as {alias.asname}")
@@ -1209,15 +1258,32 @@ class ModuleGenerator:
         # fresh namespace (the standalone C++ TritonJIT path). The in-process
         # Python path happens to survive because triton captures the original
         # module globals; the generated file must be self-contained.
+        def _effective_depth(root_name, attrs):
+            """Attribute-chain depth, discounting the dotted tail implied by
+            a plain ``import X.Y`` (no asname) binding of `root_name`.
+
+            E.g. for ``os.path.join`` with ``import os.path`` in scope,
+            attrs == ["path", "join"] and the "path" segment is already
+            part of the fully-qualified imported module, so this returns 1
+            (a plain attribute access on the already-bound ``os.path``)
+            rather than 2 (an unsupported chained access).
+            """
+            if not attrs:
+                return 0
+            tail = dotted_import_tail.get(root_name)
+            if tail and len(attrs) > len(tail) and attrs[: len(tail)] == tail:
+                return len(attrs) - len(tail)
+            return len(attrs)
+
         alias_sources = []
         top_level_assign_ids = set()
         for node in ast.iter_child_nodes(tree):
             if isinstance(node, ast.AnnAssign):
-                root_name, depth = (
-                    _decompose_attribute_chain(node.value)
-                    if node.value is not None
-                    else (None, 0)
-                )
+                if node.value is not None:
+                    root_name, attrs = _decompose_attribute_chain(node.value)
+                    depth = _effective_depth(root_name, attrs)
+                else:
+                    root_name, depth = None, 0
                 if depth > 0 and root_name in imported_name_module:
                     logger.warning(
                         "Skipping annotated assignment at %s:%d, it cannot be "
@@ -1234,7 +1300,8 @@ class ModuleGenerator:
             top_level_assign_ids.add(id(node))
             if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
                 continue
-            root_name, depth = _decompose_attribute_chain(node.value)
+            root_name, attrs = _decompose_attribute_chain(node.value)
+            depth = _effective_depth(root_name, attrs)
             if depth == 0 or root_name not in imported_name_module:
                 continue
             if depth > 1:
@@ -1291,7 +1358,8 @@ class ModuleGenerator:
                 continue
             if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
                 continue
-            root_name, depth = _decompose_attribute_chain(node.value)
+            root_name, attrs = _decompose_attribute_chain(node.value)
+            depth = _effective_depth(root_name, attrs)
             if depth == 0 or root_name not in imported_name_module:
                 continue
             logger.warning(

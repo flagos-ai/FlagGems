@@ -306,3 +306,47 @@ def test_real_swiglu_module_alias_is_collected(dummy_marker):
     assert isinstance(plain_imports, list)
     assert isinstance(alias_sources, list)
     assert isinstance(local_sources, list)
+
+
+def test_noncanonical_asname_is_reemitted():
+    """Gap 1 regression: ``import triton.language as lang`` must be
+    re-emitted even though ``triton.language`` is in ALREADY_IMPORTED,
+    because the generated prelude only binds the canonical name ``tl``,
+    not ``lang``. Without re-emission, ``lang.sigmoid`` would raise
+    NameError in the standalone file."""
+    source = """
+        def dummy():
+            pass
+
+        import triton.language as lang
+
+        _sigmoid = lang.sigmoid
+
+        scalar_fn = dummy
+    """
+    extra_imports, plain_imports, alias_sources, local_sources = _collect(source)
+
+    assert "import triton.language as lang" in plain_imports
+    assert any("_sigmoid = lang.sigmoid" in src for src in alias_sources)
+
+
+def test_dotted_import_tail_alias_is_collected():
+    """Gap 2 regression: ``import os.path`` (no asname) binds ``os``, and
+    ``_join = os.path.join`` is a valid alias. The chain ``os.path.join``
+    has effective depth 1 (a single attribute access on the fully-qualified
+    imported module ``os.path``), not depth 2 (an unsupported chained
+    access), so it must be collected, not warned/skipped."""
+    source = """
+        def dummy():
+            pass
+
+        import os.path
+
+        _join = os.path.join
+
+        scalar_fn = dummy
+    """
+    extra_imports, plain_imports, alias_sources, local_sources = _collect(source)
+
+    assert "import os.path" in plain_imports
+    assert any("_join = os.path.join" in src for src in alias_sources)
