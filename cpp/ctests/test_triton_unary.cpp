@@ -56,75 +56,88 @@ void expect_close(const at::Tensor& out, const at::Tensor& ref) {
 // ------------------------------------------------------------------ abs
 TEST_F(UnaryTest, Abs) {
   auto x2 = any({10, 10});
-  expect_close(flag_gems::abs(x2), x2.abs());
+  auto x2_ref = flag_gems::accuracy_utils::to_reference(x2);
+  expect_close(flag_gems::abs(x2), x2_ref.abs());
   auto x = any({4, 5, 6});
-  expect_close(flag_gems::abs(x), x.abs());
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::abs(x), x_ref.abs());
 }
 
 // ------------------------------------------------------------------ neg
 TEST_F(UnaryTest, Neg) {
   auto x = any({4, 5, 6});
-  expect_close(flag_gems::neg(x), x.neg());
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::neg(x), x_ref.neg());
 }
 
 // ------------------------------------------------------------------ exp
 TEST_F(UnaryTest, Exp) {
   auto x = any({1024});
-  expect_close(flag_gems::exp(x), x.exp());
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::exp(x), x_ref.exp());
 }
 
 // ------------------------------------------------------------------ sqrt
 TEST_F(UnaryTest, Sqrt) {
   auto x = pos({8, 16});
-  expect_close(flag_gems::sqrt(x), x.sqrt());
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::sqrt(x), x_ref.sqrt());
 }
 
 // ------------------------------------------------------------------ rsqrt
 TEST_F(UnaryTest, Rsqrt) {
   auto x = pos({8, 16});
-  expect_close(flag_gems::rsqrt(x), x.rsqrt());
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::rsqrt(x), x_ref.rsqrt());
 }
 
 // ------------------------------------------------------------------ tanh
 TEST_F(UnaryTest, Tanh) {
   auto x = any({2, 3, 4, 5});
-  expect_close(flag_gems::tanh(x), x.tanh());
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::tanh(x), x_ref.tanh());
 }
 
 // ------------------------------------------------------------------ sigmoid
 TEST_F(UnaryTest, Sigmoid) {
   auto x = any({2, 3, 4, 5});
-  expect_close(flag_gems::sigmoid(x), x.sigmoid());
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::sigmoid(x), x_ref.sigmoid());
 }
 
 // ------------------------------------------------------------------ silu
 TEST_F(UnaryTest, Silu) {
   auto x = any({128, 64});
-  expect_close(flag_gems::silu(x), torch::silu(x));
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::silu(x), torch::silu(x_ref));
 }
 
 // ------------------------------------------------------------------ relu
 TEST_F(UnaryTest, Relu) {
   auto x = any({128, 64});
-  expect_close(flag_gems::relu(x), torch::relu(x));
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::relu(x), torch::relu(x_ref));
 }
 
 // ------------------------------------------------------------------ gelu
 TEST_F(UnaryTest, GeluNone) {
   auto x = any({128, 64});
-  expect_close(flag_gems::gelu(x), torch::gelu(x, "none"));
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::gelu(x), torch::gelu(x_ref, "none"));
 }
 
 TEST_F(UnaryTest, GeluTanh) {
   auto x = any({128, 64});
-  expect_close(flag_gems::gelu(x, "tanh"), torch::gelu(x, "tanh"));
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::gelu(x, "tanh"), torch::gelu(x_ref, "tanh"));
 }
 
 // ------------------------------------------------------------------ non-contiguous
 TEST_F(UnaryTest, NonContiguous) {
   auto x = any({4, 5}).t();  // 5x4, non-contiguous
-  expect_close(flag_gems::neg(x), x.neg());
-  expect_close(flag_gems::abs(x), x.abs());
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::neg(x), x_ref.neg());
+  expect_close(flag_gems::abs(x), x_ref.abs());
 }
 
 // ------------------------------------------------------------------ empty
@@ -138,19 +151,22 @@ TEST_F(UnaryTest, EmptyTensor) {
 // ------------------------------------------------------------------ half / bfloat16
 TEST_F(UnaryTest, Float16) {
   auto x = any({10, 10}, torch::kHalf);
-  expect_close(flag_gems::silu(x), torch::silu(x));
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::silu(x), torch::silu(x_ref));
 }
 
 TEST_F(UnaryTest, BFloat16) {
   auto x = any({10, 10}, torch::kBFloat16);
-  expect_close(flag_gems::gelu(x), torch::gelu(x, "none"));
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  expect_close(flag_gems::gelu(x), torch::gelu(x_ref, "none"));
 }
 
 // ------------------------------------------------------------------ int -> float promotion
 TEST_F(UnaryTest, ExpIntToFloat) {
   auto x = torch::randint(0, 5, {10}, torch::TensorOptions(device).dtype(torch::kInt));
   auto out = flag_gems::exp(x);
-  auto ref = x.exp();
+  auto x_ref = flag_gems::accuracy_utils::to_reference(x);
+  auto ref = x_ref.exp();
   EXPECT_EQ(out.scalar_type(), ref.scalar_type());
   expect_close(out, ref);
 }
