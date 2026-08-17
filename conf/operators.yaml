@@ -524,6 +524,20 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: alpha_dropout_
+    description: |
+      Applies alpha dropout to the input inplace. Alpha Dropout is a type of
+      Dropout that maintains the self-normalizing property by scaling
+      activations with SELU activation function parameters.
+    for:
+      - alpha_dropout_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: amax
     description: Returns the maximum value of each slice of the `input` tensor in the given dimension(s) `dim`.
     for:

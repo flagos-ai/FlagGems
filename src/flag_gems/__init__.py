@@ -142,6 +142,7 @@ _FULL_CONFIG = (
         "_weight_int4pack_mm_with_scales_and_zeros",
         _weight_int4pack_mm_with_scales_and_zeros,
     ),
+    ("alpha_dropout_", alpha_dropout_),
     ("binary_cross_entropy_backward", binary_cross_entropy_backward),
     ("linalg_svdvals", linalg_svdvals),
     ("_log_softmax", log_softmax),
