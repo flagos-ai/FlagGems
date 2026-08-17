@@ -26,6 +26,7 @@ from .gcd_ import gcd, gcd_
 from .index_copy_ import index_copy, index_copy_
 from .lcm import lcm, lcm_
 from .linalg_cholesky import linalg_cholesky
+from .linalg_matrix_norm import linalg_matrix_norm
 from .linalg_svdvals import linalg_svdvals
 from .linear_backward import linear_backward
 from .log_normal_ import log_normal_, log_normal_heur_block, log_normal_heur_num_warps
@@ -73,6 +74,7 @@ __all__ = [
     "lcm_",
     "linalg_cholesky",
     "linalg_svdvals",
+    "linalg_matrix_norm",
     "linear_backward",
     "log_normal_",
     "log_normal_heur_block",
