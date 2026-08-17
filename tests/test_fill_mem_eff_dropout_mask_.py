@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 # `_fill_mem_eff_dropout_mask_` is an internal helper used by the memory
 # efficient attention path. It only operates on 4D float32 tensors of
@@ -43,6 +44,8 @@ MASK_SHAPES = (
 MASK_DTYPES = [torch.float32]
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.fill_mem_eff_dropout_mask_
 @pytest.mark.parametrize("shape", MASK_SHAPES)
 @pytest.mark.parametrize("seed_offset", [(42, 0), (42, 100), (7, 0), (7, 1024)])
@@ -61,6 +64,8 @@ def test_fill_mem_eff_dropout_mask_(shape, seed_offset):
     utils.gems_assert_close(res_out, ref_out, torch.float32, atol=1e-6)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.fill_mem_eff_dropout_mask_
 @pytest.mark.parametrize("shape", MASK_SHAPES)
 def test_fill_mem_eff_dropout_mask__value_range(shape):
@@ -73,6 +78,8 @@ def test_fill_mem_eff_dropout_mask__value_range(shape):
     assert (res_out < 1.0).all()
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.fill_mem_eff_dropout_mask_
 @pytest.mark.parametrize("shape", MASK_SHAPES)
 def test_fill_mem_eff_dropout_mask__inplace(shape):
