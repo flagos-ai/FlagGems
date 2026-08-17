@@ -6,6 +6,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.dist
 @pytest.mark.parametrize("p", [0, 1, 2, 3, float("inf"), -float("inf")])
 @pytest.mark.parametrize(
     "shape",
@@ -47,6 +48,7 @@ def test_dist(shape, p, dtype):
         utils.gems_assert_close(out, ref_out, dtype)
 
 
+@pytest.mark.dist
 def test_dist_empty():
     x = torch.empty(0, device=flag_gems.device)
     y = torch.empty(0, device=flag_gems.device)
