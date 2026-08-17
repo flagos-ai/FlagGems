@@ -134,6 +134,9 @@ def test_fake_quantize_learnable_per_channel_affine_backward(
         utils.gems_assert_close(res, ref, torch.float32, reduce_dim=rdim)
 
 
+@pytest.mark.skipif(
+    cfg.TO_CPU, reason="CPU reference diverges on inf/-inf saturation gradients"
+)
 @pytest.mark.fake_quantize_learnable_per_channel_affine_backward
 def test_fake_quantize_learnable_per_channel_affine_backward_extreme():
     """Cover extreme inputs: all-zero and inf/-inf entries that saturate."""
