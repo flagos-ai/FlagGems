@@ -1146,6 +1146,23 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: avg_pool1d
+    description: |
+      Applies 1D average-pooling operation in kL regions by step size sL steps.
+      The number of output features is equal to the number of input planes.
+    for:
+      - avg_pool1d
+    marks:
+      - avg_pool1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+    device:
+      - nvidia
   - id: avg_pool2d
     description: |
       Applies 2D average-pooling operation in `kH \mul kW` regions by step size `sH \mul sW` steps.

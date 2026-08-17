@@ -162,6 +162,7 @@ from flag_gems.ops.attention import (
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
 )
+from flag_gems.ops.avg_pool1d import avg_pool1d
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.avg_pool3d import avg_pool3d, avg_pool3d_backward
 from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
@@ -955,6 +956,7 @@ __all__ = [
     "atan_",
     "atanh",
     "atanh_",
+    "avg_pool1d",
     "avg_pool2d",
     "avg_pool2d_backward",
     "avg_pool3d",
