@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 attention:
 - gen: true
   param_map:
@@ -376,6 +390,61 @@ mm:
     BLOCK_K: 64
   num_stages: 5
   num_warps: 2
+
+nansum_dim:
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 32
+  num_warps: 2
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 64
+  num_warps: 4
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 128
+  num_warps: 4
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 256
+  num_warps: 4
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 512
+  num_warps: 8
+- META:
+    BLOCK_M: 1
+    BLOCK_N: 256
+  num_warps: 4
+- META:
+    BLOCK_M: 1
+    BLOCK_N: 512
+  num_warps: 8
+- META:
+    BLOCK_M: 1
+    BLOCK_N: 1024
+  num_warps: 8
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 256
+  num_warps: 8
+nansum_final_reduce:
+- META:
+    BLOCK_SIZE: 256
+  num_warps: 4
+- META:
+    BLOCK_SIZE: 512
+  num_warps: 8
+- META:
+    BLOCK_SIZE: 1024
+  num_warps: 8
+- META:
+    BLOCK_SIZE: 2048
+  num_warps: 8
+- META:
+    BLOCK_SIZE: 4096
+  num_warps: 8
+
 softmax_non_inner:
 - META:
     TILE_K: 32
@@ -1036,18 +1105,10 @@ weight_norm_kernel_last:
     num_warps: warps
   warps:
   - 4
-  - 8
-  - 16
   block_m:
-  - 512
-  - 1024
-  - 2048
+  - 256
   block_n:
   - 1
-  - 2
-  - 4
-  - 8
-  - 32
 weight_norm_kernel_first:
 - gen: true
   param_map:
@@ -1057,18 +1118,10 @@ weight_norm_kernel_first:
     num_warps: warps
   warps:
   - 4
-  - 8
-  - 16
   block_m:
   - 1
-  - 2
-  - 4
-  - 8
-  - 32
   block_n:
-  - 512
-  - 1024
-  - 2048
+  - 256
 weight_norm_kernel:
 - gen: true
   param_map:
@@ -1078,19 +1131,10 @@ weight_norm_kernel:
     num_warps: warps
   warps:
   - 4
-  - 8
-  - 16
   block_m:
   - 1
-  - 2
-  - 4
-  - 8
-  - 32
   block_n:
   - 256
-  - 512
-  - 1024
-  - 2048
 vector_norm:
 - gen: true
   param_map:
@@ -1315,6 +1359,48 @@ index_put:
   - 1024
   - 2048
   - 4096
+
+index_add_contiguous_suffix_flat:
+- META:
+    BLOCK_SIZE: 128
+- META:
+    BLOCK_SIZE: 256
+- META:
+    BLOCK_SIZE: 512
+
+index_add_contiguous_suffix_fp16_flat:
+- META:
+    BLOCK_SIZE: 128
+
+index_add_contiguous_suffix_tile:
+- META:
+    BLOCK_M: 2
+    BLOCK_N: 64
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 64
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 32
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 128
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 128
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 256
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 256
+- META:
+    BLOCK_M: 4
+    BLOCK_N: 512
+- META:
+    BLOCK_M: 8
+    BLOCK_N: 512
+
 kron:
   - gen: true
     param_map:
@@ -1352,3 +1438,53 @@ argmin_split_k:
         - 4
         - 8
         - 16
+
+index_adjacent:
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 64
+  - META:
+      BLOCK_SIZE0: 128
+      BLOCK_SIZE1: 1
+  - META:
+      BLOCK_SIZE0: 8
+      BLOCK_SIZE1: 128
+  - META:
+      BLOCK_SIZE0: 16
+      BLOCK_SIZE1: 128
+  - META:
+      BLOCK_SIZE0: 8
+      BLOCK_SIZE1: 256
+  - META:
+      BLOCK_SIZE0: 16
+      BLOCK_SIZE1: 256
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 128
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 192
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 256
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 320
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 384
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 448
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 512
+  - META:
+      BLOCK_SIZE0: 1
+      BLOCK_SIZE1: 1024
+  - META:
+      BLOCK_SIZE0: 2
+      BLOCK_SIZE1: 1024
+  - META:
+      BLOCK_SIZE0: 4
+      BLOCK_SIZE1: 1024

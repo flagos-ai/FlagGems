@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import Generator
 
 import pytest
@@ -32,13 +46,25 @@ class ToCopyBenchmark(base.Benchmark):
             ]:
                 inp = torch.randn(shape, dtype=self.src_dtype, device=self.device)
             elif self.src_dtype in [torch.int8, torch.int16, torch.int32, torch.int64]:
-                inp = torch.randint(
-                    -100, 100, shape, dtype=self.src_dtype, device=self.device
-                )
+                if flag_gems.vendor_name == "cambricon":
+                    # Cambricon torch.randint currently does not support int8/int16 generation.
+                    inp = torch.randint(
+                        -100, 100, shape, dtype=self.src_dtype, device="cpu"
+                    ).to(self.device)
+                else:
+                    inp = torch.randint(
+                        -100, 100, shape, dtype=self.src_dtype, device=self.device
+                    )
             elif self.src_dtype == torch.uint8:
-                inp = torch.randint(
-                    0, 255, shape, dtype=self.src_dtype, device=self.device
-                )
+                if flag_gems.vendor_name == "cambricon":
+                    # Cambricon torch.randint currently does not support int8/int16 generation.
+                    inp = torch.randint(
+                        0, 255, shape, dtype=self.src_dtype, device="cpu"
+                    ).to(self.device)
+                else:
+                    inp = torch.randint(
+                        0, 255, shape, dtype=self.src_dtype, device=self.device
+                    )
             else:
                 inp = torch.randn(shape, dtype=self.src_dtype, device=self.device)
             yield inp, {"dtype": dtype}

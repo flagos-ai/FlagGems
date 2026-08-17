@@ -1,9 +1,23 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
 import triton
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
+from ..utils.pointwise_dynamic import ComplexMode, pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +44,16 @@ def sub_func_tensor_scalar(x, y, alpha, inplace):
 @triton.jit
 def sub_func_scalar_tensor(x, y, alpha, inplace):
     return x - y * alpha
+
+
+# Register complex support (elementwise)
+sub_func.register_complex(mode=ComplexMode.ELEMENTWISE)
+sub_func_tensor_scalar.register_complex(
+    mode=ComplexMode.ELEMENTWISE, tensorize_scalars=True, fallback_target=sub_func
+)
+sub_func_scalar_tensor.register_complex(
+    mode=ComplexMode.ELEMENTWISE, tensorize_scalars=True, fallback_target=sub_func
+)
 
 
 def sub(A, B, *, alpha=1):

@@ -54,6 +54,15 @@ def _conj(input: torch.Tensor) -> torch.Tensor:
     if not input.is_complex():
         raise RuntimeError("_conj only supports complex tensors")
 
+    # If input already has conjugate bit set, conj(conj(x)) = x.
+    # Return a physical copy of the original (unconjugated) storage data.
+    if input.is_conj():
+        # input logical value = conj(storage). We need conj(logical) = storage.
+        # Step 1: resolve_conj physically materializes the logical value → [a-bi]
+        resolved = input.resolve_conj()  # no conj bit, data = conj(storage)
+        # Step 2: conj_physical negates imaginary → storage data [a+bi]
+        return torch.conj_physical(resolved)
+
     n_elements = input.numel()
     # Ensure contiguous memory layout for efficient loading
     src = input if input.is_contiguous() else input.contiguous()

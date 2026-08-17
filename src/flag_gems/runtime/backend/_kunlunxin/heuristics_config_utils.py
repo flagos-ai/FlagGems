@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import torch
 import triton
 
@@ -77,17 +91,19 @@ def gather_heur_block_n(args):
 
 
 def index_add_heur_block_m(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+    # BLOCK_M was previously next_power_of_2(cdiv(M, 12)) -> UNBOUNDED: it grows
+    # with M, so a large M produces a giant [BLOCK_M, BLOCK_N] constexpr tile that
+    # ConvertTritonXPUToLLVM materializes per element -> IR explosion (29MB/148MB
+    # in ir-index_add*-devN.log) and slow launches. Cap BLOCK_M to keep the tile
+    # bounded (small M stays under the cap, e.g. M=64 -> 8).
+    return min(64, triton.next_power_of_2(triton.cdiv(args["M"], 12)))
 
 
 def index_add_heur_block_n(args):
-    # if args["N"] > 8192:
-    #     return 64
-    # if args["N"] > 256:
-    #     return 256
-
-    # return args["N"]
-    return min(8192, triton.next_power_of_2(args["N"]))
+    # Likewise bound BLOCK_N (was min(8192, next_pow2(N))). A smaller contiguous
+    # column tile measured faster on XPU for the large (4096,4096) case and keeps
+    # the 2D tile bounded together with the capped BLOCK_M.
+    return min(256, triton.next_power_of_2(args["N"]))
 
 
 def index_select_heur_block_m(args):

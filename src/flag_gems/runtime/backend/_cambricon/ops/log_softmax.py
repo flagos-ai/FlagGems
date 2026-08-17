@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import copy
 import logging
 import math
@@ -89,7 +103,6 @@ def log_softmax_tile_mode_for_non_inner(M, N, K, TILE_N, TILE_K):
         return 2
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config({"TILE_K": k, "TILE_N": 2**n}, num_stages=s, num_warps=1)
@@ -110,6 +123,7 @@ def log_softmax_tile_mode_for_non_inner(M, N, K, TILE_N, TILE_K):
         ),
     },
 )
+@libentry()
 @triton.jit
 def log_softmax_kernel_non_inner(
     output_ptr,
@@ -128,35 +142,29 @@ def log_softmax_kernel_non_inner(
     split_k = tl.cdiv(K, p_k_num)
     k_start = pid_k * split_k
 
-    log2e = 1.442695
-
     if TILE_MODE == 0:
         n_offset = tl.arange(0, TILE_N)
         k_offset = pid_k * TILE_K + tl.arange(0, TILE_K)
         offset = pid_m * N * K + n_offset[:, None] * K + k_offset[None, :]
-        mask = k_offset[None, :] < K
-        input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
-        m = inp - tl.max(inp, axis=0)[None, :]
-        e = tl.exp(m)
-        s = tl.sum(e, axis=0)[None, :]
-        output = m - tl.log2(s) / log2e
-        output_ptrs = output_ptr + offset
-        tl.store(output_ptrs, output, mask=mask)
+        mask = (n_offset[:, None] < N) & (k_offset[None, :] < K)
+        inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(tl.float32)
+        m = tl.max(inp, 0)
+        z = tl.sum(tl.exp(inp - m[None, :]), 0)
+        output = inp - m[None, :] - tl.log(z)[None, :]
+        tl.store(output_ptr + offset, output, mask=mask)
     elif TILE_MODE == 1:
         for k_idx in range(0, split_k, TILE_K):
             k_offset = k_start + k_idx + tl.arange(0, TILE_K)
             n_offset = tl.arange(0, TILE_N)
             offset = pid_m * N * K + n_offset[:, None] * K + k_offset[None, :]
-            mask = k_offset[None, :] < K
-            input_ptrs = input_ptr + offset
-            inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
-            m = inp - tl.max(inp, axis=0)[None, :]
-            e = tl.exp(m)
-            s = tl.sum(e, axis=0)[None, :]
-            output = m - tl.log2(s) / log2e
-            output_ptrs = output_ptr + offset
-            tl.store(output_ptrs, output, mask=mask)
+            mask = (n_offset[:, None] < N) & (k_offset[None, :] < K)
+            inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
+                tl.float32
+            )
+            m = tl.max(inp, 0)
+            z = tl.sum(tl.exp(inp - m[None, :]), 0)
+            output = inp - m[None, :] - tl.log(z)[None, :]
+            tl.store(output_ptr + offset, output, mask=mask)
     else:
         for k_idx in range(0, split_k, TILE_K):
             k_offset = k_start + k_idx + tl.arange(0, TILE_K)
@@ -180,8 +188,8 @@ def log_softmax_kernel_non_inner(
 
             m_reduced = tl.max(m, 0)  # (TILE_K,)
             z = tl.sum(z * tl.exp(m - m_reduced[None, :]), 0)  # (TILE_K, )
-            recip_z = 1.0 / z
             m = m_reduced
+            log_z = tl.log(z)
 
             # specialization does not improve performance inn this example, as tested
             for start_n in range(0, N, TILE_N):
@@ -191,8 +199,7 @@ def log_softmax_kernel_non_inner(
                 inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
                     tl.float32
                 )
-                o = tl.exp(inp - m[None, :]) * recip_z[None, :]
-                output = tl.log2(o) / log2e
+                output = inp - m[None, :] - log_z[None, :]
                 tl.store(output_ptr + offset, output, mask=mask)
 
 
@@ -265,7 +272,6 @@ def log_softmax_tile_mode_for_inner(M, N, BLOCK_M, BLOCK_N):
         return 2
 
 
-@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("log_softmax"),
     key=[
@@ -281,6 +287,7 @@ def log_softmax_tile_mode_for_inner(M, N, BLOCK_M, BLOCK_N):
         ),
     },
 )
+@libentry()
 @triton.jit
 def log_softmax_kernel_inner(
     output_ptr,
@@ -565,7 +572,6 @@ def config_prune3(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config({"TILE_K": k, "TILE_N": 2**n}, num_stages=s, num_warps=1)
@@ -586,6 +592,7 @@ def config_prune3(configs, named_args, **kwargs):
         ),
     },
 )
+@libentry()
 @triton.jit
 def log_softmax_backward_kernel_non_inner(
     output_ptr,
@@ -708,7 +715,6 @@ def config_prune4(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config({"BLOCK_N": 64 * k, "BLOCK_M": 2**n}, num_stages=s, num_warps=1)
@@ -729,6 +735,7 @@ def config_prune4(configs, named_args, **kwargs):
         ),
     },
 )
+@libentry()
 @triton.jit
 def log_softmax_backward_kernel_inner(
     output_ptr,
@@ -789,8 +796,8 @@ def log_softmax_backward_kernel_inner(
                 tl.store(in_grad_ptr + offset, in_grad_tile, mask=mask)
 
 
-def log_softmax(self, dim, half_to_float=False):
-    logger.debug("GEMS_CAMBRICON LOG_SOFTMAX")
+def log_softmax_out(self, dim, half_to_float=False, *, out):
+    logger.debug("GEMS_CAMBRICON LOG_SOFTMAX_OUT")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
     dim = dim % self.ndim
@@ -803,7 +810,12 @@ def log_softmax(self, dim, half_to_float=False):
         dtype = torch.float32
     else:
         dtype = self.dtype
-    out = torch.empty_like(inp, dtype=dtype)
+    if tuple(out.shape) != tuple(inp.shape):
+        out.resize_(inp.shape)
+    if out.dtype != dtype:
+        raise RuntimeError(
+            f"_log_softmax.out: expected out dtype {dtype}, got {out.dtype}"
+        )
     K = inp.numel() // M // N
 
     with torch_device_fn.device(inp.device):
@@ -874,8 +886,17 @@ def log_softmax(self, dim, half_to_float=False):
     return out
 
 
-def log_softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS_CAMBRICON LOG_SOFTMAX_VJP")
+def log_softmax(self, dim, half_to_float=False):
+    logger.debug("GEMS_CAMBRICON LOG_SOFTMAX")
+    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
+    dim = dim % self.ndim
+    dtype = torch.float32 if half_to_float else self.dtype
+    out = torch.empty_like(self.contiguous(), dtype=dtype)
+    return log_softmax_out(self, dim, half_to_float, out=out)
+
+
+def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
+    logger.debug("GEMS_CAMBRICON LOG_SOFTMAX_BACKWARD_OUT")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim
@@ -885,17 +906,22 @@ def log_softmax_backward(grad_output, output, dim, input_dtype):
         M *= output.shape[i]
 
     grad_output = grad_output.contiguous()
-    in_grad = torch.empty_like(output)
+    if tuple(out.shape) != tuple(output.shape):
+        out.resize_(output.shape)
+    if out.dtype != input_dtype:
+        raise RuntimeError(
+            f"_log_softmax_backward_data.out: expected out dtype {input_dtype}, got {out.dtype}"
+        )
     K = output.numel() // M // N
 
-    with torch_device_fn.device(in_grad.device):
+    with torch_device_fn.device(out.device):
         if K > 1:
             logger.debug("GEMS_CAMBRICON LOG_SOFTMAX_VJP_USE_NON_INNER")
             grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
             log_softmax_backward_kernel_non_inner[grid](
                 output,
                 grad_output,
-                in_grad,
+                out,
                 M,
                 N,
                 K,
@@ -906,8 +932,14 @@ def log_softmax_backward(grad_output, output, dim, input_dtype):
             log_softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                 output,
                 grad_output,
-                in_grad,
+                out,
                 M,
                 N,
             )
-    return in_grad
+    return out
+
+
+def log_softmax_backward(grad_output, output, dim, input_dtype):
+    logger.debug("GEMS_CAMBRICON LOG_SOFTMAX")
+    in_grad = torch.empty_like(output, dtype=input_dtype)
+    return log_softmax_backward_out(grad_output, output, dim, input_dtype, out=in_grad)
