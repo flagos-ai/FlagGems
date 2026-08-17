@@ -13,7 +13,7 @@
 # limitations under the License.
 
 ops:
-  - id: _batch_norm_with_update
+  - id: batch_norm_with_update
     description: Applies training-mode Batch Normalization using batch statistics and updates running_mean/running_var in place.
     for:
       - _batch_norm_with_update
