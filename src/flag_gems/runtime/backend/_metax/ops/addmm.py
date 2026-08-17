@@ -26,6 +26,12 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+# DispatchKeySet to redispatch to the native ATen implementation,
+# bypassing our registered dispatch override (avoids recursion).
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
+
 
 @libentry()
 @libtuner(
@@ -125,6 +131,18 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
         bias.stride(0) == 1,
     )
 
+    # MetaX workaround: fall back to torch for shapes that trigger genSwiMask
+    # assertion in the MetaX compiler. This happens when M or N < 16 (tl.dot
+    # minimum dimension) or when dimensions are large and non-power-of-2 aligned.
+    MIN_TILE = 32
+    if M < MIN_TILE or N < MIN_TILE:
+        logger.debug(
+            "GEMS_METAX ADDMM falling back to torch (small M=%s or N=%s)", M, N
+        )
+        return torch.ops.aten.addmm.default.redispatch(
+            _FALLBACK_KEYSET, bias, mat1, mat2, beta=beta, alpha=alpha
+        )
+
     mat1 = mat1.contiguous()
     mat2 = mat2.contiguous()
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
@@ -134,24 +152,40 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
         triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
-    with torch_device_fn.device(mat1.device):
-        addmm_kernel[grid](
-            mat1,
-            mat2,
-            bias,
-            out,
-            alpha,
-            beta,
+    try:
+        with torch_device_fn.device(mat1.device):
+            addmm_kernel[grid](
+                mat1,
+                mat2,
+                bias,
+                out,
+                alpha,
+                beta,
+                M,
+                N,
+                K,
+                mat1.stride(0),
+                mat1.stride(1),
+                mat2.stride(0),
+                mat2.stride(1),
+                bias.stride(0),
+                bias.stride(1),
+                out.stride(0),
+                out.stride(1),
+            )
+        return out
+    except RuntimeError as e:
+        # MetaX compiler may fail on certain shape/tile combinations
+        # (e.g., genSwiMask assertion with async pipeline passes).
+        # Fall back to torch.addmm for correctness.
+        logger.warning(
+            "GEMS_METAX ADDMM kernel compilation failed for shape (%s,%s,%s), "
+            "falling back to torch.addmm: %s",
             M,
             N,
             K,
-            mat1.stride(0),
-            mat1.stride(1),
-            mat2.stride(0),
-            mat2.stride(1),
-            bias.stride(0),
-            bias.stride(1),
-            out.stride(0),
-            out.stride(1),
+            e,
         )
-    return out
+        return torch.ops.aten.addmm.default.redispatch(
+            _FALLBACK_KEYSET, bias, mat1, mat2, beta=beta, alpha=alpha
+        )

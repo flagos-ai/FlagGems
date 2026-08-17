@@ -1,0 +1,276 @@
+mm:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        pipeline: pipeline
+        scenario: scenario
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 16
+      - 32
+      - 64
+      - 128
+      - 256
+    block_n:
+      - 32
+      - 64
+      - 128
+      - 256
+    block_k:
+      - 16
+      - 32
+      - 64
+      - 128
+    stages:
+      - 2
+      - 3
+      - 4
+    warps:
+      - 2
+      - 4
+      - 8
+    pipeline:
+      - "null"
+      - "basic"
+      - "cpasync"
+    scenario:
+      - ""
+  - strategy:
+      M: default
+      N: default
+      K: default
+      stride_am: default
+      stride_bk: default
+
+mm_nt:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        pipeline: pipeline
+        scenario: scenario
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 16
+      - 32
+      - 64
+      - 128
+      - 256
+    block_n:
+      - 32
+      - 64
+      - 128
+      - 256
+    block_k:
+      - 32
+      - 64
+      - 128
+    pipeline:
+      - "basic"
+      - "cpasync"
+    warps:
+      - 4
+      - 8
+    stages:
+      - 2
+      - 3
+      - 4
+    scenario:
+      - ""
+  - strategy:
+      M: align32
+      N: default
+      K: default
+
+mm_splitk:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        SPLIT_K: split_k
+        pipeline: pipeline
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 16
+    block_n:
+      - 16
+      - 64
+    block_k:
+      - 64
+      - 128
+      - 256
+    split_k:
+      - 8
+      - 16
+    stages:
+      - 2
+      - 3
+      - 6
+      - 8
+    warps:
+      - 2
+      - 4
+    pipeline:
+      - "null"
+      - "basic"
+  - strategy:
+      M: align32
+      N: default
+      K: default
+      stride_am: default
+      stride_bk: default
+
+mm_splitk_two_step:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        pipeline: pipeline
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 16
+      - 32
+    block_n:
+      - 16
+      - 32
+      - 64
+      - 128
+    block_k:
+      - 64
+    stages:
+      - 2
+      - 4
+    warps:
+      - 2
+      - 4
+    pipeline:
+      - "null"
+      - "basic"
+      - "cpasync"
+  - strategy:
+      M: default
+      N: default
+      K: default
+      stride_am: default
+      stride_bk: default
+
+gemv:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_K: block_k
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 8
+      - 16
+      - 32
+    block_k:
+      - 256
+    stages:
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+    warps:
+      - 1
+      - 2
+      - 4
+      - 8
+  - strategy:
+      M: align32
+      K: default
+      stride_am: default
+      stride_bk: default
+
+gemv_k_parallel:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_K: block_k
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 4
+      - 8
+      - 16
+      - 32
+    block_k:
+      - 128
+      - 256
+    stages:
+      - 2
+      - 4
+    warps:
+      - 1
+      - 2
+      - 4
+  - strategy:
+      M: default
+      K: default
+      stride_am: default
+      stride_bk: default
+
+mm_nn:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        pipeline: pipeline
+        scenario: scenario
+      num_stages: stages
+      num_warps: warps
+    block_m:
+      - 16
+      - 32
+      - 64
+      - 128
+      - 256
+    block_n:
+      - 32
+      - 64
+      - 128
+      - 256
+    block_k:
+      - 16
+      - 32
+      - 64
+      - 128
+    stages:
+      - 2
+      - 3
+      - 4
+    warps:
+      - 2
+      - 4
+      - 8
+    pipeline:
+      - "null"
+      - "basic"
+      - "cpasync"
+    scenario:
+      - ""
+  - strategy:
+      M: default
+      N: default
+      K: default

@@ -310,8 +310,9 @@ class Benchmark:
                 do_bench = triton.backends.ascend.testing.do_bench_npu
                 latency = do_bench(
                     fn,
-                    warmup=Config.warm_up,
-                    active=Config.repetition,
+                    # do_bench_npu requires iterations, rather than duration
+                    # warmup=Config.warm_up,
+                    # active=Config.repetition,
                 )
             else:
                 do_bench = triton.testing.do_bench

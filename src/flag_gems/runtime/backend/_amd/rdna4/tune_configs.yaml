@@ -20,10 +20,20 @@
 #
 # The candidates come from an exhaustive sweep of the tile/warp/stage space:
 # every configuration that won at least one benchmarked shape, plus a few
-# covering the sizes in between so the table does not overfit those shapes. The
-# space is bounded by the 64 KiB of LDS a workgroup may use, which caps
-# (BLOCK_M + BLOCK_N) * BLOCK_K; num_stages stays at 1-2 because deeper
-# pipelines ranked poorly throughout the sweep.
+# covering the sizes in between so the table does not overfit those shapes.
+#
+# For the GEMM kernels the space is bounded by the 64 KiB of LDS a workgroup may
+# use, which caps (BLOCK_M + BLOCK_N) * BLOCK_K; num_stages stays at 1-2 because
+# deeper pipelines ranked poorly throughout the sweep.
+#
+# The norm kernels hold whole TILE_N arrays in registers across their reduction
+# loop, so what bounds them instead is TILE_N / (num_warps * 32), the elements
+# each lane carries. A sweep of tiles 128..65536 against 1..32 warps and 1..5
+# stages, in all three dtypes, puts a cliff just past 64 elements per lane for
+# layer_norm: 128 elements cost it 3-27x depending on shape, and 1024 cost 86x
+# after a single config spent 29 minutes compiling. float32 doubles the registers
+# per element yet the cliff does not move, so one table serves every dtype.
+# rms_norm shows no such cliff, which is why its table reaches further.
 
 mm:
   - META:
@@ -183,3 +193,102 @@ bmm:
       GROUP_M: 2
     num_warps: 8
     num_stages: 1
+
+# Written out rather than generated, because the region above is not a rectangle
+# and a gen block over these tiles and warp counts would emit 20 entries. Entry
+# count matters beyond compile time: the official benchmark sizes its
+# operator-mode iteration count from a 5-call estimate whose first call includes
+# autotuning, so a longer autotune shrinks n_rep and skews the reported latency.
+# Holding at 12 entries, as before, costs nothing -- these reach the same config
+# the full 20 would have picked on every shape measured. num_stages stays at the
+# default 2; every value scored within noise of it.
+layer_norm_loop:
+  - META:
+      TILE_N: 1024
+    num_warps: 4
+  - META:
+      TILE_N: 1024
+    num_warps: 8
+  - META:
+      TILE_N: 2048
+    num_warps: 8
+  - META:
+      TILE_N: 2048
+    num_warps: 16
+  - META:
+      TILE_N: 4096
+    num_warps: 8
+  - META:
+      TILE_N: 4096
+    num_warps: 16
+  - META:
+      TILE_N: 4096
+    num_warps: 32
+  - META:
+      TILE_N: 8192
+    num_warps: 8
+  - META:
+      TILE_N: 8192
+    num_warps: 16
+  - META:
+      TILE_N: 8192
+    num_warps: 32
+  - META:
+      TILE_N: 16384
+    num_warps: 16
+  - META:
+      TILE_N: 16384
+    num_warps: 32
+
+# _amd/tune_configs.yaml has no rms_norm_loop, so without this key the kernel
+# runs on the _nvidia defaults, which stop at TILE_N 8192. This is the
+# layer_norm table with TILE_N 1024 traded for 65536, holding the entry count at
+# 12 so autotune takes as long as the fallback table's and the operator-mode
+# numbers stay comparable.
+#
+# The trade is measured, not assumed. This kernel only runs for N > 4096, and
+# across N = 4608, 6144 and 8192 the 1024 tiles trail the winner by 5.6-9.2%,
+# never placing. At N = 65536 a tile spanning N in a single pass beat every
+# smaller tile by 5.4%, over five repeats whose own spread was 0.2%. That win
+# needs 16 warps, which is 128 elements per lane, so 32 warps is listed beside it
+# as the variant that stays inside layer_norm's cliff and still lands within
+# 1.6%. Spanning N is not a rule that generalises -- at N = 32768 and 131072 it
+# trails a smaller tile, though by under 1% -- so these tiles cover the range
+# rather than encode a rule.
+rms_norm_loop:
+  - META:
+      TILE_N: 2048
+    num_warps: 8
+  - META:
+      TILE_N: 2048
+    num_warps: 16
+  - META:
+      TILE_N: 4096
+    num_warps: 8
+  - META:
+      TILE_N: 4096
+    num_warps: 16
+  - META:
+      TILE_N: 4096
+    num_warps: 32
+  - META:
+      TILE_N: 8192
+    num_warps: 8
+  - META:
+      TILE_N: 8192
+    num_warps: 16
+  - META:
+      TILE_N: 8192
+    num_warps: 32
+  - META:
+      TILE_N: 16384
+    num_warps: 16
+  - META:
+      TILE_N: 16384
+    num_warps: 32
+  - META:
+      TILE_N: 65536
+    num_warps: 16
+  - META:
+      TILE_N: 65536
+    num_warps: 32

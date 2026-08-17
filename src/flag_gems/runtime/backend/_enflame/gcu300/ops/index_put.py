@@ -482,6 +482,7 @@ def index_put_(inp, indices, values, accumulate=False):
 
 
 def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
+    logger.debug("GEMS_ENFLAME _INDEX_PUT_IMPL_")
     indices = list(indices)
 
     if not indices:

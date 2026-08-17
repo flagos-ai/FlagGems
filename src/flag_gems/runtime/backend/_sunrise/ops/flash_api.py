@@ -328,10 +328,13 @@ def mha_varlan_fwd(
     if is_causal:
         window_size_right = 0
 
-    # check disable swa
-    if window_size_left >= max_seqlen_k:
+    # Disable SWA only when neither side can mask any key.  In bottom-right
+    # aligned attention the right window is measured against the query length,
+    # so normalizing each side against max_seqlen_k breaks q_len > kv_len.
+    if (window_size_left < 0 or window_size_left >= max_seqlen_k) and (
+        window_size_right < 0 or window_size_right >= max_seqlen_q
+    ):
         window_size_left = -1
-    if window_size_right >= max_seqlen_k:
         window_size_right = -1
 
     is_local = window_size_left >= 0
@@ -572,7 +575,8 @@ def mha_varlan_fwd(
             "BLOCK_N": cfg["BLOCK_N"](args),
             "BLOCK_K": triton.next_power_of_2(head_size),
             "num_warps": cfg["num_warps"](args),
-            "num_stages": 1 if not is_paged else cfg["num_stages"](args),
+            # [sunrise fix] Multistage paged loads are nondeterministic on PTPU.
+            "num_stages": 1,
         }
 
         logger.debug(
@@ -678,10 +682,13 @@ def mha_varlan_fwd_opt(
     if is_causal:
         window_size_right = 0
 
-    # check disable swa
-    if window_size_left >= max_seqlen_k:
+    # Disable SWA only when neither side can mask any key.  In bottom-right
+    # aligned attention the right window is measured against the query length,
+    # so normalizing each side against max_seqlen_k breaks q_len > kv_len.
+    if (window_size_left < 0 or window_size_left >= max_seqlen_k) and (
+        window_size_right < 0 or window_size_right >= max_seqlen_q
+    ):
         window_size_left = -1
-    if window_size_right >= max_seqlen_k:
         window_size_right = -1
 
     is_local = window_size_left >= 0
@@ -924,7 +931,8 @@ def mha_varlan_fwd_opt(
             "BLOCK_N": cfg["BLOCK_N"](args),
             "BLOCK_K": triton.next_power_of_2(head_size),
             "num_warps": cfg["num_warps"](args),
-            "num_stages": 1 if not is_paged else cfg["num_stages"](args),
+            # [sunrise fix] Multistage paged loads are nondeterministic on PTPU.
+            "num_stages": 1,
         }
 
         logger.debug(
@@ -992,9 +1000,13 @@ def mha_fwd(
     assert (
         num_heads % num_heads_k == 0
     ), "Number of heads in key/value must divide number of heads in query"
-    if window_size_left >= seqlen_k:
+    # Disable SWA only when neither side can mask any key.  In bottom-right
+    # aligned attention the right window is measured against the query length,
+    # so normalizing each side against seqlen_k breaks q_len > kv_len.
+    if (window_size_left < 0 or window_size_left >= seqlen_k) and (
+        window_size_right < 0 or window_size_right >= seqlen_q
+    ):
         window_size_left = -1
-    if window_size_right >= seqlen_k:
         window_size_right = -1
     if seqlen_q == 1 and alibi_slopes is None:
         is_causal = False

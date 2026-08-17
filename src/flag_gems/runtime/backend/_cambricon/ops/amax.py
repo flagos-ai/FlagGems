@@ -41,8 +41,8 @@ def amax_kernel_once(
     tl.store(out, amax_val)
 
 
-@libentry()
 @triton.autotune(configs=cfggen_reduce_op(), key=["M"])
+@libentry()
 @triton.jit
 def amax_kernel_1(
     inp,
@@ -68,8 +68,8 @@ def amax_kernel_1(
     tl.atomic_max(out, _tmp)
 
 
-@libentry()
 @triton.autotune(configs=runtime.get_tuned_config("amax_opt"), key=["N"])
+@libentry()
 @triton.jit
 def amax_kernel_opt(
     inp,
@@ -103,8 +103,8 @@ def amax_kernel_opt(
         tl.atomic_max(new_out, max_val)
 
 
-@libentry()
 @triton.autotune(configs=runtime.get_tuned_config("amax"), key=["M", "N"])
+@libentry()
 @triton.jit
 def amax_kernel(
     inp,
@@ -157,7 +157,7 @@ def amax(inp, dim=None, keepdim=False):
                 for i in range(0, inp.dim()):
                     shape[i] = 1
                 out = torch.empty(shape, dtype=dtype, device=inp.device)
-            with torch.cuda.device(inp.device):
+            with torch_device_fn.device(inp.device):
                 amax_kernel_once[(1, 1, 1)](inp, out, M)
             return out
         else:

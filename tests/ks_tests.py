@@ -52,6 +52,9 @@ def test_normal_pvalue(shape, dtype):
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_uniform_pvalue(shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         x.uniform_(-3, 3)

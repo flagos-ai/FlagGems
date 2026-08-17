@@ -9,15 +9,9 @@ from . import accuracy_utils as utils
 
 VENDOR_NAME = getattr(flag_gems, "vendor_name", "")
 IS_ASCEND = VENDOR_NAME == "ascend"
+IS_ILUVATAR = VENDOR_NAME == "iluvatar"
 IS_THEAD = VENDOR_NAME == "thead"
-
-if IS_ASCEND:
-    from flag_gems.runtime.backend._ascend.ops.cholesky_solve import (
-        cholesky_solve,
-        cholesky_solve_out,
-    )
-else:
-    from flag_gems.ops.cholesky_solve import cholesky_solve, cholesky_solve_out
+SUPPORT_FP64 = flag_gems.runtime.device.support_fp64
 
 
 CHOLESKY_SOLVE_BASIC_SHAPES = [
@@ -105,6 +99,10 @@ def _use_cpu_complex_path(dtype):
     return IS_THEAD and dtype in (torch.complex64, torch.complex128)
 
 
+def _use_cpu_complex_validation(dtype):
+    return IS_ILUVATAR and dtype in (torch.complex64, torch.complex128)
+
+
 def _move_setup_tensors_to_device(build_on_cpu, *tensors):
     if build_on_cpu:
         return tuple(tensor.to(flag_gems.device) for tensor in tensors)
@@ -187,18 +185,12 @@ def _reference_cholesky_solve(rhs, factor, upper=False):
 
 
 def _solve_with_gems(rhs, L, upper=False):
-    if IS_ASCEND:
-        return cholesky_solve(rhs, L, upper=upper)
-
     with flag_gems.use_gems(include=["cholesky_solve"]):
         assert "cholesky_solve" in flag_gems.current_work_registrar.get_all_keys()
         return torch.cholesky_solve(rhs, L, upper=upper)
 
 
 def _solve_out_with_gems(rhs, L, out, upper=False):
-    if IS_ASCEND:
-        return cholesky_solve_out(rhs, L, upper=upper, out=out)
-
     with flag_gems.use_gems(include=["cholesky_solve", "cholesky_solve_out"]):
         registered_keys = flag_gems.current_work_registrar.get_all_keys()
         assert "cholesky_solve" in registered_keys
@@ -207,6 +199,12 @@ def _solve_out_with_gems(rhs, L, out, upper=False):
 
 
 def _assert_cholesky_solve_close(result, reference, dtype):
+    if _use_cpu_complex_validation(dtype):
+        # CoreX IXRTC cannot compile the complex abs/isclose kernel generated
+        # by torch.testing.assert_close. The solve still runs on the device;
+        # only copy the completed results to CPU for validation.
+        result = result.detach().contiguous().cpu()
+        reference = reference.detach().contiguous().cpu()
     if dtype == torch.complex128:
         result = utils.to_cpu(result, reference)
         torch.testing.assert_close(result, reference, atol=1e-7, rtol=1e-7)
@@ -215,9 +213,10 @@ def _assert_cholesky_solve_close(result, reference, dtype):
 
 
 def _assert_backward_error(A, X, rhs, dtype):
-    if IS_ASCEND or _use_cpu_complex_path(dtype):
+    if IS_ASCEND or _use_cpu_complex_path(dtype) or _use_cpu_complex_validation(dtype):
         # Ascend falls back to CPU during input construction, while T-Head does
-        # not support the complex GEMM used by the residual calculation.
+        # not support the complex GEMM used by the residual calculation. CoreX
+        # cannot compile every complex validation kernel used here either.
         A = A.detach().contiguous().cpu()
         X = X.detach().contiguous().cpu()
         rhs = rhs.detach().contiguous().cpu()
@@ -241,8 +240,12 @@ def _assert_cholesky_solve_matches(A, factor, rhs, dtype, upper=False):
     _assert_backward_error(A, res_out, rhs.expand_as(res_out), dtype)
 
 
-_REAL_DTYPES = [torch.float32] if IS_ASCEND else [torch.float32, torch.float64]
-_COMPLEX_DTYPES = [] if IS_ASCEND else [torch.complex64, torch.complex128]
+_REAL_DTYPES = [torch.float32] + ([torch.float64] if SUPPORT_FP64 else [])
+_COMPLEX_DTYPES = (
+    []
+    if IS_ASCEND
+    else [torch.complex64] + ([torch.complex128] if SUPPORT_FP64 else [])
+)
 
 
 @pytest.mark.cholesky_solve
@@ -351,7 +354,7 @@ def test_cholesky_solve_ascend_blocked_single_rhs_conditioned(upper):
 
 
 @pytest.mark.cholesky_solve
-@pytest.mark.skipif(IS_ASCEND, reason="fp64 not supported on Ascend")
+@pytest.mark.skipif(not SUPPORT_FP64, reason="fp64 not supported on this backend")
 @pytest.mark.parametrize("shape", CHOLESKY_SOLVE_FP64_BLOCKED_SHAPES)
 @pytest.mark.parametrize("upper", [False, True])
 def test_cholesky_solve_fp64_blocked(shape, upper):
@@ -472,7 +475,7 @@ def test_cholesky_solve_direct(shape, dtype, upper):
     factor = L.mH.contiguous() if upper else L
 
     ref_out = _reference_cholesky_solve(rhs, factor, upper=upper)
-    res_out = cholesky_solve(rhs, factor, upper=upper)
+    res_out = _solve_with_gems(rhs, factor, upper=upper)
 
     _assert_cholesky_solve_close(res_out, ref_out, dtype)
 
@@ -644,13 +647,15 @@ def test_cholesky_solve_out_noncontiguous_and_alias():
     _assert_cholesky_solve_close(out, ref_out, dtype)
 
     rhs_alias = rhs.clone()
-    res_out = cholesky_solve_out(rhs_alias, factor, out=rhs_alias)
+    res_out = _solve_out_with_gems(rhs_alias, factor, rhs_alias)
     assert res_out is rhs_alias
     _assert_cholesky_solve_close(rhs_alias, ref_out, dtype)
 
 
 @pytest.mark.cholesky_solve_out
-@pytest.mark.skipif(IS_ASCEND, reason="Ascend cholesky_solve only supports fp32")
+@pytest.mark.skipif(
+    not SUPPORT_FP64, reason="fp64 output not supported on this backend"
+)
 def test_cholesky_solve_out_safe_dtype_cast():
     _, factor, rhs = _make_cholesky_solve_inputs((16, 4), torch.float32)
     ref_out = _reference_cholesky_solve(rhs, factor).to(torch.float64)
@@ -686,7 +691,7 @@ def test_cholesky_solve_empty_input():
     B = torch.empty(0, 0, dtype=torch.float32, device=flag_gems.device)
     L = torch.empty(0, 0, dtype=torch.float32, device=flag_gems.device)
 
-    assert cholesky_solve(B, L) is B
+    assert _solve_with_gems(B, L) is B
 
 
 @pytest.mark.cholesky_solve
@@ -695,20 +700,20 @@ def test_cholesky_solve_invalid_inputs():
     L = torch.randn(2, 3, dtype=torch.float32, device=flag_gems.device)
 
     with pytest.raises(ValueError, match="square matrix"):
-        cholesky_solve(B, L)
+        _solve_with_gems(B, L)
 
     B_bad_n = torch.randn(3, 1, dtype=torch.float32, device=flag_gems.device)
     L_square = torch.eye(2, dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(ValueError, match="second-to-last dimension"):
-        cholesky_solve(B_bad_n, L_square)
+        _solve_with_gems(B_bad_n, L_square)
 
     B_bad_batch = torch.randn(3, 2, 1, dtype=torch.float32, device=flag_gems.device)
     L_bad_batch = torch.eye(2, dtype=torch.float32, device=flag_gems.device).expand(
         2, 2, 2
     )
     with pytest.raises(ValueError, match="not broadcastable"):
-        cholesky_solve(B_bad_batch, L_bad_batch)
+        _solve_with_gems(B_bad_batch, L_bad_batch)
 
-    B_bad_dtype = torch.randn(2, 1, dtype=torch.float64, device=flag_gems.device)
+    B_bad_dtype = torch.randn(2, 1, dtype=torch.float16, device=flag_gems.device)
     with pytest.raises(AssertionError, match="same dtype"):
-        cholesky_solve(B_bad_dtype, L_square)
+        _solve_with_gems(B_bad_dtype, L_square)

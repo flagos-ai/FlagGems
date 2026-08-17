@@ -15,13 +15,23 @@
 import os
 import warnings
 from dataclasses import dataclass
+from enum import Enum
 from types import MappingProxyType
 
 USE_FLAGTUNE_ENV = "USE_FLAGTUNE"
+USE_FLAGTUNE_COST_MODEL_ENV = "USE_FLAGTUNE_COST_MODEL"
 FLAGTUNE_INCLUDE_ENV = "FLAGTUNE_INCLUDE"
 
 _flagtune_op_registry = {}
 _include_ops = None
+
+
+class TuningMode(str, Enum):
+    """Runtime configuration-selection path for one LibTuner operator."""
+
+    DEFAULT = "default"
+    EXPANDED = "expanded"
+    COST_MODEL = "cost_model"
 
 
 @dataclass(frozen=True)
@@ -108,14 +118,45 @@ def _normalize_include(include):
     return ops
 
 
+def _optional_binary_environment(name):
+    """Return an optional 0/1 environment setting with strict validation."""
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    value = value.strip()
+    if value not in {"0", "1"}:
+        raise ValueError(f"{name} must be 0 or 1 when set")
+    return value == "1"
+
+
+def _use_flagtune_setting_from_env():
+    """Return whether FlagTune is explicitly disabled or enabled."""
+    return _optional_binary_environment(USE_FLAGTUNE_ENV)
+
+
+def _expanded_from_env():
+    """Return whether the legacy switch explicitly enables FlagTune."""
+    return _use_flagtune_setting_from_env() is True
+
+
+def flagtune_expanded_enabled():
+    """Return whether global expanded search is enabled.
+
+    This intentionally excludes per-operator include-list selection. It keeps
+    decorators that recognize only ``USE_FLAGTUNE=1`` on their exact global
+    enable semantics.
+    """
+    return _expanded_from_env()
+
+
 def flagtune(include=None):
     """Enable runtime FlagTune for selected operators.
 
     Passing include=None enables the registry's default operators. Passing a
-    string or iterable selects the registered operators that should use
-    expanded tuning spaces when their LibTuner runs. This API only updates the
-    explicit include list; setting USE_FLAGTUNE=1 remains the legacy opt-in for
-    enabling every registered FlagTune operator.
+    string or iterable selects registered operators for capability-appropriate
+    tuning: Expanded for an unadapted operator and Cost Model for an adapted
+    operator. This API only updates the explicit include list; setting
+    ``USE_FLAGTUNE=1`` enables every registered FlagTune operator.
     """
     global _include_ops
     _include_ops = _normalize_include(include)
@@ -129,7 +170,7 @@ def _include_from_env():
     try:
         return _normalize_include(include)
     except (TypeError, ValueError) as err:
-        warnings.warn(f"Invalid {FLAGTUNE_INCLUDE_ENV}: {err}")
+        warnings.warn(f"Invalid FlagGems FlagTune include list: {err}")
         return frozenset()
 
 
@@ -139,14 +180,45 @@ def get_flagtune_include():
     return _include_from_env()
 
 
-def flagtune_enabled(op_name):
+def resolve_tuning_mode(op_name, *, supports_cost_model=False):
+    """Resolve Default, Expanded, or Cost Model tuning for one operator.
+
+    ``USE_FLAGTUNE=0`` selects the default config space. ``USE_FLAGTUNE=1``
+    enables Expanded tuning for an unadapted operator and Cost Model tuning for
+    an adapted operator. With neither switch set, unadapted operators default to
+    Default and adapted operators default to Cost Model. ``FLAGTUNE_INCLUDE``
+    applies the same capability-based selection to individual operators. An
+    adapted operator uses Expanded only when ``USE_FLAGTUNE_COST_MODEL=0``.
+    """
     try:
-        op_name = _normalize_op_name(op_name)
+        name = _normalize_op_name(op_name)
     except (TypeError, ValueError):
-        return False
+        return TuningMode.DEFAULT
+
+    use_flagtune_setting = _use_flagtune_setting_from_env()
+    cost_model_setting = None
+    if supports_cost_model:
+        cost_model_setting = _optional_binary_environment(USE_FLAGTUNE_COST_MODEL_ENV)
+
+    if use_flagtune_setting is False:
+        return TuningMode.DEFAULT
+    if supports_cost_model:
+        if cost_model_setting is False:
+            return TuningMode.EXPANDED
+        if cost_model_setting is True or use_flagtune_setting is True:
+            return TuningMode.COST_MODEL
+        return TuningMode.COST_MODEL
+    if use_flagtune_setting is True or name in get_flagtune_include():
+        return TuningMode.EXPANDED
+    return TuningMode.DEFAULT
+
+
+def flagtune_enabled(op_name):
     if op_name not in get_supported_flagtune_ops():
         return False
-    return os.environ.get(USE_FLAGTUNE_ENV) == "1" or op_name in get_flagtune_include()
+    return (
+        resolve_tuning_mode(op_name, supports_cost_model=False) is TuningMode.EXPANDED
+    )
 
 
 def __getattr__(name):
@@ -175,12 +247,22 @@ register_flagtune_op(
     description="matrix-vector multiplication",
 )
 register_flagtune_op(
-    "fused_marlin_moe_mxfp4",
+    "fused_marlin_moe_w4a16_int4",
+    default=False,
+    description="W4A16 INT4 fused Marlin MoE GEMM",
+)
+register_flagtune_op(
+    "fused_marlin_moe_w4a16_int4_gemm_silu",
+    default=False,
+    description="W4A16 INT4 fused Marlin MoE GEMM with SiLU",
+)
+register_flagtune_op(
+    "fused_marlin_moe_w4a16_mxfp4",
     default=False,
     description="MXFP4 fused Marlin MoE GEMM",
 )
 register_flagtune_op(
-    "fused_marlin_moe_mxfp4_gemm_silu",
+    "fused_marlin_moe_w4a16_mxfp4_gemm_silu",
     default=False,
     description="MXFP4 fused Marlin MoE GEMM with SiLU",
 )
@@ -211,12 +293,16 @@ __all__ = [  # noqa: F822
     "FLAGTUNE_INCLUDE_ENV",
     "FlagTuneOpSpec",
     "SUPPORTED_FLAGTUNE_OPS",
+    "TuningMode",
+    "USE_FLAGTUNE_COST_MODEL_ENV",
     "USE_FLAGTUNE_ENV",
     "flagtune",
+    "flagtune_expanded_enabled",
     "flagtune_enabled",
     "get_default_flagtune_include",
     "get_flagtune_include",
     "get_flagtune_registry",
     "get_supported_flagtune_ops",
     "register_flagtune_op",
+    "resolve_tuning_mode",
 ]
