@@ -9880,6 +9880,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_bessel_y0
+    description: |
+      Computes the Bessel function of the second kind of order 0 for each element of input.
+    for:
+      - special_bessel_y0
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_airy_ai
     description: |
       Computes the Airy function Ai(x) for each element of the input tensor.
