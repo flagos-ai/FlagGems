@@ -2525,6 +2525,64 @@ adaptive_max_pool2d_backward:
     num_warps: 8
     num_stages: 3
 
+adaptive_max_pool3d:
+  - META:
+      OUT_PER_BLOCK: 256
+      CHAN_PER_BLOCK: 1
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 64
+      CHAN_PER_BLOCK: 1
+    num_warps: 2
+    num_stages: 5
+  - META:
+      OUT_PER_BLOCK: 128
+      CHAN_PER_BLOCK: 1
+    num_warps: 4
+    num_stages: 4
+  - META:
+      OUT_PER_BLOCK: 256
+      CHAN_PER_BLOCK: 1
+    num_warps: 4
+    num_stages: 4
+  - META:
+      OUT_PER_BLOCK: 64
+      CHAN_PER_BLOCK: 4
+    num_warps: 4
+    num_stages: 4
+  - META:
+      OUT_PER_BLOCK: 64
+      CHAN_PER_BLOCK: 8
+    num_warps: 8
+    num_stages: 3
+
+adaptive_max_pool3d_cooperative:
+  - META:
+      COOP_THREADS: 32
+    num_warps: 1
+    num_stages: 5
+  - META:
+      COOP_THREADS: 64
+    num_warps: 2
+    num_stages: 4
+  - META:
+      COOP_THREADS: 128
+    num_warps: 4
+    num_stages: 3
+  - META:
+      COOP_THREADS: 128
+    num_warps: 4
+    num_stages: 2
+  - META:
+      COOP_THREADS: 256
+    num_warps: 8
+    num_stages: 2
+  - META:
+      COOP_THREADS: 256
+    num_warps: 8
+    num_stages: 1
+
 adaptive_max_pool3d_backward:
   - META:
       BLOCK_SIZE: 16
