@@ -362,8 +362,14 @@ def _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim):
     if math.isinf(abs_ord):
         # --- inf/-inf: multi-block per matrix (row-parallel) ---
         tile_m = 16
-        grid_dim = triton.cdiv(mat_M, tile_m)
         blk_dim = triton.next_power_of_2(min(mat_N, 256))
+        # CoreX Triton codegen bug: a 512-element tile (tile_m × blk_dim == 512,
+        # e.g. 16×32) with num_warps=8 (2 elements/thread) produces wrong
+        # tl.sum results.  Bump tile_m to 32 so the tile becomes 32×32=1024
+        # (4 elements/thread), which reduces correctly.
+        if tile_m * blk_dim == 512:
+            tile_m = 32
+        grid_dim = triton.cdiv(mat_M, tile_m)
         init_val = float("inf") if is_min else 0.0
         # Output buffer must be fp32: tl.atomic_min / tl.atomic_max only
         # support fp32.  USE_FP64 controls internal summation precision.
