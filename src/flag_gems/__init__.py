@@ -650,6 +650,8 @@ _FULL_CONFIG = (
     ("linalg_det.out", linalg_det_out),
     ("linalg_ldl_factor", ldl_factor),
     ("linalg_ldl_factor_ex", ldl_factor_ex),
+    ("linalg_lu", linalg_lu),
+    ("linalg_lu.out", linalg_lu_out),
     ("linalg_lu_factor", linalg_lu_factor),
     ("linalg_lu_factor.out", linalg_lu_factor_out),
     ("linalg_lu_factor_ex", linalg_lu_factor_ex),
