@@ -3,7 +3,9 @@ from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from .addmm import addmm
 from .amax import amax
 from .arange import arange, arange_start
+from .baddbmm import baddbmm
 from .bmm import bmm
+from .conv2d import conv2d
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .exponential_ import exponential_
 from .full import full
@@ -53,7 +55,9 @@ __all__ = [
     "amax",
     "arange",
     "arange_start",
+    "baddbmm",
     "bmm",
+    "conv2d",
     "cholesky_solve",
     "cholesky_solve_out",
     "exponential_",
