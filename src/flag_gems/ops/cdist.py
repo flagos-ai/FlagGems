@@ -338,3 +338,21 @@ def _cdist_backward(grad, x1, x2, p, cdist):
         grad_x1 = grad_x1_fp32
 
     return grad_x1
+
+
+def cdist(x1: torch.Tensor, x2: torch.Tensor, p: float = 2.0, compute_mode=None):
+    """Compute the p-norm distance between each pair of the two collections of row vectors.
+
+    This is the canonical user-facing API that wraps _cdist_forward.
+
+    Args:
+        x1: Input tensor of shape (..., P, M) where P is number of points and M is feature dimension
+        x2: Input tensor of shape (..., R, M) where R is number of points and M is feature dimension
+        p: p value for the p-norm distance (default: 2.0)
+        compute_mode: Computation mode (not used in this implementation)
+
+    Returns:
+        Tensor of shape (..., P, R) containing pairwise distances
+    """
+    logger.debug("GEMS CDIST")
+    return _cdist_forward(x1, x2, p, compute_mode)
