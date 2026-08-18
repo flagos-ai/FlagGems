@@ -73,6 +73,14 @@ def _has_any(key_set, keys):
     return any(key_set.has(k) for k in keys)
 
 
+def _key_sets_equal(lhs, rhs):
+    # ``raw_repr`` is not exposed by older PyTorch builds, while ``__eq__``
+    # compares the Python wrapper objects rather than their contained keys.
+    if hasattr(lhs, "raw_repr"):
+        return lhs.raw_repr() == rhs.raw_repr()
+    return str(lhs) == str(rhs)
+
+
 def _is_dense(key_set):
     return _has_any(key_set, _DENSE_KEYS)
 
@@ -102,7 +110,7 @@ def _has_compatible_shallow_copy_type(self: torch.Tensor, from_: torch.Tensor) -
     self_keys = torch._C._dispatch_keys(self)
     from_keys = torch._C._dispatch_keys(from_)
 
-    if self_keys.raw_repr() == from_keys.raw_repr():
+    if _key_sets_equal(self_keys, from_keys):
         return True
     if _is_dense(self_keys) and _is_dense(from_keys):
         return True

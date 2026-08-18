@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from .any import any, any_dim, any_dims
 from .attention import (
     ScaleDotProductAttention,
@@ -71,6 +72,7 @@ from .unique import _unique2
 from .upsample_nearest2d import upsample_nearest2d
 
 __all__ = [
+    "_scaled_dot_product_flash_attention",
     "_unique2",
     "ScaleDotProductAttention",
     "SUPPORTED_FP8_DTYPE",
