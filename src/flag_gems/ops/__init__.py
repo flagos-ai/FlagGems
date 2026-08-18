@@ -1,3 +1,4 @@
+from flag_gems.ops.__iand__ import __iand___scalar, __iand___tensor
 from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
@@ -547,6 +548,8 @@ from flag_gems.ops.zeros_like import zeros_like
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
+    "__iand___scalar",
+    "__iand___tensor",
     "__ilshift__",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
