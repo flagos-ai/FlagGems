@@ -106,6 +106,8 @@ _FULL_CONFIG = (
     ("_cdist_forward", _cdist_forward),
     ("_cholesky_solve_helper", _cholesky_solve_helper),
     ("_chunk_cat", _chunk_cat),
+    ("_compute_linear_combination", _compute_linear_combination),
+    ("_compute_linear_combination.out", _compute_linear_combination_out),
     ("_conj", _conj),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),

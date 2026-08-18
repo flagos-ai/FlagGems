@@ -2206,6 +2206,35 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: compute_linear_combination
+    description: |
+      Computes a batched linear combination: given `coefficients` of shape
+      `[m, n]` and `input` of shape `[n, ...]`, returns an output of shape
+      `[m, ...]` where `output[i, ...] = sum_j coefficients[i, j] * input[j, ...]`
+      (equivalent to `coefficients @ input.flatten(1)`). Backs the string-padding
+      form dispatched by `torch._compute_linear_combination`.
+    for:
+      - _compute_linear_combination
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: compute_linear_combination_out
+    description: |
+      A variant of `_compute_linear_combination()` that writes the result into
+      the `out` tensor.
+    for:
+      - _compute_linear_combination.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: concat
     description: An alias of `cat()`.
     for:

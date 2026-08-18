@@ -34,6 +34,10 @@ from flag_gems.ops._batch_norm_impl_index import (
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
 from flag_gems.ops._cholesky_solve_helper import _cholesky_solve_helper
 from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
+from flag_gems.ops._compute_linear_combination import (
+    _compute_linear_combination,
+    _compute_linear_combination_out,
+)
 from flag_gems.ops._conj import _conj
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
 from flag_gems.ops._convolution_mode import _convolution_mode
@@ -869,6 +873,8 @@ __all__ = [
     "_cdist_forward",
     "_cholesky_solve_helper",
     "_chunk_cat",
+    "_compute_linear_combination",
+    "_compute_linear_combination_out",
     "_conj",
     "_conv_depthwise2d",
     "_convert_weight_to_int4pack",
