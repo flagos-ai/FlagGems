@@ -5977,6 +5977,32 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_lu
+    description: |
+      Computes the LU factorization with partial pivoting of a matrix and
+      returns the permutation matrix P and the lower/upper triangular factors
+      L and U such that P @ L @ U = A (or L @ U = A for pivot=False).
+    for:
+      - linalg.lu
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_lu_out
+    description: |
+      Out-of-place version of linalg_lu. Supports calling
+      torch.linalg.lu(A, *, pivot=True, out=(P, L, U)). The out parameter
+      provides pre-allocated output tensors for in-place writing.
+    for:
+      - linalg.lu.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
