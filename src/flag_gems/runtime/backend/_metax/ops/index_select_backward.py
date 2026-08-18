@@ -149,7 +149,7 @@ def _dot1_kernel(
 _BLOCK = 1024
 
 
-def run(grad, self_sizes, dim, index):
+def index_select_backward(grad, self_sizes, dim, index):
     sizes = tuple(int(s) for s in self_sizes)
     ndim = len(sizes)
     d = dim if dim >= 0 else dim + ndim
