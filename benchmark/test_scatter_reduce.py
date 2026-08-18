@@ -122,6 +122,12 @@ def test_scatter_reduce_add():
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon",
+    reason="torch_mlu provides no scatter reduce 'prod' baseline (raises 'MLU "
+    "scatter reduce of prod is not supported'), so no comparable latency_base "
+    "can be measured; the FlagGems prod kernel itself is supported",
+)
 def test_scatter_reduce_multiply():
     bench = TensorSelectBenchmark(
         op_name="scatter_reduce",
@@ -152,6 +158,12 @@ def test_scatter_reduce_add_inplace():
 @pytest.mark.scatter_reduce_
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon",
+    reason="torch_mlu provides no scatter reduce 'prod' baseline (raises 'MLU "
+    "scatter reduce of prod is not supported'), so no comparable latency_base "
+    "can be measured; the FlagGems prod kernel itself is supported",
 )
 def test_scatter_reduce_multiply_inplace():
     bench = TensorSelectBenchmark(
