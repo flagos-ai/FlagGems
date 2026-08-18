@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -241,9 +255,19 @@ def resolve_conj_triton(x: torch.Tensor, is_conj: bool) -> torch.Tensor:
 def resolve_conj(A: torch.Tensor):
     logger.debug("GEMS_MTHREADS RESOLVE_CONJ")
     if A.is_conj():
-        if len(A.shape) in (2, 3):
-            return resolve_conj_triton(A, is_conj=True)
-        else:
-            return torch.complex(A.real, A.imag.neg())
+        # Aligned with the common op (src/flag_gems/ops/resolve_conj.py):
+        # Use clone() to resolve conjugation physically at the C++ aten::clone
+        # level, bypassing Python dispatch entirely.
+        #
+        # Previous implementation attempted Triton kernel for 2D/3D and used
+        # torch.complex(A.real, A.imag.neg()) as fallback, both of which cause
+        # infinite recursion because accessing conjugated tensor data at Python
+        # level triggers aten::resolve_conj dispatch back to this function.
+        #
+        # if len(A.shape) in (2, 3):
+        #     return resolve_conj_triton(A, is_conj=True)
+        # else:
+        #     return torch.complex(A.real, A.imag.neg())
+        return A.clone()
     else:
         return A
