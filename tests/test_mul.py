@@ -169,18 +169,23 @@ def test_mul_complex_complex(shape, complex_dtype):
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
 
-    ref_inp1 = utils.to_reference(inp1, True)
-    ref_inp2 = utils.to_reference(inp2, True)
+    # cambricon MLU does not support comparing complex32 tensors on device.
+    if flag_gems.vendor_name == "cambricon":
+        if complex_dtype == torch.complex32:
+            ref_out = torch.mul(inp1.to("cpu").to(torch.complex64), inp2.to("cpu").to(torch.complex64)).to(torch.complex32)
+        else:
+            ref_out = torch.mul(inp1.to("cpu"), inp2.to("cpu"))
+    else:
+        ref_inp1 = utils.to_reference(inp1, True)
+        ref_inp2 = utils.to_reference(inp2, True)
+        ref_out = torch.mul(ref_inp1, ref_inp2)
 
-    ref_out = torch.mul(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
+        res_out = res_out.to("cpu")
     if flag_gems.vendor_name == "cambricon" and complex_dtype == torch.complex32:
-        from .accuracy_utils import to_cpu
-
-        res_out = to_cpu(res_out, ref_out)
-        ref_out = ref_out.to(complex_dtype)
         torch.testing.assert_close(res_out, ref_out, atol=5e-3, rtol=2e-3)
     else:
         utils.gems_assert_close(res_out, ref_out, complex_dtype)
@@ -212,21 +217,22 @@ def test_mul_complex_float_tensor(shape, complex_dtype):
 
     inp2 = torch.randn(shape, dtype=float_dtype, device=flag_gems.device)
 
-    # mthreads torch.mul unsupport complex x float.
-    if flag_gems.vendor_name == "mthreads":
-        ref_inp1 = inp1.to("cpu")
-        ref_inp2 = inp2.to("cpu")
+    # mthreads/cambricon does not support complex x float type promotion.
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
+        if complex_dtype == torch.complex32:
+            ref_out = torch.mul(inp1.to("cpu").to(torch.complex64), inp2.to("cpu").to(torch.float32)).to(torch.complex32)
+        else:
+            ref_out = torch.mul(inp1.to("cpu"), inp2.to("cpu"))
     else:
         ref_inp1 = utils.to_reference(inp1, True)
         ref_inp2 = utils.to_reference(inp2, True)
+        ref_out = torch.mul(ref_inp1, ref_inp2)
 
-    ref_out = torch.mul(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
         res_out = res_out.to("cpu")
-        ref_out = ref_out.to(complex_dtype)
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
 
@@ -248,21 +254,22 @@ def test_mul_complex_int_tensor(shape, complex_dtype):
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
     inp2 = torch.randint(10, 20, shape, device=flag_gems.device)
 
-    # mthreads torch.mul unsupport complex x int.
-    if flag_gems.vendor_name == "mthreads":
-        ref_inp1 = inp1.to("cpu")
-        ref_inp2 = inp2.to("cpu")
+    # mthreads/cambricon does not support complex x int type promotion.
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
+        if complex_dtype == torch.complex32:
+            ref_out = torch.mul(inp1.to("cpu").to(torch.complex64), inp2.to("cpu")).to(torch.complex32)
+        else:
+            ref_out = torch.mul(inp1.to("cpu"), inp2.to("cpu"))
     else:
         ref_inp1 = utils.to_reference(inp1, True)
         ref_inp2 = utils.to_reference(inp2, True)
+        ref_out = torch.mul(ref_inp1, ref_inp2)
 
-    ref_out = torch.mul(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
         res_out = res_out.to("cpu")
-        ref_out = ref_out.to(complex_dtype)
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
 
@@ -284,11 +291,20 @@ def test_mul_complex_int_scalar(shape, complex_dtype):
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
     inp2 = 3
 
-    ref_inp1 = utils.to_reference(inp1, True)
-    ref_inp2 = inp2
+    # cambricon MLU does not support type promotion for complex x int scalar.
+    if flag_gems.vendor_name == "cambricon":
+        if complex_dtype == torch.complex32:
+            ref_out = torch.mul(inp1.to("cpu").to(torch.complex64), inp2).to(torch.complex32)
+        else:
+            ref_out = torch.mul(inp1.to("cpu"), inp2)
+    else:
+        ref_inp1 = utils.to_reference(inp1, True)
+        ref_out = torch.mul(ref_inp1, inp2)
 
-    ref_out = torch.mul(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.mul(inp1, inp2)
 
+    if flag_gems.vendor_name in ("mthreads", "cambricon"):
+        res_out = res_out.to("cpu")
+        ref_out = ref_out.to("cpu") if ref_out.device.type != "cpu" else ref_out
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
