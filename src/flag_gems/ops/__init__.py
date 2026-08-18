@@ -154,6 +154,7 @@ from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
 from flag_gems.ops.adaptive_max_pool2d import adaptive_max_pool2d
 from flag_gems.ops.adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
+from flag_gems.ops.adaptive_max_pool3d import adaptive_max_pool3d
 from flag_gems.ops.adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from flag_gems.ops.add import add, add_
 from flag_gems.ops.addbmm import addbmm, addbmm_
@@ -1002,6 +1003,7 @@ __all__ = [
     "adaptive_avg_pool3d_backward",
     "adaptive_max_pool2d",
     "adaptive_max_pool2d_backward",
+    "adaptive_max_pool3d",
     "adaptive_max_pool3d_backward",
     "add",
     "add_",
