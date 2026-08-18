@@ -9371,6 +9371,20 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: scaled_dot_product_attention_math_for_mps
+    description: >
+      Math reference of scaled dot-product attention that returns both the
+      attention output and the full softmax attention-weight matrix.
+    for:
+      - _scaled_dot_product_attention_math_for_mps
+    labels:
+      - aten
+      - Attention
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: scaled_dot_product_cudnn_attention_backward
     description: |
       Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
