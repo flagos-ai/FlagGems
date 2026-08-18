@@ -106,9 +106,7 @@ def randint(
     BLOCK_SIZE = 128  # matches philox 4-wide output for efficient random generation
     UNROLL = 4
     MAX_GRID_X = 65535
-    grid = lambda meta: (
-        min(triton.cdiv(N, meta["BLOCK"] * UNROLL), MAX_GRID_X),
-    )
+    grid = lambda meta: (min(triton.cdiv(N, meta["BLOCK"] * UNROLL), MAX_GRID_X),)
     increment = triton.cdiv(N, UNROLL)
 
     result = torch.empty(size, device=device, dtype=dtype, pin_memory=pin_memory)

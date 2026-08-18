@@ -86,9 +86,7 @@ def where_self_out(condition, self, other, out=None):
         c_val = bool(c.reshape(()).item())
         a_val = a.reshape(()).item()
         b_val = b.reshape(()).item()
-        out.copy_(
-            torch.tensor(a_val if c_val else b_val, dtype=out.dtype)
-        )
+        out.copy_(torch.tensor(a_val if c_val else b_val, dtype=out.dtype))
         return out
 
     ndim = max(c.ndim, a.ndim, b.ndim)

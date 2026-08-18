@@ -211,9 +211,7 @@ def _cat_run_kernel(
                 tensor = tensors_in_batch[j].contiguous()
                 total_elements = tensor.numel()
                 dim_size_in = tensor.shape[dim]
-                slots.append(
-                    (tensor, dim_size_in, current_dim_offset, total_elements)
-                )
+                slots.append((tensor, dim_size_in, current_dim_offset, total_elements))
                 max_numel = max(max_numel, total_elements)
                 max_row_size = max(max_row_size, dim_size_in * dim_prod_post)
                 current_dim_offset += dim_size_in
@@ -247,9 +245,7 @@ def _cat_run_kernel(
             # Prefer a single x-axis (grid_z == 1) with fewer, larger blocks to
             # minimize block-scheduling overhead. Cap BLOCK at 32K and let the
             # grid_z axis absorb anything larger (tensors > ~2.1G elements).
-            while (
-                triton.cdiv(num_elems, BLOCK) > _MAX_GRID_DIM and BLOCK < 32768
-            ):
+            while triton.cdiv(num_elems, BLOCK) > _MAX_GRID_DIM and BLOCK < 32768:
                 BLOCK *= 2
             total_blocks = triton.cdiv(num_elems, BLOCK)
             grid_x = min(total_blocks, _MAX_GRID_DIM)

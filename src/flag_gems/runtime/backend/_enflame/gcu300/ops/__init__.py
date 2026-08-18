@@ -26,6 +26,7 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start  # noqa: F401
 from .argmax import argmax
 from .argmin import argmin
+from .baddbmm import baddbmm
 from .bincount import bincount
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -51,7 +52,6 @@ from .bitwise_xor import (
     bitwise_xor_tensor,
     bitwise_xor_tensor_,
 )
-from .baddbmm import baddbmm
 from .bmm import bmm, bmm_out
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_

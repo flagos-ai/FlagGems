@@ -105,7 +105,10 @@ from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .floor_ import floor_
 from .fmin import fmin, fmin_out
-from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
+from .fractional_max_pool2d import (  # noqa: F401
+    fractional_max_pool2d,
+    fractional_max_pool2d_backward,
+)
 from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
@@ -579,4 +582,7 @@ __all__ = [
     "prelu",
     "broadcast_to",
     "randint",
+    "_index_put_impl_",
+    "index_put",
+    "index_put_",
 ]
