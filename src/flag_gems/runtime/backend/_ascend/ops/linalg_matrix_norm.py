@@ -157,7 +157,6 @@ def _bidiag_svd_kernel(
     E2H,
     E2L,
     K: tl.constexpr,
-    N: tl.constexpr,
     BLOCK: tl.constexpr,
     ROWS: tl.constexpr,
     BATCH: tl.constexpr,
@@ -225,20 +224,27 @@ def _bidiag_svd_kernel(
             g = g - tl.reshape(v2, (BLOCK, 1)) * tl.reshape(w, (1, BLOCK))
             gT = tl.trans(g)
             # ---- right reflection: zero g[j, j+2:] ----
+            # Applied UNCONDITIONALLY (no `if j + 2 < N` guard): under the
+            # cann900 toolchain a loop-carried tile yielded through a
+            # runtime scf.if on the induction variable miscompiles to
+            # all-zero output.  The unguarded form is numerically
+            # equivalent: for j = K-1 the row slice g[j, j+1:] is the zero
+            # padding, so the reflection is a no-op; for j = K-2 it only
+            # sign-flips column K-1 (an orthogonal equivalence), and the
+            # GK seed below carries squared values, which are unaffected.
             rowmask = (rows[:, None] > j - 1) & (rows[:, None] < j + 1)
             rowj = tl.sum(tl.where(rowmask, g, 0.0), axis=0)
             u0 = tl.sum(rowj * ((cols > j) & (cols < j + 2)).to(tl.float32), axis=0)
             u = rowj * (cols > j).to(tl.float32)
             sigma2 = tl.sqrt(tl.sum(u * u, axis=0))
             alpha2 = tl.where(u0 >= 0.0, -sigma2, sigma2)
-            if j + 2 < N:
-                u2 = tl.where((cols > j) & (cols < j + 2), u0 - alpha2, u)
-                vnorm3 = 2.0 * sigma2 * (sigma2 + tl.abs(u0))
-                tau2 = tl.where(vnorm3 > 0.0, 2.0 / vnorm3, 0.0)
-                # z = tau2 * (g[:, j+1:] u2): axis-1 reduce
-                z = tau2 * tl.sum(g * u2[None, :], axis=1)
-                g = g - tl.reshape(z, (BLOCK, 1)) * tl.reshape(u2, (1, BLOCK))
-                gT = tl.trans(g)
+            u2 = tl.where((cols > j) & (cols < j + 2), u0 - alpha2, u)
+            vnorm3 = 2.0 * sigma2 * (sigma2 + tl.abs(u0))
+            tau2 = tl.where(vnorm3 > 0.0, 2.0 / vnorm3, 0.0)
+            # z = tau2 * (g[:, j+1:] u2): axis-1 reduce
+            z = tau2 * tl.sum(g * u2[None, :], axis=1)
+            g = g - tl.reshape(z, (BLOCK, 1)) * tl.reshape(u2, (1, BLOCK))
+            gT = tl.trans(g)
         # ---- fused GK seed: d = diag(g), s = superdiag(g) ----
         # Extracted via where + axis-1 reductions (DSA register extraction
         # crashes on this backend); s[K-1] = g[K-1, K] = 0 from the padding
@@ -1118,7 +1124,6 @@ def _svdvals_small(A):
             e2h,
             e2l,
             K=k,
-            N=k,
             BLOCK=block,
             ROWS=rows,
             BATCH=batch,

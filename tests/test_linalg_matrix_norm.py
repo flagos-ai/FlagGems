@@ -158,7 +158,12 @@ def _compute_ref(A, ord, dim=(-2, -1), keepdim=False):
             ref = ref.cpu().double()
             result = torch.linalg.matrix_norm(ref, ord, dim, keepdim=keepdim)
             if not TO_CPU:
-                result = result.to(device=A.device, dtype=A.dtype)
+                # Cast on the CPU first, then do a pure device copy: torch_npu
+                # 2.x cannot handle fp64 sources in its .to() conversion kernel
+                # and warns "Device do not support double dtype now, dtype cast
+                # replace with float" (ToKernelNpu.cpp). Keeping the dtype cast
+                # on the CPU side means no fp64 tensor ever reaches the NPU.
+                result = result.to(dtype=A.dtype).to(A.device)
             return result
     # For fro with --ref cpu: upcast to fp64 so the reference uses accurate
     # LAPACK accumulation.  PyTorch CPU linalg.matrix_norm for fp32 input
