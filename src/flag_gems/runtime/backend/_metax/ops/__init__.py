@@ -1,8 +1,6 @@
 from ._make_dep_token import _make_dep_token
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
-from ._thnn_fused_lstm_cell_backward_impl import (
-    _thnn_fused_lstm_cell_backward_impl,
-)
+from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmm import addmm
 from .alpha_dropout import alpha_dropout
@@ -27,7 +25,6 @@ from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .lgamma_ import lgamma, lgamma_
 from .linalg_svdvals import linalg_svdvals
-from .linear_backward import linear_backward
 from .log_sigmoid_forward import log_sigmoid_forward
 from .log_softmax import log_softmax, log_softmax_backward
 from .logical_or import logical_or, logical_or_
