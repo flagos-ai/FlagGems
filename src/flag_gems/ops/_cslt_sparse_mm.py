@@ -278,9 +278,16 @@ def _cslt_sparse_mm(
     logger.debug("GEMS _CSLT_SPARSE_MM")
 
     K, N = dense_B.shape
-    # torch._cslt_compress preserves the original row count as dim 0 of the
-    # compressed 2D tensor (shape [M, compressed_cols]); recover M from it.
-    M = compressed_A.shape[0]
+    # For fp16/bf16, the flat cuSPARSELt blob stores M*K/2 values followed by
+    # M*K/16 metadata elements, so its total length is 9*M*K/16.
+    compressed_numel = compressed_A.numel()
+    numerator = compressed_numel * 16
+    denominator = 9 * K
+    if numerator % denominator != 0:
+        raise RuntimeError(
+            "cannot infer the sparse matrix row count from the compressed input"
+        )
+    M = numerator // denominator
 
     dense_A = _decompress(compressed_A, M, K)
 

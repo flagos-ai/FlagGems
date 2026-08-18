@@ -44,6 +44,10 @@ ARCH_SUPPORTED = CSLT_AVAILABLE and _cslt_sparse_mm_enabled()
 
 pytestmark = [
     pytest.mark.skipif(
+        utils.TO_CPU,
+        reason="_cslt_sparse_mm has no CPU reference implementation",
+    ),
+    pytest.mark.skipif(
         not CSLT_AVAILABLE, reason="cuSPARSELt not available on this device"
     ),
     pytest.mark.skipif(
@@ -76,7 +80,9 @@ def test_accuracy_cslt_sparse_mm(shape, dtype):
     compressed_A = torch._cslt_compress(A)
     B = torch.randn(K, N, dtype=dtype, device=dev)
 
-    ref_out = torch._cslt_sparse_mm(compressed_A, B)
+    ref_compressed_A = utils.to_reference(compressed_A)
+    ref_B = utils.to_reference(B)
+    ref_out = torch._cslt_sparse_mm(ref_compressed_A, ref_B)
     with flag_gems.use_gems():
         res_out = torch._cslt_sparse_mm(compressed_A, B)
 
@@ -94,7 +100,10 @@ def test_accuracy_cslt_sparse_mm_with_alpha(shape, dtype):
     B = torch.randn(K, N, dtype=dtype, device=dev)
     alpha = torch.tensor(2.0, dtype=dtype, device=dev)
 
-    ref_out = torch._cslt_sparse_mm(compressed_A, B, alpha=alpha)
+    ref_compressed_A = utils.to_reference(compressed_A)
+    ref_B = utils.to_reference(B)
+    ref_alpha = utils.to_reference(alpha)
+    ref_out = torch._cslt_sparse_mm(ref_compressed_A, ref_B, alpha=ref_alpha)
     with flag_gems.use_gems():
         res_out = torch._cslt_sparse_mm(compressed_A, B, alpha=alpha)
 
@@ -111,7 +120,9 @@ def test_accuracy_cslt_sparse_mm_transpose(shape, dtype):
     compressed_A = torch._cslt_compress(A)
     B = torch.randn(K, N, dtype=dtype, device=dev)
 
-    ref_out = torch._cslt_sparse_mm(compressed_A, B, transpose_result=True)
+    ref_compressed_A = utils.to_reference(compressed_A)
+    ref_B = utils.to_reference(B)
+    ref_out = torch._cslt_sparse_mm(ref_compressed_A, ref_B, transpose_result=True)
     with flag_gems.use_gems():
         res_out = torch._cslt_sparse_mm(compressed_A, B, transpose_result=True)
 

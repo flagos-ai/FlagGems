@@ -1,3 +1,5 @@
+from collections import namedtuple
+
 import pytest
 import torch
 
@@ -22,6 +24,8 @@ else:
     _PIVOT_VALUES = [True]
 
 _CHECK_ERRORS_VALUES = [False, True]
+
+LinalgLUFactorExResult = namedtuple("LinalgLUFactorExResult", ["LU", "pivots", "info"])
 
 # Core shapes: square, rectangular (m>n, m<n), batched, edge cases
 _LU_FACTOR_EX_SHAPES = [
@@ -85,6 +89,137 @@ def _make_singular_input(shape, device, dtype):
     return A
 
 
+# ---------------------------------------------------------------------------
+# Manual Python reference implementation for Ascend
+# (matches the pattern in test_linalg_lu_factor.py)
+# ---------------------------------------------------------------------------
+
+
+def _swap_rows(lu, i, pivot_row):
+    # In-place gather/scatter swap: only (*batch_shape, n) temporaries instead
+    # of the full-matrix broadcast temporaries of the mask-based swap.  Keeping
+    # lu in place also means the pivot values recorded in pivot_vals keep
+    # pointing at the one live lu tensor instead of pinning a fresh 1GB copy
+    # per iteration (which OOMs the device for batched shapes like
+    # (1024, 512, 512)).  Note: torch.gather/scatter_ are used instead of
+    # advanced indexing (lu[..., pivot_row, :]) because torch_npu expands
+    # tensor indices against the batch dims, yielding (b, b, n) instead of
+    # (b, n).
+    batch_shape = lu.shape[:-2]
+    n = lu.shape[-1]
+    row_i = lu[..., i, :].clone()
+    idx = pivot_row.view(*batch_shape, 1, 1).expand(*batch_shape, 1, n)
+    row_p = lu.gather(dim=-2, index=idx).squeeze(-2)
+    lu[..., i, :] = row_p
+    lu.scatter_(dim=-2, index=idx, src=row_i.unsqueeze(-2))
+    return lu
+
+
+def _lu_factor_pivot_ex(lu, m, n, k):
+    """LU factorization with partial pivoting + info tracking."""
+    *batch_shape, _, _ = lu.shape
+    device = lu.device
+    pivots = torch.empty((*batch_shape, k), dtype=torch.int32, device=device)
+    # Collect pivots in a plain Python list (zero extra device ops per step)
+    # and compute info once after the loop with vector ops.
+    pivot_vals = []
+
+    for i in range(k):
+        col = lu[..., i:, i].abs()
+        pivot_rel = torch.argmax(col, dim=-1)
+        pivot_row = pivot_rel + i
+        pivots[..., i] = (pivot_row + 1).to(torch.int32)
+
+        lu = _swap_rows(lu, i, pivot_row)
+
+        # .clone() so the recorded value does not pin lu's storage (a plain
+        # view would keep the referenced lu storage alive; combined with a
+        # rebinding lu this OOMs the device for batched shapes).
+        pivot_val = lu[..., i, i].clone()
+        pivot_vals.append(pivot_val)
+
+        lu[..., i + 1 :, i] = lu[..., i + 1 :, i] / pivot_val.unsqueeze(-1)
+
+        if i + 1 < m and i + 1 < n:
+            l_col = lu[..., i + 1 :, i].unsqueeze(-1)
+            u_row = lu[..., i : i + 1, i + 1 :]
+            lu[..., i + 1 :, i + 1 :] = lu[..., i + 1 :, i + 1 :] - l_col @ u_row
+
+    # First zero/NaN pivot position (1-indexed), 0 if none.
+    diag = torch.stack(pivot_vals, dim=-1)  # (*batch_shape, k)
+    bad_mask = (diag == 0) | torch.isnan(diag)
+    has_bad = torch.any(bad_mask, dim=-1)
+    first_bad = torch.argmax(bad_mask.to(torch.int32), dim=-1)
+    info = torch.where(has_bad, first_bad + 1, 0).to(torch.int32)
+
+    return lu, pivots, info
+
+
+def _lu_factor_no_pivot_ex(lu, m, n, k):
+    """LU factorization without pivoting + info tracking."""
+    *batch_shape, _, _ = lu.shape
+    device = lu.device
+    pivots = torch.empty((*batch_shape, k), dtype=torch.int32, device=device)
+    pivot_vals = []
+
+    for i in range(k):
+        pivots[..., i] = i + 1
+        # .clone() so the recorded value does not pin lu's storage (a plain
+        # view would keep the referenced lu storage alive; combined with a
+        # rebinding lu this OOMs the device for batched shapes).
+        pivot_val = lu[..., i, i].clone()
+        pivot_vals.append(pivot_val)
+
+        lu[..., i + 1 :, i] = lu[..., i + 1 :, i] / pivot_val.unsqueeze(-1)
+
+        if i + 1 < m and i + 1 < n:
+            l_col = lu[..., i + 1 :, i].unsqueeze(-1)
+            u_row = lu[..., i : i + 1, i + 1 :]
+            lu[..., i + 1 :, i + 1 :] = lu[..., i + 1 :, i + 1 :] - l_col @ u_row
+
+    # First zero/NaN pivot position (1-indexed), 0 if none.
+    diag = torch.stack(pivot_vals, dim=-1)  # (*batch_shape, k)
+    bad_mask = (diag == 0) | torch.isnan(diag)
+    has_bad = torch.any(bad_mask, dim=-1)
+    first_bad = torch.argmax(bad_mask.to(torch.int32), dim=-1)
+    info = torch.where(has_bad, first_bad + 1, 0).to(torch.int32)
+
+    return lu, pivots, info
+
+
+def ops_lu_factor_ex(input, *, pivot=True, check_errors=False):
+    """Manual Python reference for linalg_lu_factor_ex."""
+    if input.dim() < 2:
+        raise RuntimeError(
+            "torch.linalg.lu_factor_ex: Expected input to have at least 2 dimensions"
+        )
+    if input.dtype not in (torch.float32, torch.float64):
+        raise NotImplementedError("Only float32 and float64 are supported")
+    m, n = input.shape[-2], input.shape[-1]
+    if m == 0 or n == 0:
+        raise NotImplementedError("Empty matrices are not supported")
+    if pivot not in (True, False):
+        raise TypeError(f"pivot must be a bool, got {type(pivot)}")
+
+    input_contiguous = input.contiguous()
+    m, n = input_contiguous.shape[-2], input_contiguous.shape[-1]
+    k = min(m, n)
+    lu = input_contiguous.clone()
+
+    if pivot:
+        lu, pivots, info = _lu_factor_pivot_ex(lu, m, n, k)
+    else:
+        lu, pivots, info = _lu_factor_no_pivot_ex(lu, m, n, k)
+
+    return LinalgLUFactorExResult(lu, pivots, info)
+
+
+def _run_torch_ops_path_ex(inp, pivot):
+    """Vendor-aware wrapper: uses manual ops on Ascend, native on other vendors."""
+    res = ops_lu_factor_ex(inp, pivot=pivot)
+    return res.LU, res.pivots, res.info
+
+
 @pytest.mark.linalg_lu_factor_ex
 @pytest.mark.parametrize("shape", _LU_FACTOR_EX_SHAPES)
 @pytest.mark.parametrize("dtype", _TEST_DTYPES)
@@ -93,7 +228,13 @@ def test_linalg_lu_factor_ex(shape, dtype, pivot):
     inp = _make_input(shape, pivot, flag_gems.device, dtype)
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.linalg.lu_factor_ex(ref_inp, pivot=pivot)
+    if flag_gems.vendor_name != "ascend":
+        ref_out = torch.linalg.lu_factor_ex(ref_inp, pivot=pivot)
+    else:
+        ref_lu, ref_pivots, ref_info = _run_torch_ops_path_ex(ref_inp, pivot=pivot)
+        ref_out = namedtuple("_RefResult", ["LU", "pivots", "info"])(
+            ref_lu, ref_pivots, ref_info
+        )
     with flag_gems.use_gems():
         res_out = torch.linalg.lu_factor_ex(inp, pivot=pivot)
 
@@ -138,7 +279,13 @@ def test_linalg_lu_factor_ex_check_errors(shape, dtype, pivot):
     inp = _make_input(shape, pivot, flag_gems.device, dtype)
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.linalg.lu_factor_ex(ref_inp, pivot=pivot, check_errors=True)
+    if flag_gems.vendor_name != "ascend":
+        ref_out = torch.linalg.lu_factor_ex(ref_inp, pivot=pivot, check_errors=True)
+    else:
+        ref_lu, ref_pivots, ref_info = _run_torch_ops_path_ex(ref_inp, pivot=pivot)
+        ref_out = namedtuple("_RefResult", ["LU", "pivots", "info"])(
+            ref_lu, ref_pivots, ref_info
+        )
     with flag_gems.use_gems():
         res_out = torch.linalg.lu_factor_ex(inp, pivot=pivot, check_errors=True)
 
@@ -156,7 +303,13 @@ def test_linalg_lu_factor_ex_singular(shape, dtype):
     inp = _make_singular_input(shape, flag_gems.device, dtype)
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.linalg.lu_factor_ex(ref_inp, pivot=True, check_errors=False)
+    if flag_gems.vendor_name != "ascend":
+        ref_out = torch.linalg.lu_factor_ex(ref_inp, pivot=True, check_errors=False)
+    else:
+        ref_lu, ref_pivots, ref_info = _run_torch_ops_path_ex(ref_inp, pivot=True)
+        ref_out = namedtuple("_RefResult", ["LU", "pivots", "info"])(
+            ref_lu, ref_pivots, ref_info
+        )
     with flag_gems.use_gems():
         res_out = torch.linalg.lu_factor_ex(inp, pivot=True, check_errors=False)
 
@@ -190,15 +343,24 @@ def test_linalg_lu_factor_ex_out(shape, dtype, pivot):
     m, n = inp.shape[-2], inp.shape[-1]
     k = min(m, n)
 
-    # Reference: use out= parameter
+    # Reference: use out= parameter (or manual reference on Ascend)
     ref_LU_out = torch.empty_like(ref_inp)
     ref_pivots_out = torch.empty(
         (*batch_shape, k), dtype=torch.int32, device=ref_inp.device
     )
     ref_info_out = torch.empty(batch_shape, dtype=torch.int32, device=ref_inp.device)
-    ref_out = torch.linalg.lu_factor_ex(
-        ref_inp, pivot=pivot, out=(ref_LU_out, ref_pivots_out, ref_info_out)
-    )
+    if flag_gems.vendor_name != "ascend":
+        ref_out = torch.linalg.lu_factor_ex(
+            ref_inp, pivot=pivot, out=(ref_LU_out, ref_pivots_out, ref_info_out)
+        )
+    else:
+        ref_lu, ref_pivots, ref_info = _run_torch_ops_path_ex(ref_inp, pivot=pivot)
+        ref_LU_out.copy_(ref_lu)
+        ref_pivots_out.copy_(ref_pivots)
+        ref_info_out.copy_(ref_info)
+        ref_out = namedtuple("_RefResult", ["LU", "pivots", "info"])(
+            ref_LU_out, ref_pivots_out, ref_info_out
+        )
 
     # Gems: use out= parameter
     res_LU_out = torch.empty_like(inp)

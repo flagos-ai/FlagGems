@@ -247,12 +247,22 @@ register_flagtune_op(
     description="matrix-vector multiplication",
 )
 register_flagtune_op(
-    "fused_marlin_moe_mxfp4",
+    "fused_marlin_moe_w4a16_int4",
+    default=False,
+    description="W4A16 INT4 fused Marlin MoE GEMM",
+)
+register_flagtune_op(
+    "fused_marlin_moe_w4a16_int4_gemm_silu",
+    default=False,
+    description="W4A16 INT4 fused Marlin MoE GEMM with SiLU",
+)
+register_flagtune_op(
+    "fused_marlin_moe_w4a16_mxfp4",
     default=False,
     description="MXFP4 fused Marlin MoE GEMM",
 )
 register_flagtune_op(
-    "fused_marlin_moe_mxfp4_gemm_silu",
+    "fused_marlin_moe_w4a16_mxfp4_gemm_silu",
     default=False,
     description="MXFP4 fused Marlin MoE GEMM with SiLU",
 )
