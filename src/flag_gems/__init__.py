@@ -338,6 +338,7 @@ _FULL_CONFIG = (
     ("beam_search_score_", beam_search_score_),
     ("bernoulli", bernoulli),
     ("bernoulli_.float", bernoulli_),
+    ("bilinear", bilinear),
     ("binary_cross_entropy_with_logits", binary_cross_entropy_with_logits),
     ("bincount", bincount),
     ("bitwise_and.Scalar", bitwise_and_scalar),

@@ -1425,6 +1425,18 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: bilinear
+    description: |
+      Applies a bilinear transformation to the incoming data: y = x1^T A x2 + b.
+    for:
+      - bilinear
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: binary_cross_entropy_backward
     description: Computes the gradient of binary cross entropy loss with respect to the input, with optional per-element weight.
     for:
