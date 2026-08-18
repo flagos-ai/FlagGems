@@ -112,67 +112,96 @@ at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
   out_shape_vec[dim] = cat_dim_size;
   at::Tensor out = at::empty(out_shape_vec, ref_tensor->options().dtype(out_dtype));
 
-  std::vector<int64_t> storage_offsets;
-  int64_t current_storage_offset = 0;
-  storage_offsets.push_back(current_storage_offset);
-  int64_t out_stride_for_dim = out.stride(dim);
-  for (size_t i = 0; i < tensors.size() - 1; ++i) {
-    current_storage_offset += cat_dim_size_of(tensors[i], dim) * out_stride_for_dim;
-    storage_offsets.push_back(current_storage_offset);
+  int64_t dim_prod_post = 1;
+  for (int64_t d = dim + 1; d < ndim; ++d) {
+    dim_prod_post *= out_shape_vec[d];
   }
+  int64_t dim_size_out = out_shape_vec[dim];
 
-  const TritonJITFunction& copy_kernel_func =
-      TritonJITFunction::get_instance(std::string(utils::get_triton_src_path() / "cat_copy.py"),
-                                      "strided_copy_kernel");
+  const TritonJITFunction& kernel =
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "cat.py"),
+                                      "cat_copy_func_kernel_4");
   c10::DeviceGuard guard(out.device());
   backend::StreamType stream = backend::getCurrentStream();
   backend::RawStreamType raw_stream = backend::getRawStream(stream);
 
-  for (size_t i = 0; i < tensors.size(); ++i) {
-    const auto& input_tensor = tensors[i];
-    if (input_tensor.numel() == 0) continue;
+  constexpr int BLOCK = 1024;
+  constexpr int NUM_WARPS = 4;
+  constexpr int NUM_STAGES = 1;
 
-    at::Tensor src_tensor = input_tensor;
-    if (input_tensor.scalar_type() != out_dtype) {
-      src_tensor = input_tensor.to(out_dtype);
+  int64_t dim_offset = 0;
+  size_t ti = 0;
+  while (ti < tensors.size()) {
+    at::Tensor batch_tensors[4];
+    int64_t dim_sizes[4] = {0, 0, 0, 0};
+    int64_t dim_offsets[4] = {0, 0, 0, 0};
+    int64_t total_elements[4] = {0, 0, 0, 0};
+    int num_in_batch = 0;
+
+    while (ti < tensors.size() && num_in_batch < 4) {
+      const auto& t = tensors[ti];
+      int64_t dim_size = cat_dim_size_of(t, dim);
+
+      if (!is_unconstrained_empty(t) && t.numel() > 0) {
+        at::Tensor src = t;
+        if (src.scalar_type() != out_dtype) {
+          src = src.to(out_dtype);
+        }
+        src = src.contiguous();
+        batch_tensors[num_in_batch] = src;
+        dim_sizes[num_in_batch] = dim_size;
+        dim_offsets[num_in_batch] = dim_offset;
+        total_elements[num_in_batch] = src.numel();
+        num_in_batch++;
+      }
+
+      dim_offset += dim_size;
+      ti++;
     }
 
-    at::Tensor output_view = at::as_strided(out, src_tensor.sizes(), out.strides(), storage_offsets[i]);
+    if (num_in_batch == 0) continue;
 
-    auto options = torch::TensorOptions().device(src_tensor.device()).dtype(torch::kInt64);
-    at::Tensor in_strides = torch::tensor(src_tensor.strides(), options);
-    at::Tensor out_strides = torch::tensor(output_view.strides(), options);
-    at::Tensor shapes = torch::tensor(src_tensor.sizes(), options);
+    for (int j = num_in_batch; j < 4; ++j) {
+      batch_tensors[j] = batch_tensors[0];
+      dim_sizes[j] = 0;
+      dim_offsets[j] = 0;
+      total_elements[j] = 0;
+    }
 
-    int64_t ndim_val = src_tensor.dim();
-    int64_t num_elements = src_tensor.numel();
+    int64_t max_elements = 0;
+    for (int j = 0; j < num_in_batch; ++j) {
+      max_elements = std::max(max_elements, total_elements[j]);
+    }
 
-    constexpr int BLOCK_SIZE = 256;
-    constexpr int MAX_DIMS = 8;
-    TORCH_CHECK(ndim_val <= MAX_DIMS,
-                "Tensor dimension ",
-                ndim_val,
-                " exceeds the maximum supported by the kernel (",
-                MAX_DIMS,
-                ")");
+    unsigned int grid_x = (max_elements + BLOCK - 1) / BLOCK;
+    unsigned int grid_y = num_in_batch;
 
-    unsigned int grid_x = (num_elements + BLOCK_SIZE - 1) / BLOCK_SIZE;
-
-    copy_kernel_func(raw_stream,
-                     grid_x,
-                     1,
-                     1,
-                     4,
-                     2,
-                     src_tensor,
-                     output_view,
-                     in_strides,
-                     out_strides,
-                     shapes,
-                     ndim_val,
-                     num_elements,
-                     BLOCK_SIZE,
-                     MAX_DIMS);
+    kernel(raw_stream,
+           grid_x,
+           grid_y,
+           1,
+           NUM_WARPS,
+           NUM_STAGES,
+           out,
+           batch_tensors[0],
+           batch_tensors[1],
+           batch_tensors[2],
+           batch_tensors[3],
+           dim_sizes[0],
+           dim_sizes[1],
+           dim_sizes[2],
+           dim_sizes[3],
+           dim_size_out,
+           dim_prod_post,
+           dim_offsets[0],
+           dim_offsets[1],
+           dim_offsets[2],
+           dim_offsets[3],
+           total_elements[0],
+           total_elements[1],
+           total_elements[2],
+           total_elements[3],
+           BLOCK);
   }
   return out;
 }
