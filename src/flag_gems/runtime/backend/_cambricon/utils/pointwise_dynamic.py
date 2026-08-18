@@ -304,7 +304,7 @@ class KernelGenerator:
 
             code.writeline("if max_elem_size < 8:")
             with code.indent():
-                code.writeline("max_tile_sizes = [1024, 2048, 4096, 8192, 16384]")
+                code.writeline("max_tile_sizes = [1024, 2048, 4096, 8192]")
                 code.writeline("for max_tile_size in max_tile_sizes:")
                 with code.indent():
                     code.writeline(
