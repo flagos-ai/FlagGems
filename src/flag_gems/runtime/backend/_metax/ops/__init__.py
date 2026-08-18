@@ -1,6 +1,6 @@
 from ._make_dep_token import _make_dep_token
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
-from .addmm import addmm
+from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .amax import amax
 from .arange import arange, arange_start
 from .bmm import bmm
@@ -50,6 +50,9 @@ __all__ = [
     "_nested_view_from_buffer_copy",
     "_unique2",
     "addmm",
+    "addmm_dtype",
+    "addmm_dtype_out",
+    "addmm_out",
     "amax",
     "arange",
     "arange_start",
