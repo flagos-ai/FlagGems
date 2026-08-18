@@ -99,6 +99,7 @@ backends:
 
   cambricon-neuware443:
     python: "3.10"
+    cmake_backend: MLU
     triton: triton==3.2.0+mlu1.7.2
     env:
       NEUWARE_HOME: /usr/local/neuware
@@ -113,6 +114,7 @@ backends:
 
   cambricon-neuware472:
     python: "3.12"
+    cmake_backend: MLU
     triton: triton==3.4.0+mlu2.1.1
     env:
       NEUWARE_HOME: /usr/local/neuware
