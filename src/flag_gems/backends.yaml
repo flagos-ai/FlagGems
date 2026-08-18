@@ -138,6 +138,7 @@ backends:
       LD_LIBRARY_PATH: /opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64:$LD_LIBRARY_PATH
       TORCH_GCU_ENABLE_INT64_AND_UINT64: "1"
       ENABLE_I64_CHECK: "0"
+      ENFLAME_PT_OP_DEBUG_CONFIG: "fallback_cpu=all_ops"
     deps:
       - pyefml==1.9.10
       - torch==2.10.0+cpu
@@ -160,6 +161,7 @@ backends:
       TORCH_GCU_ENABLE_INT64_AND_UINT64: "1"
       ENABLE_I64_CHECK: "0"
       TORCHGCU_INDUCTOR_ENABLE: "1"
+      ENFLAME_PT_OP_DEBUG_CONFIG: "fallback_cpu=all_ops"
     deps:
       - enflame-modelopt==3.6.20260615+torch.2.11.0
       - numpy==2.3.5
