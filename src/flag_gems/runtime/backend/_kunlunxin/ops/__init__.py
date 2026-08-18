@@ -54,6 +54,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .avg_pool2d import avg_pool2d, avg_pool2d_backward
+from .avg_pool3d import avg_pool3d, avg_pool3d_backward
 from .baddbmm import baddbmm
 from .batch_norm import batch_norm, batch_norm_backward
 from .bernoulli_ import bernoulli_
@@ -400,6 +401,8 @@ __all__ = [
     "atan_",
     "avg_pool2d",
     "avg_pool2d_backward",
+    "avg_pool3d",
+    "avg_pool3d_backward",
     "baddbmm",
     "batch_norm",
     "batch_norm_backward",
