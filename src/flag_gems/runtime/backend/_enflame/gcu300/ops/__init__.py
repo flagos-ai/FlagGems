@@ -51,6 +51,7 @@ from .bitwise_xor import (
     bitwise_xor_tensor,
     bitwise_xor_tensor_,
 )
+from .baddbmm import baddbmm
 from .bmm import bmm, bmm_out
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_
@@ -111,6 +112,7 @@ from .gelu import gelu, gelu_, gelu_backward
 from .glu import glu
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
+from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
 from .index_put import _index_put_impl_, index_put, index_put_
@@ -256,6 +258,7 @@ __all__ = [
     "sort_stable",
     "cat",
     "addmm",
+    "baddbmm",
     "bmm",
     "bmm_out",
     "mm",
@@ -276,6 +279,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "index_select",
+    "hstack",
     "index_add",
     "index_add_",
     "index",
