@@ -224,6 +224,7 @@ from flag_gems.ops.bitwise_xor import (
     bitwise_xor_tensor,
     bitwise_xor_tensor_,
 )
+from flag_gems.ops.blackman_window import blackman_window, blackman_window_periodic
 from flag_gems.ops.block_diag import block_diag
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.broadcast_tensors import broadcast_tensors
@@ -1050,6 +1051,8 @@ __all__ = [
     "bitwise_xor_scalar_tensor",
     "bitwise_xor_tensor",
     "bitwise_xor_tensor_",
+    "blackman_window",
+    "blackman_window_periodic",
     "block_diag",
     "bmm",
     "bmm_out",

@@ -362,6 +362,8 @@ _FULL_CONFIG = (
     ("bitwise_xor.Tensor", bitwise_xor_tensor),
     ("bitwise_xor_.Scalar", bitwise_xor_scalar_),
     ("bitwise_xor_.Tensor", bitwise_xor_tensor_),
+    ("blackman_window", blackman_window),
+    ("blackman_window.periodic", blackman_window_periodic),
     ("block_diag", block_diag),
     ("bmm", bmm),
     ("bmm.out", bmm_out),
