@@ -30,7 +30,11 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def safe_fast_log_f32(x):
-    min_normal = (x * 0.0 + 1.17549435e-38).to(tl.float32)
+    # FLT_MIN does not round-trip through float32, so Triton keeps the bare
+    # literal at float64 and the whole expression is promoted with it. Backends
+    # without double support reject that outright (Cambricon MLU: "MLU
+    # unsupported floating-point type fp64"), hence the explicit fp32 constant.
+    min_normal = (x * 0.0 + tl.full((), 1.17549435e-38, tl.float32)).to(tl.float32)
     max_u = x * 0.0 + 0.99999994
     x = tl.minimum(tl.maximum(x, min_normal), max_u)
     bits = x.to(tl.int32, bitcast=True)
