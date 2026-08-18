@@ -22,6 +22,8 @@ from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_
 from .abs import abs, abs_
 from .absolute import absolute
 from .acos import acos
+from .adaptive_max_pool3d import adaptive_max_pool3d
+from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .add import add, add_
 from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_out
@@ -355,6 +357,8 @@ __all__ = [
     "abs_",
     "absolute",
     "acos",
+    "adaptive_max_pool3d",
+    "adaptive_max_pool3d_backward",
     "add",
     "add_",
     "addcdiv",
