@@ -1,17 +1,3 @@
-"""linalg_matrix_norm -- Ascend NPU backend.
-
-  ord=2/-2/nuc → pure Triton one-sided Jacobi on A (no torch computational ops)
-  ord=1/-1     → general operator (_ord1_norm)
-  ord=inf/-inf → general operator (_ordinf_norm)
-  ord="fro"    → general operator (_fro_norm)
-
-All SVD paths use Triton-only kernels: _fro_kernel, _bidiag_svd_kernel,
-  _onesided_jacobi_svd_kernel, _jacobi_sweep_kernel, _col_norms_kernel,
-  _svdvals_rank2.  No CANN native ops, no LAPACK, no CPU transfer for
-  k <= 64; the k > 64 numpy fallback is replaced in Phase 3.
-  Verified 169/169 functional tests pass with --ref cpu.
-"""
-
 import logging
 import math
 
@@ -19,11 +5,9 @@ import torch
 import triton
 import triton.language as tl
 
-# ---- Reuse non-SVD implementations + rank-2 closed form from general op ------
 from flag_gems.ops.linalg_matrix_norm import (
     _RANK2_BLOCK_R_MAX,
     _fro_kernel,
-    _fro_norm,
     _rank2_svals_kernel,
     _svd_shape,
 )
@@ -31,86 +15,6 @@ from flag_gems.runtime.backend._ascend.utils import CORE_NUM
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
-
-# ===========================================================================
-# Ascend toolchain constraints (verified on 910B4 / triton-ascend; each item
-# below is load-bearing -- ported from the matrix_rank ascend backend report.
-# Do not "clean up" the code patterns that honor them.)
-#
-#  * MTE3 (store) / MTE2 (load) of one program are unordered: a store->load
-#    round trip through global memory needs tl.debug_barrier, or must cross
-#    a kernel boundary.  Multi-program Jacobi sweeps race; use one resident
-#    program per matrix.
-#  * tl.dot operands must be direct, unmasked, zero-padded loads (or
-#    tl.trans thereof); masked/zero-filled dot operands silently miscompile.
-#    Dot accumulation is a plain vector add (feeding the accumulator back as
-#    tl.dot's third argument loses precision).
-#  * DSA extract_slice/insert_slice and axis-0 register-tile reductions
-#    crash or hang; express everything as full-tile elementwise ops plus
-#    axis-1 reductions.
-#  * (x == const) masks miscompile (device exception); write them as strict
-#    intervals: (x > c-1) & (x < c+1).
-#  * No runtime scalar `if` regions around data-dependent-address stores
-#    (silently corrupts results); gate with masks/where instead.
-#  * No dynamic loop START for row blocks in dot loops (crashes bishengir);
-#    rows below the start contribute zero so starting from 0 is free.
-#  * No dynamic loop BOUND either: a runtime-bounded row-chunk loop
-#    range(0, ROWS, CHUNK) miscompiles silently whenever its trip count
-#    exceeds 1.  Pass MAX_ROWS = next_power_of_2(ROWS) as tl.constexpr and
-#    mask each iteration with rr < ROWS; the extra iterations cost only
-#    predicated-off lanes.
-#  * Two-bound masks (rr >= j) & (rr < ROWS) on a fixed-offset vector
-#    miscompile silently once the active lane count drops below 8 (masked
-#    loads/stores corrupt, no exception).  Anchor the vector at the lower
-#    bound instead (rr = j + arange) and use a single upper-bound mask.
-#  * tl.float64 is rejected by BiSheng in most kernels; keep fp32 and pad
-#    shapes so every tl.dot operand is a full tile.
-#  * Rank-2 trailing updates: reshape-based outer products only (the
-#    multiply-and-add form miscompiles at higher trip counts).
-#  * Grids above the physical block count corrupt dependent launches when
-#    TRITON_ALL_BLOCKS_PARALLEL=1 is in the environment (flag_gems's
-#    ascend fused import sets it globally at import time): the launcher
-#    clamps blockNum to the physical count and the bishengir
-#    --enable-auto-blockify-loop wrapper iterates the logical blocks in
-#    waves, but the wrapper does NOT fence MTE3 stores across the kernel
-#    boundary, so the next launch can read stale rows -- nondeterministic
-#    wrong results, no error.  These kernels all compile with
-#    mix_mode = "aiv", so the physical count is the AI VECTOR core count
-#    (40 on this 910B4), not the AI core count (20).  Keep every grid
-#    <= the AIV count and stride the work with an in-kernel loop whose
-#    step is a constexpr NPROG (trip count stays <= ceil(K/NPROG),
-#    far below the ~255-trip autotuner tiling limit).
-# ===========================================================================
-
-# ===========================================================================
-# Device topology
-# ===========================================================================
-_VEC_CORE_CACHE = {}
-
-
-def _sm_count(device):
-    """Number of vector cores available on the Ascend device.
-
-    910B4 has 20 AI cores x 2 vector sub-cores = 40.  Falls back to the
-    module-level CORE_NUM constant probed at import time."""
-    index = device.index
-    if index is None:
-        index = torch.npu.current_device()
-    count = _VEC_CORE_CACHE.get(index)
-    if count is None:
-        try:
-            from triton.runtime import driver
-
-            props = driver.active.utils.get_device_properties(index)
-            count = (
-                props.get("num_vectorcore", CORE_NUM)
-                if isinstance(props, dict)
-                else CORE_NUM
-            )
-        except Exception:
-            count = CORE_NUM
-        _VEC_CORE_CACHE[index] = count
-    return count
 
 
 # ===========================================================================
@@ -244,24 +148,6 @@ def _jacobi_sweep_kernel(A_WORK, KS, ROWS, CHUNK: tl.constexpr):
                 tl.store(aw + q * ROWS + c_rows, s * cp + c * cq, mask=c_mask)
         # ring pairs of one step are disjoint: one fence per step suffices
         tl.debug_barrier()
-
-
-@libentry()
-@triton.jit
-def _col_norms_kernel(W, S, K, KS, ROWS, CHUNK: tl.constexpr):
-    """Column norms of the (batch, KS, ROWS) column-major work matrix — the
-    converged one-sided Jacobi columns carry the singular values.  KS is the
-    padded column count (batch stride); only the K real columns are read."""
-    pid = tl.program_id(0)
-    w = W + pid * KS * ROWS
-    for j in range(K):
-        acc = 0.0
-        for chunk_start in range(0, ROWS, CHUNK):
-            c_rows = chunk_start + tl.arange(0, CHUNK)
-            c_mask = c_rows < ROWS
-            vals = tl.load(w + j * ROWS + c_rows, mask=c_mask, other=0.0)
-            acc += tl.sum(vals * vals)
-        tl.store(S + pid * K + j, tl.sqrt(acc + 1.0e-20))
 
 
 @libentry()
@@ -1120,9 +1006,6 @@ def _svdvals_for_norm(A):
     k = min(M, N)
     rows = max(M, N)
 
-    # k=1: single singular value = Frobenius norm.
-    # Uses general _fro_kernel explicitly with USE_FP64=False — BiSheng
-    # rejects tl.float64, and _fro_norm's default USE_FP64=True path fails.
     if k == 1:
         flat = A.reshape(batch, M * N)
         s = torch.empty(batch, 1, dtype=torch.float32, device=A.device)
@@ -1368,15 +1251,6 @@ _BLOCK_NPROG_CACHE = None
 
 
 def _block_parallel_programs():
-    """Upper bound on grid size that survives the launcher's program
-    clamp under TRITON_ALL_BLOCKS_PARALLEL=1 (see the clamp constraint in
-    the header): the physical block count the auto-map wrapper maps
-    logical blocks onto.  These kernels all compile with mix_mode = "aiv"
-    (the ascend TTIR path sets it unconditionally), so the driver clamps
-    to the AI VECTOR core count (40 on 910B), NOT the AI core count (20)
-    — flattening to the AI core count halves the parallelism.  Queried
-    lazily once; falls back to CORE_NUM (the vector-core count the
-    driver derives as 2 * num_aic)."""
     global _BLOCK_NPROG_CACHE
     if _BLOCK_NPROG_CACHE is None:
         try:
@@ -1389,36 +1263,6 @@ def _block_parallel_programs():
 
 
 def _svdvals_blocked(A):
-    """Pure-Triton singular values for 3 <= k <= 512, rows <= 2048 (fp32).
-
-    Grid-parallel Golub-Kahan bidiagonalization of the column-major
-    (batch, k, rows) workspace — every launch is a 1D grid at or below
-    the AIV block count whose programs stride over the (batch, column
-    slot / row chunk) work items (see the blocked-path header for why:
-    the serial Phase 2 kernels hit the ascend autotuner's tiling-axis
-    limit on c-loops with ~K trips, and a grid above the physical block
-    count engages the auto-map wrapper under TRITON_ALL_BLOCKS_PARALLEL,
-    which does not fence MTE3 stores across kernel boundaries so the
-    dependent next launch reads stale rows).  Kernel boundaries are the
-    only fence that orders MTE3 stores against MTE2 loads on this
-    toolchain, so each step is four launches: left apply + left finalize
-    (row j -> alpha*e_j), right apply + right finalize (subdiagonal
-    alpha2, zero column j below it — w + j + cvec*ROWS is column j).
-    The right finalize stores alpha2 exactly (no cancellation through
-    t - zz*u), so the corner B = W[:, :k, :k] is LOWER bidiagonal and
-    sigma(B) == sigma(A) exactly.
-
-    Singular values are bisected from the Golub-Kahan tridiagonal of
-    order 2k (zero diagonal, off-diagonal [d0, s0, d1, s1, ...] with
-    s = SUBdiagonal of B — the superdiagonal is all zeros and would
-    silently yield the wrong spectrum).  The Sturm count runs the qd
-    recurrence in double-single fp32 pairs (no tl.float64 — BiSheng
-    rejects it) with enable_fp_fusion=False; index k+j in ascending
-    order gives S[j] = sigma_min .. sigma_max, zeros occupying the front
-    slots for rank-deficient matrices — exactly what the ord=2/-2/nuc
-    reductions need.  Measured sigma error ~4e-6 at k=512, 30-80x
-    inside the test tolerances.
-    """
     *batch_dims, M, N = A.shape
     batch = math.prod(batch_dims)
     k, rows = min(M, N), max(M, N)
@@ -1539,10 +1383,25 @@ def _ord2_norm(A, ord_val, dim, keepdim, dtype):
         k, rows = min(M, N), max(M, N)
         mode = "max" if float(ord_val) > 0 else "min"
         if k == 1:
-            return _fro_norm(A, dim, keepdim, dtype)
-        if k == 2 and rows <= _RANK2_BLOCK_R_MAX:
-            # One fused launch: the k=2 shapes are launch-bound and torch
-            # computational ops are forbidden on this path.
+            Ain = A.float() if A.dtype in (torch.float16, torch.bfloat16) else A
+            Ain = Ain.contiguous()
+            result = torch.empty(1, dtype=torch.float32, device=A.device)
+            blk_n = triton.next_power_of_2(min(M * N, 512))
+            _fro_kernel[(1,)](
+                Ain.reshape(1, M * N),
+                result,
+                0,
+                M * N,
+                1,
+                blk_n,
+                1,
+                TILE_2D=False,
+                USE_FP64=False,
+                num_warps=8,
+            )
+            torch.npu.synchronize()
+            result = result.reshape(())
+        elif k == 2 and rows <= _RANK2_BLOCK_R_MAX:
             result = _rank2_norm_fast(A, mode)
         elif 2 < k <= 512 and rows <= 2048:
             result = _dim1_reduce(_svdvals_for_norm(A), mode)
@@ -1557,7 +1416,6 @@ def _ord2_norm(A, ord_val, dim, keepdim, dtype):
             result = result.to(out_dtype)
         return result
 
-    # batched
     ndim = A.ndim
     remaining = [d for d in range(ndim) if d not in (d0, d1)]
     perm = remaining + [d0, d1]
@@ -1585,8 +1443,6 @@ def _nuc_norm(A, dim, keepdim=False, dtype=None):
     out_dtype = dtype if dtype is not None else A.dtype
     k, rows = min(A.shape[-2], A.shape[-1]), max(A.shape[-2], A.shape[-1])
     if k == 2 and rows <= _RANK2_BLOCK_R_MAX:
-        # Fused k=2 sum of the singular values — one launch (torch sum is
-        # a forbidden computational op on this path).
         result = _rank2_norm_fast(A, "sum")
     else:
         s = _svdvals_for_norm(A)
@@ -1605,7 +1461,6 @@ def _nuc_norm(A, dim, keepdim=False, dtype=None):
 
 
 def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
-    """Matrix norm — Ascend NPU entry point.  Pure Triton SVD, no CANN/LAPACK."""
     logger.debug("GEMS ASCEND LINALG_MATRIX_NORM")
 
     d0, d1 = dim
