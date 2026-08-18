@@ -63,7 +63,7 @@ def _scatter_kernel(
     tl.atomic_add(out_ptr + dst, val, mask=m_mask, sem="relaxed")
 
 
-def run(inp, mask, indices, values):
+def _unsafe_masked_index_put_accumulate(inp, mask, indices, values):
     numel = inp.numel()
     ndim = len(indices)
     strides = inp.stride()
