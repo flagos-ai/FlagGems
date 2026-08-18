@@ -100,8 +100,6 @@ from .tile import tile
 from .unique import _unique2
 from .upsample_nearest2d import upsample_nearest2d
 from .weight_norm import (
-    backward,
-    forward,
     weight_norm,
     weight_norm_except_dim,
     weight_norm_except_dim_backward,
@@ -113,7 +111,6 @@ __all__ = [
     "_unique2",
     "adaptive_max_pool3d_backward",
     "avg_pool3d_backward",
-    "backward",
     "broadcast_tensors",
     "broadcast_to",
     "conj_physical",
@@ -137,7 +134,6 @@ __all__ = [
     "flash_attn_varlen_func",
     "floor_divide",
     "floor_divide_",
-    "forward",
     "gelu",
     "gelu_",
     "hadamard_transform",
