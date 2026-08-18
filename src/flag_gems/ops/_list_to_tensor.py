@@ -38,10 +38,10 @@ def _list_to_tensor(self):
     """Triton implementation of aten::_list_to_tensor.
 
     Note: aten::_list_to_tensor is a JIT-only prim operator with no c10
-    dispatcher kernel, so it is NOT registered in _FULL_CONFIG (an aten IMPL
-    registration there would be dead code that use_gems() could never reach).
-    This function is exposed directly as ``flag_gems._list_to_tensor`` and must
-    be called explicitly rather than through ``flag_gems.use_gems()``.
+    dispatcher kernel. It is listed in _FULL_CONFIG for consistency with the
+    standard FlagGems operator registration flow, but the dispatcher cannot
+    route calls to that entry. The implementation is also exposed directly as
+    ``flag_gems._list_to_tensor`` so it can be exercised explicitly.
     """
     logger.debug("GEMS _LIST_TO_TENSOR")
     n = len(self)

@@ -141,6 +141,7 @@ _FULL_CONFIG = (
     ("_is_all_true", _is_all_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
     ("_linalg_eigvals", _linalg_eigvals),
+    ("_list_to_tensor", _list_to_tensor),
     (
         "_weight_int4pack_mm_with_scales_and_zeros",
         _weight_int4pack_mm_with_scales_and_zeros,
