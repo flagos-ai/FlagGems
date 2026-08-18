@@ -24,6 +24,7 @@ from flag_gems.ops.__xor__ import (  # noqa: F401
 )
 from flag_gems.ops._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from flag_gems.ops._add_relu import _add_relu
+from flag_gems.ops._add_relu_ import _add_relu_
 from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -31,15 +32,24 @@ from flag_gems.ops._batch_norm_impl_index import (
     batch_norm_impl_index as _batch_norm_impl_index,
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
+from flag_gems.ops._cholesky_solve_helper import _cholesky_solve_helper
 from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
+from flag_gems.ops._compute_linear_combination import (
+    _compute_linear_combination,
+    _compute_linear_combination_out,
+)
 from flag_gems.ops._conj import _conj
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
+from flag_gems.ops._convolution_mode import _convolution_mode
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
 )
 from flag_gems.ops._euclidean_dist import _euclidean_dist
+from flag_gems.ops._fake_quantize_learnable_per_tensor_affine import (
+    _fake_quantize_learnable_per_tensor_affine,
+)
 from flag_gems.ops._fill_mem_eff_dropout_mask_ import _fill_mem_eff_dropout_mask_
 from flag_gems.ops._flash_attention_forward import _flash_attention_forward
 from flag_gems.ops._functional_sym_constrain_range import (
@@ -86,9 +96,13 @@ from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._resize_output import _resize_output
+from flag_gems.ops._resize_output_ import _resize_output_
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._scaled_dot_product_attention_math import (
     _scaled_dot_product_attention_math,
+)
+from flag_gems.ops._scaled_dot_product_efficient_attention import (
+    _scaled_dot_product_efficient_attention,
 )
 from flag_gems.ops._scaled_dot_product_flash_attention import (
     _scaled_dot_product_flash_attention,
@@ -123,6 +137,7 @@ from flag_gems.ops._weight_norm import _weight_norm
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute, absolute_
 from flag_gems.ops.acos import acos
+from flag_gems.ops.acos_ import acos_
 from flag_gems.ops.acosh import acosh, acosh_
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
@@ -135,6 +150,7 @@ from flag_gems.ops.addcmul import addcmul, addcmul_, addcmul_out
 from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from flag_gems.ops.addmm_ import addmm_
 from flag_gems.ops.addmv import addmv, addmv_out
+from flag_gems.ops.addmv_ import addmv_
 from flag_gems.ops.addr import addr
 from flag_gems.ops.addr_ import addr_
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
@@ -162,6 +178,7 @@ from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.argsort import argsort
 from flag_gems.ops.as_strided_copy import as_strided_copy, as_strided_copy_out
+from flag_gems.ops.as_strided_scatter import as_strided_scatter
 from flag_gems.ops.asin import asin, asin_
 from flag_gems.ops.asinh import asinh, asinh_out
 from flag_gems.ops.asinh_ import asinh_
@@ -187,6 +204,7 @@ from flag_gems.ops.baddbmm_ import baddbmm_
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
+from flag_gems.ops.bilinear import bilinear
 from flag_gems.ops.binary_cross_entropy_backward import binary_cross_entropy_backward
 from flag_gems.ops.binary_cross_entropy_with_logits import (
     binary_cross_entropy_with_logits,
@@ -216,6 +234,7 @@ from flag_gems.ops.bitwise_xor import (
     bitwise_xor_tensor,
     bitwise_xor_tensor_,
 )
+from flag_gems.ops.blackman_window import blackman_window, blackman_window_periodic
 from flag_gems.ops.block_diag import block_diag
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.broadcast_tensors import broadcast_tensors
@@ -434,6 +453,7 @@ from flag_gems.ops.lift_fresh import lift_fresh
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
 from flag_gems.ops.linalg_cholesky import linalg_cholesky
 from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
+from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
 from flag_gems.ops.linalg_ldl_solve import linalg_ldl_solve
 from flag_gems.ops.linalg_lstsq import linalg_lstsq
@@ -460,6 +480,10 @@ from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_ import log_
 from flag_gems.ops.log_normal_ import log_normal_
 from flag_gems.ops.log_sigmoid import log_sigmoid
+from flag_gems.ops.log_sigmoid_backward import (
+    log_sigmoid_backward,
+    log_sigmoid_backward_out,
+)
 from flag_gems.ops.log_sigmoid_forward import log_sigmoid_forward
 from flag_gems.ops.log_softmax import (
     log_softmax,
@@ -785,6 +809,7 @@ from flag_gems.ops.true_divide import true_divide, true_divide_tensor
 from flag_gems.ops.trunc_ import trunc, trunc_
 from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
+from flag_gems.ops.unflatten import unflatten
 from flag_gems.ops.unfold import unfold
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
@@ -803,6 +828,9 @@ from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
 from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
 from flag_gems.ops.upsample_trilinear3d import upsample_trilinear3d
+from flag_gems.ops.value_selecting_reduction_backward import (
+    value_selecting_reduction_backward,
+)
 from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
@@ -843,17 +871,23 @@ __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_adaptive_avg_pool3d_backward",
     "_add_relu",
+    "_add_relu_",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_impl_index",
     "_batch_norm_no_update",
+    "_fake_quantize_learnable_per_tensor_affine",
     "_functional_assert_async",
     "_cdist_backward",
     "_cdist_forward",
+    "_cholesky_solve_helper",
     "_chunk_cat",
+    "_compute_linear_combination",
+    "_compute_linear_combination_out",
     "_conj",
     "_conv_depthwise2d",
     "_convert_weight_to_int4pack",
+    "_convolution_mode",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
@@ -888,8 +922,10 @@ __all__ = [
     "_prelu_kernel_backward",
     "_reshape_alias",
     "_resize_output",
+    "_resize_output_",
     "_safe_softmax",
     "_scaled_dot_product_attention_math",
+    "_scaled_dot_product_efficient_attention",
     "_scaled_dot_product_flash_attention",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
@@ -916,6 +952,7 @@ __all__ = [
     "absolute",
     "absolute_",
     "acos",
+    "acos_",
     "acosh",
     "acosh_",
     "adaptive_avg_pool2d",
@@ -938,6 +975,7 @@ __all__ = [
     "addmm_dtype_out",
     "addmm_out",
     "addmv",
+    "addmv_",
     "addmv_out",
     "addr",
     "addr_",
@@ -983,6 +1021,7 @@ __all__ = [
     "argsort",
     "as_strided_copy",
     "as_strided_copy_out",
+    "as_strided_scatter",
     "asin",
     "asin_",
     "asinh",
@@ -1007,6 +1046,7 @@ __all__ = [
     "batch_norm_backward",
     "bernoulli",
     "bernoulli_",
+    "bilinear",
     "binary_cross_entropy_backward",
     "binary_cross_entropy_with_logits",
     "bincount",
@@ -1031,6 +1071,8 @@ __all__ = [
     "bitwise_xor_scalar_tensor",
     "bitwise_xor_tensor",
     "bitwise_xor_tensor_",
+    "blackman_window",
+    "blackman_window_periodic",
     "block_diag",
     "bmm",
     "bmm_out",
@@ -1307,6 +1349,8 @@ __all__ = [
     "linalg_cholesky",
     "linalg_cross",
     "linalg_cross_out",
+    "linalg_det",
+    "linalg_det_out",
     "linalg_ldl_solve",
     "linalg_lstsq",
     "linalg_lu_factor",
@@ -1335,6 +1379,8 @@ __all__ = [
     "log_normal_",
     "log_sigmoid",
     "log_sigmoid_forward",
+    "log_sigmoid_backward",
+    "log_sigmoid_backward_out",
     "log_softmax",
     "log_softmax_backward",
     "log_softmax_backward_out",
@@ -1345,6 +1391,7 @@ __all__ = [
     "logaddexp2_out",
     "logcumsumexp",
     "logcumsumexp_out",
+    "unflatten",
     "unsafe_chunk",
     "xlogy",
     "xlogy_out",
@@ -1734,6 +1781,7 @@ __all__ = [
     "upsample_nearest2d",
     "upsample_nearest3d",
     "upsample_trilinear3d",
+    "value_selecting_reduction_backward",
     "var",
     "var_correction",
     "var_dim",
