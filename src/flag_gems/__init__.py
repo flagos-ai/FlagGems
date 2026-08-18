@@ -238,6 +238,7 @@ _FULL_CONFIG = (
     ("absolute", absolute),
     ("absolute_", absolute_),
     ("acos", acos),
+    ("acos_", acos_),
     ("acosh", acosh),
     ("acosh_", acosh_),
     ("adaptive_avg_pool3d_backward", _adaptive_avg_pool3d_backward),
