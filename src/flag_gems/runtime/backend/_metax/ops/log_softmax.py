@@ -27,16 +27,32 @@ logger = logging.getLogger(__name__)
 
 
 def heur_block_n(args):
-    return triton.next_power_of_2(args["N"])
+    # MetaX C550: cap BLOCK_N to avoid private memory exceeding 4KB/thread.
+    # In the multi-tile loop, the main memory cost is:
+    #   inp[BLOCK_M, BLOCK_N] + exp_temp[BLOCK_M, BLOCK_N] ≈ 2 arrays of float32
+    # Plus row_max, row_sum, new_max etc. (~BLOCK_M * 3 * 4 bytes, negligible).
+    # Constraint: BLOCK_M * BLOCK_N * 2 * 4 <= 4096
+    #   => BLOCK_M * BLOCK_N <= 512
+    # For the one-tile path, same constraint applies (inp + numerator + others).
+    block_m = args["BLOCK_M"]
+    max_block_n = 512 // block_m
+    # Ensure at least 32 and is power of 2
+    max_block_n = max(32, max_block_n)
+    n_pow2 = triton.next_power_of_2(args["N"])
+    return min(n_pow2, max_block_n)
 
 
 def heur_num_warps(args):
-    if args["N"] <= 1024:
+    if args["BLOCK_N"] <= 1024:
         return 1
-    elif args["N"] <= 2048:
+    elif args["BLOCK_N"] <= 2048:
         return 4
     else:
         return 8
+
+
+def heur_one_tile(args):
+    return args["BLOCK_N"] >= args["N"]
 
 
 @libentry()
@@ -45,6 +61,7 @@ def heur_num_warps(args):
     {
         "BLOCK_N": heur_block_n,
         "num_warps": heur_num_warps,
+        "ONE_TILE": heur_one_tile,
     }
 )
 @triton.jit
@@ -57,23 +74,62 @@ def log_softmax_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     USE_K: tl.constexpr,
+    ONE_TILE: tl.constexpr,
 ):
     pid_m = ext.program_id(0)
     pid_k = ext.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K
-    if USE_K:
-        offset += pid_k
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    input_ptrs = input_ptr + offset
-    inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
-    row_minus_max = inp - tl.max(inp, axis=1)[:, None]
-    numerator = tl.exp(row_minus_max)
-    denominator = tl.sum(numerator, axis=1)[:, None]
-    softmax_output = tl.log(numerator / denominator)
-    output_ptrs = output_ptr + offset
-    tl.store(output_ptrs, softmax_output, mask=mask)
+    m_mask = m_offset < M
+
+    if ONE_TILE:
+        # Original fast path: N fits in one tile
+        n_offset = tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K
+        if USE_K:
+            offset += pid_k
+        mask = m_mask[:, None] and (n_offset[None, :] < N)
+        inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(tl.float32)
+        row_minus_max = inp - tl.max(inp, axis=1)[:, None]
+        numerator = tl.exp(row_minus_max)
+        denominator = tl.sum(numerator, axis=1)[:, None]
+        softmax_output = tl.log(numerator / denominator)
+        tl.store(output_ptr + offset, softmax_output, mask=mask)
+    else:
+        # Online softmax for large N: two-pass with tiled reduction
+        # Pass 1: compute row max and log-sum-exp
+        row_max = tl.full([BLOCK_M], value=float("-inf"), dtype=tl.float32)
+        row_sum = tl.full([BLOCK_M], value=0.0, dtype=tl.float32)
+
+        for start_n in range(0, N, BLOCK_N):
+            n_offset = start_n + tl.arange(0, BLOCK_N)
+            offset = m_offset[:, None] * N * K + n_offset[None, :] * K
+            if USE_K:
+                offset += pid_k
+            mask = m_mask[:, None] and (n_offset[None, :] < N)
+            inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
+                tl.float32
+            )
+            tile_max = tl.max(inp, axis=1)
+            new_max = tl.maximum(row_max, tile_max)
+            row_sum = row_sum * tl.exp(row_max - new_max) + tl.sum(
+                tl.exp(inp - new_max[:, None]), axis=1
+            )
+            row_max = new_max
+
+        log_sum = tl.log(row_sum)
+
+        # Pass 2: compute log_softmax output
+        for start_n in range(0, N, BLOCK_N):
+            n_offset = start_n + tl.arange(0, BLOCK_N)
+            offset = m_offset[:, None] * N * K + n_offset[None, :] * K
+            if USE_K:
+                offset += pid_k
+            mask = m_mask[:, None] and (n_offset[None, :] < N)
+            inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
+                tl.float32
+            )
+            out = inp - row_max[:, None] - log_sum[:, None]
+            tl.store(output_ptr + offset, out, mask=mask)
 
 
 @libentry()

@@ -81,6 +81,11 @@ class DeviceDetector:
         except ImportError:
             torch_module = torch
 
+        try:
+            import torch_txda  # noqa: F401 — trigger txda backend registration on torch
+        except ImportError:
+            pass
+
         for vendor_name, attr in _VENDOR_TORCH_ATTR.items():
             if hasattr(torch_module, attr):
                 return str(vendor_name)
