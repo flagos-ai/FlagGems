@@ -6015,6 +6015,20 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
+  - id: _linalg_slogdet
+    description: |
+      Computes the sign and natural logarithm of the absolute value of the
+      determinant of a square matrix using LU decomposition with partial
+      pivoting, returning the intermediate LU factorization and pivot buffer.
+    for:
+      - _linalg_slogdet
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_solve_triangular
     description: |-
       Solves a triangular system of linear equations with a unique solution, returning
