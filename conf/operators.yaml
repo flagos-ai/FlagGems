@@ -6360,6 +6360,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: unsafe_split_with_sizes
+    description: |
+      Splits a tensor into sub-tensors along a given dimension, where each split
+      has a specified size. Returns views into the original tensor without safety
+      checks.
+    for:
+      - unsafe_split_with_sizes
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: upsample_bilinear2d_aa_backward
     description: A backward case for `_upsample_bilinear2d_aa()`.
     for:
