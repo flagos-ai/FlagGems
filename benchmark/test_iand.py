@@ -3,10 +3,10 @@ import pytest
 from . import base, consts, utils
 
 
-@pytest.mark.dunder_iand_tensor
-def test_dunder_iand_inplace():
+@pytest.mark.iand_tensor
+def test_iand_inplace():
     bench = base.BinaryPointwiseBenchmark(
-        op_name="dunder_iand_tensor",
+        op_name="iand_tensor",
         torch_op=lambda a, b: a.__iand__(b),
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
         is_inplace=True,
@@ -23,10 +23,10 @@ def _input_fn_scalar(shape, cur_dtype, device):
     yield inp1, inp2
 
 
-@pytest.mark.dunder_iand_scalar
-def test_dunder_iand_scalar_inplace():
+@pytest.mark.iand_scalar
+def test_iand_scalar_inplace():
     bench = base.GenericBenchmark(
-        op_name="dunder_iand_scalar",
+        op_name="iand_scalar",
         input_fn=_input_fn_scalar,
         torch_op=lambda a, b: a.__iand__(b),
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
