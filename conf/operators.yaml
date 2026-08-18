@@ -3582,6 +3582,19 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.3'
+  - id: fake_quantize_learnable_per_tensor_affine
+    description: |
+      Fake-quantizes the input tensor per-tensor with learnable scale and zero_point.
+    for:
+      - _fake_quantize_learnable_per_tensor_affine
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: fake_quantize_per_channel_affine
     description: Applies fake quantization per channel with affine parameters (scale and zero_point).
     for:
