@@ -1,7 +1,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
+from .conftest import Config
+
+VENDOR = flag_gems.vendor_name
+
+if VENDOR == "ascend":
+    Config.mode = consts.BenchMode.OPERATOR
 
 REPLICATION_PAD2D_BACKWARD_SHAPES = [
     (1, 3, 256, 256),
