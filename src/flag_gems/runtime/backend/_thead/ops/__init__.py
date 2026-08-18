@@ -29,6 +29,7 @@ from .linalg_cholesky import linalg_cholesky
 from .linalg_svdvals import linalg_svdvals
 from .linear_backward import linear_backward
 from .log_normal_ import log_normal_, log_normal_heur_block, log_normal_heur_num_warps
+from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .nll_loss_backward import nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
 from .reflection_pad3d_backward import reflection_pad3d_backward
@@ -76,6 +77,8 @@ __all__ = [
     "log_normal_",
     "log_normal_heur_block",
     "log_normal_heur_num_warps",
+    "log_sigmoid_backward",
+    "log_sigmoid_backward_out",
     "make_3d_for_bn",
     "nll_loss_backward",
     "nonzero_numpy",
