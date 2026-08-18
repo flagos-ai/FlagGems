@@ -3074,7 +3074,7 @@ ops:
     kind:
       - Math
     stages:
-      - beta: '5.3'
+      - alpha: '5.4'
   - id: iand_tensor
     description: The in-place version of bitwise and operation for two tensors.
     for:
@@ -3085,7 +3085,7 @@ ops:
     kind:
       - Math
     stages:
-      - beta: '5.3'
+      - alpha: '5.4'
   - id: dunder_ior_scalar
     description: The scalar version of `dunder_ior_tensor`.
     for:
