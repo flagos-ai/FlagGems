@@ -2602,6 +2602,17 @@ ops:
     stages:
       - stable: '2.0'
       - removed: '3.0'
+  - id: cslt_sparse_mm
+    description: Triton implementation of aten._cslt_sparse_mm; decodes the cuSPARSELt 2:4 structured-sparse compressed blob back to dense and runs a tiled dense matmul, supporting alpha, bias, and transpose_result. The compressed layout is architecture specific, so this decoder targets the Hopper swizzle and is only registered on compute capability 9.x; other architectures keep using the native cuSPARSELt op.
+    for:
+      - _cslt_sparse_mm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: cudnn_attention_forward
     description: |
       Forward kernel for cuDNN attention, computing scaled dot-product
