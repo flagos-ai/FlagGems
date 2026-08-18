@@ -4086,17 +4086,6 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
-  - id: fused_rms_norm
-    description: Fused RMS normalization returning the normalized output and inverse RMS.
-    for:
-      - _fused_rms_norm
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.4'
   - id: fused_deepseek_v4_qnorm_rope_kv_rope_insert
     description: |
       Horizontally-fused DeepseekV4-MLA BF16 variant.
@@ -4204,6 +4193,30 @@ ops:
     stages:
       - alpha: '5.0'
       - beta: '5.3'
+  - id: fused_rms_norm
+    description: Fused RMS normalization returning the normalized output and inverse RMS.
+    for:
+      - _fused_rms_norm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: fused_rms_norm_backward
+    description: |
+      Computes input and weight gradients for fused RMS normalization using the
+      saved reciprocal root-mean-square values.
+    for:
+      - _fused_rms_norm_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: gather
     description: Gathers values along an axis specified by `dim`.
     for:
