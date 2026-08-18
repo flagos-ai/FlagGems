@@ -1599,6 +1599,32 @@ nansum_dim_inner:
   num_warps: 8
 - META: {}
   num_warps: 16
+adaptive_max_pool3d:
+  - META:
+      OUT_PER_BLOCK: 256
+      CHAN_PER_BLOCK: 1
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 128
+      CHAN_PER_BLOCK: 1
+    num_warps: 4
+    num_stages: 4
+  - META:
+      OUT_PER_BLOCK: 256
+      CHAN_PER_BLOCK: 1
+    num_warps: 4
+    num_stages: 4
+  - META:
+      OUT_PER_BLOCK: 64
+      CHAN_PER_BLOCK: 4
+    num_warps: 4
+    num_stages: 4
+  - META:
+      OUT_PER_BLOCK: 64
+      CHAN_PER_BLOCK: 8
+    num_warps: 8
+    num_stages: 3
 adaptive_max_pool3d_backward:
   - META:
       BLOCK_SIZE: 64

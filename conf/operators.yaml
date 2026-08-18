@@ -223,6 +223,18 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: adaptive_max_pool3d
+    description: |
+      Applies three-dimensional adaptive max pooling over an input signal and
+      returns both the pooled values and the selected input indices.
+    for:
+      - adaptive_max_pool3d
+    labels:
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: adaptive_max_pool3d_backward
     description: |
       Computes the gradient for adaptive max pooling 3D.
