@@ -1102,6 +1102,22 @@ ops:
       - Tensor
     stages:
       - stable: '5.3'
+  - id: corrcoef
+    description: |
+      Estimates the Pearson product-moment correlation coefficient matrix of the
+      variables given by the input matrix, where rows are the variables and
+      columns are the observations. The correlation matrix R is computed from
+      the covariance matrix C as R_ij = C_ij / sqrt(C_ii * C_jj), with the
+      internal computation carried out in float32 for numerical stability.
+    for:
+      - corrcoef
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: functional_assert_async
     description: |
       Functional version of _assert_async that takes a dependency token and returns a new token.

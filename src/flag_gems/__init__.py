@@ -404,6 +404,7 @@ _FULL_CONFIG = (
     ("copysign", copysign),
     ("copysign.out", copysign_out),
     ("copysign_.Tensor", copysign_),
+    ("corrcoef", corrcoef),
     ("cos", cos),
     ("cos_", cos_),
     ("cosh", cosh),
