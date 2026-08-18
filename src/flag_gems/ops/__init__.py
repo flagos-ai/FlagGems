@@ -89,6 +89,9 @@ from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._scaled_dot_product_attention_math import (
     _scaled_dot_product_attention_math,
 )
+from flag_gems.ops._scaled_dot_product_efficient_attention import (
+    _scaled_dot_product_efficient_attention,
+)
 from flag_gems.ops._scaled_dot_product_flash_attention import (
     _scaled_dot_product_flash_attention,
 )
@@ -890,6 +893,7 @@ __all__ = [
     "_resize_output",
     "_safe_softmax",
     "_scaled_dot_product_attention_math",
+    "_scaled_dot_product_efficient_attention",
     "_scaled_dot_product_flash_attention",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
