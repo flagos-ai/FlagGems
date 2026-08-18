@@ -526,30 +526,11 @@ def scatter_add_(x, dim, index, src):
 
 def scatter_add(inp, dim, index, src):
     logger.debug("GEMS SCATTER_ADD")
-    # Non-inplace variant: produce out = inp (copied) then scatter-add src into it.
-    #
-    # The naive implementation ``out = inp.clone(); return scatter_add_(out, ...)``
-    # is slow under ``use_gems``: ``clone()`` (and the fp16/bf16 upcast that
-    # ``scatter_add_`` performs via ``inp.to(float32)`` for large N) route through
-    # FlagGems ``copy_``, which is built on ``pointwise_dynamic`` and carries high
-    # dispatch overhead for small tensors (~0.04 ms per call, ~8x slower than
-    # native).
-    #
-    # Instead we initialize the output with ``torch.empty_like`` + a minimal
-    # Triton copy kernel.  ``scatter_add_`` only upcasts fp16/bf16 to fp32 when
-    # the scatter is large (index.numel() > 131072, see scatter_add_0/_1); for
-    # that case we do the upcast up-front with the same lean kernel, run the
-    # scatter in fp32 (so ``scatter_add_`` skips its own slow ``.to()``), then
-    # cast back -- keeping accumulation precision without the slow round-trips.
-    # Everything stays inside FlagGems/Triton (no fallback to the native aten
-    # implementation).  Non-contiguous inputs are densified via ``clone()`` so
-    # the output layout matches PyTorch's (contiguous).
     if not inp.is_contiguous():
         out = inp.clone()
         return scatter_add_(out, dim, index, src)
 
     if inp.dtype in (torch.float16, torch.bfloat16) and index.numel() > 131072:
-        # Upcast inp -> fp32 with a lean kernel, scatter in fp32, cast back.
         out_f32 = torch.empty(inp.shape, dtype=torch.float32, device=inp.device)
         _copy_contiguous(inp, out_f32)
         res_f32 = scatter_add_(out_f32, dim, index, src)
