@@ -145,6 +145,7 @@ _FULL_CONFIG = (
         "_weight_int4pack_mm_with_scales_and_zeros",
         _weight_int4pack_mm_with_scales_and_zeros,
     ),
+    ("affine_grid_generator_backward", affine_grid_generator_backward),
     ("binary_cross_entropy_backward", binary_cross_entropy_backward),
     ("grid_sampler_3d_backward", grid_sampler_3d_backward),
     ("linalg_svdvals", linalg_svdvals),

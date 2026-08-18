@@ -13,6 +13,19 @@
 # limitations under the License.
 
 ops:
+  - id: affine_grid_generator_backward
+    description: |
+      Computes the backward pass of affine_grid_generator: given the gradient
+      w.r.t. the output grid, produces the gradient w.r.t. the affine matrix theta.
+    for:
+      - affine_grid_generator_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_impl_index
     description: Applies Batch Normalization and returns the normalized output along with saved statistics, a reserve tensor, and the backend implementation index.
     for:
