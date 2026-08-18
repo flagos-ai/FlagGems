@@ -202,7 +202,10 @@ def _bidiag_svd_kernel(
         g = tl.load(A + batch * (ROWS * K) + rrow[:, None] * K + ccol[None, :])
         g = tl.where((rows[:, None] < ROWS) & (cols[None, :] < K), g, 0.0)
         gT = tl.trans(g)
-        for j in tl.range(0, K):
+        # Plain range, not tl.range: the pipelined-loop lowering silently
+        # produces zero output under the cann900 toolchain (triton 3.5 /
+        # triton_ascend 3.2.1 + auto-blockify); keep the loop static.
+        for j in range(K):
             # j runs to K (not K-1): the final left reflection zeroes column
             # K-1 below the diagonal.  Without it the tile is [B; x] with a
             # nonzero tail when rows > k hold real data (wide/tall inputs),
@@ -513,8 +516,9 @@ def _gk_sturm_count_less(E2H, E2L, base, N: tl.constexpr, xh, xl):
     qh = tl.where(zero_q, -1.1754944e-38, qh)
     ql = tl.where(zero_q, 0.0, ql)
     neg = tl.where(qh < 0.0, 1, 0)
-    i = 1
-    while i < N:
+    # Plain for (N is constexpr), not while: while-loop lowering is
+    # unreliable under the cann900 toolchain (see the bidiag note).
+    for i in range(1, N):
         e2h = tl.load(E2H + base + i - 1)
         e2l = tl.load(E2L + base + i - 1)
         rh, rl = _df64_div_ds(e2h, e2l, qh, ql)
@@ -523,7 +527,6 @@ def _gk_sturm_count_less(E2H, E2L, base, N: tl.constexpr, xh, xl):
         qh = tl.where(zero_q, -1.1754944e-38, qh)
         ql = tl.where(zero_q, 0.0, ql)
         neg += tl.where(qh < 0.0, 1, 0)
-        i += 1
     return neg
 
 
@@ -792,7 +795,8 @@ def _sturm_sigmas_kernel(
             emax = tl.maximum(emax, tl.load(E2H + base + i - 1))
         emax = tl.sqrt(emax)
         JMAX: tl.constexpr = (K + NPROG - 1) // NPROG
-        for jj in tl.range(0, JMAX):
+        # Plain range, not tl.range (see the bidiag note).
+        for jj in range(JMAX):
             # j = jj*NPROG + cc clamped to K-1.  A dynamic loop START
             # (range(cc, K, NPROG)) serializes the qd chain ~4x slower;
             # the clamp keeps the store in-bounds without a runtime branch
@@ -806,8 +810,9 @@ def _sturm_sigmas_kernel(
             lo = 0.0
             hi = 2.0 * emax * (1.0 + 1e-9) + 1e-292
             target = K + j
-            it = 0
-            while it < BISECT_ITERS:
+            # Plain for (BISECT_ITERS is constexpr), not while (see the
+            # bidiag note).
+            for it in range(BISECT_ITERS):
                 mid = 0.5 * (lo + hi)
                 xh, xl = _split_f32(mid)
                 cnt = _gk_sturm_count_less(E2H, E2L, base, N, xh, xl)
@@ -815,7 +820,6 @@ def _sturm_sigmas_kernel(
                     hi = mid
                 else:
                     lo = mid
-                it += 1
             tl.store(S + b * K + j, 0.5 * (lo + hi))
 
 
