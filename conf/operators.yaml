@@ -3064,6 +3064,7 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.0'
+      - beta: '5.3'
   - id: iand_scalar
     description: The scalar version of `iand_tensor`.
     for:
