@@ -4934,6 +4934,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: hinge_embedding_loss
+    description: Compute the hinge embedding loss.
+    for:
+      - hinge_embedding_loss
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: histc
     description: |
       Computes the histogram of a tensor, binning each element into equal-width bins.
