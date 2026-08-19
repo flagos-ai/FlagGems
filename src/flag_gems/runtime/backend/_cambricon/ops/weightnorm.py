@@ -30,8 +30,23 @@ logger = logging.getLogger(__name__)
 MAX_N = 31744
 
 
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]
+def weight_norm_kernel_last_block_row(args):
+    # Pin the row tile to 1 and let the kernel loop over all M rows. Feeding an
+    # oversized BLOCK_ROW_SIZE to the MLU IR optimizer for a tiny M (e.g. M=1)
+    # crashes autotuning with "Internal mluir optimize error".
+    return 1
+
+
+def weight_norm_kernel_last_block_col(args):
+    # Spread the N columns across the available cores.
+    return triton.next_power_of_2(triton.cdiv(args["N"], TOTAL_CORE_NUM))
+
+
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": weight_norm_kernel_last_block_row,
+        "BLOCK_COL_SIZE": weight_norm_kernel_last_block_col,
+    },
 )
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
@@ -212,8 +227,11 @@ def weight_norm_kernel_first(
                 tl.store(output + offset, out, mask=mask)
 
 
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": weight_norm_kernel_last_block_row,
+        "BLOCK_COL_SIZE": weight_norm_kernel_last_block_col,
+    },
 )
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
