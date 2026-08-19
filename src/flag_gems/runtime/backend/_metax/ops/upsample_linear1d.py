@@ -38,7 +38,7 @@ device = device.name
 
 @triton.autotune(
     configs=runtime.get_tuned_config("upsample_linear1d"),
-    key=["N", "C", "W_in", "W_out"],
+    key=["NC", "W_in", "W_out"],
 )
 @triton.heuristics(
     values={
