@@ -29,6 +29,8 @@ NEXTAFTER_DTYPES = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_(shape, dtype):
     # Test nextafter_: returns the next representable value from x toward y
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     y = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -50,6 +52,8 @@ def test_nextafter_(shape, dtype):
 def test_nextafter_zero_boundary(dtype):
     """Test +0/-0 crossing: +0 toward -inf => -0, -0 toward +inf => min pos subnormal."""
     # +0.0 toward -1.0 should produce -0.0
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     x_pos_zero = torch.zeros(10, dtype=dtype, device=flag_gems.device)
     y_neg = torch.full((10,), -1.0, dtype=dtype, device=flag_gems.device)
 
@@ -77,6 +81,9 @@ def test_nextafter_zero_boundary(dtype):
         utils.gems_assert_close(imp_x2, ref_x2, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
+)
 @pytest.mark.nextafter_
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_nan(dtype):
@@ -117,6 +124,8 @@ def test_nextafter_nan(dtype):
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_inf(dtype):
     """Test nextafter_ with Inf inputs."""
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     x = torch.tensor(
         [1.0, float("inf"), float("-inf"), 0.0], dtype=dtype, device=flag_gems.device
     )
@@ -174,6 +183,8 @@ def test_nextafter_finfo_extremes():
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_scalar_y(dtype):
     """Test nextafter_ with tensor x and 0-dim tensor y (tests tensor-scalar kernel path)."""
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     x = torch.randn(16, dtype=dtype, device=flag_gems.device)
     scalar_y = torch.tensor(0.5, dtype=dtype, device=flag_gems.device)
 
@@ -193,6 +204,8 @@ def test_nextafter_scalar_x(dtype):
     """Test nextafter_ with scalar x: this goes through Python numpy path."""
     # When x is a scalar Python float, nextafter_ falls back to numpy.nextafter
     # and returns a tensor (consistent with torch op signature)
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     scalar_x = 0.5
     y = torch.full((16,), 1.0, dtype=dtype, device=flag_gems.device)
 
@@ -210,6 +223,9 @@ def test_nextafter_scalar_x(dtype):
     utils.gems_assert_close(imp_x, ref_x, dtype)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5253: Not supported"
+)
 @pytest.mark.nextafter_
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_scalar_nan_y(dtype):
@@ -233,6 +249,8 @@ def test_nextafter_scalar_nan_y(dtype):
 @pytest.mark.parametrize("dtype", NEXTAFTER_DTYPES)
 def test_nextafter_scalar_inf_y(dtype):
     """Test nextafter_ with tensor x and Inf 0-dim tensor y."""
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     x = torch.ones(8, dtype=dtype, device=flag_gems.device)
     scalar_y = torch.tensor(float("inf"), dtype=dtype, device=flag_gems.device)
 

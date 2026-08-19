@@ -2,17 +2,11 @@
 import logging
 
 import torch
-import triton
+
+from flag_gems.ops.bmm import bmm
+from flag_gems.ops.mm import mm
 
 logger = logging.getLogger(__name__)
-
-
-# This is a placeholder kernel to satisfy the Triton kernel requirement.
-# The actual computation is delegated to mm/bmm which use Triton kernels internally.
-@triton.jit
-def linalg_matmul_dummy_kernel():
-    """Dummy kernel to satisfy Triton kernel requirement."""
-    pass
 
 
 def linalg_matmul(input, other):
@@ -26,10 +20,6 @@ def linalg_matmul(input, other):
     This is an alias for torch.matmul.
     """
     logger.debug("GEMS LINALG_MATMUL")
-
-    # Import here to avoid circular imports
-    from flag_gems.ops.bmm import bmm
-    from flag_gems.ops.mm import mm
 
     # Handle 2D case: (M, K) @ (K, N) -> (M, N)
     if input.dim() == 2 and other.dim() == 2:
