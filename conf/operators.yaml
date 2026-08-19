@@ -1154,6 +1154,18 @@ ops:
       - Tensor
     stages:
       - stable: '5.3'
+  - id: batch_norm_stats
+    description: |
+      Computes per-channel mean and inverse standard deviation for batch normalization.
+    for:
+      - batch_norm_stats
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: blackman_window
     description: Computes the Blackman window function.
     for:
