@@ -95,6 +95,7 @@ target_include_directories(pointwise_dynamic
     INTERFACE
         $<BUILD_INTERFACE:${POINTWISE_OUTPUT_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:include/flag_gems/pointwise_dynamic>
 )
 
 # Ensure headers are generated before anything uses this library

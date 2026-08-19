@@ -42,8 +42,8 @@ decorator does not carry (public schema, kwarg names/defaults, and the
 aten-name -> kernel-symbol mapping incl. value-dependent selection).
 """
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from dataclasses import dataclass
+from typing import List, Optional
 
 # ===================================================================
 # Parameter model
@@ -162,10 +162,10 @@ class OpSpec:
 
 @dataclass
 class ImplOnly:
-    """An extra ``m.impl`` registration with no local schema / decl / body.
+    """An extra ``m.impl`` registration for a separately declared schema.
 
-    Used for aten overloads that reuse an existing C++ fn but whose aten schema
-    is provided by PyTorch's built-in registry (e.g. ``div.Scalar`` -> true_div).
+    Custom ``flag_gems`` overloads must have local schemas because the boxed
+    adapter queries ``op.schema()`` before decoding the boxed stack.
     """
 
     aten_name: str
@@ -360,7 +360,11 @@ _DIV: List[OpSpec] = [
         handwritten=True,
         boxed_select={
             "on": "rounding_mode",
-            "cases": {"floor": "floor_div_func", "trunc": "trunc_div_func"},
+            "cases": {
+                "floor": "floor_div_func",
+                "trunc": "trunc_div_func",
+                "none": "true_div_func",
+            },
             "default": "true_div_func",
             "family": True,
         },
@@ -376,7 +380,11 @@ _DIV: List[OpSpec] = [
         handwritten=True,
         boxed_select={
             "on": "rounding_mode",
-            "cases": {"floor": "floor_div_func", "trunc": "trunc_div_func"},
+            "cases": {
+                "floor": "floor_div_func",
+                "trunc": "trunc_div_func",
+                "none": "true_div_func",
+            },
             "default": "true_div_func",
             "family": True,
         },
@@ -525,21 +533,36 @@ _FILL_PYBIND = [
 ]
 
 # TORCH_LIBRARY schema block (schema strings, in file order).
+# Must be 1:1 aligned with _DIV_IMPL — every impl needs a schema in the custom
+# flag_gems namespace because the boxed adapter calls op.schema().
 _DIV_SCHEMA = [
     "div.Tensor(Tensor self, Tensor other) -> Tensor",
     "div_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)",
     "div.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor",
     "div_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)",
+    "div.Scalar(Tensor self, Scalar other) -> Tensor",
+    "div_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)",
+    "div.Scalar_mode(Tensor self, Scalar other, *, str? rounding_mode) -> Tensor",
+    "div_.Scalar_mode(Tensor(a!) self, Scalar other, *, str? rounding_mode) -> Tensor(a!)",
     "floor_divide(Tensor self, Tensor other) -> Tensor",
     "floor_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)",
+    "floor_divide.Scalar(Tensor self, Scalar other) -> Tensor",
+    "floor_divide_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)",
     "divide.Tensor(Tensor self, Tensor other) -> Tensor",
     "divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)",
+    "divide.Scalar(Tensor self, Scalar other) -> Tensor",
+    "divide_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)",
     "divide.Tensor_mode(Tensor self, Tensor other, *, str? rounding_mode) -> Tensor",
     "divide_.Tensor_mode(Tensor(a!) self, Tensor other, *, str? rounding_mode) -> Tensor(a!)",
+    "divide.Scalar_mode(Tensor self, Scalar other, *, str? rounding_mode) -> Tensor",
+    "divide_.Scalar_mode(Tensor(a!) self, Scalar other, *, str? rounding_mode) -> Tensor(a!)",
     "true_divide.Tensor(Tensor self, Tensor other) -> Tensor",
     "true_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)",
+    "remainder.Scalar(Tensor self, Scalar other) -> Tensor",
+    "remainder_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)",
     "remainder.Tensor(Tensor self, Tensor other) -> Tensor",
     "remainder_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)",
+    "remainder.Scalar_Tensor(Scalar self, Tensor other) -> Tensor",
 ]
 _FILL_SCHEMA = [
     "fill.Scalar(Tensor self, Scalar value) -> Tensor",

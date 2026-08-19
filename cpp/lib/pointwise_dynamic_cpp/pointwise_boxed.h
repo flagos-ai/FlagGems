@@ -84,7 +84,8 @@ namespace detail {
   struct BoxedArg {
     bool is_tensor = false;
     at::Tensor tensor;    // valid when is_tensor
-    double scalar = 0.0;  // valid when !is_tensor (Scalar/int/float/bool)
+    double scalar = 0.0;  // valid when !is_tensor
+    at::ScalarType scalar_dtype = at::kDouble;  // valid when !is_tensor
   };
 
   // Derive the "<base>_tensor_scalar" / "<base>_scalar_tensor" variant name for a
@@ -119,11 +120,13 @@ namespace detail {
     // Triton ("Expected base to be a pointer type").
     if (a.is_tensor && !b.is_tensor) {
       TORCH_CHECK(!ts.empty(), "flaggems boxed: missing tensor_scalar variant");
-      return pd::dispatch_pointwise(ts, {a.tensor}, {b.scalar}, {true, false}, outs);
+      return pd::dispatch_pointwise(
+          ts, {a.tensor}, {b.scalar}, {b.scalar_dtype}, {true, false}, outs);
     }
     if (!a.is_tensor && b.is_tensor) {
       TORCH_CHECK(!st.empty(), "flaggems boxed: missing scalar_tensor variant");
-      return pd::dispatch_pointwise(st, {b.tensor}, {a.scalar}, {false, true}, outs);
+      return pd::dispatch_pointwise(
+          st, {b.tensor}, {a.scalar}, {a.scalar_dtype}, {false, true}, outs);
     }
 
     // both tensors: apply the 0-dim promotion rule (mirrors lib/div.cpp).
@@ -131,13 +134,25 @@ namespace detail {
     const at::Tensor& tb = b.tensor;
     if (ta.dim() == 0 && tb.dim() > 0) {
       TORCH_CHECK(!st.empty(), "flaggems boxed: missing scalar_tensor variant");
-      return pd::dispatch_pointwise(st, {tb}, {ta.item<double>()}, {false, true}, outs);
+      return pd::dispatch_pointwise(
+          st,
+          {tb},
+          {ta.item<double>()},
+          {ta.scalar_type()},
+          {false, true},
+          outs);
     }
     if (tb.dim() == 0) {
       TORCH_CHECK(!ts.empty(), "flaggems boxed: missing tensor_scalar variant");
-      return pd::dispatch_pointwise(ts, {ta}, {tb.item<double>()}, {true, false}, outs);
+      return pd::dispatch_pointwise(
+          ts,
+          {ta},
+          {tb.item<double>()},
+          {tb.scalar_type()},
+          {true, false},
+          outs);
     }
-    return pd::dispatch_pointwise(base, {ta, tb}, {}, {true, true}, outs);
+    return pd::dispatch_pointwise(base, {ta, tb}, {}, {}, {true, true}, outs);
   }
 
   // remainder's both-0-dim host special case (mirrors lib/div.cpp::remainder).
@@ -187,12 +202,16 @@ void flaggems_pointwise_boxed(const c10::OperatorHandle& op, torch::jit::Stack* 
       }
     } else if (iv.isScalar()) {
       a.scalar = iv.toScalar().toDouble();
+      a.scalar_dtype = iv.toScalar().type();
     } else if (iv.isInt()) {
       a.scalar = static_cast<double>(iv.toInt());
+      a.scalar_dtype = at::kLong;
     } else if (iv.isDouble()) {
       a.scalar = iv.toDouble();
+      a.scalar_dtype = at::kDouble;
     } else if (iv.isBool()) {
       a.scalar = iv.toBool() ? 1.0 : 0.0;
+      a.scalar_dtype = at::kBool;
     } else if (iv.isString()) {
       str_arg = iv.toStringRef();
       have_str = true;
@@ -220,8 +239,35 @@ void flaggems_pointwise_boxed(const c10::OperatorHandle& op, torch::jit::Stack* 
         }
       }
     }
-    // no string / unmatched -> recipe.kernel default (already in `base`)
+    // Missing selectors use the recipe default (GELU: "none"; division:
+    // absent/None/"none" -> true division). An explicitly supplied unknown
+    // selector must not silently fall back to a different operation.
+    if (have_str) {
+      bool matched = false;
+      for (const auto& c : recipe.cases) {
+        if (str_arg == c.value) {
+          matched = true;
+          break;
+        }
+      }
+      TORCH_CHECK(
+          matched,
+          "flaggems_pointwise_boxed: invalid selector '",
+          str_arg,
+          "' for '",
+          key,
+          "'");
+    }
     TORCH_CHECK(!base.empty(), "flaggems_pointwise_boxed: no base kernel for '", key, "'");
+  }
+
+  if ((key == "flag_gems::fill.Tensor" || key == "flag_gems::fill_.Tensor") &&
+      args.size() >= 2 && args[1].is_tensor) {
+    TORCH_CHECK(
+        args[1].tensor.dim() == 0,
+        key == "flag_gems::fill.Tensor"
+            ? "fill_tensor only supports 0-dim value tensor"
+            : "fill_tensor_ only supports 0-dim value tensor");
   }
 
   at::Tensor result;
@@ -258,6 +304,7 @@ void flaggems_pointwise_boxed(const c10::OperatorHandle& op, torch::jit::Stack* 
     // args (in order); mask follows natural argument order.
     std::vector<at::Tensor> tensors;
     std::vector<double> scalars;
+    std::vector<at::ScalarType> scalar_dtypes;
     std::vector<bool> mask;
     tensors.reserve(args.size());
     mask.reserve(args.size());
@@ -267,11 +314,13 @@ void flaggems_pointwise_boxed(const c10::OperatorHandle& op, torch::jit::Stack* 
         tensors.push_back(a.tensor);
       } else {
         scalars.push_back(a.scalar);
+        scalar_dtypes.push_back(a.scalar_dtype);
       }
     }
     std::vector<c10::optional<at::Tensor>> outs;
     if (pre_out.has_value()) outs = {pre_out};
-    result = pointwise_dynamic::dispatch_pointwise(base, tensors, scalars, mask, outs);
+    result = pointwise_dynamic::dispatch_pointwise(
+        base, tensors, scalars, scalar_dtypes, mask, outs);
   }
 
   torch::jit::push(*stack, std::move(result));

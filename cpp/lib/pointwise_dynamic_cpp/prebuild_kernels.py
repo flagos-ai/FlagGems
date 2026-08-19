@@ -63,18 +63,28 @@ from typing import Dict, List
 # Path setup — ensure FlagGems source tree is importable
 # ---------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).parent.resolve()
-FLAGGEMS_ROOT = SCRIPT_DIR.parent.parent
+FLAGGEMS_ROOT = SCRIPT_DIR.parent.parent.parent
 FLAGGEMS_SRC = FLAGGEMS_ROOT / "src"
 sys.path.insert(0, str(FLAGGEMS_SRC))
 # op_specs.py lives alongside this script.
 sys.path.insert(0, str(SCRIPT_DIR))
 
 try:
+    import flag_gems
     from flag_gems.utils.code_cache import code_cache_dir
     from flag_gems.utils.pointwise_dynamic import PointwiseDynamicFunction
 except ImportError as e:
     print(f"Error importing FlagGems: {e}")
     print(f"Ensure FlagGems source can be found at: {FLAGGEMS_SRC}")
+    sys.exit(1)
+
+FLAGGEMS_IMPORTED_FROM = Path(flag_gems.__file__).resolve().parent
+FLAGGEMS_EXPECTED_PACKAGE = (FLAGGEMS_SRC / "flag_gems").resolve()
+if FLAGGEMS_IMPORTED_FROM != FLAGGEMS_EXPECTED_PACKAGE:
+    print(
+        "Error: imported flag_gems from an unexpected source tree: "
+        f"{FLAGGEMS_IMPORTED_FROM} (expected {FLAGGEMS_EXPECTED_PACKAGE})"
+    )
     sys.exit(1)
 
 
@@ -495,10 +505,10 @@ def generate_manifest_header(entries: List[KernelEntry], max_rank: int) -> str:
     lines.append(f"constexpr int MAX_RANK = {max_rank};")
     lines.append("")
     lines.append(
-        "// POINTWISE_MAX_RANK: The C++ dispatch pre-generates kernels for ranks 0..5."
+        f"// POINTWISE_MAX_RANK: The C++ dispatch pre-generates kernels for ranks 0..{max_rank}."
     )
     lines.append(
-        "// Inputs with effective rank > 5 that skip the fast path will error with a"
+        f"// Inputs with effective rank > {max_rank} that skip the fast path will error with a"
     )
     lines.append(
         "// TORCH_CHECK. The Python path (torch.ops.flag_gems.*) codegens any rank on"
@@ -596,12 +606,15 @@ def _generate_wrapper(
     if ns == 0:
         s_params_with_comma = ""
         s_args = "{}"
+        scalar_dtypes = "{}"
     elif ns == 1:
         s_params_with_comma = ", double scalar = 1.0"
         s_args = "{scalar}"
+        scalar_dtypes = "{at::kDouble}"
     elif ns == 2:
         s_params_with_comma = ", double scalar0 = 0.0, double scalar1 = 0.0"
         s_args = "{scalar0, scalar1}"
+        scalar_dtypes = "{at::kDouble, at::kDouble}"
     else:
         return f"// TODO: unsupported {ns} scalars for {op_name}\n\n"
 
@@ -618,7 +631,7 @@ def _generate_wrapper(
     all_params = t_params + (s_params_with_comma if ns else "")
     code += f"inline at::Tensor {op_name}({all_params}) {{\n"
     code += registry_lookup
-    code += f"    return dispatch_pointwise_impl(registry, {t_args}, {s_args}, {mask}, {{}});\n"
+    code += f"    return dispatch_pointwise_impl(registry, {t_args}, {s_args}, {scalar_dtypes}, {mask}, {{}});\n"
     code += "}\n\n"
 
     # _out wrapper (out tensor inserted after input tensors)
@@ -626,7 +639,7 @@ def _generate_wrapper(
     code += f"inline at::Tensor {op_name}_out({out_params}) {{\n"
     code += registry_lookup
     code += "    std::vector<c10::optional<at::Tensor>> pre_outputs = {out};\n"
-    code += f"    return dispatch_pointwise_impl(registry, {t_args}, {s_args}, {mask}, pre_outputs);\n"
+    code += f"    return dispatch_pointwise_impl(registry, {t_args}, {s_args}, {scalar_dtypes}, {mask}, pre_outputs);\n"
     code += "}\n\n"
 
     return code
@@ -1080,6 +1093,50 @@ def validate_specs(specs, kernel_meta: Dict[str, tuple]) -> None:
         sys.exit(1)
 
 
+def validate_legacy_alignment(schema_list, impl_list) -> None:
+    """Validate 1:1 alignment between LEGACY_SCHEMA and LEGACY_IMPL.
+
+    The custom flag_gems namespace requires local schemas for all implementations
+    because the boxed adapter calls op.schema(). Every impl must have a schema,
+    and vice versa.
+    """
+    errors = []
+
+    # Extract schema names (before the opening paren)
+    schema_names = set()
+    for s in schema_list:
+        name = s.split("(")[0].strip()
+        if name in schema_names:
+            errors.append(f"Duplicate schema name: {name}")
+        schema_names.add(name)
+
+    # Extract impl names (first element of each tuple)
+    impl_names = set()
+    for impl_name, cpp_fn in impl_list:
+        if impl_name in impl_names:
+            errors.append(f"Duplicate impl name: {impl_name}")
+        impl_names.add(impl_name)
+
+    # Check alignment
+    missing_schemas = impl_names - schema_names
+    missing_impls = schema_names - impl_names
+
+    if missing_schemas:
+        errors.append(
+            f"Implementations without schemas: {sorted(missing_schemas)}\n"
+            f"  (boxed adapter needs local schemas for all custom namespace impls)"
+        )
+
+    if missing_impls:
+        errors.append(f"Schemas without implementations: {sorted(missing_impls)}")
+
+    if errors:
+        print("ERROR: LEGACY_SCHEMA / LEGACY_IMPL alignment check failed:")
+        for e in errors:
+            print(f"  - {e}")
+        sys.exit(1)
+
+
 # ===================================================================
 # Main entry point
 # ===================================================================
@@ -1104,7 +1161,7 @@ def main():
         help="Directory containing op files to scan",
     )
 
-    parser.add_argument("--max-rank", type=int, default=6, help="Maximum tensor rank")
+    parser.add_argument("--max-rank", type=int, default=5, help="Maximum tensor rank")
     parser.add_argument(
         "--output-dir", type=str, required=True, help="Output directory"
     )
@@ -1215,6 +1272,7 @@ def main():
         if e
     }
     validate_specs(op_specs.ALL_SPECS, kernel_meta)
+    validate_legacy_alignment(op_specs.LEGACY_SCHEMA, op_specs.LEGACY_IMPL)
 
     glue_header = output_dir / "pointwise_ops_glue.h"
     glue_header.write_text(generate_operators_glue_header(op_specs.ALL_SPECS))

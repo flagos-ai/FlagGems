@@ -54,6 +54,12 @@ target_include_directories(operators
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
+if(FLAGGEMS_BACKEND STREQUAL "CUDA" OR FLAGGEMS_BACKEND STREQUAL "IX")
+  # Public headers transitively include c10/cuda headers, so consumers such as
+  # ctests need the CUDA runtime include directory as well.
+  target_include_directories(operators PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+endif()
+
 # Backend conditional linking
 if(FLAGGEMS_BACKEND STREQUAL "CUDA" OR FLAGGEMS_BACKEND STREQUAL "IX")
     target_link_libraries(operators
@@ -115,7 +121,8 @@ if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
   # consumers (c_operators, ctests). The pointwise_dynamic INTERFACE lib itself
   # stays PRIVATE to keep it out of the operators export set.
   target_include_directories(operators PUBLIC
-    $<BUILD_INTERFACE:${POINTWISE_GENERATED_DIR}>)
+    $<BUILD_INTERFACE:${POINTWISE_GENERATED_DIR}>
+    $<INSTALL_INTERFACE:include/flag_gems/pointwise_dynamic>)
   target_compile_definitions(operators PRIVATE FLAGGEMS_POINTWISE_DYNAMIC)
 
   if(FLAGGEMS_POINTWISE_DYNAMIC_BOXED)
@@ -128,7 +135,8 @@ if(FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP)
     # cstub.cpp includes the DECLARATION-only pointwise_boxed.h (no CUDA deps),
     # so the source dir must be on the PUBLIC include path.
     target_include_directories(operators PUBLIC
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/pointwise_dynamic_cpp>)
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/pointwise_dynamic_cpp>
+      $<INSTALL_INTERFACE:include/flag_gems/pointwise_dynamic>)
     # The registration switch must reach both operators and its consumer
     # (c_operators) so the generated boxed m.impl lines are compiled in.
     target_compile_definitions(operators PUBLIC FLAGGEMS_POINTWISE_DYNAMIC_BOXED)
