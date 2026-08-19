@@ -420,9 +420,16 @@ class Conv2d(torch.autograd.Function):
             if groups == 1:
                 weight = torch.nn.functional.pad(weight, (0, 0, 0, 0, 0, 0, 0, pad_oc))
             else:
-                weight = weight.reshape(groups, out_per_group_c, weight_c, weight_height, weight_width)
+                weight = weight.reshape(
+                    groups, out_per_group_c, weight_c, weight_height, weight_width
+                )
                 weight = torch.nn.functional.pad(weight, (0, 0, 0, 0, 0, 0, 0, pad_oc))
-                weight = weight.reshape(groups * (out_per_group_c + pad_oc), weight_c, weight_height, weight_width)
+                weight = weight.reshape(
+                    groups * (out_per_group_c + pad_oc),
+                    weight_c,
+                    weight_height,
+                    weight_width,
+                )
             fwd_out_c = groups * (out_per_group_c + pad_oc)
 
         # Pad batch dimension (in_n) when small. AABS may shrink BLOCK_NI_HO_WO
@@ -458,7 +465,9 @@ class Conv2d(torch.autograd.Function):
         )
 
         if bias is None:
-            bias_pointer = torch.zeros(fwd_out_c, device=input.device, dtype=output_dtype)
+            bias_pointer = torch.zeros(
+                fwd_out_c, device=input.device, dtype=output_dtype
+            )
         else:
             # Pad bias if out_c was padded
             if fwd_out_c != out_c:
@@ -594,9 +603,7 @@ class Conv2d(torch.autograd.Function):
                 N_bwd, C_bwd, H_bwd, W_bwd = new_out.shape
                 new_out = new_out.reshape(N_bwd, groups, out_c, H_bwd, W_bwd)
                 new_out = torch.nn.functional.pad(new_out, (0, 0, 0, 0, 0, pad_k))
-                new_out = new_out.reshape(
-                    N_bwd, groups * (out_c + pad_k), H_bwd, W_bwd
-                )
+                new_out = new_out.reshape(N_bwd, groups * (out_c + pad_k), H_bwd, W_bwd)
             bwd_weight_c = bwd_weight_c + pad_k
 
         # Pad M dimension (weight_c per group as kernel's out_per_group_c)
@@ -649,9 +656,7 @@ class Conv2d(torch.autograd.Function):
             triton.cdiv(int(bwd_out_c), META["BLOCK_CO"]),
             groups,
         )
-        bias_zero = torch.zeros(
-            groups * bwd_out_c, device=device, dtype=out_grad.dtype
-        )
+        bias_zero = torch.zeros(groups * bwd_out_c, device=device, dtype=out_grad.dtype)
 
         conv2d_forward_kernel[grid](
             bwd_fwd_new_out,
@@ -712,9 +717,7 @@ class Conv2d(torch.autograd.Function):
         # Pad batch dimension (N) so in_n >= _MIN_DOT_K for K dim of dot
         if bwd_wt_in_n < _MIN_DOT_K:
             pad_n = _MIN_DOT_K - bwd_wt_in_n
-            bwd_wt_input = torch.nn.functional.pad(
-                input, (0, 0, 0, 0, 0, 0, 0, pad_n)
-            )
+            bwd_wt_input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_n))
             bwd_wt_out_grad = torch.nn.functional.pad(
                 out_grad, (0, 0, 0, 0, 0, 0, 0, pad_n)
             )
