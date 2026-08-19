@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -12,6 +26,8 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_special_hermite_polynomial_h(shape, dtype):
     # Test with tensor n in [0, 9]
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     n = torch.randint(0, 10, (1,), device=flag_gems.device).squeeze()
 
@@ -35,6 +51,8 @@ def test_special_hermite_polynomial_h(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_special_hermite_polynomial_h_scalar(shape, dtype):
     # Test with scalar n = 9 (largest supported degree)
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     n = 9
 
@@ -55,6 +73,8 @@ def test_special_hermite_polynomial_h_scalar(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_special_hermite_polynomial_h_out_of_range(dtype):
     # Verify that n >= 10 or n < 0 raises ValueError
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     inp = torch.randn(4, 4, dtype=dtype, device=flag_gems.device)
 
     with flag_gems.use_gems():

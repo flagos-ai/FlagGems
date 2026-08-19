@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 from typing import Generator
 
@@ -20,9 +34,17 @@ def _input_fn(shape, dtype, device):
 
 
 class CatBenchmark(base.Benchmark):
+    # cat creates 3 inputs + 1 output (3x one input along cat dim),
+    # totalling ~6x one input's memory. Cap elements to avoid OOM.
+    MAX_ELEMENTS = 2**29
+
     def __init__(self, *args, **kwargs):
         self.input_fn = kwargs.pop("input_fn", _input_fn)
         super().__init__(*args, **kwargs)
+
+    def init_user_config(self):
+        super().init_user_config()
+        self.shapes = [s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS]
 
     def get_input_iter(self, dtype) -> Generator:
         for shape in self.shapes:
@@ -35,7 +57,6 @@ class CatBenchmark(base.Benchmark):
         return more_shapes_2d + more_shapes_3d
 
 
-@pytest.mark.skip("Benchmark test fails: issue #2673")
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 
 import pytest
@@ -174,6 +188,9 @@ def efficient_attn_sdp_forward_native(
 
 
 @pytest.mark.flash_attention_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     [
@@ -289,6 +306,9 @@ def test_flash_attention_backward(
 
 
 @pytest.mark.scaled_dot_product_cudnn_attention_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     [
@@ -426,6 +446,9 @@ def test_scaled_dot_product_cudnn_attention_backward(
 
 
 @pytest.mark.efficient_attention_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     [
@@ -555,6 +578,9 @@ def test_efficient_attention_backward(
 
 
 @pytest.mark.scaled_dot_product_efficient_attention_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     [

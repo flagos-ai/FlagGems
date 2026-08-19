@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -47,7 +61,7 @@ def scatter_input_fn_factory(reduce=None):
         if reduce is None:
             yield inp, dim, index, src
         else:
-            yield inp, dim, index, src, reduce
+            yield inp, dim, index, src, {"reduce": reduce}
 
     return inner
 
@@ -75,7 +89,7 @@ def scatter_inplace_input_fn_factory(reduce=None):
         if reduce is None:
             yield inp, dim, index, src
         else:
-            yield inp, dim, index, src, reduce
+            yield inp, dim, index, src, {"reduce": reduce}
 
     return inner
 
@@ -99,7 +113,7 @@ def test_scatter_reduce_add():
         torch_op=torch.scatter,
         input_fn=scatter_input_fn_factory("add"),
         get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
     )
     bench.run()
 
@@ -114,7 +128,7 @@ def test_scatter_reduce_multiply():
         torch_op=torch.scatter,
         input_fn=scatter_input_fn_factory("multiply"),
         get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
     )
     bench.run()
 
@@ -129,7 +143,7 @@ def test_scatter_reduce_add_inplace():
         torch_op=torch.Tensor.scatter_,
         input_fn=scatter_inplace_input_fn_factory("add"),
         get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
         is_inplace=True,
     )
     bench.run()
@@ -145,7 +159,7 @@ def test_scatter_reduce_multiply_inplace():
         torch_op=torch.Tensor.scatter_,
         input_fn=scatter_inplace_input_fn_factory("multiply"),
         get_gbps=gather_scatter_gbps,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
         is_inplace=True,
     )
     bench.run()

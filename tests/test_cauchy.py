@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import numpy as np
 import pytest
 import torch
@@ -29,6 +43,8 @@ def test_cauchy_accuracy(shape, dtype, median, sigma):
     Test that cauchy_ produces samples that follow the expected Cauchy distribution.
     We use statistical tests to verify the distribution properties.
     """
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     torch.manual_seed(42)
     x = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
@@ -101,6 +117,8 @@ def test_cauchy_out_accuracy(shape, dtype, median, sigma):
     """
     Test the out-of-place cauchy function.
     """
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     torch.manual_seed(42)
     x = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
@@ -158,6 +176,8 @@ def test_cauchy_reproducibility(shape, dtype):
     """
     Test that cauchy_ produces reproducible results with the same seed.
     """
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
+        pytest.skip("Issue #5253: Not supported")
     torch.manual_seed(12345)
     x1 = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 

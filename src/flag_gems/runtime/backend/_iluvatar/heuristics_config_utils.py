@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import torch
 import triton
 
@@ -72,7 +86,12 @@ def index_select_heur_block_n(args):
 
 
 def mm_heur_even_k(args):
-    return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
+    split_k = args.get("SPLIT_K", 1)
+    return args["K"] % (args["BLOCK_K"] * split_k) == 0
+
+
+def linear_heur_even_k(args):
+    return mm_heur_even_k(args)
 
 
 def rand_heur_block(args):
@@ -245,6 +264,9 @@ HEURISTICS_CONFIGS = {
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
+    },
+    "linear": {
+        "EVEN_K": linear_heur_even_k,
     },
     "rand": {
         "BLOCK": rand_heur_block,

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import numpy as np
@@ -39,6 +53,15 @@ MK_SHAPES = (
 )
 
 
+def _mm_atol_base():
+    """On MetaX C550, the hardware matmul unit has inherent precision limits in
+    fp16/bf16 (confirmed by native torch.mm showing the same error vs fp64 ref).
+    Use a larger atol base to accommodate hardware accumulation precision."""
+    if flag_gems.vendor_name == "metax":
+        return 3e-4
+    return 1e-4
+
+
 # Issue #2833: fails at (1, 1, 2)
 @pytest.mark.mm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
@@ -60,7 +83,7 @@ def test_mm(M, N, K, dtype, b_column_major):
     with flag_gems.use_gems():
         res_out = torch.mm(mat1, mat2)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
 
 @pytest.mark.mm
@@ -85,7 +108,7 @@ def test_mm_broadcast_stride_zero(dtype):
     with flag_gems.use_gems():
         res_out = torch.mm(a, b)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
 
 @pytest.mark.mm
@@ -111,7 +134,7 @@ def test_mm_out_vllm_tma_column_major_weight():
     with flag_gems.use_gems():
         torch.mm(mat1, mat2, out=out)
 
-    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
 
 @pytest.mark.mm
@@ -119,8 +142,11 @@ def test_mm_out_vllm_tma_column_major_weight():
     not hasattr(
         getattr(getattr(triton, "tools", None), "tensor_descriptor", None),
         "TensorDescriptor",
-    ),
-    reason="Host TMA TensorDescriptor is required for this regression test.",
+    )
+    or flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability()[0] < 9,
+    reason="Host TMA TensorDescriptor and Hopper GPU are required for this regression test.",
 )
 def test_mm_kernel_general_host_tma_vllm_column_major_weight_compile_error():
     """Reproduce the vLLM TMA descriptor compile error for a column-major BF16 weight."""
@@ -196,7 +222,7 @@ def test_mm_self_transpose(M, K, dtype):
     with flag_gems.use_gems():
         res_out = torch.mm(mat, mat.t())
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
 
 
 @pytest.mark.mm_out
@@ -222,4 +248,4 @@ def test_mm_out_self_transpose(M, K, dtype):
     with flag_gems.use_gems():
         torch.mm(mat, mat.t(), out=out)
 
-    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())

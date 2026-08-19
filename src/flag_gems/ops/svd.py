@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 from collections import namedtuple
 
@@ -1510,7 +1524,10 @@ def _small_jacobi_singular_values(input):
     s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
     block_r = triton.next_power_of_2(rows)
     block_k = triton.next_power_of_2(k)
-    sweeps = 3 if k <= 4 else 5
+    # One-sided Jacobi needs enough sweeps for the smallest singular values to
+    # converge; the trailing singular values are the slowest. Use 8 sweeps for
+    # all sizes up to 16, which leaves atol=1e-3 margin on the smallest value.
+    sweeps = 8
     with torch_device_fn.device(input.device):
         _small_jacobi_svals_kernel[(batch,)](
             a,
@@ -1541,7 +1558,10 @@ def _small_jacobi_svd(input):
     v = torch.empty((batch, n, k), dtype=input.dtype, device=input.device)
     block_r = triton.next_power_of_2(rows)
     block_k = triton.next_power_of_2(k)
-    sweeps = 3 if k <= 4 else 5
+    # One-sided Jacobi needs enough sweeps for the smallest singular values to
+    # converge; the trailing singular values are the slowest. Use 8 sweeps for
+    # all sizes up to 16, which leaves atol=1e-3 margin on the smallest value.
+    sweeps = 8
     with torch_device_fn.device(input.device):
         _small_jacobi_svd_kernel[(batch,)](
             a,

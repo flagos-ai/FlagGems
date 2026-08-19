@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -14,8 +28,8 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.autotune(configs=runtime.get_tuned_config("triu"), key=["M", "N"])
+@libentry()
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_kernel(
     X,
@@ -64,11 +78,11 @@ def triu_kernel(
             tl.store(Y + offset, write, mask=n_mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("triu_batch"),
     key=["batch", "MN", "N", "diagonal"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_batch_kernel(
     X,

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -107,5 +121,66 @@ def test_max_pool2d_backward(
         dilation=dilation,
         ceil_mode=ceil_mode,
     )
+
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.max_pool2d_with_indices_backward
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL2D_CONFIGS
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_max_pool2d_with_indices_backward(
+    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
+):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, upcast=True)
+
+    # Run forward to get indices
+    ref_out, ref_indices = torch.ops.aten.max_pool2d_with_indices(
+        ref_inp,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        ceil_mode,
+    )
+    res_out, res_indices = torch.ops.aten.max_pool2d_with_indices(
+        inp,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        ceil_mode,
+    )
+
+    # Create gradient
+    out_grad = torch.randn_like(res_out, device=flag_gems.device)
+    ref_grad = utils.to_reference(out_grad, upcast=True)
+
+    # Reference backward (without flag_gems)
+    ref_in_grad = torch.ops.aten.max_pool2d_with_indices_backward(
+        ref_grad,
+        ref_inp,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        ceil_mode,
+        ref_indices,
+    )
+
+    # FlagGems backward
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.max_pool2d_with_indices_backward(
+            out_grad,
+            inp,
+            kernel_size,
+            stride,
+            padding,
+            dilation,
+            ceil_mode,
+            res_indices,
+        )
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -20,7 +34,6 @@ def _input_fn(shape, dtype, device):
 
 
 class Conj_physicalBenchmark(base.GenericBenchmarkExcluse3D):
-    # TODO(Qiming): Check if this is necessary
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -41,7 +54,14 @@ class Conj_physicalBenchmark(base.GenericBenchmarkExcluse3D):
 
 @pytest.mark.conj_physical
 def test_conj_physical():
-    dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.COMPLEX_DTYPES
+    if "npu" in flag_gems.device or "ascend" in flag_gems.device.lower():
+        # Ascend NPU: kernel mode event timing is unstable, use operator mode
+        from .conftest import Config
+
+        Config.mode = consts.BenchMode.OPERATOR
+        dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES
+    else:
+        dtypes = consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.COMPLEX_DTYPES
 
     bench = Conj_physicalBenchmark(
         input_fn=_input_fn,

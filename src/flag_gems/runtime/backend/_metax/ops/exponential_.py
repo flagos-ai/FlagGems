@@ -10,19 +10,13 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
-logger = logging.getLogger(__name__)
-eps: tl.constexpr = [
-    2.220446049250313e-16,
-    1.1920928955078125e-07,
-    0.0009765625,
-    0.0078125,
-]  # eps for double, float, float16, bfloat16
-eps_1: tl.constexpr = [-0.5 * x for x in eps]
-eps_2: tl.constexpr = [1.0 + x for x in eps_1]
-
-# 1/log2e
-# use this scale to trans loge to log2
-trans_scale: tl.constexpr = 1.0 / 1.4426950408889634
+logger = logging.getLogger("flag_gems." + __name__)
+# eps for double, float, float16, bfloat16
+# Precomputed constants - inlined as literals in JIT functions below
+# eps = [2.220446049250313e-16, 1.1920928955078125e-07, 0.0009765625, 0.0078125]
+# eps_1 = [-0.5 * x for x in eps]  => [-1.110223024625157e-16, -5.960464477539063e-08, -0.00048828125, -0.00390625]
+# eps_2 = [1.0 + x for x in eps_1] => [0.9999999999999999, 0.9999999403953552, 0.99951171875, 0.99609375]
+# trans_scale = 1.0 / 1.4426950408889634 = 0.6931471805599453
 
 
 def heur_block(args):
@@ -37,10 +31,9 @@ def heur_block(args):
 def heur_num_warps(args):
     if args["N"] <= 512:
         return 4
-    elif args["N"] <= 1024:
-        return 8
     else:
-        return 16
+        # MetaX max threads per block = 512 (warp_size=64, max num_warps=8)
+        return 8
 
 
 @triton.heuristics(
@@ -187,8 +180,8 @@ def transform_exponential(u, lambd, eps):
 
 @triton.jit
 def transform_exponential_double(u):
-    eps1 = eps_1[0]
-    is_min = u >= eps_2[0]
+    eps1 = -1.110223024625157e-16
+    is_min = u >= 0.9999999999999999
     log = tl.where(is_min, eps1, tl.math.log(u))
     v = -1.0 * log
 
@@ -197,9 +190,9 @@ def transform_exponential_double(u):
 
 @triton.jit
 def transform_exponential_float(u):
-    eps1 = eps_1[1]
-    is_min = u >= eps_2[1]
-    log = tl.where(is_min, eps1, tl.math.log2(u) * trans_scale)
+    eps1 = -5.960464477539063e-08
+    is_min = u >= 0.9999999403953552
+    log = tl.where(is_min, eps1, tl.math.log2(u) * 0.6931471805599453)
     v = -1.0 * log
 
     return v
@@ -207,9 +200,9 @@ def transform_exponential_float(u):
 
 @triton.jit
 def transform_exponential_float16(u):
-    eps1 = eps_1[2]
-    is_min = u >= eps_2[2]
-    log = tl.where(is_min, eps1, tl.math.log2(u) * trans_scale)
+    eps1 = -0.00048828125
+    is_min = u >= 0.99951171875
+    log = tl.where(is_min, eps1, tl.math.log2(u) * 0.6931471805599453)
     v = -1.0 * log
 
     return v
@@ -217,16 +210,16 @@ def transform_exponential_float16(u):
 
 @triton.jit
 def transform_exponential_bfloat16(u):
-    eps1 = eps_1[3]
-    is_min = u >= eps_2[3]
-    log = tl.where(is_min, eps1, tl.math.log2(u) * trans_scale)
+    eps1 = -0.00390625
+    is_min = u >= 0.99609375
+    log = tl.where(is_min, eps1, tl.math.log2(u) * 0.6931471805599453)
     v = -1.0 * log
 
     return v
 
 
 def exponential_(x, lambd: float = 1.0, *, generator=None):
-    logger.debug("GEMS_METAX EXPONENTIAL_")
+    logger.debug("METAX GEMS EXPONENTIAL_")
     dtype = x.dtype
     device = x.device
     inplace = x.is_contiguous()

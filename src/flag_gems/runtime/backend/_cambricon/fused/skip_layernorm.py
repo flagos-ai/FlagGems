@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -36,8 +50,8 @@ def cfggen_middle_n():
     return configs
 
 
-@libentry()
 @triton.autotune(configs=cfggen_middle_n(), key=["M", "N"])
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def skip_layer_norm_middle_n_kernel(
     Y,  # pointer to the output
@@ -105,8 +119,8 @@ def cfggen():
     return configs
 
 
-@libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def skip_layer_norm_kernel(
     Y,  # pointer to the output
@@ -186,7 +200,7 @@ class SkipLayerNorm(torch.autograd.Function):
             grid = lambda META: (
                 min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),
             )
-            with torch.cuda.device(x.device):
+            with torch_device_fn.device(x.device):
                 skip_layer_norm_middle_n_kernel[grid](
                     y, x, residual, weight, bias, M, eps, N
                 )

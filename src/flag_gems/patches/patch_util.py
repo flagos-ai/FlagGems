@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import torch
 
 
@@ -19,14 +33,14 @@ def _is_op_registered(lib_name, op_name):
 
 def _ensure_vllm_library_exists(lib_name, ops_to_check=None):
     module_map = {
-        "_C": "vllm._C",
-        "_moe_C": "vllm._moe_C",
-        "_vllm_fa3_C": "vllm.vllm_flash_attn._vllm_fa3_C",
-        "_C_cache_ops": "vllm._C_cache_ops",
+        "_C": ("vllm._C", "vllm._C_stable_libtorch"),
+        "_moe_C": ("vllm._moe_C", "vllm._moe_C_stable_libtorch"),
+        "_vllm_fa3_C": ("vllm.vllm_flash_attn._vllm_fa3_C",),
+        "_C_cache_ops": ("vllm._C_cache_ops", "vllm._C_stable_libtorch"),
     }
 
-    module_name = module_map.get(lib_name)
-    if module_name:
+    module_names = module_map.get(lib_name, ())
+    for module_name in module_names:
         imported = _try_import_vllm_extension(module_name)
         if imported:
             if ops_to_check:

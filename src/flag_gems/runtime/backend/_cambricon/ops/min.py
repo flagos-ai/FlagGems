@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from collections import namedtuple
@@ -29,7 +43,6 @@ def min_kernel_float_once(
     tl.store(out, min_val)
 
 
-@libentry()
 @triton.autotune(
     configs=cfggen_reduce_op(),
     key=["M"],
@@ -41,6 +54,7 @@ def min_kernel_float_once(
         <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
     }
 )
+@libentry()
 @triton.jit
 def min_kernel_float(
     inp, out, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
@@ -66,7 +80,6 @@ def min_kernel_float(
     tl.atomic_min(out, res)
 
 
-@libentry()
 @triton.autotune(
     configs=cfggen_reduce_op(),
     key=["M"],
@@ -78,6 +91,7 @@ def min_kernel_float(
         <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
     }
 )
+@libentry()
 @triton.jit
 def min_kernel_int(
     inp, out, FILL_VALUE, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
@@ -104,7 +118,6 @@ def min_kernel_int(
     tl.atomic_min(out, res)
 
 
-@libentry()
 @triton.autotune(
     configs=cfggen_reduce_op(),
     key=["M"],
@@ -116,6 +129,7 @@ def min_kernel_int(
         <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM
     }
 )
+@libentry()
 @triton.jit
 def min_kernel_int64_1(
     inp, mid, M, BLOCK_SIZE: tl.constexpr, ONE_TILE_PER_CTA: tl.constexpr
@@ -157,7 +171,6 @@ def heur_block_n(args):
     return triton.next_power_of_2(args["N"])
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("min"),
     key=[
@@ -165,6 +178,7 @@ def heur_block_n(args):
         "N",
     ],
 )
+@libentry()
 @triton.jit
 def min_kernel(
     inp,

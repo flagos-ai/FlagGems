@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -70,21 +84,23 @@ def bmm_kernel(
     b_ptrs = B + offs_k[:, None] * N + offs_n[None, :]
     o_ptrs = O + offs_m[:, None] * N + offs_n[None, :]
 
+    mask_m = offs_m < M
+    mask_n = offs_n < N
+
     num_iters = tl.cdiv(K, TILE_K)
     o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
     for i in range(num_iters):
-        mask_a = offs_k[None, :] < K - i * TILE_K
-        mask_b = offs_k[:, None] < K - i * TILE_K
-        a = tl.load(a_ptrs, mask=mask_a)
-        b = tl.load(b_ptrs, mask=mask_b)
+        mask_k = offs_k < K - i * TILE_K
+        mask_a = mask_m[:, None] & mask_k[None, :]
+        mask_b = mask_k[:, None] & mask_n[None, :]
+        a = tl.load(a_ptrs, mask=mask_a, other=0.0)
+        b = tl.load(b_ptrs, mask=mask_b, other=0.0)
 
         a_ptrs += TILE_K
         b_ptrs += TILE_K * N
 
         o += tl.dot(a, b, allow_tf32=False)
 
-    mask_m = (pid_m * TILE_M + tl.arange(0, TILE_M)) < M
-    mask_n = (pid_n * TILE_N + tl.arange(0, TILE_N)) < N
     mask_c = mask_m[:, None] & mask_n[None, :]
     tl.store(o_ptrs, o, mask_c)
 

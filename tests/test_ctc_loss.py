@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -844,6 +858,8 @@ def test_ctc_loss_float_lengths_raise(path, length_name):
 @pytest.mark.parametrize("path", ["direct", "registered"])
 @pytest.mark.parametrize("target_layout", TARGET_LAYOUTS)
 def test_ctc_loss_float_targets_match_pytorch(path, target_layout):
+    if flag_gems.vendor_name == "cambricon" and path == "registered":
+        pytest.skip("Issue #5253: Not supported")
     utils.init_seed(505)
     t_steps, batch, classes, max_target = (8, 2, 6, 3)
     log_probs = _make_log_probs((t_steps, batch, classes), torch.float32).detach()

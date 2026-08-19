@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -21,8 +35,8 @@ def reduce_any(a, b):
     return a or b
 
 
-@libentry()
 @triton.autotune(configs=runtime.get_tuned_config("any"), key=["M", "N"])
+@libentry()
 @triton.jit
 def any_kernel_dim(
     inp,
@@ -51,8 +65,8 @@ def any_kernel_dim(
     tl.store(out, any[:, None], row_mask)
 
 
-@libentry()
 @triton.autotune(configs=cfggen_reduce_op2(), key=["M"])
+@libentry()
 @triton.jit
 def any_kernel_1(
     inp,
@@ -112,6 +126,7 @@ def any_dim(inp, dim=None, keepdim=False):
         M = inp.numel() // N
 
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+        inp = inp.to(torch.bool)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
@@ -138,6 +153,7 @@ def any_dims(inp, dim=None, keepdim=False):
     M = inp.numel() // N
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+    inp = inp.to(torch.bool)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):
