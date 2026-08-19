@@ -271,4 +271,11 @@ at::Tensor to_copy(const at::Tensor &self,
 
 at::Tensor &copy_(at::Tensor &dst, const at::Tensor &src, bool non_blocking = false);
 
+// Set when the aten_patch extension registers flag_gems kernels for aten ops.
+// The copy fallbacks only have to guard against recursive dispatch while those
+// overrides are installed; without them the fallback must stay on the regular
+// backend path, which some backends (e.g. MLU) need to service device copies.
+void set_aten_patch_installed(bool installed);
+bool aten_patch_installed();
+
 }  // namespace flag_gems
