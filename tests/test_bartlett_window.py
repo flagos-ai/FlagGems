@@ -26,6 +26,6 @@ def test_bartlett_window(window_length, periodic, dtype):
             window_length, periodic=periodic, dtype=dtype, device=flag_gems.device
         )
     if window_length > 1:
-        utils.gems_assert_close(res_out, ref_out.to(flag_gems.device), dtype)
+        utils.gems_assert_close(res_out, ref_out, dtype)
     else:
-        utils.gems_assert_equal(res_out, ref_out.to(flag_gems.device))
+        utils.gems_assert_equal(res_out, ref_out)
