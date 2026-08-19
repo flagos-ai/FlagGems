@@ -146,6 +146,22 @@ ops:
       - Quantization
     stages:
       - beta: '5.3'
+  - id: adaptive_avg_pool1d
+    description: |
+      Apply a 1D adaptive average pooling over an input signal composed of several input planes.
+    for:
+      - adaptive_avg_pool1d
+    marks:
+      - adaptive_avg_pool1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+    device:
+      - nvidia
   - id: adaptive_avg_pool2d
     description: |
       Apply a 2D adaptive average pooling over an input signal composed of several input planes.

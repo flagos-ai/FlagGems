@@ -89,6 +89,7 @@ _FULL_CONFIG = (
     ("__or__.Tensor", bitwise_or_tensor),
     ("__xor__.Scalar", xor_scalar),
     ("__xor__.Tensor", xor),
+    ("adaptive_avg_pool1d", adaptive_avg_pool1d),
     ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
     ("_adaptive_avg_pool2d_backward", _adaptive_avg_pool2d_backward),
     ("_adaptive_avg_pool3d_backward", _adaptive_avg_pool3d_backward),
