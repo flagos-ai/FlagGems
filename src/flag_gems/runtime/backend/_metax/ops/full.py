@@ -14,6 +14,7 @@
 
 import logging
 import math
+import time
 
 import torch
 import triton
@@ -105,21 +106,41 @@ def full_(out, N, dtype, device, fill_value):
         is_scale = True
 
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    
+    # Retry mechanism for Triton cache race conditions
+    max_retries = 3
+    retry_delay = 0.01  # 10ms
+    
     with torch_device_fn.device(device):
-        if is_scale:
-            full_kernel_scale[grid_fn](
-                out,
-                N,
-                fill_value,
-            )
-        else:
-            full_kernel[grid_fn](
-                out,
-                N,
-                fill_value,
-                FILL_VALUE_IS_PTR=FILL_VALUE_IS_PTR,
-                BLOCK_SIZE=1024,
-            )
+        for attempt in range(max_retries):
+            try:
+                if is_scale:
+                    full_kernel_scale[grid_fn](
+                        out,
+                        N,
+                        fill_value,
+                    )
+                else:
+                    full_kernel[grid_fn](
+                        out,
+                        N,
+                        fill_value,
+                        FILL_VALUE_IS_PTR=FILL_VALUE_IS_PTR,
+                        BLOCK_SIZE=1024,
+                    )
+                break  # Success, exit retry loop
+            except FileNotFoundError as e:
+                if attempt < max_retries - 1:
+                    # Transient Triton cache issue, retry
+                    logger.warning(
+                        f"Triton cache FileNotFoundError (attempt {attempt + 1}/{max_retries}): {e}"
+                    )
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    # Final attempt failed, re-raise
+                    logger.error(f"Triton cache FileNotFoundError after {max_retries} attempts")
+                    raise
     return out
 
 

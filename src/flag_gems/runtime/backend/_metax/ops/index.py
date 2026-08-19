@@ -49,6 +49,7 @@ def broadcast_indices(indices, target_shape):
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
+    code.writeline("import time")
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
     code.newline()
@@ -56,6 +57,9 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.shape_utils import volume")
     code.writeline("from flag_gems.utils import triton_lang_extension as ext")
+    code.writeline("import logging")
+    code.newline()
+    code.writeline("logger = logging.getLogger(__name__)")
 
     code.newline()
     code.newline()
@@ -180,23 +184,50 @@ def generate_index_wrapper(
             code.writeline("triton.cdiv(N, meta['BLOCK_SIZE1']), ")
         code.writeline(")")
         code.newline()
-        code.writeline(f"{kernel_name}[grid](")
+        
+        # Add retry mechanism for Triton cache race conditions
+        code.writeline("# Retry mechanism for Triton cache race conditions")
+        code.writeline("max_retries = 3")
+        code.writeline("retry_delay = 0.01  # 10ms")
+        code.newline()
+        code.writeline("for attempt in range(max_retries):")
         with code.indent():
-            args = ["input,"]
-            args += [f"indices[{i}]," for i in range(indices_len)]
-            args += ["out,"]
-            args += [f"input_shape[{i}]," for i in range(inp_rank)]
-            for i in range(indices_len):
-                args += [f"indices{i}_shape[{j}]," for j in range(index_rank)]
-            args += [f"input_stride[{i}]," for i in range(inp_rank)]
-            for i in range(indices_len):
-                args += [f"indices{i}_stride[{j}]," for j in range(index_rank)]
-            args += [
-                f"out_stride[{i}]," for i in range(index_rank + inp_rank - indices_len)
-            ]
-            args += ["M,", "N,"]
-            code.writelines(args)
-        code.writeline(")")
+            code.writeline("try:")
+            with code.indent():
+                code.writeline(f"{kernel_name}[grid](")
+                with code.indent():
+                    args = ["input,"]
+                    args += [f"indices[{i}]," for i in range(indices_len)]
+                    args += ["out,"]
+                    args += [f"input_shape[{i}]," for i in range(inp_rank)]
+                    for i in range(indices_len):
+                        args += [f"indices{i}_shape[{j}]," for j in range(index_rank)]
+                    args += [f"input_stride[{i}]," for i in range(inp_rank)]
+                    for i in range(indices_len):
+                        args += [f"indices{i}_stride[{j}]," for j in range(index_rank)]
+                    args += [
+                        f"out_stride[{i}]," for i in range(index_rank + inp_rank - indices_len)
+                    ]
+                    args += ["M,", "N,"]
+                    code.writelines(args)
+                code.writeline(")")
+                code.writeline("break  # Success, exit retry loop")
+            code.writeline("except FileNotFoundError as e:")
+            with code.indent():
+                code.writeline("if attempt < max_retries - 1:")
+                with code.indent():
+                    code.writeline("# Transient Triton cache issue, retry")
+                    code.writeline('logger.warning(')
+                    with code.indent():
+                        code.writeline('f"Triton cache FileNotFoundError in index (attempt {attempt + 1}/{max_retries}): {e}"')
+                    code.writeline(")")
+                    code.writeline("time.sleep(retry_delay)")
+                    code.writeline("retry_delay *= 2  # Exponential backoff")
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline("# Final attempt failed, re-raise")
+                    code.writeline('logger.error(f"Triton cache FileNotFoundError in index after {max_retries} attempts")')
+                    code.writeline("raise")
         code.writeline("return input")
     code.newline()
     code.newline()
