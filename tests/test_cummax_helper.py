@@ -79,7 +79,7 @@ def test_cummax_helper(shape, dtype):
 )
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test__cummax_helper_with_nan(shape, dtype):
+def test_cummax_helper_with_nan(shape, dtype):
     """Test _cummax_helper with NaN values (NaN propagation semantics)."""
     dim = _dim_for_shape(shape)
 
@@ -114,7 +114,7 @@ def test__cummax_helper_with_nan(shape, dtype):
     reason="Feature requires Triton >= 3.0.",
 )
 @pytest.mark.parametrize("shape", SHAPES)
-def test__cummax_helper_bool(shape):
+def test_cummax_helper_bool(shape):
     """Test _cummax_helper with boolean inputs (kept as bool, matching aten)."""
     dim = _dim_for_shape(shape)
 
@@ -144,7 +144,7 @@ def test__cummax_helper_bool(shape):
 )
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES)
-def test__cummax_helper_dim0(shape, dtype):
+def test_cummax_helper_dim0(shape, dtype):
     """Exercise a non-default dim (the leading axis) for each shape."""
     if len(shape) < 2:
         pytest.skip("dim=0 redundant for 1D shapes")
