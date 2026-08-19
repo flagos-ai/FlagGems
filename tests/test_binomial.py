@@ -32,7 +32,6 @@ def test_binomial(shape, dtype, n, p):
     prob = torch.full(
         size=shape, fill_value=float(p), dtype=dtype, device=flag_gems.device
     )
-
     with flag_gems.use_gems():
         res_out = torch.binomial(count, prob)
 
