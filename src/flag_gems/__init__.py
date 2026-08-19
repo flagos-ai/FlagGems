@@ -447,6 +447,7 @@ _FULL_CONFIG = (
     ("deg2rad_", deg2rad_),
     ("dequantize", dequantize),
     ("dequantize.self", dequantize),
+    ("det", det),
     ("diag", diag),
     ("diag_embed", diag_embed),
     ("diagonal_backward", diagonal_backward),

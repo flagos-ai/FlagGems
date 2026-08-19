@@ -294,6 +294,7 @@ from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
 from flag_gems.ops.cumsum_ import cumsum_
 from flag_gems.ops.deg2rad import deg2rad, deg2rad_, deg2rad_out
 from flag_gems.ops.dequantize import dequantize
+from flag_gems.ops.det import det
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
@@ -1157,6 +1158,7 @@ __all__ = [
     "deg2rad_",
     "deg2rad_out",
     "dequantize",
+    "det",
     "diag",
     "diag_embed",
     "diagonal_backward",
