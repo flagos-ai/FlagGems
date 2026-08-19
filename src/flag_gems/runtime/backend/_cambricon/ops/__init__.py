@@ -18,6 +18,7 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._prelu_kernel_backward import _prelu_kernel_backward
 from ._safe_softmax import _safe_softmax
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
@@ -330,6 +331,7 @@ __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
+    "_nested_view_from_buffer_copy",
     "_prelu_kernel_backward",
     "_safe_softmax",
     "_segment_reduce_backward",

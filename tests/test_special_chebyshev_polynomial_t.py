@@ -28,16 +28,42 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 # special.* Chebyshev polynomials: torch ref only supports float32
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_special_chebyshev_polynomial_t(shape, dtype):
+def test_special_chebyshev_polynomial_t(shape, dtype, caplog):
     # x in [-1, 1] (Chebyshev domain)
     x = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 2 - 1
     ref_x = utils.to_reference(x)
     n = 3
 
     ref_out = torch.special.chebyshev_polynomial_t(ref_x, n)
-    with flag_gems.use_gems():
-        res_out = torch.special.chebyshev_polynomial_t(x, n)
+    logger_name = "flag_gems.ops.special_chebyshev_polynomial_t"
+    with caplog.at_level("DEBUG", logger=logger_name):
+        with flag_gems.use_gems():
+            res_out = torch.special.chebyshev_polynomial_t(x, n)
 
+    assert "GEMS SPECIAL_CHEBYSHEV_POLYNOMIAL_T" in caplog.text
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+# A Python int `n` dispatches to the .n_scalar overload rather than the default
+# Tensor-n one, so it needs its own direct-dispatch coverage.
+@pytest.mark.special_chebyshev_polynomial_t
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
+@pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_special_chebyshev_polynomial_t_n_scalar(shape, dtype, caplog):
+    x = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 2 - 1
+    ref_x = utils.to_reference(x)
+    n = 3
+
+    ref_out = torch.ops.aten.special_chebyshev_polynomial_t.n_scalar(ref_x, n)
+    logger_name = "flag_gems.ops.special_chebyshev_polynomial_t"
+    with caplog.at_level("DEBUG", logger=logger_name):
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.special_chebyshev_polynomial_t.n_scalar(x, n)
+
+    assert "GEMS SPECIAL_CHEBYSHEV_POLYNOMIAL_T" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
@@ -64,16 +90,19 @@ def test_special_chebyshev_polynomial_t_out_of_domain(dtype):
 @pytest.mark.special_chebyshev_polynomial_t_out
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_special_chebyshev_polynomial_t_out(shape, dtype):
+def test_special_chebyshev_polynomial_t_out(shape, dtype, caplog):
     x = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 2 - 1
     ref_x = utils.to_reference(x)
     n = 3
 
     ref_out = torch.special.chebyshev_polynomial_t(ref_x, n)
-    with flag_gems.use_gems():
-        out = torch.empty_like(x)
-        res_out = torch.special.chebyshev_polynomial_t(x, n, out=out)
+    logger_name = "flag_gems.ops.special_chebyshev_polynomial_t"
+    with caplog.at_level("DEBUG", logger=logger_name):
+        with flag_gems.use_gems():
+            out = torch.empty_like(x)
+            res_out = torch.special.chebyshev_polynomial_t(x, n, out=out)
 
+    assert "GEMS SPECIAL_CHEBYSHEV_POLYNOMIAL_T_OUT" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
     # Verify output is the same tensor as `out`
     assert res_out.data_ptr() == out.data_ptr()

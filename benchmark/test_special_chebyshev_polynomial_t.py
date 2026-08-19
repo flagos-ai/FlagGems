@@ -52,6 +52,16 @@ class ChebyshevPolynomialTBenchmark(base.Benchmark):
         return torch.tensor(shape).prod().item()
 
 
+class ChebyshevPolynomialTNScalarBenchmark(ChebyshevPolynomialTBenchmark):
+    """Benchmark for the .n_scalar overload, where n is a Python int."""
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            x = base.generate_tensor_input(shape, cur_dtype, self.device)
+            x = x * 2 - 1
+            yield x, 3
+
+
 class ChebyshevPolynomialTOutBenchmark(ChebyshevPolynomialTBenchmark):
     """Benchmark for special_chebyshev_polynomial_t_out."""
 
@@ -71,6 +81,16 @@ def test_special_chebyshev_polynomial_t():
         op_name="special_chebyshev_polynomial_t",
         torch_op=torch.special.chebyshev_polynomial_t,
         # special.* operators only support float32
+        dtypes=[torch.float32],
+    )
+    bench.run()
+
+
+@pytest.mark.special_chebyshev_polynomial_t
+def test_special_chebyshev_polynomial_t_n_scalar():
+    bench = ChebyshevPolynomialTNScalarBenchmark(
+        op_name="special_chebyshev_polynomial_t_n_scalar",
+        torch_op=torch.ops.aten.special_chebyshev_polynomial_t.n_scalar,
         dtypes=[torch.float32],
     )
     bench.run()
