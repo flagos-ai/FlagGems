@@ -163,13 +163,9 @@ def upsample_linear1d_backward_call(grad, input_size, align_corners):
 
 def _upsample_linear1d_backward_reference(grad, input_size, align_corners):
     dtype = grad.dtype
-    use_fp32 = (
-        flag_gems.vendor_name == "hygon"
-        and not utils.TO_CPU
-        and dtype in (torch.float16, torch.bfloat16)
-    )
+    use_fp32 = not utils.TO_CPU and dtype in (torch.float16, torch.bfloat16)
     if use_fp32:
-        # Hygon's native low-precision backward uses atomic accumulation.
+        # Native low-precision backward may use atomic accumulation.
         grad = grad.float()
 
     out = upsample_linear1d_backward_call(grad, input_size, align_corners)
@@ -263,8 +259,9 @@ def test_upsample_linear1d_backward(
 
 @pytest.mark.upsample_linear1d_backward
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "hygon", reason="Hygon low-precision reference regression"
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(not utils.bf16_is_supported, reason="bfloat16 is not supported")
 def test_upsample_linear1d_backward_bfloat16_cancellation():
     dtype = torch.bfloat16
     shape = (1, 1, 64)
@@ -275,10 +272,12 @@ def test_upsample_linear1d_backward_bfloat16_cancellation():
         device=flag_gems.device,
     )
 
-    ref_grad = to_reference(grad)
-    ref_out = _upsample_linear1d_backward_reference(
-        ref_grad, shape, align_corners=False
+    ref_grad = grad.float().cpu()
+    ref_out = upsample_linear1d_backward_call(ref_grad, shape, align_corners=False).to(
+        dtype
     )
+    if not utils.TO_CPU:
+        ref_out = ref_out.to(grad.device)
 
     with flag_gems.use_gems():
         res_out = upsample_linear1d_backward_call(grad, shape, align_corners=False)
