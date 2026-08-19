@@ -269,6 +269,7 @@ flaggems-flagtune-compare = "flag_gems.flagtune.cli.compare:main"
 
 "flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
+"flag_gems.utils" = ["configs/*.yaml"]
 "flag_gems.flagtune.contracts" = ["configs/*.yaml"]
 
 [tool.setuptools_scm]
