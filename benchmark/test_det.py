@@ -51,6 +51,9 @@ def _torch_det(A):
     return torch.det(A)
 
 
+# Single unbatched matrices (16x16..256x256) plus batched cases that cover both
+# large batch / small matrix and small batch / large matrix regimes, exercising
+# the register, blocked, and panel kernel paths across matrix sizes.
 DET_SHAPES = [
     (16, 16),
     (32, 32),
@@ -68,6 +71,8 @@ DET_SHAPES = [
     (8, 256, 256),
 ]
 
+# det uses LU decomposition and only supports float32/float64 (no fp16/bf16),
+# matching torch.det; float64 is added only when the device supports it.
 DET_DTYPES = [torch.float32] + (
     [torch.float64] if flag_gems.runtime.device.support_fp64 else []
 )

@@ -44,6 +44,8 @@ DET_BATCH_SHAPES = (
         (8, 256, 256),
     ]
 )
+# det uses LU decomposition and only supports float32/float64 (no fp16/bf16),
+# matching torch.det; float64 is added only when the device supports it.
 DET_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
 
 
