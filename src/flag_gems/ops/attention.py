@@ -20,7 +20,6 @@ import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
-from packaging.version import Version as _Version
 
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
@@ -591,55 +590,11 @@ def _attn_bwd_dq(
 
 config_backward = runtime.get_tuned_config("attention_bwd")
 
-# Ascend-specific: add small head-dim configs and prune callback to avoid
-# shared memory overflow when compiling the backward Triton kernel.
-if runtime.device.name == "npu":
-    SMALL_HEAD_DIM_BWD_CONFIGS = [
-        triton.Config(
-            {"BLOCK_M1": BM1, "BLOCK_N1": BN1, "BLOCK_M2": BM2, "BLOCK_N2": BN2},
-            num_stages=s,
-            num_warps=w,
-        )
-        for (BM1, BN1, BM2, BN2) in [
-            (32, 64, 64, 32),
-        ]
-        for s in [2, 3, 4]
-        for w in [4, 8]
-    ]
-    config_backward = config_backward + SMALL_HEAD_DIM_BWD_CONFIGS
-
-    def _prune_bwd_configs(configs, named_args, **kwargs):
-        configs = [
-            c
-            for c in configs
-            if (c.kwargs.get("BLOCK_N1", 64) % c.kwargs.get("BLOCK_M1", 32) == 0)
-            and (c.kwargs.get("BLOCK_M2", 64) % c.kwargs.get("BLOCK_N2", 32) == 0)
-        ]
-        BLOCK_DMODEL = kwargs.get("BLOCK_DMODEL", named_args.get("BLOCK_DMODEL", 128))
-        if BLOCK_DMODEL <= 32:
-            pruned = [
-                c
-                for c in configs
-                if c.kwargs.get("BLOCK_N1", 64) <= 64
-                and c.kwargs.get("BLOCK_M1", 32) <= 32
-            ]
-            return pruned if pruned else configs
-        return configs
-
-    _bwd_prune_configs = (
-        {"early_config_prune": _prune_bwd_configs}
-        if _Version("3.6.0") <= _Version(triton.__version__) < _Version("3.8.0")
-        else {}
-    )
-else:
-    _bwd_prune_configs = {}
-
 
 @libentry()
 @libtuner(
     configs=config_backward,
     key=["KV_CTX", "BLOCK_DMODEL"],
-    prune_configs_by=_bwd_prune_configs,
 )
 @triton.jit
 def _attn_bwd(
@@ -1028,7 +983,8 @@ def scaled_dot_product_attention_backward(
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
 
-    # Small dimension fallback: for head_size <= 32, fallback to PyTorch native gradient computation, supports GQA
+    # Small dimension fallback: for head_size <= 32, fallback to PyTorch native
+    # gradient computation to avoid Triton shared memory overflow (triton#10573).
     if HEAD_DIM_K <= 32:
         with torch.enable_grad():
             q_ref = query.detach().requires_grad_(True)
@@ -1361,64 +1317,6 @@ def flash_attention_forward(
         cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
     ), "varlen is not supported yet."
 
-    # For Ascend NPU, use PyTorch native implementation which handles non-square causal correctly
-    if runtime.device.name == "npu":
-        # Transpose from (B, S, H, D) to (B, H, S, D)
-        query_t = query.transpose(1, 2)
-        key_t = key.transpose(1, 2)
-        value_t = value.transpose(1, 2)
-
-        # Compute attention scores for lse
-        softmax_scale = (
-            scale if scale is not None else (1.0 / math.sqrt(query.shape[-1]))
-        )
-
-        # Compute Q @ K^T and apply scaling
-        scores = torch.matmul(query_t, key_t.transpose(-2, -1)) * softmax_scale
-
-        # Build explicit causal mask for non-square case (q_len < kv_len)
-        # torch_npu's is_causal may not handle the offset correctly
-        q_len = query_t.shape[2]
-        kv_len = key_t.shape[2]
-        attn_mask_2d = None
-        if is_causal:
-            offset = kv_len - q_len
-            q_index = torch.arange(q_len, device=query.device)[:, None]
-            k_index = torch.arange(kv_len, device=query.device)
-            causal_mask = k_index > (q_index + offset)
-            scores = scores.masked_fill(causal_mask, float("-inf"))
-            attn_mask_2d = torch.zeros(
-                q_len, kv_len, device=query.device, dtype=query_t.dtype
-            )
-            attn_mask_2d.masked_fill_(causal_mask, float("-inf"))
-
-        # Compute log-sum-exp before softmax (for numerical stability)
-        lse = torch.logsumexp(scores.float(), dim=-1)  # Shape: (B, H, S), dtype float32
-
-        # Use PyTorch native scaled_dot_product_attention for the actual output
-        out = torch.nn.functional.scaled_dot_product_attention(
-            query_t,
-            key_t,
-            value_t,
-            attn_mask=attn_mask_2d,
-            dropout_p=dropout_p,
-            is_causal=False,
-            scale=softmax_scale,
-        )
-
-        # Transpose back from (B, H, S, D) to (B, S, H, D)
-        out = out.transpose(1, 2)
-
-        # Transpose lse from (B, H, S) to (B, H, S) (already in correct format for flash attention)
-        # Flash attention expects lse in shape (B, H, S)
-
-        # Return with dummy values for philox_seed, philox_offset, and debug_mask
-        philox_seed = torch.tensor(0, dtype=torch.int64, device=query.device)
-        philox_offset = torch.tensor(0, dtype=torch.int64, device=query.device)
-        debug_mask = None
-
-        return (out, lse, philox_seed, philox_offset, debug_mask)
-
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     HEAD_DIM_V = value.shape[-1]
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
@@ -1534,6 +1432,58 @@ def flash_attn_varlen_func(
     cp_tot_seqused_k=None,
     fa_version: int = 2,
 ):
+    """dropout_p should be set to 0.0 during evaluation
+    Supports multi-query and grouped-query attention (MQA/GQA) by passing in K, V with fewer heads
+    than Q. Note that the number of heads in Q must be divisible by the number of heads in KV.
+    For example, if Q has 6 heads and K, V have 2 heads, head 0, 1, 2 of Q will attention to head
+    0 of K, V, and head 3, 4, 5 of Q will attention to head 1 of K, V.
+
+    If causal=True, the causal mask is aligned to the bottom right corner of the attention matrix.
+    For example, if seqlen_q = 2 and seqlen_k = 5, the causal mask (1 = keep, 0 = masked out) is:
+        1 1 1 1 0
+        1 1 1 1 1
+    If seqlen_q = 5 and seqlen_k = 2, the causal mask is:
+        0 0
+        0 0
+        0 0
+        1 0
+        1 1
+    If the row of the mask is all zero, the output will be zero.
+
+    If window_size != (-1, -1), implements sliding window local attention. Query at position i
+    will only attend to keys between
+    [i + seqlen_k - seqlen_q - window_size[0], i + seqlen_k - seqlen_q + window_size[1]] inclusive.
+
+    Arguments:
+        q: (total_q, nheads, headdim), where total_q = total number of query tokens in the batch.
+        k: (total_k, nheads_k, headdim), where total_k = total number of key tokens in the batch.
+        v: (total_k, nheads_k, headdim), where total_k = total number of key tokens in the batch.
+        cu_seqlens_q: (batch_size + 1,), dtype torch.int32. The cumulative sequence lengths
+           of the sequences in the batch, used to index into q.
+        cu_seqlens_k: (batch_size + 1,), dtype torch.int32. The cumulative sequence lengths
+           of the sequences in the batch, used to index into kv.
+        max_seqlen_q: int. Maximum query sequence length in the batch.
+        max_seqlen_k: int. Maximum key sequence length in the batch.
+        dropout_p: float. Dropout probability.
+        softmax_scale: float. The scaling of QK^T before applying softmax.
+            Default to 1 / sqrt(headdim).
+        causal: bool. Whether to apply causal attention mask (e.g., for auto-regressive modeling).
+        window_size: (left, right). If not (-1, -1), implements sliding window local attention.
+        softcap: float. Anything > 0 activates softcapping attention.
+        alibi_slopes: (nheads,) or (batch_size, nheads), fp32. A bias of
+            (-alibi_slope * |i + seqlen_k - seqlen_q - j|)
+            is added to the attention score of query i and key j.
+        deterministic: bool. Whether to use the deterministic implementation of the backward pass,
+            which is slightly slower and uses more memory. The forward pass is always deterministic.
+        return_attn_probs: bool. Whether to return the attention probabilities. This option is for
+           testing only. The returned probabilities are not guaranteed to be correct
+           (they might not have the right scaling).
+    Return:
+        out: (total, nheads, headdim).
+        softmax_lse [optional, if return_softmax_lse=True]: (nheads, total_q_seqlen). The
+            logsumexp of each row of the matrix QK^T * scaling (e.g., log of the softmax
+            normalization factor).
+    """
     if fa_version != 2:
         raise RuntimeError("Only FA2 is implemented.")
     if num_splits > 0:
@@ -1721,6 +1671,8 @@ def flash_attn_varlen_opt_func(
         else:
             assert len(window_size) == 2
             real_window_size = (window_size[0], window_size[1])
+        q, k, v = [maybe_contiguous(x) for x in (q, k, v)]
+        dummy_cu_seqlens_k = torch.empty_like(cu_seqlens_q)
         max_seqlen_q = (
             max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
         )
@@ -1734,7 +1686,9 @@ def flash_attn_varlen_opt_func(
             out,
             lse,
             cu_seqlens_q,
-            cu_seqlens_q if cu_seqlens_k is None else cu_seqlens_k,
+            # cu_seqlens_k not used since we use seqused_k, but flash_api.cpp
+            # still requires it, so we pass dummy_cu_seqlens_k as a placeholder
+            dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
             seqused_k,
             None,
             block_table,
