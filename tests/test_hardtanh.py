@@ -52,7 +52,7 @@ def test_hardtanh_explicit(shape, dtype, min_max):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.hardtanh
+@pytest.mark.hardtanh_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_hardtanh_out(shape, dtype):
@@ -70,7 +70,7 @@ def test_hardtanh_out(shape, dtype):
     utils.gems_assert_close(out, ref_out, dtype)
 
 
-@pytest.mark.hardtanh
+@pytest.mark.hardtanh_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("min_max", HARDTANH_MIN_MAX)
@@ -116,7 +116,7 @@ def test_hardtanh_special_values(dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.hardtanh
+@pytest.mark.hardtanh_out
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_hardtanh_out_special_values(dtype):
     # Same boundary values as test_hardtanh_special_values, but exercising the
