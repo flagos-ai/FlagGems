@@ -4410,6 +4410,31 @@ ops:
       - aten
       - KernelGen
     kind:
+      - Attention
+    stages:
+      - alpha: '5.0'
+      - beta: '5.3'
+  - id: fused_rms_norm
+    description: Fused RMS normalization returning the normalized output and inverse RMS.
+    for:
+      - _fused_rms_norm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: fused_rms_norm_backward
+    description: |
+      Computes input and weight gradients for fused RMS normalization using the
+      saved reciprocal root-mean-square values.
+    for:
+      - _fused_rms_norm_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
@@ -8281,6 +8306,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.1'
+  - id: pad_sequence
+    description: Pads a list of variable length tensors with a given padding value and stacks them into a single padded batch tensor.
+    for:
+      - pad_sequence
+    labels:
+      - aten
+      - sequence
+      - rnn
+    kind:
+      - Utility
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: pairwise_distance
     description: |
       Computes the pairwise distance between input vectors, or between columns of input matrices.
