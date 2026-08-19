@@ -267,6 +267,7 @@ from flag_gems.ops.clamp import (
 from flag_gems.ops.clamp_max import clamp_max, clamp_max_  # noqa: F401
 from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.col2im import col2im
+from flag_gems.ops.column_stack import column_stack, column_stack_out
 from flag_gems.ops.concat import concat
 from flag_gems.ops.concatenate import concatenate
 from flag_gems.ops.conj_physical import conj_physical
@@ -1121,6 +1122,8 @@ __all__ = [
     "clip",
     "clip_",
     "col2im",
+    "column_stack",
+    "column_stack_out",
     "concat",
     "concatenate",
     "conj_physical",
