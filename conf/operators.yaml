@@ -5919,6 +5919,17 @@ ops:
       - BLAS
     stages:
       - alpha: '5.4'
+  - id: linalg_cond
+    description: Compute the condition number of a matrix with respect to a given norm.
+    for:
+      - linalg_cond
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linalg_cross
     description: Computes the cross product of two 3-dimensional vectors along a specified dimension.
     for:

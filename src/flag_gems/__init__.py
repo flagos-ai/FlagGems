@@ -651,6 +651,7 @@ _FULL_CONFIG = (
     ("lift_fresh", lift_fresh),
     ("lift_fresh_copy", lift_fresh_copy),
     ("linalg_cholesky", linalg_cholesky),
+    ("linalg_cond", linalg_cond),
     ("linalg_cross", linalg_cross),
     ("linalg_cross.out", linalg_cross_out),
     ("linalg_det", linalg_det),
