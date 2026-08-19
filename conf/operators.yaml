@@ -6417,6 +6417,21 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: scaled_dot_product_cudnn_attention
+    description: |
+      Computes scaled dot product attention using the cuDNN attention API
+      interface, returning output, log-sum-exp, and auxiliary tensors for
+      backward computation.
+    for:
+      - _scaled_dot_product_cudnn_attention
+    labels:
+      - aten
+      - NoCPU
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: lu_unpack
     description: Unpacks the LU decomposition returned by `lu_factor` into separate permutation matrix P, lower triangular L, and upper triangular U.
     for:
