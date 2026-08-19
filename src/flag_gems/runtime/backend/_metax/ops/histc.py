@@ -88,7 +88,7 @@ def _as_float(s):
     return float(s) if not torch.is_tensor(s) else float(s.item())
 
 
-def run(x, bins, min, max):
+def histc(x, bins, min, max):
     nb = int(bins)
     n = x.numel()
     out = torch.empty(nb, device=x.device, dtype=x.dtype)
