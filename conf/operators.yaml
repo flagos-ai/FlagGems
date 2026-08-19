@@ -1176,6 +1176,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: conv_transpose3d
+    description: |
+      Applies a 3D transposed convolution operator over an input volume composed of several input planes.
+    for:
+      - conv_transpose3d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: functional_assert_async
     description: |
       Functional version of _assert_async that takes a dependency token and returns a new token.
