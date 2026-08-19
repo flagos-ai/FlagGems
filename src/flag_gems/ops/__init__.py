@@ -474,6 +474,7 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex_out,
 )
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
+from flag_gems.ops.linalg_solve_ex import linalg_solve_ex
 from flag_gems.ops.linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
@@ -1379,6 +1380,7 @@ __all__ = [
     "linalg_lu_factor_out",
     "linalg_lu_out",
     "linalg_slogdet",
+    "linalg_solve_ex",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svd",
