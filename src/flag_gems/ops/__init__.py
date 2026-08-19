@@ -41,6 +41,7 @@ from flag_gems.ops._compute_linear_combination import (
 from flag_gems.ops._conj import _conj
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
 from flag_gems.ops._convolution_mode import _convolution_mode
+from flag_gems.ops._cummin_helper import _cummin_helper
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
@@ -888,6 +889,7 @@ __all__ = [
     "_assert_async",
     "_batch_norm_impl_index",
     "_batch_norm_no_update",
+    "_cummin_helper",
     "_fake_quantize_learnable_per_tensor_affine",
     "_functional_assert_async",
     "_cdist_backward",
