@@ -3097,6 +3097,17 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
+  - id: dropout_
+    description: The in-place version of dropout (`aten::dropout_`).
+    for:
+      - dropout_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
