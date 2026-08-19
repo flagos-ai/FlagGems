@@ -948,6 +948,15 @@ upsample_nearest2d:
   block_n: [1024, 2048]
   warps: [4, 8]
 
+upsample_linear1d:
+- gen : true
+  param_map:
+    META:
+      BLOCK_SIZE: block_n
+    num_warps: warps
+  block_n: [256, 512, 1024, 2048]
+  warps: [4, 8, 16]
+
 upsample_bicubic2d_aa:
 - gen : true
   param_map:
@@ -1590,3 +1599,87 @@ nansum_dim_inner:
   num_warps: 8
 - META: {}
   num_warps: 16
+adaptive_max_pool3d_backward:
+  - META:
+      BLOCK_SIZE: 64
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 128
+    num_warps: 4
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+    num_stages: 2
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+    num_stages: 2
+alpha_dropout:
+- META:
+    BLOCK: 256
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK: 256
+  num_warps: 8
+  num_stages: 2
+- META:
+    BLOCK: 512
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK: 512
+  num_warps: 8
+  num_stages: 2
+- META:
+    BLOCK: 256
+  num_warps: 4
+  num_stages: 3
+- META:
+    BLOCK: 256
+  num_warps: 8
+  num_stages: 3
+- META:
+    BLOCK: 512
+  num_warps: 4
+  num_stages: 3
+- META:
+    BLOCK: 512
+  num_warps: 8
+  num_stages: 3
+lgamma:
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 4
+    num_stages: 2
+special_chebyshev_polynomial_u:
+  - META:
+      BLOCK_SIZE: 256
+    num_warps: 8
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+    num_stages: 4
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
+    num_stages: 3
