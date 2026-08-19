@@ -204,6 +204,10 @@ from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
 from flag_gems.ops.bilinear import bilinear
+from flag_gems.ops.binary_cross_entropy import (
+    binary_cross_entropy,
+    binary_cross_entropy_out,
+)
 from flag_gems.ops.binary_cross_entropy_backward import binary_cross_entropy_backward
 from flag_gems.ops.binary_cross_entropy_with_logits import (
     binary_cross_entropy_with_logits,
@@ -1049,6 +1053,8 @@ __all__ = [
     "binary_cross_entropy_backward",
     "binary_cross_entropy_with_logits",
     "bincount",
+    "binary_cross_entropy",
+    "binary_cross_entropy_out",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
     "bitwise_and_scalar_tensor",

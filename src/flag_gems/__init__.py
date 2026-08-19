@@ -345,6 +345,8 @@ _FULL_CONFIG = (
     ("bilinear", bilinear),
     ("binary_cross_entropy_with_logits", binary_cross_entropy_with_logits),
     ("bincount", bincount),
+    ("binary_cross_entropy", binary_cross_entropy),
+    ("binary_cross_entropy.out", binary_cross_entropy_out),
     ("bitwise_and.Scalar", bitwise_and_scalar),
     ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor),
     ("bitwise_and.Tensor", bitwise_and_tensor),
