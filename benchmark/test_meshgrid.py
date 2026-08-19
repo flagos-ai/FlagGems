@@ -4,8 +4,13 @@ import pytest
 import torch
 
 import flag_gems
-
 from . import base, consts
+from .conftest import Config
+
+DEVICE = flag_gems.device
+VENDOR = flag_gems.vendor_name
+if VENDOR =="ascend"
+    Config.mode = consts.BenchMode.OPERATOR
 
 MESHGRID_SHAPES = [
     [32, 32],
