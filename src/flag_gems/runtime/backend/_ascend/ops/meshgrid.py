@@ -132,5 +132,3 @@ def meshgrid(
             )
 
     return _dispatch_npu_meshgrid(tensors, indexing, rank)
-
-
