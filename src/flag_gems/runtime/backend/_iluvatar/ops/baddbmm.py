@@ -67,8 +67,6 @@ def _baddbmm_launch_padded(bias, A, B, beta, alpha, out):
             batch,
         )
 
-        import triton
-
         with torch_device_fn.device(A.device):
             baddbmm_kernel[grid](
                 A,
