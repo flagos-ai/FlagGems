@@ -79,6 +79,12 @@ _SHAPES_BATCH = [
     (4, 4, 64, 64),  # multi-batch SVD
     (2, 5, 1),  # batched k=1
     (8, 4, 32, 32),
+    # rank-2 batched with batch ≥ 16 and max dim ≤ 16: exercises the
+    # vectorized (BLOCK_B > 1) branch of the k=2 closed-form kernel.
+    (16, 2, 16),
+    (32, 16, 2),
+    (32, 2, 2),
+    (32, 8, 8),
 ]
 
 if QUICK_MODE:
@@ -133,7 +139,7 @@ def _get_atol(dtype, ord):
     return 1e-4
 
 
-def _compute_ref(A, ord, dim=(-2, -1), keepdim=False):
+def _compute_ref(A, ord, dim=(-2, -1), keepdim=False, dtype=None):
     from .conftest import TO_CPU
 
     ref = utils.to_reference(A)
@@ -157,13 +163,21 @@ def _compute_ref(A, ord, dim=(-2, -1), keepdim=False):
             # so always compute the SVD reference on CPU there.
             ref = ref.cpu().double()
             result = torch.linalg.matrix_norm(ref, ord, dim, keepdim=keepdim)
+            # Narrow to the requested dtype after the fp64 computation:
+            # matrix_norm(..., dtype=fp32) on a fp64 input is rejected by
+            # torch (narrowing is not implicit), and computing in fp64 first
+            # is strictly more accurate than torch's own fp32 reference.
+            if dtype is not None:
+                result = result.to(dtype=dtype)
             if not TO_CPU:
                 # Cast on the CPU first, then do a pure device copy: torch_npu
                 # 2.x cannot handle fp64 sources in its .to() conversion kernel
                 # and warns "Device do not support double dtype now, dtype cast
                 # replace with float" (ToKernelNpu.cpp). Keeping the dtype cast
                 # on the CPU side means no fp64 tensor ever reaches the NPU.
-                result = result.to(dtype=A.dtype).to(A.device)
+                result = result.to(dtype=dtype if dtype is not None else A.dtype).to(
+                    A.device
+                )
             return result
     # For fro with --ref cpu: upcast to fp64 so the reference uses accurate
     # LAPACK accumulation.  PyTorch CPU linalg.matrix_norm for fp32 input
@@ -173,7 +187,7 @@ def _compute_ref(A, ord, dim=(-2, -1), keepdim=False):
     # which would cause false-positive test failures.
     if TO_CPU and (isinstance(ord, str) and ord == "fro"):
         ref = ref.double()
-    return torch.linalg.matrix_norm(ref, ord, dim, keepdim=keepdim)
+    return torch.linalg.matrix_norm(ref, ord, dim, keepdim=keepdim, dtype=dtype)
 
 
 def _call_op(A, ord, dim=(-2, -1), keepdim=False, dtype=None):
@@ -220,7 +234,9 @@ def test_2d(dtype, ord, shape):
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("ord", [2, 1, float("inf"), "fro", "nuc"])
-@pytest.mark.parametrize("shape", [(3, 4), (8, 8)])
+@pytest.mark.parametrize(
+    "shape", [(3, 4), (8, 8), (3, 8, 8)]
+)  # (3, 8, 8): batched keepdim
 def test_2d_keepdim(dtype, ord, shape, keepdim):
     _skip_non_svd_on_ascend(ord)
     if _is_svd(ord) and not _svd_dtype_ok(dtype):
@@ -298,13 +314,42 @@ def test_batch_nondefault_dim(dim, ord, shape):
 
 
 # ===========================================================================
+# dtype= parameter (output dtype / upcast computation)
+# ===========================================================================
+
+
+@pytest.mark.linalg_matrix_norm
+@pytest.mark.parametrize("ord", [2, 1, "fro"])
+def test_dtype_param(ord):
+    """dtype= upcasts the computation/output.  fp64 output is exercised only
+    on fp64-capable backends (ascend/iluvatar lack an fp64 compute path)."""
+    _skip_non_svd_on_ascend(ord)
+    A = _make_input((3, 4), torch.float32, flag_gems.device)
+    out_dtype = (
+        torch.float32
+        if flag_gems.vendor_name in ("ascend", "iluvatar")
+        else torch.float64
+    )
+    ref = _compute_ref(A, ord, dtype=out_dtype)
+    res = _call_op(A, ord, dtype=out_dtype)
+    assert res.dtype == out_dtype, f"{res.dtype} vs {out_dtype}"
+    utils.gems_assert_close(
+        res,
+        ref,
+        out_dtype,
+        reduce_dim=_reduce_dim((3, 4), ord) if _is_svd(ord) else 1,
+        atol=_get_atol(torch.float32, ord),
+    )
+
+
+# ===========================================================================
 # Edge shapes
 # ===========================================================================
 
 
 @pytest.mark.linalg_matrix_norm
 @pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("ord", [2, 1, "fro"])
+@pytest.mark.parametrize("ord", [2, -2, 1, "fro", "nuc"])
 @pytest.mark.parametrize("shape", [(2, 2), (2, 8), (8, 1), (64, 1), (2, 4, 4)])
 def test_edge(dtype, ord, shape):
     _skip_non_svd_on_ascend(ord)

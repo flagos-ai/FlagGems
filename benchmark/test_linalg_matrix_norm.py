@@ -11,10 +11,17 @@ VENDOR = flag_gems.vendor_name
 _SVD_DTYPES = [torch.float32, torch.float64] if VENDOR == "nvidia" else [torch.float32]
 
 SVD_SHAPES_SMALL = [
+    (8, 1),
+    (1, 8),  # k=1 (fro kernel)
     (2, 64),
     (64, 2),  # k=2 (rank2 closed form)
+    (2, 128),
+    (128, 2),  # k=2
     (2, 256),
     (256, 2),  # k=2 near rows limit
+    (3, 4),
+    (3, 64),
+    (64, 3),  # k=3 (gesvd/DBDSQR, no Jacobi)
     (4, 64),
     (64, 4),  # k=4 (Jacobi minimum)
     (8, 256),
@@ -49,14 +56,20 @@ SVD_SHAPES_LARGE = [
     (2048, 2),  # k=2, rows=2048
     (256, 256),
     (512, 512),
+    (256, 512),
+    (512, 256),  # k=256
 ]
 
 # Batched SVD shapes — per-matrix (k, rows) within limits.
 SVD_SHAPES_BATCHED = [
     (4, 32, 64),
     (8, 64, 128),
+    (8, 128, 256),
     (2, 128, 512),
     (16, 2, 256),
+    (16, 2, 16),  # rank-2 batched, vectorized (BLOCK_B > 1) kernel branch
+    (16, 2, 2048),  # k=2, rows=2048 batched
+    (4, 4, 64, 64),  # multi-batch
     (8, 4, 32, 32),
 ]
 
@@ -155,8 +168,13 @@ class MatrixNormBenchmark(base.GenericBenchmark2DOnly):
         ]
         # SVD core shapes — always included, cover each dispatch path (float32-only).
         shapes += [
+            (8, 1),
+            (1, 8),  # k=1: fro kernel
             (2, 64),
             (64, 2),  # k=2: rank2 closed form
+            (3, 4),
+            (3, 64),
+            (64, 3),  # k=3: gesvd / small-SVD (no Jacobi)
             (4, 64),
             (64, 4),  # k=4: Jacobi minimum (15 sweeps)
             (16, 64),

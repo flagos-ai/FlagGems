@@ -1456,7 +1456,9 @@ def _nuc_norm(A, dim, keepdim=False, dtype=None):
     else:
         s = _svdvals_for_norm(A)
         if s.shape[-1] == 1:
-            result = s.reshape(*s.shape[:-1])
+            # k==1: drop the trailing size-1 dim (squeeze handles the 2D case,
+            # where s.shape[:-1] is empty and reshape(*()) would raise)
+            result = s.squeeze(-1)
         else:
             result = _dim1_reduce(s, "sum")
     if result.dtype != out_dtype:

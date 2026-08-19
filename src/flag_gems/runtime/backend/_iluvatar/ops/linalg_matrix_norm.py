@@ -43,39 +43,21 @@ from flag_gems.runtime import torch_device_fn
 # ===========================================================================
 
 _RANK2_BLOCK_R_MAX = 2048
-_TSQR_MIN_ASPECT_RATIO = 8  # Use TSQR when M/N >= 8
-
-
-def _is_nofp64_backend():
-    """Whether the current device backend lacks fp64 compute support.
-
-    ILUVATAR (CoreX) has no fp64 compute path: all SVD accumulator paths use
-    fp32 on this backend, and fp64 inputs are rejected at the entry point."""
-    return True
 
 
 def _use_fp64_acc(input_dtype):
     """Whether to use fp64 for internal accumulation in reduction kernels.
 
-    - bf16/f16 → fp32 accumulator (fp64 is overkill for half precision)
-    - f32      → fp64 if backend supports it, else fp32
-    - f64      → fp64
-    """
-    if input_dtype == torch.float64:
-        return True
-    if input_dtype == torch.float32:
-        return not _is_nofp64_backend()
-    return False  # fp16/bf16 → fp32
+    ILUVATAR (CoreX) has no fp64 compute path: fp64 inputs are rejected at
+    the entry point, so every kernel reachable here accumulates in fp32."""
+    return False
 
 
 def _acc_dtype(input_dtype):
     """Accumulator dtype for host-side reduction buffers.
 
-    Mirrors ``_use_fp64_acc`` but returns a concrete torch dtype for use
-    with ``torch.zeros / torch.full``.
-    """
-    if _use_fp64_acc(input_dtype):
-        return torch.float64
+    Always fp32 -- mirrors ``_use_fp64_acc`` (fp64 inputs never reach the
+    kernels on CoreX)."""
     return torch.float32
 
 
@@ -85,9 +67,8 @@ def _select_dbdsqr_params(k):
     Returns (MAX_ITERS, num_warps, BLOCK_SWEEPS).  BLOCK_SWEEPS controls the
     inner Golub-Kahan QR sweep count inside ``_fused_dbdsqr_kernel``.
 
-    THEAD uses more conservative parameters: extra sweep budget adds robustness
-    for k=3 (the only k that normally reaches DBDSQR on thead; k ≥ 4 goes
-    through _svdvals_gram_jacobi).
+    ILUVATAR uses the generic parameters; k=3 is the only k that normally
+    reaches DBDSQR on iluvatar (k ≥ 4 goes through the fp32 Jacobi path).
     """
     if k <= 32:
         return 30, 1, 50
@@ -372,7 +353,7 @@ def _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim):
         grid_dim = triton.cdiv(mat_M, tile_m)
         init_val = float("inf") if is_min else 0.0
         # Output buffer must be fp32: tl.atomic_min / tl.atomic_max only
-        # support fp32.  USE_FP64 controls internal summation precision.
+        # support fp32.
         result = torch.full((batch,), init_val, dtype=torch.float32, device=Ab.device)
         _dummy = torch.empty(1, device=Ab.device)
         _abs_norm_kernel[(batch, grid_dim)](
@@ -474,8 +455,7 @@ def _ord1_norm(A, ord_val, dim, keepdim, dtype):
         else:
             init_val = float("inf") if is_min else 0.0
             # Output buffer must be fp32: tl.atomic_min / tl.atomic_max only
-            # support fp32.  Precision gain comes from internal fp64 summation
-            # when USE_FP64=True, not from the output dtype.
+            # support fp32.
             out = torch.full((), init_val, dtype=torch.float32, device=A.device)
             _dummy = torch.empty(1, device=A.device)
             _abs_norm_kernel[(grid_n,)](
@@ -658,11 +638,10 @@ def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
             f"linalg_matrix_norm: dims must be different, got ({dim[0]}, {dim[1]})"
         )
 
-    # --- fp64 guard for backends without fp64 support -----------------------
-    # ILUVATAR / Ascend have no fp64 compute path: reject fp64 inputs with an
-    # explicit error instead of silently downcasting.  THEAD is NOT included:
-    # its torch runtime fp64 is IEEE-accurate (probe_fp64_precision.py).
-    if _is_nofp64_backend() and A.dtype == torch.float64:
+    # --- fp64 guard: CoreX has no fp64 compute path -------------------------
+    # Reject fp64 inputs with an explicit error instead of silently
+    # downcasting.
+    if A.dtype == torch.float64:
         raise RuntimeError(
             f"linalg_matrix_norm: fp64 input is not supported on the "
             f"{flag_gems.vendor_name} backend"
@@ -753,148 +732,23 @@ def _svdvals_rank2(input):
     return s.reshape(*input.shape[:-2], 2)
 
 
-# ===========================================================================
-# DBDSQR fused kernel -- on-device Golub-Kahan QR (fp64, single launch, zero CPU sync).
-# ===========================================================================
-
-
-def _tsqr_r(a, M, N, device):
-    """Two-level TSQR for tall matrices (M >= N, M/N >= 8).
-
-    Stage 1: Partition A into ceil(M/BLOCK_ROWS) chunks, QR each independently.
-    Stage 2: Stack R-factors vertically, QR the stack once.
-
-    WARNING: consumes ``a`` as in-place scratch (Householder vectors overwrite
-    the input).  Callers must not reuse ``a`` after calling.
-
-    Args:
-        a: (batch, M, N) in fp64, tall (M >= N), contiguous
-        M, N: matrix dimensions
-        device: CUDA device
-
-    Returns:
-        R_final: (batch, N, N) in fp64, upper-triangular, or None if
-        num_chunks <= 1 (caller should fall back to single-block QR).
-    """
-    batch = a.shape[0]
-
-    # Choose partition size: > N so stack is smaller than original;
-    # target ~M/16 rows per chunk but at least 2*N for numerical benefit.
-    # block_rows may be non-power-of-2 after the max() clamp; that is fine
-    # because only BLOCK_M (the kernel tile size, always power-of-2) is used
-    # for tl.arange inside the kernel.
-    target_rows = max(N * 2, M // 16)
-    block_rows = triton.next_power_of_2(min(target_rows, max(N * 2, M // 2)))
-    block_rows = max(block_rows, N + 8)  # ensure > N
-
-    num_chunks = triton.cdiv(M, block_rows)
-    if num_chunks <= 1:
-        return None  # degenerate: single chunk -> use single-block QR
-
-    padded_M = num_chunks * block_rows
-
-    # Pad A if needed (zero rows don't affect R)
-    if padded_M > M:
-        pad = torch.zeros(batch, padded_M - M, N, dtype=torch.float64, device=device)
-        a = torch.cat([a, pad], dim=1)
-
-    # Stage 1: QR on each chunk
-    # Reshape (batch, padded_M, N) -> (batch * num_chunks, block_rows, N)
-    A_chunks = a.reshape(batch * num_chunks, block_rows, N).contiguous()
-    R_chunks = torch.zeros(batch * num_chunks, N, N, dtype=torch.float64, device=device)
-
-    # Fence before the chunk QR reads A_chunks: the reshape/contiguous (and
-    # the torch.cat pad above) are torch ops, and on sm8.0-class devices a
-    # Triton launch does not reliably observe prior writes without a full
-    # device sync.  Without this fence the chunk QR occasionally reads a
-    # partially-copied matrix under load -- observed on MetaX as rare R
-    # deviations of up to ~7e-2 (~2/30 runs), which the Jacobi stage then
-    # amplifies into test failures.
-    torch_device_fn.synchronize()
-
-    block_m_qr = triton.next_power_of_2(min(block_rows, 256))
-    with torch_device_fn.device(device):
-        _householder_qr_r_kernel[(batch * num_chunks,)](
-            A_chunks,
-            R_chunks,
-            block_rows,
-            N,
-            N,
-            stride_b=A_chunks.stride(0),
-            stride_m=A_chunks.stride(1),
-            stride_n=A_chunks.stride(2),
-            BLOCK_M=block_m_qr,
-            BLOCK_N=32,
-            USE_FP64=True,
-            num_warps=4,
-        )
-    torch_device_fn.synchronize()
-
-    # Stage 2: Stack R-factors and QR the stack.
-    # R_chunks: (batch * num_chunks, N, N) -> (batch, num_chunks * N, N)
-    # No power-of-2 padding needed: the kernel's BLOCK_M tile size is
-    # separately power-of-2, and the row count (M arg) supports masking.
-    R_stack = R_chunks.reshape(batch, num_chunks * N, N).contiguous()
-    stack_rows = num_chunks * N
-
-    # Fence before the stack QR reads R_stack: same class of failure as the
-    # A_chunks fence above -- the contiguous copy is a torch op whose writes
-    # are not reliably visible to the immediately following Triton launch on
-    # sm8.0-class devices.
-    torch_device_fn.synchronize()
-
-    R_final = torch.zeros(batch, N, N, dtype=torch.float64, device=device)
-    block_m_stack = triton.next_power_of_2(min(stack_rows, 256))
-    with torch_device_fn.device(device):
-        _householder_qr_r_kernel[(batch,)](
-            R_stack,
-            R_final,
-            stack_rows,
-            N,
-            N,
-            stride_b=R_stack.stride(0),
-            stride_m=R_stack.stride(1),
-            stride_n=R_stack.stride(2),
-            BLOCK_M=block_m_stack,
-            BLOCK_N=32,
-            USE_FP64=True,
-            num_warps=4,
-        )
-
-    return R_final
-
-
-# ===========================================================================
-# Two-sided symmetric Jacobi kernels (THEAD Gram-Jacobi SVD path).
-# On-device eigensolver for the fp64 Gram matrix -- replaces the former CPU
-# torch.linalg.eigvalsh approach (_svdvals_gram_eigh, removed).
-# ===========================================================================
-
-
-def _qr_rf(a, batch, m, n, k, device, tall, qr_use_fp64, block_m, block_n):
-    """QR factorisation producing the triangular R factor (k×k).
+def _qr_rf(a, batch, m, n, k, device, tall):
+    """QR factorisation producing the triangular R factor (k×k), fp32.
 
     Builds fresh scratch from ``a`` (the QR kernel overwrites its input with
-    Householder vectors), then runs either the two-level TSQR (tall,
-    high-aspect-ratio inputs) or a single-block Householder QR.  Returns
-    (Rf, tsqr_applied).
+    Householder vectors), then runs a single-block Householder QR.
     """
     if tall:
-        a_qr = a.float().clone() if not qr_use_fp64 else a.double().clone()
+        a_qr = a.float().clone()
         M_qr, N_qr = m, n
     else:
         a_qr = a.transpose(-2, -1).contiguous()
-        a_qr = a_qr.float().clone() if not qr_use_fp64 else a_qr.double().clone()
+        a_qr = a_qr.float().clone()
         M_qr, N_qr = n, m
     block_m = triton.next_power_of_2(min(M_qr, 256))
 
-    Rf = torch.zeros(
-        (batch, k, k),
-        dtype=torch.float64 if qr_use_fp64 else torch.float32,
-        device=device,
-    )
+    Rf = torch.zeros((batch, k, k), dtype=torch.float32, device=device)
 
-    _tsqr_applied = False
     # Fence before the QR kernel reads a_qr: its backing copies
     # (transpose/contiguous/clone) are torch ops, and on sm8.0-class devices
     # a Triton launch does not reliably observe prior writes without a full
@@ -904,105 +758,30 @@ def _qr_rf(a, batch, m, n, k, device, tall, qr_use_fp64, block_m, block_n):
     # on the k=3 keepdim test during a full-suite run).
     torch_device_fn.synchronize()
     with torch_device_fn.device(device):
-        # TSQR disabled for THEAD: two-level QR introduces R-factor
-        # perturbations that degrade DBDSQR convergence for k ≥ 32.
-        if qr_use_fp64 and M_qr // N_qr >= _TSQR_MIN_ASPECT_RATIO:
-            R_tsqr = _tsqr_r(a_qr, M_qr, N_qr, device)
-            if R_tsqr is not None:
-                Rf = R_tsqr
-                _tsqr_applied = True
-            else:
-                _householder_qr_r_kernel[(batch,)](
-                    a_qr,
-                    Rf,
-                    M_qr,
-                    N_qr,
-                    k,
-                    stride_b=a_qr.stride(0),
-                    stride_m=a_qr.stride(-2),
-                    stride_n=a_qr.stride(-1),
-                    BLOCK_M=block_m,
-                    BLOCK_N=block_n,
-                    USE_FP64=qr_use_fp64,
-                    num_warps=4,
-                )
-        else:
-            _householder_qr_r_kernel[(batch,)](
-                a_qr,
-                Rf,
-                M_qr,
-                N_qr,
-                k,
-                stride_b=a_qr.stride(0),
-                stride_m=a_qr.stride(-2),
-                stride_n=a_qr.stride(-1),
-                BLOCK_M=block_m,
-                BLOCK_N=block_n,
-                USE_FP64=qr_use_fp64,
-                num_warps=4,
-            )
-    return Rf, _tsqr_applied
-
-
-def _qr_r_dbdsqr(a, batch, m, n, k, device, tall, work_dtype, block_m, block_n):
-    """Single Householder QR pass on original A for the DBDSQR section.
-
-    Re-factors A in ``work_dtype`` (used when step 1's Rf dtype does not
-    match the DBDSQR work dtype, i.e. k=3 on fp64-capable backends).  The
-    QR kernel overwrites its input, so fresh scratch is built per call.
-    """
-    M_qr, N_qr = (m, n) if tall else (n, m)
-    if tall:
-        a_qr_dbdsqr = a.to(work_dtype).clone()
-    else:
-        a_qr_dbdsqr = a.transpose(-2, -1).contiguous().to(work_dtype)
-    R_dbdsqr = torch.zeros((batch, k, k), dtype=work_dtype, device=device)
-    # Fence before the QR kernel reads a_qr_dbdsqr (same class of failure as
-    # the a_qr-copy fence in _qr_rf).
-    torch_device_fn.synchronize()
-    with torch_device_fn.device(device):
         _householder_qr_r_kernel[(batch,)](
-            a_qr_dbdsqr,
-            R_dbdsqr,
+            a_qr,
+            Rf,
             M_qr,
             N_qr,
             k,
-            stride_b=a_qr_dbdsqr.stride(0),
-            stride_m=a_qr_dbdsqr.stride(-2),
-            stride_n=a_qr_dbdsqr.stride(-1),
+            stride_b=a_qr.stride(0),
+            stride_m=a_qr.stride(-2),
+            stride_n=a_qr.stride(-1),
             BLOCK_M=block_m,
-            BLOCK_N=block_n,
-            USE_FP64=(work_dtype == torch.float64),
+            BLOCK_N=32,
+            USE_FP64=False,
             num_warps=4,
         )
-    return R_dbdsqr
+    return Rf
 
 
 def _svdvals_hybrid(input):
-    """Hybrid SVD: Gram-Jacobi (thead, hygon) / QR+Jacobi+DBDSQR (others).
+    """Hybrid SVD on ILUVATAR: fp32 QR + Jacobi (15/20 sweeps) + DBDSQR.
 
-    Per-backend dispatch:
-
-      THEAD (PingTouGe)
-        k ≥ 4:  _svdvals_gram_jacobi (fp64 Gram GEMM on device + parallel
-                two-sided Jacobi eigensolver in Triton).  No CPU LAPACK.
-        k = 3:  DBDSQR fallback (same as generic, fp64).
-
-      HYGON (DCU)
-        k ≥ 3:  _svdvals_gram_jacobi, same as THEAD.  The Triton Householder
-                QR kernel is nondeterministic on hygon, so the QR/Jacobi/
-                DBDSQR stages are bypassed entirely (odd k uses a dummy
-                column in the Brent-Luk pairing, PAIR_K = k + 1).
-
-      ILUVATAR (CoreX)
-        k ≥ 4:  fp32 QR + fp32 Jacobi (15–20 sweeps).
-                Falls back to fp32 DBDSQR if Jacobi doesn't converge.
-        k = 3:  fp32 DBDSQR directly.
-
-      CUDA / MetaX / other
-        k > 10:      QR (fp64) + Jacobi (60/50 sweeps fp64, 30/40 sweeps fp32).
-        k ∈ (3, 10]: DBDSQR (fp64 or fp32).
-        Jacobi → DBDSQR fallback on non-convergence.
+    Dispatch (fp32 throughout -- CoreX has no fp64 compute path):
+      k ≥ 4:  fp32 QR + fp32 Jacobi (15/20 sweeps).
+              Falls back to fp32 DBDSQR if Jacobi doesn't converge.
+      k = 3:  fp32 DBDSQR directly (bidiagonalisation + Golub-Kahan QR).
     """
 
     batch, m, n = _svd_shape(input)
@@ -1011,17 +790,8 @@ def _svdvals_hybrid(input):
     a = input.contiguous().reshape(batch, m, n)
     device = input.device
 
-    # ---- 1. QR: A → triangular R (k×k) -------------------------------------
-    # fp64 for k ≥ 4 on backends that support it (CUDA, MetaX, THEAD).
-    # ILUVATAR / Ascend use fp32 throughout (_is_nofp64_backend → True).
-    M_qr, N_qr = (m, n) if tall else (n, m)
-    block_m = triton.next_power_of_2(min(M_qr, 256))
-    block_n = 32
-    qr_use_fp64 = k >= 4 and not _is_nofp64_backend()
-
-    Rf, _tsqr_applied = _qr_rf(
-        a, batch, m, n, k, device, tall, qr_use_fp64, block_m, block_n
-    )
+    # ---- 1. QR: A → triangular R (k×k), fp32 --------------------------------
+    Rf = _qr_rf(a, batch, m, n, k, device, tall)
 
     # Fence before Jacobi reads Rf: on SM 8.0 (A100) Triton kernel launches
     # do not reliably act as memory fences under memory pressure, so a
@@ -1032,23 +802,12 @@ def _svdvals_hybrid(input):
     torch_device_fn.synchronize()
 
     # ---- 2. Jacobi SVD on R ------------------------------------------------
-    # THEAD: Jacobi only for 10 < k < 32 (narrow window where Jacobi is
-    #   faster than DBDSQR but small enough that thead's fp64 noise is
-    #   tolerable).  For k ≥ 4, THEAD is normally caught by the Gram-Jacobi
-    #   early-exit above and only reaches here if that breaks down.
-    # ILUVATAR: Jacobi for all k ≥ 4, lower sweep counts (fp32 precision
-    #   floor is higher, so additional sweeps don't help).
-    # OTHER: Jacobi for k > 10.
-    # Per-backend Jacobi dispatch.  TSQR matrices always retain Jacobi:
-    # DBDSQR doesn't drown out the ULPs-level differences from the two-level
-    # QR partitioning, so final singular values vary non-deterministically
-    # across runs on SM 8.0 GPUs.  Jacobi's 60 sweeps drive the off-diagonal
-    # deep below the convergence floor, producing identical results regardless
-    # of GPU arch.
+    # ILUVATAR: Jacobi for all k ≥ 4, 15/20 sweeps.  The fp32 precision
+    # floor is higher, so additional sweeps don't help.  Non-converged →
+    # fall through to DBDSQR below.
     use_jacobi = k >= 4
 
     if use_jacobi:
-        # Per-backend Jacobi sweep counts
         _JACOBI_SWEEPS = 15 if k <= 48 else 20
 
         block_r = triton.next_power_of_2(k)
@@ -1075,53 +834,28 @@ def _svdvals_hybrid(input):
         off_mask = ~torch.eye(k, dtype=torch.bool, device=device)
         max_off = max_dim(gems_abs(gram[:, off_mask]), dim=-1).values
         max_diag = max_dim(gems_abs(diag), dim=-1).values
-        rel_tol = 1e-6 if Rf.dtype == torch.float64 else 5e-4
+        rel_tol = 5e-4  # Rf is always fp32 on iluvatar
         jacobi_ok = bool(gems_all(max_off <= rel_tol * max_diag).item())
 
         if jacobi_ok:
-            if Rf.dtype == torch.float64:
-                col_norms = a_work.norm(dim=-1)
-            else:
-                col_norms = gems_sqrt((a_work * a_work).sum(dim=-1).clamp(min=0.0))
+            col_norms = gems_sqrt((a_work * a_work).sum(dim=-1).clamp(min=0.0))
             s_sorted = gems_topk(col_norms, k, dim=-1, largest=True)[0]
             return s_sorted.reshape(*input.shape[:-2], k).to(input.dtype)
         # Non-converged → fall through to DBDSQR
 
     # ---- 3. DBDSQR: bidiagonalisation + Golub-Kahan QR ----------------------
-    # THEAD reuses Rf from step 1 (normally only reaches here for k=3, where
-    # Rf is clean; k ≥ 4 arrives only if Gram-Jacobi breaks down).
-    # ILUVATAR re-does QR from original A (step 1 was in fp32, but
-    # work_dtype is also fp32, so reuse is fine).
-    # OTHER backends re-do QR from original A because step 1's a_qr is
-    # corrupted by in-place Householder vectors.
-    work_dtype = torch.float32 if _is_nofp64_backend() else torch.float64
+    # Reached for k=3, or when the fp32 Jacobi above doesn't converge.
+    # Reuse Rf from step 1: both are fp32 (CoreX has no fp64 compute path).
+    work_dtype = torch.float32
     block_k = triton.next_power_of_2(k)
     d_out = torch.zeros((batch, k), dtype=work_dtype, device=device)
     e_out = torch.zeros((batch, k - 1), dtype=work_dtype, device=device)
 
     with torch_device_fn.device(device):
-        # Reuse Rf from step 1 whenever dtypes match — preserves TSQR precision
-        # for tall matrices (step 1's QR already applied two-level partitioning).
-        # Re-doing single-block QR would lose that precision and re-introduce
-        # non-deterministic run-to-run variation for M/N >= 8 on SM 8.0 GPUs.
-        # THEAD already unconditionally reuses Rf; iluvatar always takes the
-        # Jacobi path above for k >= 4, so this fallback only matters for
-        # CUDA/MetaX k <= 10 (no Jacobi).
-        if Rf.dtype == work_dtype:
-            R_dbdsqr = Rf if Rf.dtype == work_dtype else Rf.to(work_dtype)
-        else:
-            # Dtype mismatch (e.g. qr_use_fp64=False but work_dtype=fp64):
-            # re-do QR on original A with correct dtype.  Only hits k=3 where
-            # TSQR was never applied (k < 4 disables fp64 QR), so no precision
-            # is lost.
-            R_dbdsqr = _qr_r_dbdsqr(
-                a, batch, m, n, k, device, tall, work_dtype, block_m, block_n
-            )
-        # Fence before the bidiagonalisation kernel reads R_dbdsqr: the
-        # Rf.to(work_dtype) copy above is a torch op, and without a full
-        # device sync the kernel may read it before the copy's writes are
-        # visible on sm8.0-class devices (same class of failure as the
-        # a_qr-copy fence above).
+        R_dbdsqr = Rf
+        # Fence before the bidiagonalisation kernel reads R_dbdsqr (= Rf from
+        # step 1): guards the QR → bidiag handoff on sm8.0-class devices
+        # (same class of failure as the a_qr-copy fence above).
         torch_device_fn.synchronize()
         _bidiag_kernel[(batch,)](
             R_dbdsqr,
@@ -1143,11 +877,7 @@ def _svdvals_hybrid(input):
             e_out,
             K=k,
             BLOCK_K=block_k_dbdsqr,
-            EPS=(
-                1.1920928955078125e-07
-                if _is_nofp64_backend()
-                else 2.220446049250313e-16
-            ),
+            EPS=1.1920928955078125e-07,  # fp32 machine epsilon
             MAX_ITERS=max_iters,
             BLOCK_SWEEPS=block_sweeps,
             num_warps=num_w,
@@ -1167,13 +897,13 @@ def _svdvals_for_norm(A):
     """SVD dispatch for ord=2/-2/nuc.  Returns (..., K).
 
     Precision strategy (matches PyTorch CUDA gesvdj / gesvd):
-      fp64 → fp64,  fp32 → fp32,  fp16/bf16 → upcast to fp32.
-      ILUVATAR / Ascend: fp64 inputs raise (no fp64 hardware support).
+      fp32 → fp32,  fp16/bf16 → upcast to fp32.
+      ILUVATAR (CoreX): fp64 inputs raise (no fp64 hardware support).
     """
     in_dtype = A.dtype
     if in_dtype in (torch.float16, torch.bfloat16):
         A = A.float()
-    if _is_nofp64_backend() and A.dtype == torch.float64:
+    if A.dtype == torch.float64:
         raise RuntimeError(
             f"linalg_matrix_norm: fp64 input is not supported on the "
             f"{flag_gems.vendor_name} backend"
@@ -1200,7 +930,7 @@ def _svdvals_for_norm(A):
             blk_n,
             1,
             TILE_2D=False,
-            USE_FP64=not _is_nofp64_backend(),
+            USE_FP64=_use_fp64_acc(A.dtype),  # fp32 accumulation on CoreX
             num_warps=8,
         )
         return s.reshape(*batch_dims, 1).to(in_dtype)
