@@ -666,6 +666,7 @@ _FULL_CONFIG = (
     ("linalg_slogdet", linalg_slogdet),
     ("linalg_solve_triangular", linalg_solve_triangular),
     ("linalg_solve_triangular.out", linalg_solve_triangular_out),
+    ("linalg_svd", linalg_svd),
     ("linalg_vecdot", linalg_vecdot),
     ("linalg_vecdot.out", linalg_vecdot_out),
     ("linalg_vector_norm", vector_norm),
