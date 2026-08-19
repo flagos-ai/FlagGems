@@ -3097,6 +3097,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
+  - id: linalg_inv
+    description: |
+      Computes the inverse of a square invertible matrix A, or for batches of
+      square invertible matrices.
+    for:
+      - linalg_inv
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
