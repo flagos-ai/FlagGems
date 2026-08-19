@@ -3626,6 +3626,21 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: fake_quantize_learnable_per_channel_affine_backward
+    description: |
+      Triton kernel implementation for `_fake_quantize_learnable_per_channel_affine_backward`,
+      the backward of learnable per-channel fake quantization. Computes the gradients
+      with respect to the input, scale and zero-point, accounting for the saturation
+      branch where the quantized value is clamped to `[quant_min, quant_max]`.
+    for:
+      - _fake_quantize_learnable_per_channel_affine_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: feature_dropout
     description: |
       Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.

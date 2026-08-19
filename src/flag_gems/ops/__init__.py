@@ -48,6 +48,9 @@ from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
 )
 from flag_gems.ops._euclidean_dist import _euclidean_dist
+from flag_gems.ops._fake_quantize_learnable_per_channel_affine_backward import (
+    _fake_quantize_learnable_per_channel_affine_backward,
+)
 from flag_gems.ops._fake_quantize_learnable_per_tensor_affine import (
     _fake_quantize_learnable_per_tensor_affine,
 )
@@ -890,6 +893,7 @@ __all__ = [
     "_batch_norm_impl_index",
     "_batch_norm_no_update",
     "_cummin_helper",
+    "_fake_quantize_learnable_per_channel_affine_backward",
     "_fake_quantize_learnable_per_tensor_affine",
     "_functional_assert_async",
     "_cdist_backward",
