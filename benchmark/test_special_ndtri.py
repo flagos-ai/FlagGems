@@ -32,6 +32,6 @@ def test_special_ndtri():
         torch_op=torch.ops.aten.special_ndtri,
         # ndtri is implemented for single and double precision only, so the
         # half precision dtypes benchmarked for most pointwise ops are excluded.
-        dtypes=[torch.float32],
+        dtypes=[torch.float32, torch.float64],
     )
     bench.run()

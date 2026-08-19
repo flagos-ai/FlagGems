@@ -21,10 +21,9 @@ from . import accuracy_utils as utils
 
 # PyTorch implements ndtri for single and double precision only: ndtri_cuda and
 # ndtri_cpu both raise NotImplementedError for Half and BFloat16, so there is no
-# reference to compare against for those dtypes. The kernel computes in float32,
-# following the convention of the other special pointwise ops in this repository,
-# so float32 is the dtype exercised here.
-NDTRI_DTYPES = [torch.float32]
+# reference to compare against for those dtypes. Both supported precisions are
+# exercised here; float64 is only included when the backend supports it.
+NDTRI_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
 NDTRI_UNSUPPORTED_DTYPES = [torch.float16, torch.bfloat16]
 
 
