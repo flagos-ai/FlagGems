@@ -55,10 +55,9 @@ class RnnReluBenchmark(base.GenericBenchmark):
 def test_rnn_relu():
     dtypes = list(consts.FLOAT_DTYPES)
 
-    # Iluvatar BI-V150 (CC 7.1) and other pre-Ampere GPUs lack native
-    # bfloat16 hardware support.  The Triton bf16 backend falls back to
-    # software conversion for every load/store, which makes the RNN
-    # hidden-state recurrence ~20x slower than PyTorch's cuDNN path.
+    # pre-Ampere GPUs lack native bfloat16 hardware support.
+    # The Triton bf16 backend falls back to software conversion for every load/store,
+    # which makes the RNN hidden-state recurrence ~20x slower than PyTorch's cuDNN path.
     # Replace bf16 with fp16 on these devices so the benchmark still
     # exercises 3 dtype entries with meaningful number.
     major, _ = torch.cuda.get_device_capability()
