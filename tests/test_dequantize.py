@@ -27,6 +27,9 @@ QUANT_SHAPES = [(4, 4), (16, 32), (32, 64), (64, 128), (1024, 1024)]
 
 
 @pytest.mark.dequantize
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize("shape", QUANT_SHAPES)
 @pytest.mark.parametrize("scale", [0.1, 0.01, 0.5])
 @pytest.mark.parametrize("zero_point", [0, 10, -20])

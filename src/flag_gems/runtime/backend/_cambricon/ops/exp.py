@@ -41,4 +41,4 @@ def exp_(A):
 # exp.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
 def exp_out(A, out):
     logger.debug("GEMS_CAMBRICON EXP_OUT")
-    return exp_func(A, True, out0=out)
+    return exp_func(A, False, out0=out)

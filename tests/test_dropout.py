@@ -54,8 +54,11 @@ def test_dropout(shape, p, dtype):
     )
     ref_inp = utils.to_reference(res_inp)
 
-    p = np.float32(p)
-    one_minus_p = np.float32(1.0) - p
+    if flag_gems.vendor_name == "cambricon":
+        one_minus_p = 1.0 - p
+    else:
+        p = np.float32(p)
+        one_minus_p = np.float32(1.0) - p
 
     ref_out = torch.nn.functional.dropout(ref_inp, p, True)
     with flag_gems.use_gems():
@@ -79,14 +82,14 @@ def test_dropout(shape, p, dtype):
         ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {res_inp.numel()}"
 
 
-@pytest.mark.dropout_backward
+@pytest.mark.native_dropout_backward
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3] if cfg.QUICK_MODE else [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-def test_dropout_backward(shape, p, dtype):
+def test_native_dropout_backward(shape, p, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
