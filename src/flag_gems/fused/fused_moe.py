@@ -44,6 +44,59 @@ _HALF_GEMM_TILE_K = 64
 _HALF_GEMM2_TILE_N = 256
 _PLAIN_HALF_CONFIG_DTYPES = ("fp16", "bf16")
 
+# Exact H20 configs whose resource footprint differs materially from the
+# generic heuristic. Keep these matches stage- and shape-specific so nearby
+# batches and other model families retain the legacy selection policy.
+_H20_QWEN_M1_BF16_PLAN = {
+    # Use the paired gate/up dot even on the exact-route (naive assignment)
+    # path, eliminating a separate activation launch.
+    "gemm1": {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 32,
+        "BLOCK_SIZE_K": 128,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 3,
+        "PAIR_GATE_UP_DOT": True,
+    },
+    "gemm2": {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 32,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 2,
+        "num_stages": 2,
+    },
+}
+_H20_MIXTRAL_M512_PLAN = {
+    # The generic fused GEMM1 tile (128x256, 8 warps) keeps two FP32
+    # accumulators live and reaches 255 registers/thread. A 64x128 tile retains
+    # fused SiLU while allowing substantially more resident CTAs.
+    "gemm1": {
+        "BLOCK_SIZE_M": 64,
+        "BLOCK_SIZE_N": 128,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 3,
+    },
+    "gemm2": {
+        "BLOCK_SIZE_M": 64,
+        "BLOCK_SIZE_N": 128,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 3,
+    },
+}
+_H20_EXACT_CONFIGS: dict[
+    tuple[str, int, int, int, int, int], dict[str, dict[str, Any]]
+] = {
+    ("bf16", 1, 256, 2048, 128, 8): _H20_QWEN_M1_BF16_PLAN,
+    ("bf16", 512, 8, 4096, 14336, 2): _H20_MIXTRAL_M512_PLAN,
+    ("fp16", 512, 8, 4096, 14336, 2): _H20_MIXTRAL_M512_PLAN,
+}
+
 
 @functools.lru_cache(maxsize=1)
 def get_embedded_moe_configs():
@@ -159,8 +212,41 @@ def _get_device_name() -> str:
 
 @functools.lru_cache(maxsize=1)
 def _is_h20() -> bool:
-    """Whether the current device is an NVIDIA H20 (gates the FP8 MoE swap_ab default)."""
+    """Whether the current tuning profile is for a full NVIDIA H20."""
     return "H20" in _get_device_name().split("_")
+
+
+def _get_h20_exact_config(
+    w1_shape: tuple[int, ...],
+    w2_shape: tuple[int, ...],
+    M: int,
+    E: int,
+    topk: int,
+    dtype: str | None,
+    gemm_stage: str,
+) -> dict[str, Any] | None:
+    if dtype not in _PLAIN_HALF_CONFIG_DTYPES or not _is_h20():
+        return None
+
+    if gemm_stage not in ("gemm1", "gemm2"):
+        raise ValueError(f"Unsupported MoE GEMM stage: {gemm_stage}")
+
+    w1_experts, gate_up_size, hidden_size = w1_shape
+    w2_experts, output_size, intermediate_size = w2_shape
+    if (
+        w1_experts != E
+        or w2_experts != E
+        or output_size != hidden_size
+        or gate_up_size != 2 * intermediate_size
+    ):
+        return None
+
+    plan = _H20_EXACT_CONFIGS.get((dtype, M, E, hidden_size, intermediate_size, topk))
+    if plan is None:
+        return None
+    if plan["gemm1"]["BLOCK_SIZE_M"] != plan["gemm2"]["BLOCK_SIZE_M"]:
+        raise ValueError("Exact MoE plan must use one BLOCK_SIZE_M for both GEMMs")
+    return plan[gemm_stage].copy()
 
 
 def get_moe_configs(
@@ -217,6 +303,18 @@ def try_get_optimal_moe_config(
 ) -> dict[str, Any] | tuple[dict[str, Any], bool]:
     if gemm_stage not in ("gemm1", "gemm2"):
         raise ValueError(f"Unsupported MoE GEMM stage: {gemm_stage}")
+    exact_config = _get_h20_exact_config(
+        w1_shape, w2_shape, M, E, top_k, dtype, gemm_stage
+    )
+    if exact_config is not None:
+        if return_is_embedded:
+            return exact_config, False
+        return exact_config
+
+    if gemm_stage == "gemm1":
+        _, stage_n, stage_k = w1_shape
+    else:
+        _, stage_n, stage_k = w2_shape
     _, _, config_n = w2_shape
     if dtype == "int4_w4a16":
         config_n = config_n * 2
@@ -227,15 +325,11 @@ def try_get_optimal_moe_config(
         config = configs[min(configs.keys(), key=lambda x: abs(x - M))].copy()
         is_embedded = True
     else:
-        if gemm_stage == "gemm1":
-            _, N, K = w1_shape
-        else:
-            _, N, K = w2_shape
         config = get_default_config(
             M,
             E,
-            N,
-            K,
+            stage_n,
+            stage_k,
             top_k,
             dtype,
             block_shape,
@@ -502,6 +596,26 @@ def get_default_config(
             "num_stages": num_stages,
         }
     return config
+
+
+def _validate_moe_block_size_m(
+    base_config: dict[str, Any],
+    gemm1_config: dict[str, Any],
+    gemm2_config: dict[str, Any],
+) -> None:
+    """Keep expert-alignment blocks consistent with both routed GEMMs."""
+    block_sizes = {
+        base_config["BLOCK_SIZE_M"],
+        gemm1_config["BLOCK_SIZE_M"],
+        gemm2_config["BLOCK_SIZE_M"],
+    }
+    if len(block_sizes) != 1:
+        raise ValueError(
+            "MoE alignment, GEMM1 and GEMM2 must use the same BLOCK_SIZE_M; "
+            f"got base={base_config['BLOCK_SIZE_M']}, "
+            f"gemm1={gemm1_config['BLOCK_SIZE_M']}, "
+            f"gemm2={gemm2_config['BLOCK_SIZE_M']}"
+        )
 
 
 def _get_config_dtype_str(
@@ -1086,9 +1200,10 @@ def fused_moe_kernel(
 
     # Create pointers for first blocks of A and B
     offs = tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
-    num_tokens_post_padded = tl.load(num_tokens_post_padded_ptr)
-    if pid_m * BLOCK_SIZE_M >= num_tokens_post_padded:
-        return
+    if not naive_block_assignment:
+        num_tokens_post_padded = tl.load(num_tokens_post_padded_ptr)
+        if pid_m * BLOCK_SIZE_M >= num_tokens_post_padded:
+            return
     offs_token_id = pid_m * BLOCK_SIZE_M + offs
     if not naive_block_assignment:
         offs_token = tl.load(sorted_token_ids_ptr + offs_token_id)
@@ -1984,11 +2099,13 @@ def fused_experts_impl(
 
     direct_sum_supported = is_plain_half_config or is_fp8_blockwise
 
-    # Check if we can safely fuse the activation with the first GEMM pass
+    # Input-side routing weights must be applied before the nonlinear
+    # activation; the fused kernel multiplies them after fused SiLU.
     can_use_fused_silu = (
         activation_enum in (MoEActivation.SILU, MoEActivation.SWIGLUOAI)
         and w1_bias is None
         and expert_map is None  # Fused kernel doesn't handle EP -1 experts
+        and not apply_router_weight_on_input
     )
 
     for chunk in range((num_tokens // CHUNK_SIZE) + 1):
@@ -2033,25 +2150,11 @@ def fused_experts_impl(
             )
         )
 
-        if not naive_block_assignment:
-            sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
-                curr_topk_ids,
-                base_config["BLOCK_SIZE_M"],
-                global_num_experts,
-                expert_map,
-                # ignore_invalid_experts=True,
-            )
-        else:
-            max_num_tokens_padded = topk_ids.numel() * base_config["BLOCK_SIZE_M"]
-            expert_ids = curr_topk_ids.view(-1)
-            num_tokens_post_padded = torch.empty(
-                (1), dtype=torch.int32, device=topk_ids.device
-            )
-            num_tokens_post_padded.fill_(max_num_tokens_padded)
-            sorted_token_ids = None
-
-        # 1. Extract a unified boolean flag for GEMM1 fusion and select config
-        do_fuse_silu = can_use_fused_silu and not naive_block_assignment
+        # Select both stage configs before alignment: BLOCK_SIZE_M determines
+        # the expert_ids layout and must agree across the whole routed pipeline.
+        do_fuse_silu = can_use_fused_silu and (
+            not naive_block_assignment or base_config.get("PAIR_GATE_UP_DOT", False)
+        )
         use_half_gemm_fast_paths = not is_embedded_config and is_plain_half_config
 
         gemm1_config = base_config
@@ -2061,25 +2164,45 @@ def fused_experts_impl(
                 gemm_stage="gemm1",
                 enable_gemm_fast_path=True,
             )
+        gemm2_config = base_config
+        if use_half_gemm_fast_paths:
+            gemm2_config, _ = get_moe_config(
+                tokens_in_chunk,
+                gemm_stage="gemm2",
+                enable_gemm_fast_path=True,
+            )
 
-        # 2. Dynamically determine the differing parameters based on the fusion flag
+        if not naive_block_assignment:
+            _validate_moe_block_size_m(base_config, gemm1_config, gemm2_config)
+            sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
+                curr_topk_ids,
+                base_config["BLOCK_SIZE_M"],
+                global_num_experts,
+                expert_map,
+                # ignore_invalid_experts=True,
+            )
+        else:
+            expert_ids = curr_topk_ids.view(-1)
+            # The naive launch grid contains exactly one M block per route, so
+            # the kernel does not need a padded-token bound. Reuse an existing
+            # device pointer to avoid a scalar allocation and fill kernel.
+            num_tokens_post_padded = curr_topk_ids
+            sorted_token_ids = None
+
+        # 1. Dynamically determine the differing parameters based on the fusion flag
         if do_fuse_silu:
             # Output goes directly to cache 2 with adjusted dimensions
             out_cache = intermediate_cache2.view(
                 tokens_in_chunk, top_k_num, activation_out_dim
             )
-            # Fused kernel weight handling depends on apply_router_weight_on_input
-            if apply_router_weight_on_input:
-                weights_arg = curr_topk_weights
-            else:
-                weights_arg = None
+            weights_arg = None
         else:
             # Standard path outputs to cache 1
             out_cache = intermediate_cache1
             # Standard path always passes the weights
             weights_arg = curr_topk_weights
 
-        # 3. Unified GEMM1 dispatch call to eliminate redundant code blocks
+        # 2. Unified GEMM1 dispatch call to eliminate redundant code blocks
         dispatch_fused_moe_kernel(
             qcurr_hidden_states,
             w1,
@@ -2105,13 +2228,13 @@ def fused_experts_impl(
             FUSE_SILU=do_fuse_silu,  # Master switch for the kernel
         )
 
-        # 4. Apply activation separately if the fused path was not taken
+        # 3. Apply activation separately if the fused path was not taken
         if not do_fuse_silu:
             apply_moe_activation(
                 activation_enum, intermediate_cache2, intermediate_cache1.view(-1, N)
             )
 
-        # 5. Quantize activated intermediate for GEMM2
+        # 4. Quantize activated intermediate for GEMM2
         qintermediate_cache2, a2q_scale = moe_kernel_quantize_input(
             A=intermediate_cache2,
             A_scale=a2_scale,
@@ -2124,14 +2247,7 @@ def fused_experts_impl(
         if expert_map is not None:
             intermediate_cache3.zero_()
 
-        # 6. Select GEMM2 config and output buffer/reduction path
-        gemm2_config = base_config
-        if use_half_gemm_fast_paths:
-            gemm2_config, _ = get_moe_config(
-                tokens_in_chunk,
-                gemm_stage="gemm2",
-                enable_gemm_fast_path=True,
-            )
+        # 5. Select the GEMM2 output buffer/reduction path
         use_direct_sum = (
             not is_embedded_config
             and direct_sum_supported
@@ -2147,7 +2263,7 @@ def fused_experts_impl(
         else:
             gemm2_output = intermediate_cache3
 
-        # 7. Dispatch GEMM2
+        # 6. Dispatch GEMM2
         dispatch_fused_moe_kernel(
             qintermediate_cache2,
             w2,
@@ -2175,7 +2291,7 @@ def fused_experts_impl(
             out_top_k=top_k_num,
         )
 
-        # 8. Reduce GEMM2 top-k outputs unless direct_sum wrote final output directly
+        # 7. Reduce GEMM2 top-k outputs unless direct_sum wrote final output directly
         if not use_direct_sum:
             moe_sum(
                 intermediate_cache3.view(*intermediate_cache3.size()),

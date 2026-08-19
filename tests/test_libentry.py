@@ -461,7 +461,11 @@ def test_pass_kernel_arg_via_kw():
 def test_kernel_arg_apply_default():
     x = torch.randn((128, 128, 128), device=flag_gems.device)
     with not_raises(KeyError):
+        # The first call compiles through Triton; the second exercises
+        # LibEntry's cached signature-ordered launch path.
         _ = softmax_inner_kernel_arg_apply_default(x, dim=2)
+        out = softmax_inner_kernel_arg_apply_default(x, dim=2)
+    torch.testing.assert_close(out, torch.softmax(x, dim=2))
 
 
 class TaskThread(threading.Thread):

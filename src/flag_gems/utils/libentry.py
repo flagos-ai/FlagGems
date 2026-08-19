@@ -1641,7 +1641,7 @@ class LibEntry(triton.KernelInterface):
                 k_args[param_names[i]] = arg
                 dns_args.append(hashable_arg)
             else:
-                if major_version == 3 and 3 <= minor_version <= 6:
+                if major_version == 3 and 3 <= minor_version <= 7:
                     k_args[param_names[i]] = arg
                 const_args.append(hashable_arg)
         for p in self.jit_function.params[len(args) :]:
@@ -1654,7 +1654,7 @@ class LibEntry(triton.KernelInterface):
 
             if p.is_constexpr:
                 const_args.append(val)
-                if major_version == 3 and 3 <= minor_version <= 6:
+                if major_version == 3 and 3 <= minor_version <= 7:
                     k_args[p.name] = val
             elif p.do_not_specialize:
                 dns_args.append(val)
@@ -1756,7 +1756,10 @@ class LibEntry(triton.KernelInterface):
             for pre_hook, hook_kwargs in launch_pre_hooks:
                 pre_hook({**hook_nargs, **hook_kwargs})
 
-        if major_version == 3 and 3 <= minor_version <= 6:
+        # Triton 3.7 keeps the signature-ordered launch convention introduced
+        # in 3.3. Passing the insertion order of k_args can misalign constexpr
+        # arguments when wrappers add defaults or tuning metadata.
+        if major_version == 3 and 3 <= minor_version <= 7:
             all_args = []
             missing_keys = []
             for key in list(self.signature.parameters.keys()):
