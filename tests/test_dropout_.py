@@ -84,7 +84,9 @@ def test_dropout__noop(dtype):
     # train=False must be an exact no-op that returns the same tensor.
     # 8192 elements is a small, cheap buffer sufficient for an exact check.
     res_inp = torch.randn((8192,), dtype=dtype, device=flag_gems.device)
-    expected = res_inp.clone()
+    # to_reference moves the snapshot to CPU under TO_CPU so gems_assert_equal's
+    # device check holds; the no-op must leave the input bit-for-bit unchanged.
+    expected = utils.to_reference(res_inp.clone())
     with flag_gems.use_gems():
         res_out = torch.ops.aten.dropout_(res_inp, 0.5, False)
     assert res_out.data_ptr() == res_inp.data_ptr()
