@@ -137,7 +137,7 @@ def rms_norm_fp8_w8a16_loop_kernel(
         tl.store(out_ptr + pid * N + n_offsets, y)
 
 
-def rms_norm_fp8_w8a16(
+def rms_norm_w8a16_fp8(
     x, normalized_shape, weight_fp8, weight_scale, eps=1e-5, group_size=128
 ):
     logger.debug("GEMS RMS_NORM FP8 W8A16 FORWARD")

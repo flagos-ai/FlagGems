@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from flag_gems.ops.rmsnorm_w8a16 import rms_norm_fp8_w8a16
+from flag_gems.ops.rmsnorm_w8a16 import rms_norm_w8a16_fp8
 
 from . import base
 
@@ -55,7 +55,7 @@ def _torch_rms_norm_w8a16(x, normalized_shape, weight_fp8, weight_scale, weight_
 
 
 def _gems_rms_norm_w8a16(x, normalized_shape, weight_fp8, weight_scale, weight_ref):
-    return rms_norm_fp8_w8a16(x, normalized_shape, weight_fp8, weight_scale)
+    return rms_norm_w8a16_fp8(x, normalized_shape, weight_fp8, weight_scale)
 
 
 class RmsNormFp8Benchmark(base.Benchmark):
@@ -91,9 +91,9 @@ class RmsNormFp8W8A16Benchmark(RmsNormFp8Benchmark):
     not _cuda_fp8_e4m3fn_available(),
     reason="RMSNorm FP8-W8A16 benchmark requires CUDA sm90+ float8_e4m3fn support",
 )
-def test_rms_norm_fp8_w8a16():
+def test_rms_norm_w8a16_fp8():
     bench = RmsNormFp8W8A16Benchmark(
-        op_name="rms_norm_fp8_w8a16",
+        op_name="rms_norm_w8a16_fp8",
         torch_op=_torch_rms_norm_w8a16,
         dtypes=[torch.bfloat16],
     )
