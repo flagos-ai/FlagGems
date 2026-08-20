@@ -2674,6 +2674,21 @@ ops:
       - Math
     stages:
       - stable: '5.3'
+  - id: cosine_similarity
+    description: |
+      Computes the cosine similarity between x1 and x2 along dim, broadcasting the
+      inputs to a common shape first. Returns <x1, x2> / (max(||x1||_2, eps) *
+      max(||x2||_2, eps)) reduced over dim, with eps guarding against zero norms.
+    for:
+      - cosine_similarity
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: count_nonzero
     description: |
       Counts the number of non-zero values in the tensor `input` along the given `dim`.
