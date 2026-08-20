@@ -1089,6 +1089,8 @@ def scaled_dot_product_attention_backward(
         1,
         BATCH * Q_HEAD,
     )
+    # logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
+    # logger.info(f"{M.shape=}")
 
     _attn_bwd[grid](
         query,
@@ -1098,27 +1100,31 @@ def scaled_dot_product_attention_backward(
         do,
         dq,
         dk,
-        dv,
+        dv,  #
         M,
-        delta,
+        delta,  #
         query.stride(0),
         query.stride(1),
         query.stride(2),
-        query.stride(3),
+        query.stride(3),  #
         key.stride(0),
-        key.stride(1),
+        key.stride(1),  #
         dk.stride(0),
         dk.stride(1),
-        dk.stride(2),
+        dk.stride(2),  #
         Q_HEAD,
-        Q_CTX,
-        KV_CTX,
-        KV_HEAD,
-        GROUP_HEAD=group_head,
-        BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,
-        BLOCK_DMODEL=BLOCK_DMODEL,
-        BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,
-        IS_CAUSAL=is_causal,
+        Q_CTX,  #
+        KV_CTX,  #
+        KV_HEAD,  #
+        GROUP_HEAD=group_head,  #
+        # BLOCK_M1=BLOCK_M1,
+        # BLOCK_N1=BLOCK_N1,  #
+        # BLOCK_M2=BLOCK_M2,
+        # BLOCK_N2=BLOCK_N2,  #
+        BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
+        BLOCK_DMODEL=BLOCK_DMODEL,  #
+        BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,  #
+        IS_CAUSAL=is_causal,  #
     )
 
     if group_head > 1:
