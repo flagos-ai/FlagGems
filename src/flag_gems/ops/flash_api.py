@@ -1118,6 +1118,8 @@ def mha_fwd(
             num_sms = torch_device_fn.get_device_properties(
                 runtime.device.name
             ).multi_processor_count
+            if num_sms is None:
+                num_sms = 1
 
             # Try bh parallel
             # if B * H > 0.8 * num_sms:
