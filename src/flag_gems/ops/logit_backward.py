@@ -57,9 +57,7 @@ def _to_triton_dtype(dtype):
     return None
 
 
-def _logit_backward_impl(
-    grad_output: torch.Tensor, self: torch.Tensor, eps=None, out: torch.Tensor = None
-):
+def _logit_backward_impl(grad_output: torch.Tensor, self: torch.Tensor, eps=None):
     if not isinstance(grad_output, torch.Tensor):
         raise TypeError("grad_output must be a torch.Tensor")
     if not isinstance(self, torch.Tensor):
@@ -78,42 +76,6 @@ def _logit_backward_impl(
     in_supported = _to_triton_dtype(grad_contig.dtype) is not None
     grad_kernel = grad_contig if in_supported else grad_contig.to(torch.float32)
     self_kernel = self_contig if in_supported else self_contig.to(torch.float32)
-
-    if out is not None:
-        if not isinstance(out, torch.Tensor):
-            raise TypeError("out must be a torch.Tensor")
-        if out.shape != self.shape:
-            raise ValueError("out tensor must have the same shape as self")
-        out_supported = _to_triton_dtype(out.dtype) is not None
-        need_copy_back = (not out.is_contiguous()) or (not out_supported)
-
-        if need_copy_back:
-            work_dtype = out.dtype if out_supported else torch.float32
-            work_out = torch.empty_like(out, dtype=work_dtype)
-        else:
-            work_out = out
-
-        n_elements = grad_kernel.numel()
-        # A fixed 1024-element tile matches the pointwise kernel's one-value-per-element work pattern.
-        BLOCK_SIZE = 1024
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
-        triton_dtype = _to_triton_dtype(work_out.dtype)
-        with torch_device_fn.device(self.device):
-            logit_backward_kernel[grid](
-                grad_kernel,
-                self_kernel,
-                work_out,
-                n_elements,
-                eps if eps is not None else 0.0,
-                HAS_EPS=(eps is not None),
-                BLOCK_SIZE=BLOCK_SIZE,
-                OUT_DTYPE=triton_dtype,
-            )
-
-        if need_copy_back:
-            out.copy_(work_out.to(out.dtype))
-        return out
 
     desired_dtype = self.dtype
     desired_supported = _to_triton_dtype(desired_dtype) is not None
@@ -149,11 +111,4 @@ def _logit_backward_impl(
 
 def logit_backward(grad_output, self, eps=None):
     logger.debug("GEMS LOGIT_BACKWARD")
-    return _logit_backward_impl(grad_output, self, eps=eps, out=None)
-
-
-def logit_backward_out(grad_output, self, eps=None, out=None):
-    logger.debug("GEMS LOGIT_BACKWARD_OUT")
-    if out is None:
-        raise TypeError("logit_backward_out requires an 'out' tensor.")
-    return _logit_backward_impl(grad_output, self, eps=eps, out=out)
+    return _logit_backward_impl(grad_output, self, eps=eps)
