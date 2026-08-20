@@ -150,7 +150,7 @@ backends:
     python: "3.12"
     cmake_backend: GCU
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0+enflame3.6
+    flagtree: flagtree==0.6.1+enflame3.6
     triton_post_install:
       - triton-gcu==3.6.0+1.0.20260722
     # This version of flagtree doesn't work yet
