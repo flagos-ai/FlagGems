@@ -3033,6 +3033,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: dirichlet_grad
+    description: |
+      Computes the reparameterized-gradient of the Dirichlet distribution with respect
+      to its concentration parameters, used by `torch.distributions.Dirichlet` autograd.
+    for:
+      - _dirichlet_grad
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dispatch_fused_moe_kernel
     description: |
       Accelerates neural network training by combining token routing (dispatch/all-to-all communication),
