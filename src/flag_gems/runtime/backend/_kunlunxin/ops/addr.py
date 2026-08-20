@@ -17,63 +17,47 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+# addr = beta*input + alpha*(vec1 ⊗ vec2), i.e. out[m,n] = beta*input[m,n]
+# + alpha*vec1[m]*vec2[n]. The original hand-written 2D-tile kernel (fixed
+# 32x32 BLOCK + 2D offset math) is judged discrete by XPU OffsetAnalysis
+# (1800× offsetState=-1 in harness/perf_ir_3/ir-addr-dev0.log, 1590 gm2lm /
+# 525 lm2gm, no vector<>) → per-element access, catastrophic.
+# Reformulate as a broadcasted pointwise op (exactly like addcmul): view vec1
+# as (M,1) and vec2 as (1,N) and let pointwise_dynamic broadcast them against
+# input (M,N). The codegen then emits contiguous block-DMA tiles on the
+# stride-1 inner dim. Reuse addcmul's tuned config (buffer4096 + unroll8) but
+# keep vectorization CLOSED (isCloseVectorization=True): the vectorized
+# broadcast path (0-stride vec1 (M,1) / vec2 (1,N)) produces WRONG results for
+# 16-bit dtypes on XPU (fp16/bf16 (5333,497) ~2.6% elems mismatch, rel-diff
+# thousands); fp32 was fine. Closing vectorization keeps all dtypes correct.
+# Compute in fp32 to preserve the accuracy the old kernel got via its explicit
+# .to(tl.float32).
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    isCloseVectorization=True,
+    unroll_num=8,
+)
 
-@libentry()
-@triton.jit(do_not_specialize=["beta", "alpha"])
-def addr_kernel(
-    input_ptr,
-    vec1_ptr,
-    vec2_ptr,
-    output_ptr,
-    beta,
-    alpha,
-    M,
-    N,
-    stride_input_m,
-    stride_input_n,
-    stride_vec1,
-    stride_vec2,
-    stride_output_m,
-    stride_output_n,
-    BLOCK_SIZE_M: tl.constexpr,
-    BLOCK_SIZE_N: tl.constexpr,
-):
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
 
-    offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-    offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-
-    vec1_ptrs = vec1_ptr + offs_m * stride_vec1
-    vec2_ptrs = vec2_ptr + offs_n * stride_vec2
-
-    mask_m = offs_m < M
-    mask_n = offs_n < N
-
-    vec1 = tl.load(vec1_ptrs, mask=mask_m, other=0.0).to(tl.float32)
-    vec2 = tl.load(vec2_ptrs, mask=mask_n, other=0.0).to(tl.float32)
-
-    input_ptrs = (
-        input_ptr + offs_m[:, None] * stride_input_m + offs_n[None, :] * stride_input_n
-    )
-
-    mask_2d = mask_m[:, None] & mask_n[None, :]
-    input_val = tl.load(input_ptrs, mask=mask_2d, other=0.0).to(tl.float32)
-
-    result = beta * input_val + alpha * (vec1[:, None] * vec2[None, :])
-
-    output_ptrs = (
-        output_ptr
-        + offs_m[:, None] * stride_output_m
-        + offs_n[None, :] * stride_output_n
-    )
-    tl.store(output_ptrs, result, mask=mask_2d)
+@pointwise_dynamic(
+    is_tensor=[True, True, True, False, False],
+    promotion_methods=[(0, 1, 2, "DEFAULT")],
+    config=config_,
+)
+@triton.jit
+def addr_forward(inp, v1, v2, beta, alpha):
+    return beta * inp.to(tl.float32) + alpha * (v1.to(tl.float32) * v2.to(tl.float32))
 
 
 def addr(input, vec1, vec2, *, beta=1, alpha=1):
@@ -89,33 +73,16 @@ def addr(input, vec1, vec2, *, beta=1, alpha=1):
         input_broadcasted = torch.broadcast_to(input, output_shape)
     except RuntimeError:
         raise ValueError(
-            f"addr: input tensor of shape {input.shape} cannot be broadcast to output shape {output_shape}"
+            f"addr: input tensor of shape {input.shape} cannot be broadcast "
+            f"to output shape {output_shape}"
         )
     out = torch.empty(output_shape, device=input.device, dtype=input.dtype)
-
-    BLOCK_SIZE_M = 32
-    BLOCK_SIZE_N = 32
-    grid = lambda META: (
-        triton.cdiv(M, BLOCK_SIZE_M),
-        triton.cdiv(N, BLOCK_SIZE_N),
+    addr_forward(
+        input_broadcasted,
+        vec1.reshape(M, 1),
+        vec2.reshape(1, N),
+        beta,
+        alpha,
+        out0=out,
     )
-    with torch_device_fn.device(input.device):
-        addr_kernel[grid](
-            input_broadcasted,
-            vec1,
-            vec2,
-            out,
-            beta,
-            alpha,
-            M,
-            N,
-            input_broadcasted.stride(0),
-            input_broadcasted.stride(1),
-            vec1.stride(0),
-            vec2.stride(0),
-            out.stride(0),
-            out.stride(1),
-            BLOCK_SIZE_M=BLOCK_SIZE_M,
-            BLOCK_SIZE_N=BLOCK_SIZE_N,
-        )
     return out

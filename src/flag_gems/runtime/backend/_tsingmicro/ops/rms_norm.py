@@ -39,6 +39,15 @@ def _prune_rmsnorm_fwd_configs(configs, nargs, **kwargs):
     ]
 
 
+def _prune_rmsnorm_bwd_configs(configs, nargs, **kwargs):
+    """Filter out backward configs where the grid size exceeds hardware limits."""
+    M = nargs["M"]
+    MAX_GRID = 65536
+    return [
+        c for c in configs if triton.cdiv(M, c.kwargs["ROW_BLOCK_SIZE"]) <= MAX_GRID
+    ]
+
+
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
 def rms_norm_kernel(
@@ -176,6 +185,23 @@ def rms_norm_grad_dw_kernel(
 
 
 @libentry()
+@libtuner(
+    configs=[
+        triton.Config({"ROW_BLOCK_SIZE": 1}, num_stages=1),
+        triton.Config({"ROW_BLOCK_SIZE": 4}, num_stages=1),
+        triton.Config({"ROW_BLOCK_SIZE": 8}, num_stages=1),
+        triton.Config({"ROW_BLOCK_SIZE": 16}, num_stages=1),
+        triton.Config({"ROW_BLOCK_SIZE": 32}, num_stages=1),
+        triton.Config({"ROW_BLOCK_SIZE": 64}, num_stages=1),
+        triton.Config({"ROW_BLOCK_SIZE": 128}, num_stages=1),
+        triton.Config({"ROW_BLOCK_SIZE": 256}, num_stages=1),
+    ],
+    key=["N"],
+    prune_configs_by={"early_config_prune": _prune_rmsnorm_bwd_configs},
+)
+@triton.heuristics(
+    values={"BLOCK_SIZE": lambda META: triton.next_power_of_2(META["N"])}
+)
 @triton.jit(do_not_specialize=["eps"])
 def rms_norm_backward_fused_kernel(
     X,
@@ -214,20 +240,28 @@ def rms_norm_backward_fused_kernel(
 
     for r in tl.static_range(0, ROW_BLOCK_SIZE):
         row_idx = row_start + r
+        row_valid = row_idx < M
 
+        row_valid_idx = tl.where(row_valid, row_idx, 0)
         x_row = tl.load(
-            X + row_idx * x_stride_r + cols * x_stride_c,
+            X + row_valid_idx * x_stride_r + cols * x_stride_c,
             mask=col_mask,
             other=0.0,
         ).to(cdtype)
 
-        inv_rms_r = tl.load(INV_RMS + row_idx).to(cdtype)
+        inv_rms_r = tl.load(INV_RMS + row_valid_idx, mask=row_valid, other=0.0).to(
+            cdtype
+        )
 
         dy_row = tl.load(
-            DY + row_idx * x_stride_r + cols * x_stride_c,
+            DY + row_valid_idx * x_stride_r + cols * x_stride_c,
             mask=col_mask,
             other=0.0,
         ).to(cdtype)
+
+        # dW: accumulate BEFORE dX computation.
+        # Use tl.where(row_valid, ...) to guard against garbage values.
+        dw_acc = dw_acc + tl.where(row_valid, x_row * dy_row * inv_rms_r, 0.0)
 
         # dX: 1D reduction axis=0, proven correct
         dy_w = dy_row * w
@@ -236,14 +270,12 @@ def rms_norm_backward_fused_kernel(
         norm_val = normalized_buf / N
         dx_row = (dy_w - norm_val * row_sum_stats) * inv_rms_r
 
+        # Store dX only for valid rows (protect adjacent memory from out-of-bounds writes)
         tl.store(
-            DX + row_idx * dx_stride_r + cols * dx_stride_c,
+            DX + row_valid_idx * dx_stride_r + cols * dx_stride_c,
             dx_row,
             mask=col_mask,
         )
-
-        # dW: element-wise accumulate
-        dw_acc = dw_acc + x_row * dy_row * inv_rms_r
 
     tl.store(
         DW_PARTIAL + row_pid * N + cols,
@@ -252,32 +284,15 @@ def rms_norm_backward_fused_kernel(
     )
 
 
-def _get_row_block_size(N, max_rows=256, bytes_per_elem=12):
-    """Compute SPM-safe power-of-2 ROW_BLOCK_SIZE.
-
-    SPM budget ≈ 2.5MB. bytes_per_elem is per-element SPM usage:
-      ~12 for forward (bf16 io + f32 compute + bf16 output)
-      ~32 for backward fused (bf16 io ×2 + f32 compute ×4 + dx output + intermediates)
-    tl.arange requires power-of-2 lengths.
-    """
-    spm_budget = 2621440  # ~2.5MB, leaving room for overhead
-    max_by_n = max(1, (spm_budget - N * 8) // (N * bytes_per_elem))
-    target = min(max_rows, int(max_by_n))
-    pow2 = 1
-    while pow2 * 2 <= target:
-        pow2 *= 2
-    return pow2
-
-
 @libentry()
 @libtuner(
     configs=[
-        triton.Config({"ROWS_PER_PROGRAM": 1}),
-        triton.Config({"ROWS_PER_PROGRAM": 4}),
-        triton.Config({"ROWS_PER_PROGRAM": 8}),
-        triton.Config({"ROWS_PER_PROGRAM": 16}),
-        triton.Config({"ROWS_PER_PROGRAM": 32}),
-        triton.Config({"ROWS_PER_PROGRAM": 64}),
+        triton.Config({"ROWS_PER_PROGRAM": 1}, num_stages=1),
+        triton.Config({"ROWS_PER_PROGRAM": 4}, num_stages=1),
+        triton.Config({"ROWS_PER_PROGRAM": 8}, num_stages=1),
+        triton.Config({"ROWS_PER_PROGRAM": 16}, num_stages=1),
+        triton.Config({"ROWS_PER_PROGRAM": 32}, num_stages=1),
+        triton.Config({"ROWS_PER_PROGRAM": 64}, num_stages=1),
         # triton.Config({"ROWS_PER_PROGRAM": 128}),
         # triton.Config({"ROWS_PER_PROGRAM": 256}),
     ],
@@ -339,12 +354,14 @@ def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
 
-    # Flatten batch dims → (M, N) so the kernel sees a contiguous 2D layout.
-    # The kernel uses (row_offsets * stride_row + col) to address elements,
-    # so stride_row must be N (= hidden dim), NOT x.stride(0) (the outer-dim
-    # stride for 3D+ inputs).
+    # Flatten batch dims → (M, N) so the kernel sees a 2D layout.
     x_2d = x.reshape(M, N)
-    out = torch.empty_like(x)
+    # Use empty_strided to preserve x's strides in the output tensor.
+    # torch.empty_like does NOT preserve strides on all PyTorch versions,
+    # and the kernel writes using x_2d.stride(0) (which may be > N for
+    # non-contiguous inputs). The output must have matching strides so
+    # that out_ptr + i*stride_row + j lands on the correct element.
+    out = torch.empty_strided(x.shape, x.stride(), dtype=x.dtype, device=x.device)
 
     inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
     grid = lambda meta: (triton.cdiv(M, meta["ROWS_PER_PROGRAM"]),)
@@ -368,40 +385,45 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
 
-    BLOCK_SIZE = triton.next_power_of_2(N)
     x = x.contiguous()
     dy = dy.contiguous()
     weight = weight.contiguous()
     dx = torch.empty_like(x)
 
     # Fused dX+dW: per-row 1D loads with axis=0 reduction.
-    ROW_BLOCK_SIZE = _get_row_block_size(BLOCK_SIZE, max_rows=256, bytes_per_elem=12)
-    row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
+    # The autotuner selects ROW_BLOCK_SIZE at runtime, so we cannot know the grid
+    # size before the kernel launch.  Capture the actual grid from the lambda so
+    # we can slice the partial-buffer correctly afterwards — unused rows are
+    # uninitialised and would corrupt the dw sum otherwise.
+    actual_grid_size = [None]
 
+    def grid(meta):
+        g = triton.cdiv(M, meta["ROW_BLOCK_SIZE"])
+        actual_grid_size[0] = g
+        return (g,)
+
+    # Size the partial dW buffer for the maximum grid that can survive pruning.
+    # The prune function filters out configs where grid > MAX_GRID, so the
+    # smallest surviving ROW_BLOCK_SIZE determines the largest possible grid.
+    MAX_GRID = 65536
+    min_row_block = max(1, (M + MAX_GRID - 1) // MAX_GRID)
+    safe_row_block = 1 << max(0, (min_row_block - 1).bit_length())
+    row_block_num = triton.cdiv(M, safe_row_block)
     partial_buffer = torch.empty(
         (row_block_num, N), dtype=torch.float32, device=x.device
     )
 
     with torch_device_fn.device(x.device):
-        rms_norm_backward_fused_kernel[row_block_num,](
-            x,
-            dy,
-            inv_rms,
-            dx,
-            partial_buffer,
-            weight,
-            N,
-            1,
-            N,
-            1,
-            M,
-            N,
-            eps,
-            BLOCK_SIZE,
-            ROW_BLOCK_SIZE,
+        rms_norm_backward_fused_kernel[grid](
+            x, dy, inv_rms, dx, partial_buffer, weight, N, 1, N, 1, M, N, eps
         )
-    # torch.sum on GPU tensor runs on-device (no CPU transfer for small buffers).
-    dw = torch.sum(partial_buffer, dim=0, dtype=torch.float32).to(x.dtype).reshape(-1)
+    # Sum only the rows that were actually written by the kernel.
+    # unused rows (beyond actual_grid_size) contain uninitialised data.
+    dw = (
+        torch.sum(partial_buffer[: actual_grid_size[0]], dim=0, dtype=torch.float32)
+        .to(x.dtype)
+        .reshape(-1)
+    )
 
     return dx, dw
 

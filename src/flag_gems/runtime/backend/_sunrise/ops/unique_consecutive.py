@@ -22,6 +22,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
 
+from .cumsum import scan_then_fan_col
+
 logger = logging.getLogger(__name__)
 
 _PTPU_SAFE_MAX_TILE_SIZE = 512
@@ -414,7 +416,20 @@ def large_unique_consecutive_flat(
 
         inverse_indices = None
         if return_inverse:
-            inverse_indices = torch.cumsum(ne_result.to(torch.int64), dim=0) - 1
+            # The regular long-row cumsum uses 4096-element scan tiles on
+            # Sunrise and can lose or duplicate increments after a fresh
+            # compile.  Keep this path on device, but use the conservative
+            # 512-element hierarchical scan that is stable on PTPU.
+            inverse_indices = torch.empty(
+                num_tasks, dtype=torch.int64, device=data.device
+            )
+            scan_then_fan_col(
+                ne_result,
+                inverse_indices,
+                num_tasks,
+                inverse_indices.dtype,
+            )
+            inverse_indices.sub_(1)
 
         counts = None
         if return_counts:

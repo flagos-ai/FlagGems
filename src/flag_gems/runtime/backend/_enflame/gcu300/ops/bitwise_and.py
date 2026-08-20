@@ -54,11 +54,19 @@ def bitwise_and_func_scalar(x, y):
 
 def bitwise_and_scalar(A, B):
     logger.debug("GEMS_ENFLAME BITWISE_AND_SCALAR")
+    if isinstance(A, torch.Tensor) and A.dtype == torch.int64:
+        A = A.to(torch.int32)
+    if isinstance(B, torch.Tensor) and B.dtype == torch.int64:
+        B = B.to(torch.int32)
     return bitwise_and_func_scalar(A, B)
 
 
 def bitwise_and_scalar_(A, B):
     logger.debug("GEMS_ENFLAME BITWISE_AND_SCALAR_")
+    if isinstance(A, torch.Tensor) and A.dtype == torch.int64:
+        A = A.to(torch.int32)
+    if isinstance(B, torch.Tensor) and B.dtype == torch.int64:
+        B = B.to(torch.int32)
     return bitwise_and_func_scalar(A, B, out0=A)
 
 

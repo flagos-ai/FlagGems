@@ -25,7 +25,7 @@ runner_labels: h800-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/nvidia-flaggems-test-h800-flagtree0.6.0:202607171136
+container_image: harbor.baai.ac.cn/flaggems/nvidia-flaggems-test-h800:20260819
 
 # Container volumes to mount for this backends
 container_volumes:
@@ -56,4 +56,4 @@ test_env:
 gpu_check_script: tools/gpu_check_nvidia.sh
 
 # Output base directory for this backends
-output_base_dir: /home/flaggems/weekly_test
+output_base_dir: /data/flaggems/weekly

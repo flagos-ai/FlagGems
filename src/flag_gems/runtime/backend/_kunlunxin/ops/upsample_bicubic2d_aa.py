@@ -79,8 +79,14 @@ def upsample_bicubic2d_aa_kernel(
     BLOCK_X: tl.constexpr,
     BLOCK_Y: tl.constexpr,
 ):
+    # Grid axis 2 carries the flattened N*C index so every (n,c) tile runs on
+    # its own program instead of being serialized inside a `for n: for c:` loop
+    # (the old layout parallelized only the spatial grid, so each program looped
+    # over all N*C serially). `% OW`/`% OH` wrap tail lanes onto valid columns
+    # so the store needs no mask (the wrapped lane recomputes the same value).
     pid_x = ext.program_id(axis=0)
     pid_y = ext.program_id(axis=1)
+    pid_nc = ext.program_id(axis=2)
     ow = (pid_x * BLOCK_X + tl.arange(0, BLOCK_X)) % OW
     oh = (pid_y * BLOCK_Y + tl.arange(0, BLOCK_Y)) % OH
 
@@ -230,11 +236,13 @@ def upsample_bicubic2d_aa_kernel(
     mask_x3 = span_start_w[None, :] + 3 < IW
     mask_x4 = span_start_w[None, :] + 4 < IW
 
-    for n in range(0, N, 1):
-        for c in range(0, C, 1):
-            offset_base = (
-                (n * C + c) * IH + span_start_h[:, None]
-            ) * IW + span_start_w[None, :]
+    # pid_nc selects the single (n,c) plane this program owns (grid axis 2), so
+    # the old serial `for n: for c:` collapses to one iteration. Two range(1)
+    # loops keep the body indentation unchanged.
+    nc = pid_nc
+    for _n in range(0, 1):
+        for _c in range(0, 1):
+            offset_base = (nc * IH + span_start_h[:, None]) * IW + span_start_w[None, :]
 
             data00 = tl.load(
                 ptr_i + (offset_base + 0 * IW + 0),
@@ -409,7 +417,7 @@ def upsample_bicubic2d_aa_kernel(
                 + data4 * weight_y4[:, None]
             )
 
-            offset_o = ((n * C + c) * OH + oh[:, None]) * OW + ow[None, :]
+            offset_o = (nc * OH + oh[:, None]) * OW + ow[None, :]
             tl.store(ptr_o + offset_o, result)
 
 
@@ -560,15 +568,23 @@ def _upsample_bicubic2d_aa(
 
     # allocate output
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
-    grid = lambda META: (
-        triton.cdiv(OW, META["BLOCK_X"]),
-        triton.cdiv(OH, META["BLOCK_Y"]),
-    )
-    kernel = (
-        general_interpolate_bicubic2d_aa_kernel
-        if (reciprocal_scale_w >= 1.0) or (reciprocal_scale_h >= 1.0)
-        else upsample_bicubic2d_aa_kernel
-    )
+    if (reciprocal_scale_w >= 1.0) or (reciprocal_scale_h >= 1.0):
+        # Downsample / general path: unchanged 2D spatial grid (kernel still
+        # loops N*C internally).
+        kernel = general_interpolate_bicubic2d_aa_kernel
+        grid = lambda META: (
+            triton.cdiv(OW, META["BLOCK_X"]),
+            triton.cdiv(OH, META["BLOCK_Y"]),
+        )
+    else:
+        # Upsample path: N*C is folded into grid axis 2 so every (n,c) plane is
+        # an independent program instead of a serial inner loop.
+        kernel = upsample_bicubic2d_aa_kernel
+        grid = lambda META: (
+            triton.cdiv(OW, META["BLOCK_X"]),
+            triton.cdiv(OH, META["BLOCK_Y"]),
+            N * C,
+        )
 
     import os
 

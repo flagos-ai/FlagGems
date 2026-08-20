@@ -70,24 +70,116 @@ def nonzero_kernel(
         tl.store(out + out_offset * ndim + dim, remainder, mask=nonzero_mask)
 
 
+def _dense_block_size(n):
+    # bounded tile -> stride-1 contiguous store (avoids unbounded-BLOCK explosion)
+    if n <= 4096:
+        return triton.next_power_of_2(n)
+    if n <= 65536:
+        return 65536
+    return 65536
+
+
+@libentry()
+@triton.jit
+def nonzero_dense_flat_kernel(
+    out,
+    n_out,
+    strides,
+    shape,
+    ndim: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # DENSE (no zeros): row-major output [N, ndim]. One lane per OUTPUT element,
+    # j = i*ndim + d, coord = (i // stride[d]) % shape[d]. Fully contiguous store.
+    pid = ext.program_id(0)
+    j = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = j < n_out
+    i = j // ndim
+    d = j % ndim
+    stride_d = tl.load(strides + d, mask=mask)
+    shape_d = tl.load(shape + d, mask=mask)
+    coord = (i // stride_d) % shape_d
+    tl.store(out + j, coord, mask=mask)
+
+
+@libentry()
+@triton.jit
+def nonzero_dense_dimmajor_kernel(
+    out,
+    n_elements: tl.constexpr,
+    shape,
+    ndim: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # DENSE (no zeros): dim-major output [ndim, N]. One lane per element, each dim
+    # written to a contiguous run out[dim*N + offset] -> stride-1 store per dim.
+    pid = ext.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < n_elements
+    idx_flat = offset
+    for dim in range(ndim - 1, -1, -1):
+        dim_size = tl.load(shape + dim)
+        remainder = idx_flat % dim_size
+        idx_flat //= dim_size
+        tl.store(out + dim * n_elements + offset, remainder, mask=mask)
+
+
+def _row_major_strides(shape, device):
+    ndim = len(shape)
+    strides = [1] * ndim
+    for k in range(ndim - 2, -1, -1):
+        strides[k] = strides[k + 1] * shape[k + 1]
+    return torch.tensor(strides, dtype=torch.int64, device=device)
+
+
+def _is_dense(inp):
+    """Return (inp_bool, prefix_sum, num_nonzeros). prefix_sum is None if dense."""
+    inp = inp.contiguous()
+    n_elements = inp.numel()
+    inp_view = inp.view(n_elements)
+    inp_bool = inp_view
+    if inp_view.dtype != torch.bool:
+        inp_bool = inp_view != 0
+    prefix_sum = inp_bool.cumsum(axis=0)
+    num_nonzeros = int(prefix_sum[n_elements - 1].item()) if n_elements > 0 else 0
+    return inp, inp_bool, prefix_sum, num_nonzeros
+
+
 def nonzero(inp, *, as_tuple=False):
     logger.debug("GEMS_KUNLUNXIN NONZERO")
 
     inp_ndim = inp.ndim
-
-    inp = inp.contiguous()
+    inp, inp_bool, prefix_sum, num_nonzeros = _is_dense(inp)
     n_elements = inp.numel()
-    inp_view = inp.view(n_elements)
 
+    n_out = num_nonzeros * inp_ndim
+    # DENSE fast path: every element is non-zero -> coordinates are exactly the
+    # row-major decomposition of the flat index, so we can use affine contiguous
+    # stores and skip the data-dependent scatter entirely.
+    if inp_ndim >= 1 and num_nonzeros == n_elements and n_out < 2**31:
+        out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
+        if n_out > 0:
+            strides_t = _row_major_strides(inp.shape, inp.device)
+            shape_t = torch.tensor(inp.shape, dtype=torch.int64, device=inp.device)
+            block = _dense_block_size(n_out)
+            grid = (triton.cdiv(n_out, block),)
+            with torch_device_fn.device(inp.device):
+                nonzero_dense_flat_kernel[grid](
+                    out,
+                    n_out,
+                    strides_t,
+                    shape_t,
+                    inp_ndim,
+                    block,
+                    isCloseUnrollControl=True,
+                    is_use_mask_zero=True,
+                )
+        if as_tuple:
+            return torch.unbind(out, dim=0)
+        return out
+
+    # SPARSE path: data-dependent scatter via prefix sum.
     shape = torch.tensor(inp.shape, dtype=torch.int32, device=inp.device)
-
-    inp_bool = inp_view
-    if inp_view.dtype != torch.bool:
-        inp_bool = inp_view != 0
-
-    prefix_sum = inp_bool.cumsum(axis=0)
-
-    num_nonzeros = n_elements
     out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
@@ -102,9 +194,6 @@ def nonzero(inp, *, as_tuple=False):
             isCloseUnrollControl=True,
             is_use_mask_zero=True,
         )
-
-    num_nonzeros = prefix_sum[n_elements - 1].item()
-    out = out[0:num_nonzeros]
 
     if as_tuple:
         return torch.unbind(out, dim=0)

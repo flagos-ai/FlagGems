@@ -13,8 +13,19 @@
 # limitations under the License.
 
 import pytest
+import torch
 
 from . import base, consts
+
+
+@pytest.mark.sgn
+def test_sgn():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="sgn",
+        torch_op=torch.sgn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
 
 
 @pytest.mark.sgn_
@@ -24,5 +35,15 @@ def test_sgn_inplace():
         torch_op=lambda a: a.sgn_(),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.sgn_out
+def test_sgn_out():
+    bench = base.UnaryPointwiseOutBenchmark(
+        op_name="sgn_out",
+        torch_op=torch.sgn,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

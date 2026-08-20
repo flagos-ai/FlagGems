@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -19,6 +21,8 @@ import triton.language.extra.smt as smt
 
 from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -226,6 +230,7 @@ def mm_kernel(
 
 
 def mm(a, b):
+    logger.debug("GEMS_SPACEMIT MM")
     if not a.is_contiguous():
         a = a.contiguous()
     if b.stride(0) > 1 and b.stride(1) > 1:
@@ -264,6 +269,7 @@ def mm(a, b):
 
 
 def mm_out(a, b, *, out):
+    logger.debug("GEMS_SPACEMIT MM_OUT")
     if not a.is_contiguous():
         a = a.contiguous()
     if b.stride(0) > 1 and b.stride(1) > 1:

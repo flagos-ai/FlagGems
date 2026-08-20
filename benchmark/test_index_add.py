@@ -20,6 +20,21 @@ from flag_gems.utils import shape_utils
 
 from . import base
 
+CONTIGUOUS_SUFFIX_CASES = [
+    ((1024, 4), 0),
+    ((1, 2048, 8), 1),
+    ((2, 8, 2048, 16), 2),
+    ((2, 8, 2048, 32), 2),
+    ((1024, 64), 0),
+]
+
+
+def unpack_index_add_case(case):
+    if isinstance(case[0], (list, tuple)):
+        return tuple(case[0]), case[1]
+    shape = tuple(case)
+    return shape, 0 if len(shape) == 1 else 1
+
 
 class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
     def set_more_metrics(self):
@@ -37,7 +52,7 @@ class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
             for shape in shapes
             if len(shape) == 2 and shape[0] > 16 and shape[1] > 16
         ]
-        return shapes
+        return shapes + CONTIGUOUS_SUFFIX_CASES
 
 
 def index_add_gbps(bench_fn_args, latency):
@@ -48,9 +63,9 @@ def index_add_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
-def index_add_input_fn(shape, dtype, device):
+def index_add_input_fn(case, dtype, device):
+    shape, dim = unpack_index_add_case(case)
     inp = torch.randn(shape, dtype=dtype, device=device)
-    dim = 0 if len(shape) == 1 else 1
     src_shape = list(inp.shape)
     index_max = src_shape[dim]
     index_len = index_max // 2 if index_max >= 2 else 1
@@ -69,15 +84,15 @@ def test_index_add():
         op_name="index_add",
         torch_op=torch.index_add,
         input_fn=index_add_input_fn,
-        dtypes=[torch.float16, torch.float32],
+        dtypes=[torch.float16, torch.bfloat16, torch.float32],
         get_gbps=index_add_gbps,
     )
     bench.run()
 
 
-def index_add__input_fn(shape, dtype, device):
+def index_add__input_fn(case, dtype, device):
+    shape, dim = unpack_index_add_case(case)
     inp = torch.randn(shape, dtype=dtype, device=device)
-    dim = 0 if len(shape) == 1 else 1
     src_shape = list(inp.shape)
     index_max = src_shape[dim]
     index_len = index_max // 2 if index_max >= 2 else 1
@@ -96,7 +111,7 @@ def test_index_add_():
         op_name="index_add_",
         torch_op=torch.Tensor.index_add_,
         input_fn=index_add__input_fn,
-        dtypes=[torch.float16, torch.float32],
+        dtypes=[torch.float16, torch.bfloat16, torch.float32],
         get_gbps=index_add_gbps,
     )
     bench.run()
