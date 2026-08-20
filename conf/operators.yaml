@@ -6900,7 +6900,7 @@ ops:
     kind:
       - tensor
     stages:
-      - stable: '4.2'
+      - alpha: '5.4'
   - id: masked_select
     description: |
       Returns a new 1-D tensor which indexes the `input` tensor according to
