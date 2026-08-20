@@ -32,9 +32,11 @@ def _lanczos3(x):
     abs_x = tl.abs(x)
     pix = x * 3.141592653589793
     pix_over_three = pix / 3.0
-    sinc_x = tl.where(abs_x == 0.0, 1.0, tl_extra_shim.sin(pix) / pix)
+    sinc_x = tl.where(abs_x == 0.0, 1.0, tl_extra_shim.sinpi(x) / pix)
     sinc_x_over_three = tl.where(
-        abs_x == 0.0, 1.0, tl_extra_shim.sin(pix_over_three) / pix_over_three
+        abs_x == 0.0,
+        1.0,
+        tl_extra_shim.sinpi(x / 3.0) / pix_over_three,
     )
     return tl.where(abs_x < 3.0, sinc_x * sinc_x_over_three, 0.0)
 
