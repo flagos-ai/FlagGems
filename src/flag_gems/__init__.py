@@ -255,6 +255,7 @@ _FULL_CONFIG = (
     ("acosh", acosh),
     ("acosh_", acosh_),
     ("adaptive_avg_pool3d_backward", _adaptive_avg_pool3d_backward),
+    ("adaptive_max_pool1d", adaptive_max_pool1d),
     ("adaptive_max_pool2d_backward", adaptive_max_pool2d_backward),
     ("adaptive_max_pool3d_backward", adaptive_max_pool3d_backward),
     ("add.Tensor", add),

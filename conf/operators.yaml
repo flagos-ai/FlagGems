@@ -173,6 +173,19 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: adaptive_max_pool1d
+    description: |
+      Applies a one-dimensional adaptive max pooling over an input signal,
+      returning both the pooled values and the indices of the maxima.
+    for:
+      - adaptive_max_pool1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: adaptive_max_pool2d_backward
     description: |
       Computes the input gradient for two-dimensional adaptive max pooling by
