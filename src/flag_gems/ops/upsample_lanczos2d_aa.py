@@ -21,6 +21,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils.triton_lang_helper import tl_extra_shim
 
 logger = logging.getLogger(__name__)
 device = device.name
@@ -31,9 +32,9 @@ def _lanczos3(x):
     abs_x = tl.abs(x)
     pix = x * 3.141592653589793
     pix_over_three = pix / 3.0
-    sinc_x = tl.where(abs_x == 0.0, 1.0, tl.sin(pix) / pix)
+    sinc_x = tl.where(abs_x == 0.0, 1.0, tl_extra_shim.sin(pix) / pix)
     sinc_x_over_three = tl.where(
-        abs_x == 0.0, 1.0, tl.sin(pix_over_three) / pix_over_three
+        abs_x == 0.0, 1.0, tl_extra_shim.sin(pix_over_three) / pix_over_three
     )
     return tl.where(abs_x < 3.0, sinc_x * sinc_x_over_three, 0.0)
 
