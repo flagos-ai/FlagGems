@@ -32,6 +32,7 @@ from .logical_or import logical_or, logical_or_
 from .lt_ import lt_, lt_scalar_
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_, masked_scatter_impl
+from .masked_scatter_backward import masked_scatter_backward
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .min import min, min_dim
@@ -121,6 +122,7 @@ __all__ = [
     "matmul_int8",
     "masked_fill",
     "masked_fill_",
+    "masked_scatter_backward",
     "min_dim",
     "min",
     "mm",
