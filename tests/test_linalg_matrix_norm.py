@@ -161,13 +161,15 @@ def _compute_ref(A, ord, dim=(-2, -1), keepdim=False, dtype=None):
                     A.device
                 )
             return result
-    # For fro with --ref cpu: upcast to fp64 so the reference uses accurate
-    # LAPACK accumulation.  PyTorch CPU linalg.matrix_norm for fp32 input
-    # uses fp32 sequential summation, producing ~4e-3 relative error in the
-    # squared sum (~2e-3 after sqrt) for large matrices.  FlagGems GPU with
-    # fp64 tiled reduction is more accurate than the fp32 CPU reference,
-    # which would cause false-positive test failures.
-    if TO_CPU and (isinstance(ord, str) and ord == "fro"):
+    # For non-SVD ords with --ref cpu: upcast to fp64 so the reference uses
+    # accurate accumulation.  PyTorch CPU linalg.matrix_norm for fp32 input
+    # uses fp32 summation; FlagGems uses fp64 accumulation (_use_fp64_acc)
+    # on fp64-capable backends, so the GPU result is more accurate than the
+    # fp32 CPU reference.  For large reductions (e.g. -inf summing 2048
+    # |A[i,j]| values) the CPU fp32 error (~1.5e-6 relative) can exceed the
+    # fp32 rtol and cause false-positive failures.  fro additionally has the
+    # ~2e-3-after-sqrt squared-sum error.
+    if TO_CPU and not _is_svd(ord):
         ref = ref.double()
         if dtype is not None and dtype != ref.dtype:
             result = torch.linalg.matrix_norm(ref, ord, dim, keepdim=keepdim)
