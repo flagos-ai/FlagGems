@@ -33,6 +33,9 @@ from flag_gems.ops._amp_update_scale_ import _amp_update_scale_
 from flag_gems.ops._batch_norm_impl_index import (
     batch_norm_impl_index as _batch_norm_impl_index,
 )
+from flag_gems.ops._batch_norm_impl_index_backward import (
+    _batch_norm_impl_index_backward,
+)
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
 from flag_gems.ops._cholesky_solve_helper import _cholesky_solve_helper
 from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
@@ -903,6 +906,7 @@ __all__ = [
     "_amp_update_scale_",
     "_assert_async",
     "_batch_norm_impl_index",
+    "_batch_norm_impl_index_backward",
     "_batch_norm_no_update",
     "_cummin_helper",
     "_fake_quantize_learnable_per_tensor_affine",

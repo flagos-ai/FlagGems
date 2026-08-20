@@ -1427,6 +1427,21 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: batch_norm_impl_index_backward
+    description: |
+      Backward pass dispatcher for `_batch_norm_impl_index`. Selects the
+      matching batch-norm backward backend (native / cudnn / miopen) from the
+      `impl_index` returned by the forward and produces the gradients with
+      respect to the input, weight and bias.
+    for:
+      - _batch_norm_impl_index_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_no_update
     description: Applies Batch Normalization using precomputed running statistics without updating running_mean/running_var.
     for:

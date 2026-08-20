@@ -105,6 +105,7 @@ _FULL_CONFIG = (
     ("_amp_update_scale_", _amp_update_scale_),
     ("_assert_async", _assert_async),
     ("_batch_norm_impl_index", _batch_norm_impl_index),
+    ("_batch_norm_impl_index_backward", _batch_norm_impl_index_backward),
     ("_batch_norm_no_update", _batch_norm_no_update),
     ("_functional_assert_async.msg", _functional_assert_async),
     ("_cdist_backward", _cdist_backward),
