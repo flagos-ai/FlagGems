@@ -3776,6 +3776,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: fake_quantize_learnable_per_tensor_affine_backward
+    description: |
+      Triton kernel implementation for the backward pass of learnable
+      per-tensor affine fake quantization. Computes gradients with respect to
+      the input, scale, and zero-point.
+    for:
+      - _fake_quantize_learnable_per_tensor_affine_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: fake_quantize_per_channel_affine
     description: Applies fake quantization per channel with affine parameters (scale and zero_point).
     for:
