@@ -20,8 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-flag_gems.use_gems()
-
 if cfg.QUICK_MODE:
     # QUICK_MODE: only test float32 for faster CI
     FLOAT_DTYPES = [torch.float32]
@@ -68,7 +66,8 @@ def test_slice_forward(shape, dim, start, end, step, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten.slice.Tensor(ref_inp, dim, start, end, step)
 
-    res_out = flag_gems.slice(inp, dim, start, end, step)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.slice.Tensor(inp, dim, start, end, step)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -85,7 +84,8 @@ def test_slice_none_params(shape, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten.slice.Tensor(ref_inp, dim, None, None, 1)
 
-    res_out = flag_gems.slice(inp, dim, None, None, 1)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.slice.Tensor(inp, dim, None, None, 1)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -103,6 +103,7 @@ def test_slice_negative_indices(shape, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten.slice.Tensor(ref_inp, dim, -size, -1, 1)
 
-    res_out = flag_gems.slice(inp, dim, -size, -1, 1)
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.slice.Tensor(inp, dim, -size, -1, 1)
 
     utils.gems_assert_equal(res_out, ref_out)
