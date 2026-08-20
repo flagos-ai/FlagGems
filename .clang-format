@@ -1,0 +1,37 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+BasedOnStyle:  Google
+IndentWidth:     2
+TabWidth:        2
+ContinuationIndentWidth: 4
+AccessModifierOffset: -1  # The private/protected/public has no indent in class
+AllowAllParametersOfDeclarationOnNextLine: true
+IncludeBlocks: Preserve
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: None
+# Left-braces-in-the-same-line helps a lot when navigating the code with
+# weaker tools like ctags or cscope.
+BreakBeforeBraces: Attach
+SpaceBeforeCpp11BracedList: True
+# Limits for 1080p 16:9 monitor, 12pt fonts, vertical split
+ColumnLimit: 110
+AlignArrayOfStructures: Right
+# For code in bindings/
+NamespaceIndentation: Inner
+# Function arguments alignment
+AllowAllArgumentsOnNextLine: false
+AlignAfterOpenBracket: Align
+BinPackArguments: false
+BinPackParameters: false

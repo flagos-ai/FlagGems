@@ -1,0 +1,51 @@
+<!--
+ Copyright 2026 FlagOS Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
+{{- $destination := .Destination -}}
+{{- $url := urls.Parse .Destination -}}
+
+{{- $isRemote := $url.IsAbs -}}
+{{- $isFragment := strings.HasPrefix .Destination "#" -}}
+
+{{- if and (not $isRemote) (not $isFragment) -}}
+  {{- $path := strings.TrimPrefix "./" $url.Path -}}
+  {{- $path = strings.TrimSuffix ".md" $path -}}
+  {{- $path = strings.TrimSuffix "/_index" $path -}}
+
+  {{- with (.Page.GetPage $path) -}}
+    {{- $destination = .RelPermalink -}}
+  {{- else with (.Page.Resources.Get $path) -}}
+    {{- $destination = .RelPermalink -}}
+  {{- else with (resources.Get $path) -}}
+    {{- $destination = .RelPermalink -}}
+  {{- else -}}
+    {{- $mode := .Page.Site.Params.BookPortableLinks -}}
+    {{- $message := printf "Image reference '%s' not found in '%s'" .Destination .Page.RelPermalink -}}
+    {{- if eq $mode "warning" -}}
+    {{- warnf $message -}}
+    {{- else if eq $mode "error" -}}
+    {{- errorf $message -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- with $url.RawQuery -}}
+    {{- $destination = print $destination "?" . -}}
+  {{- end -}}
+  {{- with $url.Fragment -}}
+    {{- $destination = print $destination "#" . -}}
+  {{- end -}}
+{{- end -}}
+{{- return $destination -}}

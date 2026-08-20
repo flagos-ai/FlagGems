@@ -1,0 +1,215 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+import re
+
+import pytest
+import torch
+
+import flag_gems
+
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issues #3832: logger get '_sunrise.ops.xx', test need 'flag_gems.ops.xx'.",
+)
+
+
+def ops_list_to_str(ops_list):
+    return "_".join(ops_list).replace(".", "_").replace("-", "_")
+
+
+def cambricon_log_text(caplog):
+    if flag_gems.vendor_name != "cambricon":
+        return ""
+    return "\n".join(
+        f"[DEBUG] flag_gems.{r.name}.{r.funcName}: {r.getMessage()}"
+        for r in caplog.records
+        if r.name.startswith("_cambricon")
+    )
+
+
+def run_ops_and_logs(tmp_path, filename, include=None, exclude=None):
+    path_file = tmp_path / filename
+    with flag_gems.use_gems(
+        include=include, exclude=exclude, record=True, path=path_file
+    ):
+        a = torch.tensor([1.0, 2.0, 3.0], device=flag_gems.device)
+        b = torch.tensor([4.0, 5.0, 6.0], device=flag_gems.device)
+        v = torch.tensor(0.5, device=flag_gems.device)
+        _ = a + b
+        _ = a * b
+        _ = torch.sum(a)
+        cond = a > 0
+        _ = torch.masked_fill(a, ~cond, v)
+
+    assert path_file.exists(), f"Log file {path_file} not found"
+    log_content = path_file.read_text()
+    return log_content
+
+
+def test_enable(tmp_path, caplog):
+    if flag_gems.vendor_name == "cambricon":
+        caplog.set_level(logging.DEBUG, logger="_cambricon")
+    log_content = run_ops_and_logs(tmp_path, "gems_enable.log")
+    if flag_gems.vendor_name == "cambricon":
+        log_content += cambricon_log_text(caplog)
+    log_prefixes = {
+        line.split(":", 1)[0].strip()
+        for line in log_content.splitlines()
+        if line.strip() and ":" in line
+    }
+    if flag_gems.vendor_name == "cambricon":
+        expected_fragments = [
+            "flag_gems._cambricon.ops.add",
+            "flag_gems._cambricon.ops.mul",
+            "flag_gems._cambricon.ops.sum",
+            "flag_gems._cambricon.ops.gt.gt_scalar",
+            "flag_gems._cambricon.ops.bitwise_not",
+            "flag_gems._cambricon.ops.masked_fill",
+        ]
+    else:
+        expected_fragments = [
+            "flag_gems.ops.add",
+            "flag_gems.ops.mul",
+            "flag_gems.ops.sum",
+            "flag_gems.ops.gt.gt_scalar",
+            "flag_gems.ops.bitwise_not",
+            "flag_gems.ops.masked_fill",
+        ]
+    missing = [
+        frag
+        for frag in expected_fragments
+        if not any(p.startswith(f"[DEBUG] {frag}") for p in log_prefixes)
+    ]
+    assert not missing, f"Missing expected log entries (prefix match): {missing}"
+
+
+@pytest.mark.parametrize(
+    "exclude_op", [["masked_fill", "masked_fill_"], ["mul", "sum", "sum_dim"]]
+)
+def test_enable_with_exclude(exclude_op, tmp_path):
+    log_content = run_ops_and_logs(
+        tmp_path,
+        f"gems_enable_without_{ops_list_to_str(exclude_op)}.log",
+        exclude=exclude_op,
+    )
+
+    log_prefixes = {
+        line.split(":", 1)[0].strip()
+        for line in log_content.splitlines()
+        if line.strip() and ":" in line
+    }
+
+    for op in exclude_op:
+        present = [p for p in log_prefixes if op in p]
+        assert not present, f"Found excluded op '{op}' in log file: {present}"
+
+
+@pytest.mark.parametrize(
+    "include_op", [["sum"], ["mul", "sum"], ["bitwise_not", "masked_fill"]]
+)
+def test_only_enable(include_op, tmp_path):
+    log_content = run_ops_and_logs(
+        tmp_path,
+        f"gems_only_enable_{ops_list_to_str(include_op)}.log",
+        include=include_op,
+    )
+
+    pattern = r"flag_gems\.ops\.\w+\.(\w+):"
+    found_ops = set(re.findall(pattern, log_content))
+    for op in found_ops:
+        assert (
+            op in include_op
+        ), f"Found unexpected op '{op}' in log file. Allowed op: {include_op}"
+
+
+def test_only_enable_with_yaml(tmp_path, caplog):
+    include_ops = ["sum", "mul"]
+    yaml_path = tmp_path / "only_enable.yaml"
+    yaml_path.write_text("include:\n  - sum\n  - mul\n")
+
+    if flag_gems.vendor_name == "cambricon":
+        caplog.set_level(logging.DEBUG, logger="_cambricon")
+    log_content = run_ops_and_logs(
+        tmp_path,
+        "gems_only_enable_yaml.log",
+        include=str(yaml_path),
+    )
+    if flag_gems.vendor_name == "cambricon":
+        log_content += cambricon_log_text(caplog)
+    if flag_gems.vendor_name == "cambricon":
+        pattern = r"flag_gems\._cambricon\.ops\.\w+\.(\w+):"
+    else:
+        pattern = r"flag_gems\.ops\.\w+\.(\w+):"
+    found_ops = set(re.findall(pattern, log_content))
+
+    assert found_ops, "No ops were logged; expected YAML include to be applied"
+    assert "sum" in found_ops, "Expected 'sum' to be registered via YAML include"
+    assert "mul" in found_ops, "Expected 'mul' to be registered via YAML include"
+    unexpected = found_ops - set(include_ops)
+    assert not unexpected, f"Found unexpected ops via YAML include: {unexpected}"
+
+
+def test_only_enable_default(tmp_path, monkeypatch, caplog):
+    # Create a mock YAML file with known include ops
+    include_ops = ["sum", "mul", "add"]
+    yaml_content = "include:\n" + "\n".join(f"  - {op}" for op in include_ops)
+    yaml_path = tmp_path / "mock_enable_configs.yaml"
+    yaml_path.write_text(yaml_content)
+
+    monkeypatch.setattr(
+        flag_gems.config,
+        "get_default_enable_config",
+        lambda vendor_name, arch_name: [yaml_path],
+    )
+
+    log_file = "gems_only_enable_default_mock.log"
+    path_file = tmp_path / log_file
+
+    # Map ops to torch functions for dynamic execution
+    op_map = {
+        "sum": lambda a, b: torch.sum(a),
+        "mul": lambda a, b: a * b,
+        "add": lambda a, b: a + b,
+    }
+
+    if flag_gems.vendor_name == "cambricon":
+        caplog.clear()
+        caplog.set_level(logging.DEBUG, logger="_cambricon")
+    with flag_gems.use_gems(include="default", record=True, path=path_file):
+        a = torch.tensor([1.0, 2.0, 3.0], device=flag_gems.device)
+        b = torch.tensor([4.0, 5.0, 6.0], device=flag_gems.device)
+        # Run a couple of ops from the include list to ensure they log.
+        for op in include_ops[:2]:
+            if op in op_map:
+                _ = op_map[op](a, b)
+            else:
+                # Fallback: exercise a basic op to trigger logging.
+                _ = a + b
+
+    assert path_file.exists(), f"Log file {path_file} not found"
+    log_content = path_file.read_text()
+    if flag_gems.vendor_name == "cambricon":
+        log_content += cambricon_log_text(caplog)
+
+    if flag_gems.vendor_name == "cambricon":
+        pattern = r"flag_gems\._cambricon\.ops\.[^\.]+\.(\w+):"
+    else:
+        pattern = r"flag_gems\.ops\.[^\.]+\.(\w+):"
+    found_ops = set(re.findall(pattern, log_content))
+    assert found_ops, "No ops were logged for default include"
+    assert found_ops.issubset(
+        set(include_ops)
+    ), f"Found unexpected ops via default include: {found_ops - set(include_ops)}"

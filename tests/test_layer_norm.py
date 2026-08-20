@@ -1,0 +1,228 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import math
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    FLOAT_DTYPES = [torch.float32]
+    LAYER_NORM_SHAPES = [(1, 40999)]
+    LAYER_NORM_MEDIUM_SHAPES = []
+else:
+    FLOAT_DTYPES = utils.FLOAT_DTYPES
+    LAYER_NORM_SHAPES = [(200, 36), (4096, 100), (1, 40999), (100, 40499), (4096, 256)]
+    LAYER_NORM_MEDIUM_SHAPES = [
+        (256, 512),
+        (4096, 256),
+        (4096, 512),
+        (2048, 1024),
+        (1024, 2048),
+    ]
+
+LAYER_NORM_FORWARD_SHAPES = LAYER_NORM_SHAPES + LAYER_NORM_MEDIUM_SHAPES
+
+
+@pytest.mark.native_layer_norm
+# Cover one-, two-, and three-dimensional normalized suffixes of equal size.
+@pytest.mark.parametrize(
+    "shape, normalized_shape",
+    [((4, 64), (64,)), ((4, 8, 8), (8, 8)), ((4, 4, 4, 4), (4, 4, 4))],
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("affine", [True, False])
+def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = (
+        torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+        if affine
+        else None
+    )
+    bias = torch.randn_like(weight) if affine else None
+    eps = 1e-5
+
+    ref_result = torch.ops.aten.native_layer_norm.default(
+        utils.to_reference(inp, True),
+        normalized_shape,
+        utils.to_reference(weight, True),
+        utils.to_reference(bias, True),
+        eps,
+    )
+
+    with caplog.at_level("DEBUG", logger="flag_gems.ops.native_layer_norm"):
+        with flag_gems.use_gems():
+            result = torch.ops.aten.native_layer_norm.default(
+                inp, normalized_shape, weight, bias, eps
+            )
+
+    assert "GEMS NATIVE_LAYER_NORM" in caplog.text
+    assert len(result) == len(ref_result) == 3
+    for actual, expected in zip(result, ref_result):
+        utils.gems_assert_close(actual, expected, dtype)
+
+
+@pytest.mark.layer_norm
+@pytest.mark.parametrize("shape", LAYER_NORM_FORWARD_SHAPES)
+@pytest.mark.parametrize("wb_none", [False, True])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_layer_norm(shape, dtype, wb_none):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if wb_none:
+        res_weight = None
+        res_bias = None
+    else:
+        res_weight = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
+        res_bias = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
+    eps = 1e-5
+
+    ref_inp = utils.to_reference(res_inp, True)
+    ref_weight = utils.to_reference(res_weight, True)
+    ref_bias = utils.to_reference(res_bias, True)
+
+    ref_out = torch.layer_norm(
+        ref_inp,
+        shape[1:],
+        weight=ref_weight,
+        bias=ref_bias,
+        eps=eps,
+    )
+    with flag_gems.use_gems():
+        res_out = torch.layer_norm(
+            res_inp,
+            shape[1:],
+            weight=res_weight,
+            bias=res_bias,
+            eps=eps,
+        )
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.layer_norm
+@pytest.mark.parametrize("shape", LAYER_NORM_MEDIUM_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_native_layer_norm_statistics(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    normalized_shape = shape[1:]
+    res_weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+    res_bias = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(res_inp, True)
+    ref_weight = utils.to_reference(res_weight, True)
+    ref_bias = utils.to_reference(res_bias, True)
+    ref_out, ref_mean, ref_rstd = torch.ops.aten.native_layer_norm(
+        ref_inp,
+        normalized_shape,
+        ref_weight,
+        ref_bias,
+        1e-5,
+    )
+    with flag_gems.use_gems():
+        res_out, res_mean, res_rstd = torch.ops.aten.native_layer_norm(
+            res_inp,
+            normalized_shape,
+            res_weight,
+            res_bias,
+            1e-5,
+        )
+
+    reduce_dim = math.prod(normalized_shape)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_mean, ref_mean, dtype, reduce_dim=reduce_dim)
+    utils.gems_assert_close(res_rstd, ref_rstd, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.layer_norm_backward
+@pytest.mark.parametrize("shape", LAYER_NORM_SHAPES)
+@pytest.mark.parametrize("wb_none", [False, True])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_layer_norm_backward(monkeypatch, shape, dtype, wb_none):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
+    if flag_gems.vendor_name == "mthreads":
+        # Compatible with older versions of LLVM
+        monkeypatch.setenv("DISABLE_LLVM_OPT", "1")
+
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_grad = torch.randn_like(res_inp)
+    res_mean = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
+    res_rstd = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
+    if wb_none:
+        res_weight = None
+        res_bias = None
+        output_mask = [True, False, False]
+    else:
+        res_weight = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
+        res_bias = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
+        output_mask = [True, True, True]
+
+    normalized_shape = shape[1:]
+
+    ref_inp = utils.to_reference(res_inp, True)
+    ref_grad = utils.to_reference(res_grad, True)
+    ref_mean = utils.to_reference(res_mean, True)
+    ref_rstd = utils.to_reference(res_rstd, True)
+    ref_weight = utils.to_reference(res_weight, True)
+    ref_bias = utils.to_reference(res_bias, True)
+
+    (
+        ref_in_grad,
+        ref_weight_grad,
+        ref_bias_grad,
+    ) = torch.ops.aten.native_layer_norm_backward(
+        ref_grad,
+        ref_inp,
+        normalized_shape,
+        ref_mean,
+        ref_rstd,
+        ref_weight,
+        ref_bias,
+        output_mask,
+    )
+    with flag_gems.use_gems():
+        (
+            res_in_grad,
+            res_weight_grad,
+            res_bias_grad,
+        ) = torch.ops.aten.native_layer_norm_backward(
+            res_grad,
+            res_inp,
+            normalized_shape,
+            res_mean,
+            res_rstd,
+            res_weight,
+            res_bias,
+            output_mask,
+        )
+
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
+    if not wb_none:
+        utils.gems_assert_close(
+            res_weight_grad, ref_weight_grad, dtype, reduce_dim=shape[0]
+        )
+        utils.gems_assert_close(
+            res_bias_grad, ref_bias_grad, dtype, reduce_dim=shape[0]
+        )

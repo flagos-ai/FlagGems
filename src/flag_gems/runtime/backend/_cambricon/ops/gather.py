@@ -1,0 +1,482 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import importlib
+import logging
+import os
+from typing import Any, Callable, List, Mapping, Tuple
+
+import torch
+
+from flag_gems.utils.code_cache import code_cache_dir
+from flag_gems.utils.code_utils import IndentedBuffer
+from flag_gems.utils.shape_utils import restride_dim
+
+logger = logging.getLogger(__name__)
+
+
+def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
+    code.writeline("import torch")
+    code.writeline("import triton")
+    code.writeline("import triton.language as tl")
+    code.newline()
+    code.writeline("from flag_gems.utils import libentry, libtuner")
+    code.writeline("from flag_gems import runtime")
+    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
+
+    code.newline()
+    code.newline()
+    return code
+
+
+def generate_gather_kernel(
+    dim: int,
+    large_input: bool,
+    rank: int,
+    kernel_name: str,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
+    # make the inlined function visible in the context
+    code.newline()
+
+    # the decorators
+    code.writeline(
+        '@libtuner(configs=runtime.get_tuned_config("gather"), key=["N"], strategy=["log"])'
+    )
+    code.writeline("@libentry()")
+    code.writeline("@triton.jit")
+
+    # signature
+    code.writeline(f"def {kernel_name}(")
+    with code.indent():
+        if rank > 0:
+            code.writeline("inp,")
+            code.writeline("out,")
+            code.writeline("index,")
+
+            stride_args = ", ".join(f"inp_stride_{i}: int" for i in range(rank))
+            code.writeline(f"{stride_args}, # stride for inp")
+
+            stride_args = ", ".join(f"index_stride_{i}: int" for i in range(rank))
+            code.writeline(f"{stride_args}, # stride for index")
+
+            shape_args = ", ".join(f"index_shape_{i}: int" for i in range(rank))
+            code.writeline(f"{shape_args}, # shape for index")
+
+            code.writeline("dim,")
+            code.writeline("stride_dim,")
+            code.writeline("N,")
+            code.writeline("BLOCK_SIZE: tl.constexpr,")
+    code.writeline("):")
+
+    # Kernel Code
+    with code.indent():
+        code.writeline("pid = tl.program_id(0)")
+        code.writeline("offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)")
+        code.writeline("mask = offsets < N")
+
+        #   1. Calculate inp_offsets and idx_offsets
+        if large_input:
+            code.writeline("inp_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)")
+        else:
+            code.writeline("inp_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)")
+        code.writeline("index_offsets = offsets")
+
+        #   2. snippets
+        for i in range(rank - 1, -1, -1):
+            if not (dim == 0 and i == 0):
+                code.writeline(f"mod = offsets % index_shape_{i}")
+
+            if i != dim:
+                # will be corrected by adding cur_index*stride_dim
+                code.writeline(f"inp_offsets += mod * inp_stride_{i}")
+            if i != 0:
+                code.writeline(f"offsets //= index_shape_{i}")
+
+        # Use offsets to gather
+        if large_input:
+            code.writeline(
+                "cur_index = tl.load(index + index_offsets, mask=mask, other=0)"
+            )
+        else:
+            code.writeline(
+                "cur_index = tl.load(index + index_offsets, mask=mask, other=0).to(tl.int32)"
+            )
+
+        code.writeline("inp_offsets += cur_index * stride_dim")
+
+        code.writeline("cur_inp = tl.load(inp + inp_offsets, mask=mask, other=0)")
+        code.writeline("tl.store(out + index_offsets, cur_inp, mask=mask)")
+
+    code.newline()
+    code.newline()
+    return code
+
+
+def parameter_for_wrapper() -> str:
+    # inp_strided, out, index, dim, stride_dim, N
+    parameters: List[str] = []
+
+    parameters.append("inp_strided")
+    parameters.append("out")
+    parameters.append("index")
+    parameters.append("dim")
+    parameters.append("stride_dim")
+    parameters.append("N")
+
+    return ", ".join(parameters)
+
+
+def generate_gather_wrapper(
+    rank: int,
+    wrapper_name: str,
+    kernel_name: str,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
+    parameters: str = parameter_for_wrapper()
+    wrapper_signature: str = f"def {wrapper_name}({parameters}):"
+    code.writeline(wrapper_signature)
+
+    with code.indent():
+        code.writeline("inp_strides = inp_strided.stride()")
+        code.writeline("index_strides = index.stride()")
+        code.writeline("index_shapes = list(index.shape)")
+
+        # kernel launch
+        code.writeline("grid = lambda meta: (")
+        with code.indent():
+            code.writeline('triton.cdiv(N, meta["BLOCK_SIZE"]),')
+        code.writeline(")")
+
+        kernel_launch: str = f"{kernel_name}[grid]("
+        code.writeline(kernel_launch)
+
+        with code.indent():
+            code.writeline("inp_strided, out, index, ")
+            if rank > 0:
+                s = ", ".join(f"inp_strides[{i}]" for i in range(rank))
+                code.writeline(f"{s},")
+
+                s = ", ".join(f"index_strides[{i}]" for i in range(rank))
+                code.writeline(f"{s},")
+
+                s = ", ".join(f"index_shapes[{i}]" for i in range(rank))
+                code.writeline(f"{s},")
+
+                code.writeline("dim,")
+                code.writeline("stride_dim,")
+                code.writeline("N,")
+        code.writeline(")")
+        code.writeline("return out")
+
+    return code
+
+
+def generate_code(
+    dim: int,
+    large_input: bool,
+    inputs: Tuple[Any],
+    wrapper_name: str,
+    kernel_name: str,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
+    # inputs: inp_strided, out, index, dim, stride_dim, N, large_input
+    shape = inputs[2].shape
+    rank = len(shape)
+
+    code = generate_imports(code)
+    code = generate_gather_kernel(dim, large_input, rank, kernel_name, code)
+    code = generate_gather_wrapper(rank, wrapper_name, kernel_name, code)
+    return code
+
+
+class GatherFunction:
+    def __init__(self):
+        self.pid = os.getpid()
+        self.overloads: Mapping[str, Callable] = {}
+
+    def __call__(self, *args, **kwargs):
+        rank = kwargs["rank"]
+        dim = kwargs["dim"]
+        large_input = kwargs["large_input"]
+
+        key = f"{self.arg_key(*args)}_{rank}_{dim}_{large_input}"
+        if key in self.overloads:
+            overload = self.overloads[key]
+        else:
+            code = IndentedBuffer()
+            code = generate_code(
+                dim,
+                large_input,
+                args,
+                "_gather_wrapper",
+                "_gather_jit_function",
+                code,
+            )
+
+            file_name = f"gather_rank_{key}_pid_{self.pid}.py"
+
+            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
+                f.write(code.getvalue())
+
+            # load
+            spec = importlib.util.spec_from_file_location(
+                f"_gen_module_rank_{key}_pid_{self.pid}",
+                f.name,
+            )
+
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            overload = getattr(m, "_gather_wrapper")
+            self.overloads[key] = overload
+
+        return overload(*args)
+
+    def arg_key(self, *args):
+        tensors = [item for item in args if torch.is_tensor(item)]
+        max_rank = max(item.ndim for item in tensors)
+        return max_rank
+
+
+def generate_gather_backward_kernel(
+    rank: int,
+    dim: int,
+    large_tensor: bool,
+    fast_path: bool,
+    kernel_name: str,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
+    code.newline()
+    code.newline()
+    code.writeline(
+        '@libtuner(configs=runtime.get_tuned_config("scatter"), key=["N"], strategy=["log"],'
+    )
+    code.writeline('          restore_value=["out"], )')
+    code.writeline("@libentry()")
+    code.writeline("@triton.jit")
+    code.writeline(f"def {kernel_name}(")
+    with code.indent():
+        code.writeline("grad,")
+        code.writeline("index,")
+        code.writeline("out,")
+
+        stride_args = ", ".join(f"out_stride_{i}: int" for i in range(rank))
+        code.writeline(f"{stride_args}, # stride for out")
+
+        stride_args = ", ".join(f"grad_stride_{i}: int" for i in range(rank))
+        code.writeline(f"{stride_args}, # stride for grad")
+
+        shape_args = ", ".join(f"index_shape_{i}: int" for i in range(rank))
+        code.writeline(f"{shape_args}, # shape for index")
+
+        code.writeline("dim,")
+        code.writeline("stride_dim,")
+        code.writeline("N,")
+        code.writeline("BLOCK_SIZE: tl.constexpr,")
+    code.writeline("):")
+
+    with code.indent():
+        code.writeline("pid = tl.program_id(0)")
+        code.writeline("offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)")
+        code.writeline("mask = offsets < N")
+        if fast_path:
+            # Fast path for the benchmark/common contiguous 2D last-dim case.
+            code.writeline("row = offsets // index_shape_1")
+            code.writeline("out_offsets = row * out_stride_0")
+            code.writeline("cur_grad = tl.load(grad + offsets, mask=mask, other=0)")
+        else:
+            if large_tensor:
+                code.writeline("out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)")
+                code.writeline("grad_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)")
+            else:
+                code.writeline("out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)")
+                code.writeline("grad_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)")
+            code.writeline("cur_idx = offsets")
+            for i in range(rank - 1, -1, -1):
+                code.writeline(f"mod = cur_idx % index_shape_{i}")
+                if dim != i:
+                    code.writeline(f"out_offsets += mod * out_stride_{i}")
+                code.writeline(f"grad_offsets += mod * grad_stride_{i}")
+                code.writeline(f"cur_idx = cur_idx // index_shape_{i}")
+            code.writeline(
+                "cur_grad = tl.load(grad + grad_offsets, mask=mask, other=0)"
+            )
+        if large_tensor:
+            code.writeline("cur_index = tl.load(index + offsets, mask=mask, other=0)")
+        else:
+            code.writeline(
+                "cur_index = tl.load(index + offsets, mask=mask, other=0).to(tl.int32)"
+            )
+        code.writeline("out_offsets += cur_index * stride_dim")
+        code.writeline(
+            "tl.atomic_add(out + out_offsets, cur_grad, sem='relaxed', mask=mask)"
+        )
+
+    code.newline()
+    code.newline()
+    return code
+
+
+def generate_gather_backward_wrapper(
+    rank: int,
+    wrapper_name: str,
+    kernel_name: str,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
+    code.writeline(f"def {wrapper_name}(grad, index, out, dim, N):")
+    with code.indent():
+        code.writeline("out_strides = list(out.stride())")
+        code.writeline("grad_strides = grad.stride()")
+        code.writeline("index_shapes = list(index.shape)")
+        code.writeline("stride_dim = out_strides[dim]")
+        code.writeline("out_strides[dim] = 0")
+        code.writeline("grid = lambda meta: (")
+        with code.indent():
+            code.writeline('triton.cdiv(N, meta["BLOCK_SIZE"]),')
+        code.writeline(")")
+        code.writeline(f"{kernel_name}[grid](")
+        with code.indent():
+            code.writeline("grad, index, out,")
+            s = ", ".join(f"out_strides[{i}]" for i in range(rank))
+            code.writeline(f"{s},")
+            s = ", ".join(f"grad_strides[{i}]" for i in range(rank))
+            code.writeline(f"{s},")
+            s = ", ".join(f"index_shapes[{i}]" for i in range(rank))
+            code.writeline(f"{s},")
+            code.writeline("dim,")
+            code.writeline("stride_dim,")
+            code.writeline("N,")
+        code.writeline(")")
+        code.writeline("return out")
+    return code
+
+
+def generate_gather_backward_code(
+    rank: int,
+    dim: int,
+    large_tensor: bool,
+    fast_path: bool,
+    code: IndentedBuffer,
+) -> IndentedBuffer:
+    code = generate_imports(code)
+    code = generate_gather_backward_kernel(
+        rank, dim, large_tensor, fast_path, "_gather_backward_jit_function", code
+    )
+    code = generate_gather_backward_wrapper(
+        rank, "_gather_backward_wrapper", "_gather_backward_jit_function", code
+    )
+    return code
+
+
+class GatherBackwardFunction:
+    def __init__(self):
+        self.pid = os.getpid()
+        self.overloads: Mapping[str, Callable] = {}
+
+    def __call__(self, *args, **kwargs):
+        rank = kwargs["rank"]
+        dim = kwargs["dim"]
+        large_tensor = kwargs["large_tensor"]
+        fast_path = kwargs["fast_path"]
+        key = f"{self.arg_key(*args)}_{rank}_{dim}_{large_tensor}_{fast_path}"
+        if key in self.overloads:
+            overload = self.overloads[key]
+        else:
+            code = IndentedBuffer()
+            code = generate_gather_backward_code(
+                rank, dim, large_tensor, fast_path, code
+            )
+            file_name = f"gather_backward_rank_{key}_pid_{self.pid}.py"
+            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
+                f.write(code.getvalue())
+            spec = importlib.util.spec_from_file_location(
+                f"_gen_gather_backward_module_rank_{key}_pid_{self.pid}",
+                f.name,
+            )
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            overload = getattr(m, "_gather_backward_wrapper")
+            self.overloads[key] = overload
+        return overload(*args)
+
+    def arg_key(self, *args):
+        tensors = [item for item in args if torch.is_tensor(item)]
+        return max(item.ndim for item in tensors)
+
+
+_gather_backward_func = GatherBackwardFunction()
+
+
+_gather_func = GatherFunction()
+
+
+def gather(inp, dim, index, out=None, sparse_grad=False):
+    logger.debug("GEMS_CAMBRICON GATHER")
+    if inp.ndim != index.ndim:
+        raise IndexError(
+            f"self and index must have the same number of dimensions, "
+            f"got self.ndim = {inp.ndim} and index.ndim = {index.ndim}"
+        )
+    inp = inp.contiguous()
+    index = index.contiguous()
+    if out is None:
+        out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
+    out = out.contiguous()
+    stride_dim = inp.stride(dim)
+
+    inp_strided = restride_dim(inp, dim, index.shape)
+    N = index.numel()
+
+    large_input = inp.numel() * inp.element_size() > 2**31
+    rank = len(index.shape)
+
+    # <rank>_<dim>_<large_input> is the key of overloads
+    # large_input is only for key
+    _gather_func(
+        inp_strided,
+        out,
+        index,
+        dim,
+        stride_dim,
+        N,
+        large_input=large_input,
+        dim=dim,
+        rank=rank,
+    )
+    return out
+
+
+def gather_backward(grad, self, dim, index, sparse_grad):
+    logger.debug("GEMS_CAMBRICON GATHER_BACKWARD")
+    result = grad.new_zeros(self.shape)
+    grad = grad.contiguous()
+    index = index.contiguous()
+    dim = dim % index.ndim
+    N = index.numel()
+    large_tensor = (grad.numel() * grad.element_size() > 2**31) or (
+        result.numel() * result.element_size() > 2**31
+    )
+    fast_path = len(index.shape) == 2 and dim == 1 and N > 8192
+    _gather_backward_func(
+        grad,
+        index,
+        result,
+        dim,
+        N,
+        rank=len(index.shape),
+        large_tensor=large_tensor,
+        fast_path=fast_path,
+        dim=dim,
+    )
+    return result

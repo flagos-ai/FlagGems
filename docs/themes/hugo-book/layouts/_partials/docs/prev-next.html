@@ -1,0 +1,47 @@
+<!--
+ Copyright 2026 FlagOS Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
+{{ $bookSection := default "docs" .Site.Params.BookSection  }}
+{{ if eq $bookSection "*" }}
+  {{ $bookSection = "/" }}{{/* Backward compatibility */}}
+{{ end }}
+
+{{ with .Site.GetPage $bookSection }}
+  {{ $pages := partialCached "docs/prev-next-cache" .Pages }}
+  {{ $prev := $pages.Next $ }}
+  {{ $next := $pages.Prev $ }}
+
+  {{- if or $prev $next }}
+  <div class="flex flex-wrap justify-between">
+    <span>
+    {{ with $prev }}
+      <a href="{{ .RelPermalink }}" class="flex align-center">
+        <img src="{{ partial "docs/icon" "backward" }}" class="book-icon" alt="{{ partial "docs/text/i18n" "Backward" }}" />
+        <span>{{ partial "docs/title" . }}</span>
+      </a>
+    {{ end }}
+    </span>
+    <span>
+    {{ with $next }}
+      <a href="{{ .RelPermalink }}" class="flex align-center">
+        <span>{{ partial "docs/title" . }}</span>
+        <img src="{{ partial "docs/icon" "forward" }}" class="book-icon" alt="{{ partial "docs/text/i18n" "Forward" }}" />
+      </a>
+    {{ end }}
+    </span>
+  </div>
+  {{ end -}}
+{{ end }}

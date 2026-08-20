@@ -1,0 +1,172 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+name: Random Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Label for selecting runners"
+        required: true
+        type: string
+      operators:
+        description: "Operators (comma separated names)"
+        required: true
+        type: string
+      gpus:
+        description: "GPUs (comma separated numbers)"
+        required: true
+        type: string
+permissions:
+  contents: read
+
+jobs:
+  check-permission:
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.makeDecision.outputs.continue }}
+    steps:
+      - id: checkUser
+        uses: tspascoal/get-user-teams-membership@b2546c5affc730fd8e3d8483ae9ad3621938c2f9  # v4.0.2
+        with:
+          username: ${{ github.actor }}
+          team: 'FlagGems'
+          GITHUB_TOKEN: ${{ secrets.TEAMMEMBER_TOKEN }}
+
+      - id: makeDecision
+        env:
+          IS_MEMBER: ${{ steps.checkUser.outputs.isTeamMember }}
+        run: |
+          if [[ "${IS_MEMBER}" == "false" ]]; then
+            echo "Unauthorized user: ${{ github.actor }}"
+            echo "continue=false" >> $GITHUB_OUTPUT
+          else
+            echo "continue=true" >> $GITHUB_OUTPUT
+          fi
+
+  test-operator:
+    needs: check-permission
+    if: needs.check-permission.outputs.authorized == 'true'
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Resolve vendor
+        id: resolve
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ inputs.runner }}
+        run: |
+          case "${RUNNER_LABEL}" in
+            h20)
+              VENDOR="nvidia"
+              BACKEND="nvidia-cuda133"
+              ;;
+            a100|h100)
+              VENDOR="nvidia"
+              BACKEND="nvidia-cuda133"
+              ;;
+            ascend)
+              VENDOR="ascend"
+              # The ascend runner pool contains nodes with two different CANN
+              # toolkits (8.5.x and 9.0.x). The job may land on either node, so
+              # detect the CANN version on the node and pick the matching
+              # backend: 8.5.x -> ascend-cann850, 9.0.x -> ascend-cann900
+              CANN_VERSION=$(ls -d /usr/local/Ascend/cann-* 2>/dev/null | sed 's|.*/cann-||' | sort -V | tail -1)
+              case "${CANN_VERSION}" in
+                8.5*)
+                  BACKEND="ascend-cann850"
+                  ;;
+                9.0*)
+                  BACKEND="ascend-cann900"
+                  ;;
+                *)
+                  echo "::error::Cannot detect CANN version on ascend runner (got '${CANN_VERSION}')" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
+            cann850)
+              VENDOR="ascend"
+              BACKEND="ascend-cann850"
+              ;;
+            cann9)
+              VENDOR="ascend"
+              BACKEND="ascend-cann900"
+              ;;
+            metax)
+              VENDOR="metax"
+              # The metax runner pool contains nodes with two different MACA
+              # drivers (3.7.x and 3.8.x). The job may land on either node, so
+              # detect the driver on the node and pick the matching backend:
+              #   3.7.x -> metax-maca3720, 3.8.x -> metax-maca3810
+              MACA_VERSION=$(mx-smi 2>/dev/null | awk -F': ' '/MACA Version/{split($2,a," "); print a[1]}')
+              case "${MACA_VERSION}" in
+                3.7.*)
+                  BACKEND="metax-maca3720"
+                  ;;
+                3.8.*)
+                  BACKEND="metax-maca3810"
+                  ;;
+                *)
+                  echo "::error::Cannot detect MACA version on metax runner (got '${MACA_VERSION}')" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
+            maca372)
+              VENDOR="metax"
+              BACKEND="metax-maca3720"
+              ;;
+            maca381)
+              VENDOR="metax"
+              BACKEND="metax-maca3810"
+              ;;
+            enflame)
+              VENDOR="enflame"
+              BACKEND="enflame-tops1106"
+              ;;
+            cambricon)
+              VENDOR="cambricon"
+              BACKEND="cambricon-neuware472"
+              ;;
+            *)
+              VENDOR="${RUNNER_LABEL}"
+              BACKEND="${RUNNER_LABEL}"
+              ;;
+          esac
+          echo "VENDOR=${VENDOR}" >> $GITHUB_OUTPUT
+          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
+          echo "BACKEND=${BACKEND}" >> $GITHUB_OUTPUT
+          echo "BACKEND=${BACKEND}" >> $GITHUB_ENV
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          backend: ${{ steps.resolve.outputs.BACKEND }}
+          gpu_check_script: tools/gpu_check_${{ steps.resolve.outputs.VENDOR }}.sh
+
+      - name: Run tests
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
+
+      - name: Upload results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: random-test
+          path: results/

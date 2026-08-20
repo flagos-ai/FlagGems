@@ -1,0 +1,119 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import random
+import time
+
+import numpy as np
+import pytest
+import scipy
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    MULTINOMIAL_DTYPES = [torch.float32]
+else:
+    MULTINOMIAL_DTYPES = [torch.float16, torch.float32]
+
+random.seed(time.time() // 100)
+
+device = flag_gems.device
+
+
+@pytest.mark.multinomial
+@pytest.mark.parametrize("shape", utils.UT_SHAPES_1D + utils.UT_SHAPES_2D)
+@pytest.mark.parametrize("dtype", MULTINOMIAL_DTYPES)
+@pytest.mark.parametrize("n_samples", [1000])
+def test_multinomial_with_replacement(shape, dtype, n_samples):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
+
+    if shape[-1] == 1:
+        dist = torch.rand(size=shape, dtype=dtype, device=flag_gems.device)
+        with flag_gems.use_gems():
+            res_out = torch.multinomial(dist, n_samples, True)
+        assert torch.all(res_out == 0)
+    else:
+        # Mask p% off of the categories and test the sampling results fall in the rest
+        for p in (0.1, 0.5, 0.9):
+            dist = torch.rand(size=shape, dtype=dtype, device=flag_gems.device)
+            dist[torch.rand(shape) < p] = 0
+            # Make sure there's at least one non-zero probability
+            dist[..., -1] = 0.5
+
+            with flag_gems.use_gems():
+                res_out = torch.multinomial(dist, n_samples, True)
+
+            res_dist = torch.gather(dist, -1, res_out)
+            # assert torch.all(res_dist)
+            assert torch.sum(res_dist == 0) / res_dist.numel() < 0.001
+
+
+@pytest.mark.multinomial
+@pytest.mark.parametrize("shape", [(1024, 10)])
+@pytest.mark.parametrize("dtype", MULTINOMIAL_DTYPES)
+@pytest.mark.parametrize("n_samples", [2048])
+def test_multinomial_with_replacement_1(shape, dtype, n_samples):
+    # First use multinomial to generate a series of indices, then
+    # use the index counts as the input probabilities (scaled)
+    rand_indices = torch.multinomial(torch.rand(shape), n_samples, True).to(device)
+    inp_counts = torch.nn.functional.one_hot(rand_indices).sum(1)
+    with flag_gems.use_gems():
+        out_indices = torch.multinomial(inp_counts.to(dtype=dtype), n_samples, True)
+    out_counts = torch.nn.functional.one_hot(out_indices).sum(1)
+
+    # Do a simple Chi-square test
+    assert torch.equal(inp_counts.sum(-1), out_counts.sum(-1))
+
+    if flag_gems.vendor_name == "cambricon":
+        # Avoid scipy.stats import failure in the Cambricon test environment.
+        valid_counts = inp_counts > 0
+        chi_square = torch.where(
+            valid_counts, (out_counts - inp_counts).float().square() / inp_counts, 0
+        ).sum(-1)
+        df = (valid_counts.sum(-1).float() - 1).cpu()
+        chi_square = chi_square.cpu()
+        pvalue = torch.special.gammaincc(df / 2, chi_square / 2)
+        assert torch.sum(pvalue < 0.05) / pvalue.numel() < 0.1
+    else:
+        _, pvalue = scipy.stats.chisquare(
+            out_counts.tolist(), inp_counts.tolist(), axis=-1
+        )
+        assert np.sum(pvalue < 0.05) / len(pvalue) < 0.1
+
+
+@pytest.mark.multinomial
+@pytest.mark.parametrize("pool", utils.UT_SHAPES_2D)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_multinomial_without_replacement(pool, dtype):
+    dist = torch.rand(size=pool, dtype=dtype, device=flag_gems.device)
+    k = pool[-1]
+
+    if k > 1:
+        ns = [k // 2, k]
+    else:
+        ns = [1]
+
+    for n in ns:
+        with flag_gems.use_gems():
+            out = torch.multinomial(dist, n, False)
+
+        # Verifies uniqueness
+        idx_cnt = torch.nn.functional.one_hot(out).sum(1)
+        assert torch.all(idx_cnt <= 1)

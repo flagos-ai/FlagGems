@@ -1,0 +1,297 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+# from flag_gems import runtime
+from flag_gems.ops.zeros import zero_
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import triton_lang_extension as ext
+
+from ..utils.block_size_utils import get_block_size_1d
+
+logger = logging.getLogger(__name__)
+
+
+@libentry()
+@triton.jit
+def sum_kernel_1(
+    inp,
+    mid,
+    M,
+    BLOCK_SIZE: tl.constexpr,
+):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
+        inp.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = inp.dtype.element_ty
+
+    pid = ext.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    inp_ptrs = inp + offset
+    mask = offset < M
+
+    inp_val = tl.load(inp_ptrs, mask=mask, other=0).to(cdtype)
+    sum_val = tl.sum(inp_val)
+    mid_ptr = mid + pid
+    tl.store(mid_ptr, sum_val)
+
+
+@libentry()
+@triton.jit
+def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+    if tl.constexpr(mid.dtype.element_ty == tl.float16) or tl.constexpr(
+        mid.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = mid.dtype.element_ty
+
+    offset = tl.arange(0, BLOCK_MID)
+    mid_ptrs = mid + offset
+    mask = offset < mid_size
+    mid_val = tl.load(mid_ptrs, mask=mask, other=0).to(cdtype)
+    sum_val = tl.sum(mid_val)
+    tl.store(out, sum_val)
+
+
+# Row-reduce tile bounds. We accumulate elementwise into a persisted
+# [BLOCK_M, BLOCK_N] tile and reduce ONCE after the loop (reduce-OUTSIDE). This is
+# exact for ALL N: the reduce-INSIDE variant (tl.sum per iteration) is faster in
+# theory but MISCOMPILES on this XPU whenever several full blocks are followed by a
+# partially-masked tail (verified in isolation), so we do not use it.
+#
+# BLOCK_N is capped at 8192 and BLOCK_M is fixed at 128: this bounds the live tile at
+# [128, 8192] (~1M elts, compiles cold in ~3.4s, no IR explosion). The old code
+# scaled BLOCK_M as next_pow2(cdiv(M, 12)) up to 131072, producing tensor<131072x8192>
+# tiles and multi-GB IR dumps. A wide BLOCK_N (up to 8192) is a big win for the
+# small-M / huge-N regime (e.g. [1024, 1048576]: 0.21 -> 0.52 speedup vs BLOCK_N=512)
+# and never hurts the other shapes. See harness/solution/sum_perf_fix.md sweeps.
+_BLOCK_M = 128
+_BLOCK_N_MAX = 8192
+# For small M + huge N, BLOCK_M=128 leaves only a handful of row-programs (e.g.
+# M=1024 -> grid=8) which under-fills the 12 clusters; a smaller BLOCK_M exposes more
+# row-parallelism (M=1024, N=1048576: 0.52 -> 0.71). It is catastrophic for large M
+# (grid over-subscription), so it is gated on M being small.
+_SMALL_M = 4096
+_HUGE_N = 32768
+_SMALL_BLOCK_M = 8
+
+
+@libentry()
+@triton.jit
+def sum_kernel(
+    inp,
+    out,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    # Reduce-OUTSIDE: elementwise-accumulate into a persisted [BLOCK_M, BLOCK_N] tile,
+    # reduce once after the loop. Exact for all N (see comment above).
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
+        inp.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = inp.dtype.element_ty
+
+    pid = ext.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inp = inp + rows * N
+    out = out + rows
+    row_mask = rows < M
+
+    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=cdtype)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        mask = row_mask and (cols < N)
+        a = tl.load(inp + cols, mask, other=0).to(cdtype)
+        _sum += a
+    tl.store(out, tl.sum(_sum, axis=1)[:, None], row_mask)
+
+
+def _launch_sum_dim(inp, out, M, N):
+    if M == 1:
+        # Degenerate: the whole tensor reduces to a single element. The row-parallel
+        # kernel would launch grid=1 and serialize the entire N-element reduction in
+        # one program (e.g. N=2**28 -> ~1.4s). Route to the two-stage split reduction
+        # (parallel over N), the same machinery the full-tensor sum() uses.
+        block_size = get_block_size_1d(N, inp.element_size())
+        mid_size = triton.cdiv(N, block_size)
+        block_mid = triton.next_power_of_2(mid_size)
+        mid = torch.empty((mid_size,), dtype=out.dtype, device=inp.device)
+        with torch_device_fn.device(inp.device):
+            sum_kernel_1[(mid_size, 1, 1)](
+                inp, mid, N, block_size, buffer_size_limit=2048
+            )
+            if mid_size == 1:
+                out.copy_(mid.reshape(out.shape))
+            else:
+                sum_kernel_2[(1, 1, 1)](
+                    mid, out, mid_size, block_mid, buffer_size_limit=2048
+                )
+        return
+
+    block_n = min(triton.next_power_of_2(N), _BLOCK_N_MAX)
+    if M <= _SMALL_M and N >= _HUGE_N:
+        block_m = _SMALL_BLOCK_M
+    else:
+        block_m = _BLOCK_M
+    grid = (triton.cdiv(M, block_m),)
+    with torch_device_fn.device(inp.device):
+        sum_kernel[grid](inp, out, M, N, block_m, block_n, buffer_size_limit=2048)
+
+
+def sum(inp, *, dtype=None):
+    logger.debug("GEMS_KUNLUNXIN SUM")
+    M = inp.numel()
+    if dtype is None:
+        dtype = inp.dtype
+        if dtype is torch.bool:
+            inp = inp.to(torch.int64)
+            dtype = torch.int64
+    block_size = get_block_size_1d(M, inp.element_size())
+    mid_size = triton.cdiv(M, block_size)
+    block_mid = triton.next_power_of_2(mid_size)
+
+    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    out = torch.empty([], dtype=dtype, device=inp.device)
+
+    with torch_device_fn.device(inp.device):
+        sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size, buffer_size_limit=2048)
+        if mid_size == 1:
+            return mid.reshape([])
+        sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
+    return out
+
+
+def sum_out(inp, *, dtype=None, out):
+    logger.debug("GEMS_KUNLUNXIN SUM_OUT")
+    M = inp.numel()
+    if dtype is None:
+        dtype = inp.dtype
+        if dtype is torch.bool:
+            inp = inp.to(torch.int64)
+            dtype = torch.int64
+    block_size = get_block_size_1d(M, inp.element_size())
+    mid_size = triton.cdiv(M, block_size)
+    block_mid = triton.next_power_of_2(mid_size)
+
+    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    with torch_device_fn.device(inp.device):
+        sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size, buffer_size_limit=2048)
+        if mid_size == 1:
+            return mid.reshape([])
+        sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
+    return out
+
+
+def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
+    logger.debug("GEMS_KUNLUNXIN SUM_DIM")
+    if dtype is None:
+        dtype = inp.dtype
+        if dtype is torch.bool:
+            dtype = torch.int64
+
+    if inp.numel() == 0:
+        out_shape = list(inp.shape)
+        if dim is None or dim == []:
+            out_shape = [1] * len(out_shape) if keepdim else []
+        else:
+            dims = dim if isinstance(dim, (list, tuple)) else [dim]
+            if keepdim:
+                for d in dims:
+                    out_shape[d % inp.ndim] = 1
+            else:
+                for d in sorted(dims, key=lambda x: x % inp.ndim, reverse=True):
+                    out_shape.pop(d % inp.ndim)
+        out = torch.empty(out_shape, dtype=dtype, device=inp.device)
+        zero_(out)
+        return out
+
+    if dim == []:
+        if not keepdim:
+            return sum(inp, dtype=dtype)
+        else:
+            dim_num = inp.ndim
+            return torch.reshape(sum(inp, dtype=dtype), [1] * dim_num)
+
+    shape = list(inp.shape)
+    dim = [d % inp.ndim for d in dim]
+    inp = dim_compress(inp, dim)
+    N = 1
+    for i in dim:
+        N *= shape[i]
+        shape[i] = 1
+    M = inp.numel() // N
+
+    out = torch.empty(shape, dtype=dtype, device=inp.device)
+
+    _launch_sum_dim(inp, out, M, N)
+    if not keepdim:
+        out = out.squeeze(dim=dim)
+    return out
+
+
+def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
+    logger.debug("GEMS_KUNLUNXIN SUM_DIM_OUT")
+    if dtype is None:
+        dtype = inp.dtype
+        if dtype is torch.bool:
+            dtype = torch.int64
+
+    if inp.numel() == 0:
+        dims = (
+            dim
+            if isinstance(dim, (list, tuple))
+            else ([dim] if dim is not None else [])
+        )
+        if keepdim:
+            for d in dims:
+                pass  # out shape already correct from caller
+        zero_(out)
+        return out
+
+    if dim == []:
+        if not keepdim:
+            return sum_out(inp, dtype=dtype, out=out)
+        else:
+            dim_num = inp.ndim
+            return torch.reshape(sum_out(inp, dtype=dtype, out=out), [1] * dim_num)
+
+    shape = list(inp.shape)
+    dim = [d % inp.ndim for d in dim]
+    inp = dim_compress(inp, dim)
+    N = 1
+    for i in dim:
+        N *= shape[i]
+        shape[i] = 1
+    M = inp.numel() // N
+
+    out.resize_(shape)
+    _launch_sum_dim(inp, out, M, N)
+    if not keepdim:
+        # Compute squeezed shape and resize in-place
+        out_shape = [s for i, s in enumerate(shape) if i not in dim]
+        out.resize_(out_shape)
+    return out
