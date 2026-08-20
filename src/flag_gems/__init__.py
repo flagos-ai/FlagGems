@@ -1031,6 +1031,8 @@ _FULL_CONFIG = (
     ("special_log1p.out", special_log1p_out),
     ("special_logsumexp", special_logsumexp),
     ("special_log_softmax", special_log_softmax),
+    ("special_modified_bessel_i1", special_modified_bessel_i1),
+    ("special_modified_bessel_i1.out", special_modified_bessel_i1_out),
     ("special_modified_bessel_k0", special_modified_bessel_k0),
     ("special_modified_bessel_k0.out", special_modified_bessel_k0_out),
     ("special_modified_bessel_k1", special_modified_bessel_k1),
