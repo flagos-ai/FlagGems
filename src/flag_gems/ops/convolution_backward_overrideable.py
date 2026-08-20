@@ -19,7 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.conv2d import conv2d_backward_kernel_weight, conv2d_forward_kernel
+from flag_gems.ops.conv2d import conv2d_forward_kernel
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -183,59 +183,78 @@ def _conv2d_grad_input(
 def _conv2d_grad_weight(
     out_grad, input, weight_shape, stride, padding, dilation, groups
 ):
-    # Replicates the grad_weight path of conv2d's backward using the shared
-    # conv2d weight-gradient Triton kernel.
-    device = out_grad.device
+    # grad_weight[co, ci, kh, kw] = sum over (n, ho, wo) of
+    #   out_grad[n, co, ho, wo] * input_patch[n, ci, kh, kw, ho, wo].
+    # This is an im2col matmul: gather the input's receptive-field patches into
+    # columns [N, Cin_g*kH*kW, Ho*Wo], then contract the Ho*Wo (and N) axes
+    # against the output gradient [N, Cout_g, Ho*Wo] with a batched matmul and
+    # sum the per-sample results over N. This hands the heavy reduction to a
+    # tensor-core GEMM instead of the shared conv2d weight-gradient kernel, whose
+    # per-output-pixel loop is orders of magnitude slower on large spatial sizes.
+    #
+    # The patches are materialized with as_strided (a pure view) rather than
+    # torch.nn.functional.unfold: unfold would re-dispatch through FlagGems'
+    # im2col kernel while this op runs under use_gems(), so keeping the gather as
+    # a view sidesteps that and only bmm is delegated to a Triton kernel.
     out_channels, weight_c, weight_height, weight_width = weight_shape
     out_c = out_channels // groups
-    in_n, in_channels, input_height, input_width = input.shape
+    in_n = input.shape[0]
     out_height, out_width = out_grad.shape[2], out_grad.shape[3]
 
     stride_height, stride_width = stride
     padding_height, padding_width = padding
     dilation_height, dilation_width = dilation
 
-    input = input.contiguous()
     out_grad = out_grad.contiguous()
+    # Zero-pad the spatial dims up front so the strided patch gather stays fully
+    # in-bounds; explicit padding also lets as_strided express the receptive
+    # field with a simple stride pattern.
+    if padding_height > 0 or padding_width > 0:
+        input = torch.nn.functional.pad(
+            input, (padding_width, padding_width, padding_height, padding_height)
+        )
+    input = input.contiguous()
+    n_stride, c_stride, h_stride, w_stride = input.stride()
 
-    weight_back = torch.zeros(
-        out_c * groups,
-        weight_c,
-        weight_height,
-        weight_width,
-        dtype=torch.float32,
-        device=device,
-    )
+    def _grad_weight_group(input_g, grad_g):
+        # input_g: [N, Cin_g, Hpad, Wpad]; grad_g: [N, Cout_g, Ho, Wo].
+        # Patches shape [N, Cin_g, kH, kW, Ho, Wo]: kernel taps advance by the
+        # dilation, output positions advance by the stride.
+        cols = torch.as_strided(
+            input_g,
+            (in_n, weight_c, weight_height, weight_width, out_height, out_width),
+            (
+                n_stride,
+                c_stride,
+                h_stride * dilation_height,
+                w_stride * dilation_width,
+                h_stride * stride_height,
+                w_stride * stride_width,
+            ),
+        ).reshape(in_n, weight_c * weight_height * weight_width, out_height * out_width)
+        grad_flat = grad_g.reshape(in_n, out_c, out_height * out_width)
+        # Contract in fp32. Under use_gems() the batched matmul is served by a
+        # Triton kernel that accumulates in the input dtype, so a fp16 contraction
+        # over the N * Ho * Wo terms would drift well past the test tolerance;
+        # promoting the operands keeps the whole reduction (matmul + sum over N)
+        # in fp32.
+        # [N, Cout_g, Ho*Wo] @ [N, Ho*Wo, Cin_g*kH*kW] -> [N, Cout_g, Cin_g*kH*kW].
+        per_sample = torch.bmm(grad_flat.float(), cols.float().transpose(1, 2))
+        return per_sample.sum(0).reshape(out_c, weight_c, weight_height, weight_width)
 
-    grid_weight = lambda meta: (
-        triton.cdiv(weight_c * weight_height * weight_width, meta["BLOCK_CI_HK_WK"]),
-        groups,
-        triton.cdiv(out_c, meta["BLOCK_CO"]),
-    )
-    conv2d_backward_kernel_weight[grid_weight](
-        input,
-        out_grad,
-        weight_back,
-        *input.stride(),
-        *weight_back.stride(),
-        *out_grad.stride(),
-        input_height,
-        input_width,
-        weight_height,
-        weight_width,
-        weight_c,
-        in_n,
-        stride_height,
-        stride_width,
-        out_height,
-        out_width,
-        out_c,
-        padding_height,
-        padding_width,
-        dilation_height,
-        dilation_width,
-    )
-    return weight_back
+    if groups == 1:
+        weight_back = _grad_weight_group(input, out_grad)
+        return weight_back.to(torch.float32)
+
+    # Grouped conv: each group owns a contiguous slice of the input channels and
+    # output-gradient channels; accumulate their weight gradients independently.
+    parts = []
+    for gi in range(groups):
+        input_g = input[:, gi * weight_c : (gi + 1) * weight_c]
+        grad_g = out_grad[:, gi * out_c : (gi + 1) * out_c]
+        parts.append(_grad_weight_group(input_g, grad_g))
+    weight_back = torch.cat(parts, dim=0).contiguous()
+    return weight_back.to(torch.float32)
 
 
 def _normalize_pair(value):
