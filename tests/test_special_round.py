@@ -114,6 +114,10 @@ def test_special_round_decimals(decimals):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame does not support fp64",
+)
 @pytest.mark.special_round_out
 @pytest.mark.parametrize("decimals", [0, 1, 2, 3, -1, -2])
 def test_special_round_out_decimals(decimals):
