@@ -67,3 +67,20 @@ def absolute(input: torch.Tensor):
             out = torch.empty_like(x)
             _absolute_kernel[grid](x, out, n_elements, BLOCK_SIZE=1024)
             return out
+
+
+def absolute_(input: torch.Tensor):
+    logger.debug("GEMS ABSOLUTE_")
+    n_elements = input.numel()
+    if n_elements == 0:
+        return input
+
+    x = input.contiguous()
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    with torch_device_fn.device(input.device):
+        _absolute_kernel[grid](x, x, n_elements, BLOCK_SIZE=1024)
+
+    if x.data_ptr() != input.data_ptr():
+        input.copy_(x)
+    return input
