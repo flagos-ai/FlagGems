@@ -100,7 +100,7 @@ class RmsNormFp8W8A16Benchmark(RmsNormFp8Benchmark):
             yield x, (n,), weight_fp8, weight_scale, weight
 
 
-@pytest.mark.rms_norm
+@pytest.mark.rms_norm_w8a16_fp8
 @pytest.mark.skipif(
     not _cuda_fp8_e4m3fn_available(),
     reason="RMSNorm FP8-W8A16 benchmark requires CUDA sm90+ float8_e4m3fn support",

@@ -102,7 +102,7 @@ def test_rms_norm(shape, dtype):
     utils.gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N)
 
 
-@pytest.mark.rms_norm
+@pytest.mark.rms_norm_w8a16_fp8
 @pytest.mark.parametrize(
     "shape",
     [
