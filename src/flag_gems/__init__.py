@@ -515,6 +515,7 @@ _FULL_CONFIG = (
     ("eye", eye),
     ("eye.m", eye_m),
     ("fake_quantize_per_channel_affine", fake_quantize_per_channel_affine),
+    ("feature_alpha_dropout_", feature_alpha_dropout_),
     ("feature_dropout", feature_dropout),
     ("feature_dropout_", feature_dropout_),
     (
