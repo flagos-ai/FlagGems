@@ -2382,6 +2382,17 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.3'
+  - id: imag
+    description: |
+      Returns the imaginary part of each element in a complex tensor.
+    for:
+      - imag
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: constant_pad_nd
     description: |
       Pads the input tensor boundaries with a constant value.
