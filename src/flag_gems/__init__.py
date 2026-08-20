@@ -592,6 +592,8 @@ _FULL_CONFIG = (
     ("greater.Scalar_out", greater_scalar_out),
     ("greater.Tensor", greater),
     ("greater.out", greater_out),
+    ("greater_.Scalar", greater_),
+    ("greater_.Tensor", greater_),
     ("greater_equal.Scalar", ge_scalar),
     ("greater_equal.Tensor", ge),
     ("greater_equal_.Tensor", greater_equal_),

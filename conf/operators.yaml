@@ -4810,6 +4810,18 @@ ops:
       - Math
     stages:
       - stable: '5.3'
+  - id: greater_
+    description: The in-place version of `greater()`.
+    for:
+      - greater_.Tensor
+      - greater_.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: greater_equal_
     description: The in-place version of `greater_equal()`, which is an alias for `ge()`.
     for:
