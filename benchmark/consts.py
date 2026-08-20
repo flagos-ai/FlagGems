@@ -225,6 +225,8 @@ class BenchmarkResult:
             f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
             f"level={self.level})\n"
         )
+        if not self.result:
+            return header_title + "No benchmark results were collected.\n"
         col_names = [
             f"{'Status':<10}",
             f"{'Torch Latency (ms)':>20}",
