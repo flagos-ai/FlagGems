@@ -146,6 +146,19 @@ ops:
       - Quantization
     stages:
       - beta: '5.3'
+  - id: adaptive_avg_pool1d
+    description: |
+      Applies a one-dimensional adaptive average pooling over an input signal,
+      producing an output of the requested length.
+    for:
+      - adaptive_avg_pool1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: adaptive_avg_pool2d
     description: |
       Apply a 2D adaptive average pooling over an input signal composed of several input planes.
