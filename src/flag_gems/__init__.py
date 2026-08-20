@@ -97,6 +97,8 @@ _FULL_CONFIG = (
     ("_adaptive_avg_pool2d_backward", _adaptive_avg_pool2d_backward),
     ("_adaptive_avg_pool3d_backward", _adaptive_avg_pool3d_backward),
     ("_add_relu.Tensor", _add_relu),
+    ("_aminmax", _aminmax),
+    ("_aminmax.out", _aminmax_out),
     (
         "_amp_foreach_non_finite_check_and_unscale_",
         _amp_foreach_non_finite_check_and_unscale_,

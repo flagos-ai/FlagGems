@@ -13,6 +13,30 @@
 # limitations under the License.
 
 ops:
+  - id: _aminmax
+    description: |
+      Computes the minimum and maximum values of the `input` tensor.
+    for:
+      - _aminmax
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
+  - id: _aminmax_out
+    description: |
+      A variant of _aminmax() that writes the result into the out tensor.
+    for:
+      - _aminmax.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_impl_index
     description: Applies Batch Normalization and returns the normalized output along with saved statistics, a reserve tensor, and the backend implementation index.
     for:
