@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .addr import addr
 from .any import any, any_dim, any_dims
 from .attention import (
     ScaleDotProductAttention,
@@ -43,10 +44,11 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
-from .gelu import gelu, gelu_
+from .gelu import gelu, gelu_, gelu_backward
 from .hadamard_transform import hadamard_transform
 from .index_add import index_add, index_add_
 from .isin import isin
+from .linalg_ldl_factor import ldl_factor
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .mm import mm
@@ -61,15 +63,26 @@ from .pow import (
     pow_tensor_tensor_,
 )
 from .randperm import randperm
+from .scatter import scatter, scatter_
+from .searchsorted import (
+    searchsorted,
+    searchsorted_out,
+    searchsorted_scalar,
+    searchsorted_scalar_out,
+)
 from .silu import silu, silu_, silu_backward
 from .sort import sort, sort_stable
+from .special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from .unique import _unique2
+from .unique_dim import unique_dim
+from .unsqueeze import unsqueeze, unsqueeze_
 from .upsample_nearest2d import upsample_nearest2d
 
 __all__ = [
     "_unique2",
     "ScaleDotProductAttention",
     "SUPPORTED_FP8_DTYPE",
+    "addr",
     "any",
     "any_dim",
     "any_dims",
@@ -88,10 +101,12 @@ __all__ = [
     "floor_divide_",
     "gelu",
     "gelu_",
+    "gelu_backward",
     "hadamard_transform",
     "index_add",
     "index_add_",
     "isin",
+    "ldl_factor",
     "matmul_bf16",
     "matmul_int8",
     "mul",
@@ -111,15 +126,25 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
+    "scatter",
+    "scatter_",
+    "searchsorted",
+    "searchsorted_out",
+    "searchsorted_scalar",
+    "searchsorted_scalar_out",
     "silu",
     "silu_",
     "silu_backward",
     "sort",
     "sort_stable",
+    "special_chebyshev_polynomial_v",
     "true_divide",
     "true_divide_",
     "true_divide_out",
     "trunc_divide",
     "trunc_divide_",
+    "unique_dim",
     "upsample_nearest2d",
+    "unsqueeze",
+    "unsqueeze_",
 ]

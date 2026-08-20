@@ -21,7 +21,7 @@ from flag_gems.utils import broadcastable_to
 
 logger = logging.getLogger(__name__)
 
-from flag_gems.ops.addmm import addmm, addmm_out  # noqa: E402
+from .addmm import addmm, addmm_out  # noqa: E402
 
 
 def _may_overlap(lhs, rhs):
