@@ -963,6 +963,22 @@ def mha_fwd(
     CHECK_DEVICE(q), CHECK_DEVICE(k), CHECK_DEVICE(v)
     q_dtype = q.dtype
     q_device = q.device
+
+    # Hopper (SM 9.x) 快速路径: gluon FA3 warp-specialization
+    if hasattr(torch.cuda, 'get_device_capability'):
+        major, minor = torch.cuda.get_device_capability(q_device)
+        # SM 9.0: H100, SM 9.2: GH200
+        use_gluon = (major == 9) and (q_dtype == torch.bfloat16) and (p_dropout == 0.0) and (alibi_slopes is None) and (softcap == 0.0) and (window_size_left < 0 and window_size_right in [0, -1])
+        if use_gluon:
+            # 仅支持基础 causal/non-causal,不支持 alibi/softcap/sliding window
+            from flag_gems.ops.gluon_flash_wrapper import gluon_flash_attn
+            out_gluon, lse_gluon = gluon_flash_attn(q, k, v, causal=(window_size_right == 0))
+            if out is None:
+                out = torch.empty_like(out_gluon)
+            out.copy_(out_gluon)
+            lse = lse_gluon
+            return out, lse, None
+
     assert q_dtype in (
         torch.float16,
         torch.bfloat16,
