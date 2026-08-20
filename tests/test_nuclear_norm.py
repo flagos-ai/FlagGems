@@ -41,6 +41,7 @@ SVD_ATOL = 2e-2
 
 @pytest.mark.nuclear_norm
 @pytest.mark.parametrize("M, N", NUCLEAR_NORM_SHAPES)
+# Only float32 is supported for SVD on CUDA (PyTorch limitation)
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize("keepdim", [False, True])
 def test_nuclear_norm(M, N, dtype, keepdim):
@@ -63,6 +64,7 @@ def test_nuclear_norm(M, N, dtype, keepdim):
 
 @pytest.mark.nuclear_norm
 @pytest.mark.parametrize("M, N", NUCLEAR_NORM_SHAPES)
+# Only float32 is supported for SVD on CUDA (PyTorch limitation)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_nuclear_norm_batch(M, N, dtype):
     """Test nuclear_norm with batch dimensions"""
@@ -83,6 +85,7 @@ def test_nuclear_norm_batch(M, N, dtype):
 
 @pytest.mark.nuclear_norm
 @pytest.mark.parametrize("M, N", NUCLEAR_NORM_SHAPES)
+# Only float32 is supported for SVD on CUDA (PyTorch limitation)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_nuclear_norm_non_contiguous(M, N, dtype):
     """Test nuclear_norm with non-contiguous input"""
