@@ -88,7 +88,9 @@ def make_input(
     device,
     requires_grad=False,
 ):
-    random_utils.set_philox_state(1234567890, 0, device)
+    random_utils.set_philox_state(
+        42 if flag_gems.vendor_name == "cambricon" else 1234567890, 0, device
+    )
     q_shape = (batch, num_head, q_seq_len, head_size)
     kv_shape = (batch, num_head_k, kv_seq_len, head_size)
     q = torch.empty(q_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
@@ -183,7 +185,7 @@ def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
             is_causal=is_causal,
         )
 
-    if flag_gems.vendor_name == "iluvatar" and cfg.TO_CPU:
+    if flag_gems.vendor_name in ["cambricon", "iluvatar"] and cfg.TO_CPU:
         from torch.nn.attention import SDPBackend, sdpa_kernel
 
         ctx = sdpa_kernel(backends=[SDPBackend.MATH])
@@ -357,6 +359,10 @@ def test_scaled_dot_product_attention_legacy_backward(
         )
 
     utils.gems_assert_close(gems_result, torch_result, dtype)
+
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
 
     # backward
     ref_dout = torch.randn_like(ref_q)
