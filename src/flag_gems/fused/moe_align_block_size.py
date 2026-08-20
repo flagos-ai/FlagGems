@@ -799,31 +799,8 @@ def moe_align_block_size_small_grouped(
 
 
 @triton.jit
-def _moe_align_block_size_compact_count_kernel(
+def _moe_align_block_size_compact_count_prefix_init_kernel(
     topk_ids_ptr,
-    expert_starts_ptr,
-    NUM_ROUTES: tl.constexpr,
-    NUM_EXPERTS: tl.constexpr,
-    BLOCK_EXPERT: tl.constexpr,
-    BLOCK_ROUTES: tl.constexpr,
-):
-    route_offsets = tl.arange(0, BLOCK_ROUTES)
-    route_mask = route_offsets < NUM_ROUTES
-    expert_ids = tl.load(topk_ids_ptr + route_offsets, mask=route_mask, other=0).to(
-        tl.int32
-    )
-    counts = tl.histogram(expert_ids, BLOCK_EXPERT, mask=route_mask).to(tl.int32)
-
-    expert_offsets = tl.arange(0, BLOCK_EXPERT)
-    tl.store(
-        expert_starts_ptr + expert_offsets,
-        counts,
-        mask=expert_offsets < NUM_EXPERTS,
-    )
-
-
-@triton.jit
-def _moe_align_block_size_compact_prefix_init_kernel(
     expert_starts_ptr,
     expert_ranks_ptr,
     sorted_token_ids_ptr,
@@ -833,19 +810,27 @@ def _moe_align_block_size_compact_prefix_init_kernel(
     NUM_EXPERTS: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_EXPERT: tl.constexpr,
+    BLOCK_ROUTES: tl.constexpr,
     MAX_PADDED: tl.constexpr,
     INIT_BLOCK: tl.constexpr,
     MAX_BLOCKS_PER_EXPERT: tl.constexpr,
 ):
+    route_offsets = tl.arange(0, BLOCK_ROUTES)
+    route_mask = route_offsets < NUM_ROUTES
+    route_experts = tl.load(topk_ids_ptr + route_offsets, mask=route_mask, other=0).to(
+        tl.int32
+    )
+    counts = tl.histogram(route_experts, BLOCK_EXPERT, mask=route_mask).to(tl.int32)
+
     expert_offsets = tl.arange(0, BLOCK_EXPERT)
     expert_mask = expert_offsets < NUM_EXPERTS
-    counts = tl.load(expert_starts_ptr + expert_offsets, mask=expert_mask, other=0)
+    counts = tl.where(expert_mask, counts, 0)
     aligned_counts = tl.cdiv(counts, BLOCK_SIZE_M) * BLOCK_SIZE_M
     expert_starts = tl.cumsum(aligned_counts, axis=0) - aligned_counts
     total_tokens = tl.sum(aligned_counts, axis=0)
 
-    # Reuse the count allocation for expert starts. The separate rank array is
-    # cleared here so the scatter kernel does not need an extra fill launch.
+    # The histogram and prefix sum share one CTA, so counts stay on chip instead
+    # of being materialized to global memory between two kernel launches.
     tl.store(expert_starts_ptr + expert_offsets, expert_starts, mask=expert_mask)
     tl.store(expert_ranks_ptr + expert_offsets, 0, mask=expert_mask)
     tl.store(num_tokens_post_pad_ptr, total_tokens)
@@ -923,16 +908,8 @@ def moe_align_block_size_compact(
     expert_ranks = torch.empty_like(expert_starts)
 
     block_expert = triton.next_power_of_2(num_experts)
-    _moe_align_block_size_compact_count_kernel[(1,)](
+    _moe_align_block_size_compact_count_prefix_init_kernel[(1,)](
         topk_ids,
-        expert_starts,
-        NUM_ROUTES=num_routes,
-        NUM_EXPERTS=num_experts,
-        BLOCK_EXPERT=block_expert,
-        BLOCK_ROUTES=triton.next_power_of_2(num_routes),
-        num_warps=4,
-    )
-    _moe_align_block_size_compact_prefix_init_kernel[(1,)](
         expert_starts,
         expert_ranks,
         sorted_token_ids,
@@ -942,6 +919,7 @@ def moe_align_block_size_compact(
         NUM_EXPERTS=num_experts,
         BLOCK_SIZE_M=block_size,
         BLOCK_EXPERT=block_expert,
+        BLOCK_ROUTES=triton.next_power_of_2(num_routes),
         MAX_PADDED=max_num_tokens_padded,
         INIT_BLOCK=256,
         MAX_BLOCKS_PER_EXPERT=triton.cdiv(num_routes, block_size),

@@ -398,6 +398,7 @@ def test_accuracy_moe_align_block_size_fast_paths(fast_path):
         (511, (64, 10), "uniform", False),
         (256, (1, 1), "uniform", False),
         (512, (128, 8), "uniform", False),
+        (512, (128, 8), "skewed", False),
         (512, (1, 641), "uniform", True),
     ],
 )

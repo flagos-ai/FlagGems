@@ -39,6 +39,7 @@ OCP_MX_BLOCK_SIZE = 32
 # reduction-layout decision even though it currently shares the same cutoff.
 MOE_GEMM_TUNING_MIN_TOKENS = 4096
 MOE_DIRECT_SUM_MIN_TOKENS = 4096
+FUSED_MOE_CHUNK_SIZE = 32 * 1024
 _HALF_GEMM_TILE_M = 128
 _HALF_GEMM_TILE_K = 64
 _HALF_GEMM2_TILE_N = 256
@@ -1974,6 +1975,49 @@ def dispatch_fused_moe_kernel(
         )
 
 
+def _prepare_fused_moe_workspace(
+    workspace: torch.Tensor | None,
+    *,
+    name: str,
+    reference: torch.Tensor,
+    required_numel: int,
+) -> torch.Tensor:
+    """Return a flat workspace slice, allocating only when none is supplied."""
+    if workspace is None:
+        return torch.empty(
+            required_numel,
+            device=reference.device,
+            dtype=reference.dtype,
+        )
+    if workspace.device != reference.device:
+        raise ValueError(
+            f"{name} must be on {reference.device}, got {workspace.device}"
+        )
+    if workspace.dtype != reference.dtype:
+        raise ValueError(
+            f"{name} must have dtype {reference.dtype}, got {workspace.dtype}"
+        )
+    if not workspace.is_contiguous():
+        raise ValueError(f"{name} must be contiguous")
+    if workspace.numel() < required_numel:
+        raise ValueError(
+            f"{name} is too small: requires {required_numel} elements, "
+            f"got {workspace.numel()}"
+        )
+    return workspace.view(-1)[:required_numel]
+
+
+def _tensors_overlap(lhs: torch.Tensor, rhs: torch.Tensor) -> bool:
+    """Check byte-range overlap for the contiguous tensors used by this op."""
+    if lhs.numel() == 0 or rhs.numel() == 0 or lhs.device != rhs.device:
+        return False
+    lhs_begin = lhs.data_ptr()
+    lhs_end = lhs_begin + lhs.numel() * lhs.element_size()
+    rhs_begin = rhs.data_ptr()
+    rhs_end = rhs_begin + rhs.numel() * rhs.element_size()
+    return lhs_begin < rhs_end and rhs_begin < lhs_end
+
+
 def fused_experts_impl(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,
@@ -2000,7 +2044,25 @@ def fused_experts_impl(
     block_shape: Optional[list[int]] = None,
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
+    *,
+    output: Optional[torch.Tensor] = None,
+    intermediate_cache13: Optional[torch.Tensor] = None,
+    intermediate_cache2: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
+    """Run fused experts with optional caller-owned output and workspaces.
+
+    ``intermediate_cache13`` backs cache1/cache3, whose lifetimes do not
+    overlap. ``intermediate_cache2`` backs the activated GEMM1 output. Caller
+    buffers may be larger than required and are never resized. When ``output``
+    is supplied, the returned object is that exact tensor. Caller-owned buffers
+    must not overlap weights, routing tensors, scales, or biases.
+
+    For modular vLLM integrations the final output may share storage with
+    ``intermediate_cache2`` for a single chunk: GEMM2 consumes cache2 before
+    ``moe_sum`` writes the output. Such aliasing disables direct-sum. It is not
+    safe across multiple chunks because the next chunk reuses cache2 from
+    offset zero, so that case is rejected.
+    """
     logger.debug("GEMS FUSED MOE")
     assert (
         activation == "silu"
@@ -2041,8 +2103,27 @@ def fused_experts_impl(
         global_num_experts = E
     top_k_num = topk_ids.size(1)
 
-    CHUNK_SIZE: int = 32 * 1024
+    CHUNK_SIZE = FUSED_MOE_CHUNK_SIZE
     M = min(num_tokens, CHUNK_SIZE)
+
+    if inplace and output is not None:
+        raise ValueError("Cannot pass both inplace=True and output")
+    if output is not None:
+        if output.shape != hidden_states.shape:
+            raise ValueError(
+                f"output must have shape {tuple(hidden_states.shape)}, "
+                f"got {tuple(output.shape)}"
+            )
+        if output.device != hidden_states.device:
+            raise ValueError(
+                f"output must be on {hidden_states.device}, got {output.device}"
+            )
+        if output.dtype != hidden_states.dtype:
+            raise ValueError(
+                f"output must have dtype {hidden_states.dtype}, got {output.dtype}"
+            )
+        if not output.is_contiguous():
+            raise ValueError("output must be contiguous")
 
     config_dtype = _get_config_dtype_str(
         use_fp8_w8a8=use_fp8_w8a8,
@@ -2073,22 +2154,28 @@ def fused_experts_impl(
 
     base_config, is_embedded_config = get_moe_config(M)
 
-    # cache1 and cache3 share memory (non-overlapping lifetime)
-    cache13 = torch.empty(
-        M * top_k_num * max(N, K),
-        device=hidden_states.device,
-        dtype=hidden_states.dtype,
+    activation_out_dim = MoEActivation.adjust_N_for_activation(N, activation_enum)
+
+    # cache1 and cache3 share memory (non-overlapping lifetime). Reuse a
+    # caller-owned buffer when provided so CUDA Graph integrations can keep a
+    # stable allocation and avoid allocator traffic.
+    cache13 = _prepare_fused_moe_workspace(
+        intermediate_cache13,
+        name="intermediate_cache13",
+        reference=hidden_states,
+        required_numel=M * top_k_num * max(N, K),
     )
     intermediate_cache1 = cache13[: M * top_k_num * N].view(M, top_k_num, N)
     intermediate_cache3 = cache13[: M * top_k_num * K].view(M, top_k_num, K)
 
     # cache2 needs separate memory (concurrent with cache1)
-    activation_out_dim = MoEActivation.adjust_N_for_activation(N, activation_enum)
-    intermediate_cache2 = torch.empty(
-        (M * top_k_num, activation_out_dim),
-        device=hidden_states.device,
-        dtype=hidden_states.dtype,
+    cache2 = _prepare_fused_moe_workspace(
+        intermediate_cache2,
+        name="intermediate_cache2",
+        reference=hidden_states,
+        required_numel=M * top_k_num * activation_out_dim,
     )
+    intermediate_cache2 = cache2.view(M * top_k_num, activation_out_dim)
 
     if hidden_states.dtype == torch.bfloat16:
         compute_type = tl.bfloat16
@@ -2099,7 +2186,30 @@ def fused_experts_impl(
     else:
         raise ValueError(f"Unsupported compute_type: {hidden_states.dtype}")
 
-    out_hidden_states = hidden_states if inplace else torch.empty_like(hidden_states)
+    if inplace:
+        out_hidden_states = hidden_states
+    elif output is not None:
+        out_hidden_states = output
+    else:
+        out_hidden_states = torch.empty_like(hidden_states)
+
+    if _tensors_overlap(cache13, hidden_states):
+        raise ValueError("intermediate_cache13 must not overlap hidden_states")
+    if _tensors_overlap(cache2, hidden_states):
+        raise ValueError("intermediate_cache2 must not overlap hidden_states")
+    if _tensors_overlap(cache13, cache2):
+        raise ValueError(
+            "intermediate_cache13 and intermediate_cache2 must not overlap"
+        )
+    if not inplace and _tensors_overlap(out_hidden_states, hidden_states):
+        raise ValueError("output must not overlap hidden_states; use inplace=True")
+    if _tensors_overlap(out_hidden_states, cache13):
+        raise ValueError("output must not overlap intermediate_cache13")
+    output_overlaps_cache2 = _tensors_overlap(out_hidden_states, cache2)
+    if output_overlaps_cache2 and num_tokens > CHUNK_SIZE:
+        raise ValueError(
+            "output may overlap intermediate_cache2 only for a single MoE chunk"
+        )
 
     if ocp_mx_scheme is not None:
         # Dequantize OCP MX weights (TODO: skip on platforms with native MX)
@@ -2295,6 +2405,10 @@ def fused_experts_impl(
             and tokens_in_chunk >= MOE_DIRECT_SUM_MIN_TOKENS
             and expert_map is None
             and not apply_router_weight_on_input
+            # Modular vLLM may alias its output with cache2. The regular path
+            # consumes cache2 before moe_sum writes output; direct-sum would
+            # read and write the same storage concurrently.
+            and not output_overlaps_cache2
         )
         if use_direct_sum:
             gemm2_output = out_hidden_states[begin_chunk_idx:end_chunk_idx].view(
