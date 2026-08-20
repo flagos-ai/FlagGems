@@ -10665,6 +10665,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_expit
+    description: Computes the expit (sigmoid) function element-wise. Returns 1 / (1 + exp(-x)).
+    for:
+      - special.expit
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_gammainc
     description: |
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.

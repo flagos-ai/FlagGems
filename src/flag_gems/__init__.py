@@ -990,6 +990,7 @@ _FULL_CONFIG = (
     ("special_erfinv.out", special_erfinv_out),
     ("special_erfinv_", special_erfinv_),
     ("special_exp2", special_exp2),
+    ("special_expit", special_expit),
     ("special_gammainc", special_gammainc),
     ("special_gammaincc", igammac),
     ("special_gammaincc.out", igammac_out),
