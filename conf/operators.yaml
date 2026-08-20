@@ -13,6 +13,19 @@
 # limitations under the License.
 
 ops:
+  - id: _sparse_semi_structured_addmm
+    description: |
+      Performs a matrix multiplication of the sparse semi-structured
+      (2:4 sparsity) matrices mat1 and mat2 with input added.
+    for:
+      - _sparse_semi_structured_addmm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_impl_index
     description: Applies Batch Normalization and returns the normalized output along with saved statistics, a reserve tensor, and the backend implementation index.
     for:
