@@ -26,6 +26,7 @@ the result back to the original size, similar to the mm/addmm fix #5466.
 import logging
 
 import torch
+import triton
 
 from flag_gems.ops.baddbmm import baddbmm_kernel
 from flag_gems.ops.mul import mul
@@ -122,8 +123,6 @@ def _baddbmm_launch_padded(bias, A, B, beta, alpha, out):
     out_padded = torch.empty((batch, pM, pN), dtype=A.dtype, device=A.device)
 
     # Launch kernel on padded inputs
-    import triton
-
     bias_batch_stride = bias_padded.stride(0)
     bias_M_stride = bias_padded.stride(1)
     bias_N_stride = bias_padded.stride(-1)
