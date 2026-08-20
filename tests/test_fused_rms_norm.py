@@ -140,3 +140,111 @@ def test_fused_rms_norm_aten_dispatch():
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)
     utils.gems_assert_close(res_inv_rms, ref_inv_rms, torch.float32)
+
+
+def _torch_rms_norm_backward(grad_out, x, normalized_shape, rstd, weight, output_mask):
+    """Reference RMS-norm backward computed in float32."""
+    ndim_batch = x.ndim - len(normalized_shape)
+    reduce_dims = tuple(range(ndim_batch, x.ndim))
+    upcast_x = x.to(torch.float32)
+    # rstd has shape (M,); broadcast it back over the normalized dims.
+    inv_rms = rstd.to(torch.float32).reshape(
+        x.shape[:ndim_batch] + (1,) * len(normalized_shape)
+    )
+    normalized = upcast_x * inv_rms
+    numel = int(np.prod(normalized_shape))
+
+    dx = None
+    if output_mask[0]:
+        g = grad_out.to(torch.float32)
+        if weight is not None:
+            g = g * weight.to(torch.float32)
+        row_sum = (normalized * g).sum(dim=reduce_dims, keepdim=True)
+        dx = ((g - normalized / numel * row_sum) * inv_rms).to(x.dtype)
+
+    dw = None
+    if output_mask[1] and weight is not None:
+        reduce_batch = tuple(range(ndim_batch))
+        dw = (grad_out.to(torch.float32) * normalized).sum(dim=reduce_batch)
+        dw = dw.reshape(normalized_shape).to(x.dtype)
+
+    return dx, dw
+
+
+@pytest.mark.fused_rms_norm_backward
+@pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("output_mask", [(True, True), (True, False), (False, True)])
+def test_fused_rms_norm_backward(shape, dtype, output_mask):
+    """Directly exercise aten._fused_rms_norm_backward for each output_mask."""
+    N = shape[1]
+    normalized_shape = [N]
+    eps = 1e-5
+
+    np.random.seed(0)
+    np_inp = np.random.uniform(-0.1, 0.1, shape[:2]).astype(np.float32)
+    np_grad = np.random.uniform(-0.01, 0.01, shape[:2]).astype(np.float32)
+    np_weight = np.random.uniform(-0.1, 0.1, normalized_shape).astype(np.float32)
+
+    inp = torch.tensor(np_inp, dtype=dtype, device=flag_gems.device)
+    grad = torch.tensor(np_grad, dtype=dtype, device=flag_gems.device)
+    weight = torch.tensor(np_weight, dtype=dtype, device=flag_gems.device)
+    rstd = torch.rsqrt(inp.to(torch.float32).pow(2).mean(dim=-1) + eps)
+
+    ref_dx, ref_dw = _torch_rms_norm_backward(
+        utils.to_reference(grad),
+        utils.to_reference(inp),
+        normalized_shape,
+        utils.to_reference(rstd),
+        utils.to_reference(weight),
+        output_mask,
+    )
+
+    with flag_gems.use_gems():
+        res_dx, res_dw = torch.ops.aten._fused_rms_norm_backward(
+            grad, inp, normalized_shape, rstd, weight, list(output_mask)
+        )
+
+    if output_mask[0]:
+        utils.gems_assert_close(res_dx, ref_dx, dtype)
+    else:
+        assert res_dx is None
+    if output_mask[1]:
+        utils.gems_assert_close(res_dw, ref_dw, dtype, reduce_dim=N)
+    else:
+        assert res_dw is None
+
+
+@pytest.mark.fused_rms_norm_backward
+@pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_fused_rms_norm_backward_no_weight(shape, dtype):
+    """aten._fused_rms_norm_backward without a weight tensor returns dw=None."""
+    N = shape[1]
+    normalized_shape = [N]
+    eps = 1e-5
+
+    np.random.seed(0)
+    np_inp = np.random.uniform(-0.1, 0.1, shape[:2]).astype(np.float32)
+    np_grad = np.random.uniform(-0.01, 0.01, shape[:2]).astype(np.float32)
+
+    inp = torch.tensor(np_inp, dtype=dtype, device=flag_gems.device)
+    grad = torch.tensor(np_grad, dtype=dtype, device=flag_gems.device)
+    rstd = torch.rsqrt(inp.to(torch.float32).pow(2).mean(dim=-1) + eps)
+
+    ref_dx, _ = _torch_rms_norm_backward(
+        utils.to_reference(grad),
+        utils.to_reference(inp),
+        normalized_shape,
+        utils.to_reference(rstd),
+        None,
+        (True, False),
+    )
+
+    with flag_gems.use_gems():
+        res_dx, res_dw = torch.ops.aten._fused_rms_norm_backward(
+            grad, inp, normalized_shape, rstd, None, [True, False]
+        )
+
+    assert res_dw is None
+    utils.gems_assert_close(res_dx, ref_dx, dtype)
