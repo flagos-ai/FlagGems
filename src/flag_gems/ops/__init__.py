@@ -336,6 +336,7 @@ from flag_gems.ops.eye_m import eye_m
 from flag_gems.ops.fake_quantize_per_channel_affine import (
     fake_quantize_per_channel_affine,
 )
+from flag_gems.ops.feature_alpha_dropout import feature_alpha_dropout
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.fft import fft
 from flag_gems.ops.fill import (
@@ -1216,6 +1217,7 @@ __all__ = [
     "eye",
     "eye_m",
     "fake_quantize_per_channel_affine",
+    "feature_alpha_dropout",
     "feature_dropout",
     "feature_dropout_",
     "fft",
