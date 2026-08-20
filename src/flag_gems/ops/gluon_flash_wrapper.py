@@ -1,19 +1,20 @@
-"""gluon FA3 warp-specialization 实现的简单 wrapper,返回 (output, dummy_lse)。
+"""gluon FA3 warp-specialization 实现的简单 wrapper,返回 (output, lse)。
 
-FlagGems 集成使用,LSE 先返回零占位。
+FlagGems 集成使用。
 """
-import torch
 from flag_gems.ops.gluon_attn_mha import attn_ws_mha
 
 
-def gluon_flash_attn(q, k, v, causal=True):
+def gluon_flash_attn(q, k, v, causal=True, softmax_scale=None):
     """
     输入: q,k,v [B, S, H, D] bf16
     输出: (output, lse)
           output [B, S, H, D] bf16
-          lse [B, H, S] float32 (暂时为零)
+          lse [B, H, S] float32
+    softmax_scale 为 None 时默认 1/sqrt(D)。
     """
-    out = attn_ws_mha(q, k, v, causal=causal, num_warps=8)
-    B, S, H, D = q.shape
-    lse = torch.zeros(B, H, S, dtype=torch.float32, device=q.device)
+    out, lse = attn_ws_mha(
+        q, k, v, causal=causal, num_warps=8, return_lse=True,
+        softmax_scale=softmax_scale,
+    )
     return out, lse

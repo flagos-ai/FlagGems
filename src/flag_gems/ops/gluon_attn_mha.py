@@ -44,8 +44,8 @@ def _kv_producer(k_desc, v_desc, k_empty, k_ready, k_bufs, v_bufs,
 
 
 @gluon.jit
-def _attn_consumer(q_desc, o_desc, k_empty, k_ready, k_bufs, v_bufs,
-                   n_kv_blocks, off_m, q_row0, o_row0, qk_scale,
+def _attn_consumer(q_desc, o_desc, lse_ptr, k_empty, k_ready, k_bufs, v_bufs,
+                   n_kv_blocks, off_m, q_row0, o_row0, lse_row0, qk_scale,
                    BLOCK_M: gl.constexpr, BLOCK_N: gl.constexpr,
                    D: gl.constexpr, CAUSAL: gl.constexpr, num_warps: gl.constexpr):
     """Consumer (default warpgroup): QK^T -> online softmax(exp2) -> P@V。"""
@@ -113,12 +113,23 @@ def _attn_consumer(q_desc, o_desc, k_empty, k_ready, k_bufs, v_bufs,
     o_smem.store(acc.to(o_desc.dtype))
     fence_async_shared()
     tma.async_copy_shared_to_global(o_desc, [o_row0 + off_m, 0], o_smem)
+
+    # LSE = rowmax*scale + log(l_i)。qk_scale 已含 LOG2E,m_i 为 log2 域缩放最大值,
+    # 故 rowmax*scale = m_i / LOG2E, lse = m_i / LOG2E + log(l_i)。
+    LOG2E_c: gl.constexpr = 1.4426950408889634
+    lse = m_i * (1.0 / LOG2E_c) + gl.log(l_i)      # [BLOCK_M,] float32, row_qk 布局
+    lse_bl: gl.constexpr = gl.BlockedLayout(
+        size_per_thread=[1], threads_per_warp=[32],
+        warps_per_cta=[num_warps], order=[0])
+    lse_out = gl.convert_layout(lse, lse_bl)
+    offs_lse = lse_row0 + off_m + gl.arange(0, BLOCK_M, layout=lse_bl)
+    gl.store(lse_ptr + offs_lse, lse_out)
     tma.store_wait(0)
 
 
 # ======================= warp-specialized kernel =======================
 @gluon.jit
-def attn_ws_kernel(q_desc, k_desc, v_desc, o_desc, seqlen,
+def attn_ws_kernel(q_desc, k_desc, v_desc, o_desc, lse_ptr, seqlen,
                    qk_scale, H_Q: gl.constexpr, H_KV: gl.constexpr,
                    BLOCK_M: gl.constexpr, BLOCK_N: gl.constexpr,
                    D: gl.constexpr, CAUSAL: gl.constexpr,
@@ -136,6 +147,7 @@ def attn_ws_kernel(q_desc, k_desc, v_desc, o_desc, seqlen,
     q_row0 = (b * H_Q + qh) * seqlen        # Q/O: [B*H_Q*S, D]
     v_row0 = (b * H_KV + kvh) * seqlen      # V  : [B*H_KV*S, D]
     k_row0 = (b * H_KV + kvh) * D           # K^T: [B*H_KV*D, S]
+    lse_row0 = (b * H_Q + qh) * seqlen      # LSE: [B*H_Q*S] 连续布局
 
     if CAUSAL:
         n_kv_blocks = (off_m + BLOCK_M + BLOCK_N - 1) // BLOCK_N
@@ -151,8 +163,8 @@ def attn_ws_kernel(q_desc, k_desc, v_desc, o_desc, seqlen,
         mbarrier.init(k_ready.index(j), count=1)
 
     gl.warp_specialize(
-        (q_desc, o_desc, k_empty, k_ready, k_bufs, v_bufs, n_kv_blocks, off_m,
-         q_row0, q_row0, qk_scale, BLOCK_M, BLOCK_N, D, CAUSAL, num_warps),
+        (q_desc, o_desc, lse_ptr, k_empty, k_ready, k_bufs, v_bufs, n_kv_blocks, off_m,
+         q_row0, q_row0, lse_row0, qk_scale, BLOCK_M, BLOCK_N, D, CAUSAL, num_warps),
         _attn_consumer,
         (k_desc, v_desc, k_empty, k_ready, k_bufs, v_bufs, n_kv_blocks,
          k_row0, v_row0, BLOCK_N),
@@ -185,9 +197,10 @@ def _prepare(q, k, v, BLOCK_M=128, BLOCK_N=128, D=128):
     vf = vc.reshape(B * H_KV * S, D)
     ktf = kc.transpose(-2, -1).contiguous().reshape(B * H_KV * D, S)
     of = torch.empty_like(qf)
+    lsef = torch.empty(B * H_Q * S, dtype=torch.float32, device=q.device)  # LSE: [B*H_Q*S]
     q_desc, k_desc, v_desc, o_desc = _make_descs(qf, ktf, vf, of, B, H_Q, H_KV, S,
                                                  BLOCK_M, BLOCK_N, D)
-    return dict(B=B, S=S, H_Q=H_Q, H_KV=H_KV, D=D, of=of,
+    return dict(B=B, S=S, H_Q=H_Q, H_KV=H_KV, D=D, of=of, lsef=lsef,
                 descs=(q_desc, k_desc, v_desc, o_desc))
 
 
@@ -195,19 +208,29 @@ def _run_kernel(ctx, causal=True, BLOCK_M=128, BLOCK_N=128, NBUF=3, num_warps=4)
     """只 launch kernel,不含 host 预处理。输出保持摊平 of。"""
     B, S, H_Q, H_KV, D = ctx["B"], ctx["S"], ctx["H_Q"], ctx["H_KV"], ctx["D"]
     q_desc, k_desc, v_desc, o_desc = ctx["descs"]
-    qk_scale = (1.0 / (D ** 0.5)) * LOG2E
+    lse_ptr = ctx["lsef"]
+    scale = ctx.get("softmax_scale") or (1.0 / (D ** 0.5))
+    qk_scale = scale * LOG2E
     grid = (triton.cdiv(S, BLOCK_M), B * H_Q)
-    attn_ws_kernel[grid](q_desc, k_desc, v_desc, o_desc, S, qk_scale,
+    attn_ws_kernel[grid](q_desc, k_desc, v_desc, o_desc, lse_ptr, S, qk_scale,
                          H_Q, H_KV, BLOCK_M, BLOCK_N, D, causal, NBUF,
                          num_warps=num_warps, maxnreg=128)
 
 
-def attn_ws_mha(q, k, v, causal=True, BLOCK_M=128, BLOCK_N=128, NBUF=3, num_warps=4):
-    """端到端:输入/输出均为 [B, S, H, D](与生产 kernel 一致)。"""
+def attn_ws_mha(q, k, v, causal=True, BLOCK_M=128, BLOCK_N=128, NBUF=3, num_warps=4,
+                return_lse=False, softmax_scale=None):
+    """端到端:输入/输出均为 [B, S, H, D](与生产 kernel 一致)。
+    return_lse=True 时额外返回 LSE [B, H_Q, S] float32。
+    softmax_scale 为 None 时默认 1/sqrt(D)。"""
     ctx = _prepare(q, k, v, BLOCK_M, BLOCK_N, q.shape[-1])
+    ctx["softmax_scale"] = softmax_scale
     _run_kernel(ctx, causal, BLOCK_M, BLOCK_N, NBUF, num_warps)
     B, S, H_Q, D = ctx["B"], ctx["S"], ctx["H_Q"], ctx["D"]
-    return ctx["of"].reshape(B, H_Q, S, D).permute(0, 2, 1, 3).contiguous()
+    out = ctx["of"].reshape(B, H_Q, S, D).permute(0, 2, 1, 3).contiguous()
+    if return_lse:
+        lse = ctx["lsef"].reshape(B, H_Q, S)
+        return out, lse
+    return out
 
 
 # ============================ reference & test ============================
