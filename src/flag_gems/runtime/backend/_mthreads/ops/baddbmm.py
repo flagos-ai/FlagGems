@@ -20,7 +20,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.ops.add import add
+from flag_gems.ops.add import add, add_func
 from flag_gems.ops.mul import mul
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
@@ -292,7 +292,11 @@ def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
         out.shape == (batch, M, N) and out.dtype == A.dtype
     ), "Incompatible output shape or dtype for baddbmm.out"
     if _use_sqmma(A, B, N, K):
-        return out.copy_(_baddbmm_sqmma(bias, A, B, beta, alpha))
+        A, B = A.contiguous(), B.contiguous()
+        product = bmm_sqmma(A, B, A.dtype, batch, M, N, K)
+        scaled = mul(product, alpha)
+        add_func(scaled, torch.broadcast_to(bias, (batch, M, N)), beta, out0=out)
+        return out
     _baddbmm_launch(
         bias.contiguous(),
         A.contiguous(),
