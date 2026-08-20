@@ -155,7 +155,7 @@ def linear(input, weight, bias=None):
     N = weight.shape[0]  # out_features
 
     # Flatten input: (*, K) -> (M, K)
-    input_flat = input.view(M, K)
+    input_flat = input.reshape(M, K)
 
     # Ensure weight is contiguous and properly shaped
     weight = weight.contiguous()
