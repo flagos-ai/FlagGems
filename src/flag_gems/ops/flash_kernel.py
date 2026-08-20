@@ -273,7 +273,6 @@ def keep(cfg, must_keep=None):
     BN = cfg.kwargs["BLOCK_N"]
     w = cfg.num_warps
 
-    # we always keep configurations in `must_keep`
     return (BM, BN, w) in ((128, 32, 4), (128, 128, 8)) or (
         must_keep and cfg in must_keep
     )

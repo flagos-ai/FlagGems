@@ -1089,8 +1089,6 @@ def scaled_dot_product_attention_backward(
         1,
         BATCH * Q_HEAD,
     )
-    # logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
-    # logger.info(f"{M.shape=}")
 
     _attn_bwd[grid](
         query,
@@ -1100,31 +1098,27 @@ def scaled_dot_product_attention_backward(
         do,
         dq,
         dk,
-        dv,  #
+        dv,
         M,
-        delta,  #
+        delta,
         query.stride(0),
         query.stride(1),
         query.stride(2),
-        query.stride(3),  #
+        query.stride(3),
         key.stride(0),
-        key.stride(1),  #
+        key.stride(1),
         dk.stride(0),
         dk.stride(1),
-        dk.stride(2),  #
+        dk.stride(2),
         Q_HEAD,
-        Q_CTX,  #
-        KV_CTX,  #
-        KV_HEAD,  #
-        GROUP_HEAD=group_head,  #
-        # BLOCK_M1=BLOCK_M1,
-        # BLOCK_N1=BLOCK_N1,  #
-        # BLOCK_M2=BLOCK_M2,
-        # BLOCK_N2=BLOCK_N2,  #
-        BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
-        BLOCK_DMODEL=BLOCK_DMODEL,  #
-        BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,  #
-        IS_CAUSAL=is_causal,  #
+        Q_CTX,
+        KV_CTX,
+        KV_HEAD,
+        GROUP_HEAD=group_head,
+        BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,
+        BLOCK_DMODEL=BLOCK_DMODEL,
+        BLOCK_DMODEL_ACTUAL=BLOCK_DMODEL_ACTUAL,
+        IS_CAUSAL=is_causal,
     )
 
     if group_head > 1:
@@ -1275,20 +1269,6 @@ def scaled_dot_product_flash_attention(
     B, H, S_q, D = query.shape
     S_kv = key.shape[2]
 
-    if runtime.device.vendor_name == "ascend":
-        out = F.scaled_dot_product_attention(
-            query,
-            key,
-            value,
-            dropout_p=dropout_p,
-            is_causal=is_causal,
-            scale=scale,
-        )
-        lse = torch.empty(B, H, S_q, dtype=torch.float32, device=query.device)
-        philox_seed = torch.empty((), dtype=torch.int64, device=query.device)
-        philox_offset = torch.empty((), dtype=torch.int64, device=query.device)
-        return (out, lse, None, None, S_q, S_kv, philox_seed, philox_offset, None)
-
     q = query.transpose(1, 2)
     k = key.transpose(1, 2)
     v = value.transpose(1, 2)
@@ -1383,7 +1363,7 @@ def flash_attention_forward(
             max_q,
             max_k,
             dropout_p,
-            softmax_scale,
+            scale,
             False,
             is_causal,
             non_null_window_left,
@@ -1632,58 +1612,6 @@ def flash_attn_varlen_opt_func(
     cp_tot_seqused_k=None,
     fa_version: int = 2,
 ):
-    """dropout_p should be set to 0.0 during evaluation
-    Supports multi-query and grouped-query attention (MQA/GQA) by passing in K, V with fewer heads
-    than Q. Note that the number of heads in Q must be divisible by the number of heads in KV.
-    For example, if Q has 6 heads and K, V have 2 heads, head 0, 1, 2 of Q will attention to head
-    0 of K, V, and head 3, 4, 5 of Q will attention to head 1 of K, V.
-
-    If causal=True, the causal mask is aligned to the bottom right corner of the attention matrix.
-    For example, if seqlen_q = 2 and seqlen_k = 5, the causal mask (1 = keep, 0 = masked out) is:
-        1 1 1 1 0
-        1 1 1 1 1
-    If seqlen_q = 5 and seqlen_k = 2, the causal mask is:
-        0 0
-        0 0
-        0 0
-        1 0
-        1 1
-    If the row of the mask is all zero, the output will be zero.
-
-    If window_size != (-1, -1), implements sliding window local attention. Query at position i
-    will only attend to keys between
-    [i + seqlen_k - seqlen_q - window_size[0], i + seqlen_k - seqlen_q + window_size[1]] inclusive.
-
-    Arguments:
-        q: (total_q, nheads, headdim), where total_q = total number of query tokens in the batch.
-        k: (total_k, nheads_k, headdim), where total_k = total number of key tokens in the batch.
-        v: (total_k, nheads_k, headdim), where total_k = total number of key tokens in the batch.
-        cu_seqlens_q: (batch_size + 1,), dtype torch.int32. The cumulative sequence lengths
-           of the sequences in the batch, used to index into q.
-        cu_seqlens_k: (batch_size + 1,), dtype torch.int32. The cumulative sequence lengths
-           of the sequences in the batch, used to index into kv.
-        max_seqlen_q: int. Maximum query sequence length in the batch.
-        max_seqlen_k: int. Maximum key sequence length in the batch.
-        dropout_p: float. Dropout probability.
-        softmax_scale: float. The scaling of QK^T before applying softmax.
-            Default to 1 / sqrt(headdim).
-        causal: bool. Whether to apply causal attention mask (e.g., for auto-regressive modeling).
-        window_size: (left, right). If not (-1, -1), implements sliding window local attention.
-        softcap: float. Anything > 0 activates softcapping attention.
-        alibi_slopes: (nheads,) or (batch_size, nheads), fp32. A bias of
-            (-alibi_slope * |i + seqlen_k - seqlen_q - j|)
-            is added to the attention score of query i and key j.
-        deterministic: bool. Whether to use the deterministic implementation of the backward pass,
-            which is slightly slower and uses more memory. The forward pass is always deterministic.
-        return_attn_probs: bool. Whether to return the attention probabilities. This option is for
-           testing only. The returned probabilities are not guaranteed to be correct
-           (they might not have the right scaling).
-    Return:
-        out: (total, nheads, headdim).
-        softmax_lse [optional, if return_softmax_lse=True]: (nheads, total_q_seqlen). The
-            logsumexp of each row of the matrix QK^T * scaling (e.g., log of the softmax
-            normalization factor).
-    """
     if fa_version != 2:
         raise RuntimeError("Only FA2 is implemented.")
     if num_splits > 0:
