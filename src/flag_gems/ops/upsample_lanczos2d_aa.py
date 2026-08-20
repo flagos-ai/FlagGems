@@ -21,10 +21,30 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils.triton_lang_helper import tl_extra_shim
 
 logger = logging.getLogger(__name__)
 device = device.name
+
+
+@triton.jit
+def _sinpi(x):
+    # Range-reduce to [-0.5, 0.5] and use an odd degree-17 polynomial. This is
+    # stable across Triton/libdevice versions, unlike the fast tl.sin intrinsic.
+    nearest = tl.floor(x + 0.5)
+    reduced = x - nearest
+    z = reduced * 3.141592653589793
+    z2 = z * z
+    poly = 1.0 / 355687428096000.0
+    poly = -1.0 / 1307674368000.0 + z2 * poly
+    poly = 1.0 / 6227020800.0 + z2 * poly
+    poly = -1.0 / 39916800.0 + z2 * poly
+    poly = 1.0 / 362880.0 + z2 * poly
+    poly = -1.0 / 5040.0 + z2 * poly
+    poly = 1.0 / 120.0 + z2 * poly
+    poly = -1.0 / 6.0 + z2 * poly
+    value = z * (1.0 + z2 * poly)
+    odd = (nearest.to(tl.int32) & 1) != 0
+    return tl.where(odd, -value, value)
 
 
 @triton.jit
@@ -32,11 +52,11 @@ def _lanczos3(x):
     abs_x = tl.abs(x)
     pix = x * 3.141592653589793
     pix_over_three = pix / 3.0
-    sinc_x = tl.where(abs_x == 0.0, 1.0, tl_extra_shim.sinpi(x) / pix)
+    sinc_x = tl.where(abs_x == 0.0, 1.0, _sinpi(x) / pix)
     sinc_x_over_three = tl.where(
         abs_x == 0.0,
         1.0,
-        tl_extra_shim.sinpi(x / 3.0) / pix_over_three,
+        _sinpi(x / 3.0) / pix_over_three,
     )
     return tl.where(abs_x < 3.0, sinc_x * sinc_x_over_three, 0.0)
 
