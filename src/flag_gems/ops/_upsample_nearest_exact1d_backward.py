@@ -43,6 +43,8 @@ def _upsample_nearest_exact1d_backward_kernel(
     grad_input_stride_c,
     grad_input_stride_w,
     backward_scale,
+    BATCH: tl.constexpr,
+    BATCH_LOOP: tl.constexpr,
     IS_FP64: tl.constexpr,
     IS_UINT8: tl.constexpr,
     MAX_CONTRIBUTORS: tl.constexpr,
@@ -51,9 +53,12 @@ def _upsample_nearest_exact1d_backward_kernel(
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < numel
     input_x = offsets % input_w
-    nc = offsets // input_w
-    channel = nc % channels
-    batch = nc // channels
+    if BATCH_LOOP:
+        channel = offsets // input_w
+    else:
+        nc = offsets // input_w
+        channel = nc % channels
+        batch = nc // channels
 
     # Match nearest_neighbor_exact_bw_compute_source_index from PyTorch:
     # ceil(input_index * scale - 0.5), clamped to output_w.
@@ -63,30 +68,55 @@ def _upsample_nearest_exact1d_backward_kernel(
     start = tl.minimum(tl.maximum(start, 0), output_w)
     end = tl.minimum(tl.maximum(end, 0), output_w)
 
-    if IS_UINT8:
-        accumulator = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
-    elif IS_FP64:
-        accumulator = tl.zeros((BLOCK_SIZE,), dtype=tl.float64)
+    if BATCH_LOOP:
+        for batch_index in range(BATCH):
+            if IS_UINT8:
+                accumulator = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
+            elif IS_FP64:
+                accumulator = tl.zeros((BLOCK_SIZE,), dtype=tl.float64)
+            else:
+                accumulator = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+            output_base = (
+                batch_index * grad_output_stride_n + channel * grad_output_stride_c
+            )
+            for contributor in range(MAX_CONTRIBUTORS):
+                output_x = start + contributor
+                contributor_mask = mask & (output_x < end)
+                value = tl.load(
+                    grad_output + output_base + output_x * grad_output_stride_w,
+                    mask=contributor_mask,
+                    other=0,
+                )
+                accumulator += value
+            input_offset = (
+                batch_index * grad_input_stride_n
+                + channel * grad_input_stride_c
+                + input_x * grad_input_stride_w
+            )
+            tl.store(grad_input + input_offset, accumulator, mask=mask)
     else:
-        accumulator = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
-
-    output_base = batch * grad_output_stride_n + channel * grad_output_stride_c
-    for contributor in range(MAX_CONTRIBUTORS):
-        output_x = start + contributor
-        contributor_mask = mask & (output_x < end)
-        value = tl.load(
-            grad_output + output_base + output_x * grad_output_stride_w,
-            mask=contributor_mask,
-            other=0,
+        if IS_UINT8:
+            accumulator = tl.zeros((BLOCK_SIZE,), dtype=tl.int32)
+        elif IS_FP64:
+            accumulator = tl.zeros((BLOCK_SIZE,), dtype=tl.float64)
+        else:
+            accumulator = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+        output_base = batch * grad_output_stride_n + channel * grad_output_stride_c
+        for contributor in range(MAX_CONTRIBUTORS):
+            output_x = start + contributor
+            contributor_mask = mask & (output_x < end)
+            value = tl.load(
+                grad_output + output_base + output_x * grad_output_stride_w,
+                mask=contributor_mask,
+                other=0,
+            )
+            accumulator += value
+        input_offset = (
+            batch * grad_input_stride_n
+            + channel * grad_input_stride_c
+            + input_x * grad_input_stride_w
         )
-        accumulator += value
-
-    input_offset = (
-        batch * grad_input_stride_n
-        + channel * grad_input_stride_c
-        + input_x * grad_input_stride_w
-    )
-    tl.store(grad_input + input_offset, accumulator, mask=mask)
+        tl.store(grad_input + input_offset, accumulator, mask=mask)
 
 
 def _validate_args(
@@ -155,14 +185,15 @@ def _upsample_nearest_exact1d_backward_impl(
             )
         grad_input.resize_((batch, channels, input_w))
 
-    numel = grad_input.numel()
-    if numel == 0:
+    if grad_input.numel() == 0:
         return grad_input
 
     backward_scale = _as_float32(
         float(scales) if scales is not None and scales > 0.0 else output_w / input_w
     )
     max_contributors = min(output_w, max(1, math.ceil(backward_scale) + 1))
+    batch_loop = batch <= 32
+    numel = channels * input_w if batch_loop else grad_input.numel()
     block_size = 256
 
     with torch_device_fn.device(grad_output.device):
@@ -176,6 +207,8 @@ def _upsample_nearest_exact1d_backward_impl(
             *grad_output.stride(),
             *grad_input.stride(),
             backward_scale,
+            BATCH=batch,
+            BATCH_LOOP=batch_loop,
             IS_FP64=grad_output.dtype == torch.float64,
             IS_UINT8=grad_output.dtype == torch.uint8,
             MAX_CONTRIBUTORS=max_contributors,
