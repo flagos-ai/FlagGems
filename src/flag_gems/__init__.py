@@ -128,6 +128,7 @@ _FULL_CONFIG = (
         "_embedding_bag_per_sample_weights_backward",
         _embedding_bag_per_sample_weights_backward,
     ),
+    ("_embedding_bag_sparse_backward", _embedding_bag_sparse_backward),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_backward", flash_attention_backward),
     ("_flash_attention_forward", _flash_attention_forward),
