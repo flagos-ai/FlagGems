@@ -901,5 +901,6 @@ __all__ = [
     "enable",
     "flagtune",
     "only_enable",
+    "rms_norm_w8a16_fp8",
     "use_gems",
 ]
