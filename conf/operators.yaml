@@ -6648,6 +6648,18 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: nuclear_norm
+    description: |
+      Computes the nuclear norm (sum of singular values) of a matrix.
+    for:
+      - nuclear_norm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: scaled_dot_product_cudnn_attention
     description: |
       Computes scaled dot product attention using the cuDNN attention API

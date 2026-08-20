@@ -850,6 +850,7 @@ _FULL_CONFIG = (
     ("not_equal.Tensor", not_equal),
     ("ne_.Scalar", not_equal_scalar_),
     ("ne_.Tensor", not_equal_),
+    ("nuclear_norm", nuclear_norm),
     ("one_hot", one_hot),
     ("ones", ones),
     ("ones_like", ones_like),
