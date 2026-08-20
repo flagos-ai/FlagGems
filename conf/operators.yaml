@@ -3655,6 +3655,20 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: fake_quantize_per_tensor_affine_cachemask_backward
+    description: |
+      Computes the gradient for fake_quantize_per_tensor_affine_cachemask by multiplying the incoming
+      gradient by the cached boolean mask.
+    for:
+      - fake_quantize_per_tensor_affine_cachemask_backward
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: feature_dropout
     description: |
       Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.
