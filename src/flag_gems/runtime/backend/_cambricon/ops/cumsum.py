@@ -655,12 +655,38 @@ def block_update_kernel(
 GRID_Y_LIMIT = MAX_GRID_SIZE_Y
 
 
+# Below this many elements the original single-pass serial scan wins: the
+# blelloch-based cumsum_wrapper needs several kernel launches plus scratch
+# buffers, whose fixed overhead (~2ms) dominates for tiny inputs.
+NORMED_CUMSUM_FAST_MIN_ELEMS = 1 << 16
+
+
 def normed_cumsum(inp, dim=-1):
     logger.debug("GEMS_CAMBRICON NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
     N = inp.numel()
     K = inp.size(dim)
+
+    # Fast path for large inputs: the legacy scan below keeps n_chunks == 1
+    # whenever n_rows >= core count (always true on MLU, which has few cores),
+    # so the reduction dim is never parallelised and long rows degrade into a
+    # serial scan. Delegate to the blelloch-based cumsum_wrapper, which does
+    # parallelise the scan, then normalise by the row total. Measured 6-400x
+    # faster end-to-end for the large multinomial shapes.
+    if N >= NORMED_CUMSUM_FAST_MIN_ELEMS and K > 1:
+        # Keep the accumulation dtype equal to the input dtype. cumsum_wrapper
+        # already accumulates in fp32 internally (its kernels use dtypestr
+        # "fp32"), so forcing a wider output buffer buys no extra precision but
+        # inflates the on-chip (NRAM) footprint enough to overflow the blelloch
+        # tuner's largest BLOCK for fp16 inputs on long rows. The final divide
+        # is promoted to float below regardless of the buffer dtype.
+        cum = cumsum_wrapper(inp, dim=dim)
+        total = cum.index_select(
+            dim, torch.tensor([K - 1], device=inp.device)
+        ).float().clamp_(min=1e-20)
+        return cum.float() / total
+
     # inp = inp.contiguous()
     # First and last dims are easier to handle, but transpose the middle dim to the last
     ranked_dims = sorted(range(inp.ndim), key=lambda i: inp.stride(i), reverse=True)
