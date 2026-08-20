@@ -698,6 +698,22 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: amp_update_scale_
+    description: |
+      Updates the AMP loss scale in-place: when `found_inf` is non-zero the
+      scale is multiplied by `scale_backoff_factor` and the growth tracker
+      is reset to 0; otherwise the growth tracker is incremented and, once
+      it reaches `growth_interval`, the scale is multiplied by
+      `scale_growth_factor` and the tracker is reset to 0.
+    for:
+      - _amp_update_scale_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: and_scalar
     description: |
       Computes the bitwise AND operation through the tensor dunder method with a scalar operand.
