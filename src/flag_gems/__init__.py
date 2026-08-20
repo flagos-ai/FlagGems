@@ -923,6 +923,7 @@ _FULL_CONFIG = (
     ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),
+    ("rms_norm_w8a16_fp8", rms_norm_w8a16_fp8),
     ("rnn_relu", rnn_relu),
     ("roll", roll),
     ("rot90", rot90),
@@ -1328,6 +1329,5 @@ __all__ = [
     "enable",
     "flagtune",
     "only_enable",
-    "rms_norm_w8a16_fp8",
     "use_gems",
 ]
