@@ -8262,6 +8262,22 @@ ops:
       - Distribution
     stages:
       - stable: '5.0'
+  - id: normal_functional
+    description: |
+      Returns a fresh tensor of random numbers drawn from a normal distribution
+      parameterized by a float mean and a float std. This is the out-of-place
+      functional variant of normal_ (aten::normal_functional).
+    for:
+      - normal_functional
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+      - skip_precision_check
+    kind:
+      - Distribution
+    stages:
+      - alpha: '5.3'
   - id: normal_float_tensor
     description: |
       Returns a tensor of random numbers drawn from separate normal distributions
