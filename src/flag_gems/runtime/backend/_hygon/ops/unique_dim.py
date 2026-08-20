@@ -43,6 +43,7 @@ _INT_DTYPE_BITS = {
     torch.float32: 32,
 }
 
+
 @libentry()
 @triton.jit
 def _unique_dim_argsort_rank_kernel(
@@ -65,6 +66,7 @@ def _unique_dim_argsort_rank_kernel(
     if STORE_SORTED_KEYS:
         tl.store(sorted_keys_ptr + rank, cur)
 
+
 @libentry()
 @triton.jit
 def _unique_dim_argsort_rank_tiled_count_kernel(
@@ -84,6 +86,7 @@ def _unique_dim_argsort_rank_tiled_count_kernel(
     before = ((vals < cur) | ((vals == cur) & (candidates < row))) & mask
     rank_part = tl.sum(before.to(tl.int32), axis=0)
     tl.store(partial_rank_ptr + row * num_chunks + chunk, rank_part)
+
 
 @libentry()
 @triton.jit
@@ -105,6 +108,7 @@ def _unique_dim_argsort_rank_tiled_scatter_kernel(
     if STORE_SORTED_KEYS:
         cur = tl.load(keys_ptr + row)
         tl.store(sorted_keys_ptr + rank, cur)
+
 
 @libentry()
 @triton.jit
@@ -128,9 +132,9 @@ def _unique_dim_argsort_lex2_rank_kernel(
 
     if HAS_COL1:
         cur1 = tl.load(flat_ptr + row * row_stride + 1).to(tl.int64) + KEY_OFFSET
-        vals1 = tl.load(
-            flat_ptr + candidates * row_stride + 1, mask=mask, other=0
-        ).to(tl.int64)
+        vals1 = tl.load(flat_ptr + candidates * row_stride + 1, mask=mask, other=0).to(
+            tl.int64
+        )
         vals1 = vals1 + KEY_OFFSET
         key_less = (vals0 < cur0) | ((vals0 == cur0) & (vals1 < cur1))
         key_equal = (vals0 == cur0) & (vals1 == cur1)
@@ -144,6 +148,7 @@ def _unique_dim_argsort_lex2_rank_kernel(
     has_duplicate = tl.sum(duplicate.to(tl.int32), axis=0) != 0
     tl.store(indices_ptr + rank, row)
     tl.store(duplicate_flags_ptr + row, has_duplicate)
+
 
 @libentry()
 @triton.jit
@@ -184,6 +189,7 @@ def _unique_dim_argsort_dim1_2d_lex2_rank_kernel(
     tl.store(indices_ptr + rank, col)
     tl.store(duplicate_flags_ptr + col, has_duplicate)
 
+
 @libentry()
 @triton.jit
 def _unique_dim_extract_col_kernel(
@@ -199,6 +205,7 @@ def _unique_dim_extract_col_kernel(
     mask = offsets < num_rows
     values = tl.load(flat_ptr + offsets * row_stride + col, mask=mask, other=0)
     tl.store(col_ptr + offsets, values, mask=mask)
+
 
 @libentry()
 @triton.jit
@@ -246,7 +253,9 @@ def _unique_dim_segmented_rank_refine_kernel(
     )
 
     cand = start + tl.arange(0, BLOCK_GROUP)
-    cand_mask = (cand < num_rows) & (tl.load(group_id_ptr + cand, mask=cand < num_rows, other=-1) == gid)
+    cand_mask = (cand < num_rows) & (
+        tl.load(group_id_ptr + cand, mask=cand < num_rows, other=-1) == gid
+    )
     cand_rows = tl.load(sorted_indices_ptr + cand, mask=cand_mask, other=0)
     cand_base = cand_rows * row_stride + col
 
@@ -254,11 +263,16 @@ def _unique_dim_segmented_rank_refine_kernel(
         cand_x = tl.load(flat_ptr + cand_base, mask=cand_mask, other=0).to(tl.int64)
         cand_val = cand_x + KEY_OFFSET
     elif REMAP_KIND == 1:  # _REMAP_FP16
-        cand_bits = tl.load(flat_ptr + cand_base, mask=cand_mask, other=0).to(tl.int64) & 0xFFFF
+        cand_bits = (
+            tl.load(flat_ptr + cand_base, mask=cand_mask, other=0).to(tl.int64) & 0xFFFF
+        )
         cand_sign = (cand_bits & 0x8000) != 0
         cand_val = tl.where(cand_sign, cand_bits ^ 0xFFFF, cand_bits ^ 0x8000)
     else:  # _REMAP_FP32
-        cand_bits = tl.load(flat_ptr + cand_base, mask=cand_mask, other=0).to(tl.int64) & 0xFFFFFFFF
+        cand_bits = (
+            tl.load(flat_ptr + cand_base, mask=cand_mask, other=0).to(tl.int64)
+            & 0xFFFFFFFF
+        )
         cand_sign = (cand_bits & 0x80000000) != 0
         cand_val = tl.where(cand_sign, cand_bits ^ 0xFFFFFFFF, cand_bits ^ 0x80000000)
 
@@ -272,6 +286,8 @@ def _unique_dim_segmented_rank_refine_kernel(
     dest = start + rank
     tl.store(refined_indices_ptr + dest, cur_row)
     tl.store(refined_keys_ptr + dest, gid * KEY_SCALE + cur_val)
+
+
 @libentry()
 @triton.jit
 def _unique_dim_gather_1d_kernel(
@@ -287,6 +303,7 @@ def _unique_dim_gather_1d_kernel(
     indices = tl.load(index_ptr + offsets, mask=mask, other=0)
     values = tl.load(input_ptr + indices, mask=mask)
     tl.store(output_ptr + offsets, values, mask=mask)
+
 
 @libentry()
 @triton.jit
@@ -308,6 +325,7 @@ def _unique_dim_group_id_kernel(
     tl.store(group_id_ptr + offsets, group_id, mask=mask)
     last = tl.sum(tl.where(offsets == num_rows - 1, group_id, 0), axis=0)
     tl.store(last_group_id_ptr, last)
+
 
 @libentry()
 @triton.jit
@@ -331,6 +349,7 @@ def _unique_dim_row_hash_chunk_kernel(
     mix = tl.where(mask, mix, 0)
     tl.store(chunk_hash_ptr + row * num_chunks + chunk, tl.sum(mix, axis=0))
 
+
 @libentry()
 @triton.jit
 def _unique_dim_row_hash_reduce_kernel(
@@ -344,6 +363,7 @@ def _unique_dim_row_hash_reduce_kernel(
     mask = chunks < num_chunks
     vals = tl.load(chunk_hash_ptr + row * num_chunks + chunks, mask=mask, other=0)
     tl.store(row_hash_ptr + row, tl.sum(vals, axis=0))
+
 
 @libentry()
 @triton.jit
@@ -373,6 +393,7 @@ def _unique_dim_row_chunk_diff_kernel(
         has_diff = tl.sum(neq.to(tl.int32), axis=0) != 0
         out = has_diff.to(tl.int32)
     tl.store(row_chunk_diff_ptr + row * num_chunks + chunk, out)
+
 
 @libentry()
 @triton.jit
@@ -409,6 +430,7 @@ def _unique_dim_row_chunk_diff_hash_kernel(
             out = has_diff.to(tl.int32)
     tl.store(row_chunk_diff_ptr + row * num_chunks + chunk, out)
 
+
 @libentry()
 @triton.jit
 def _unique_dim_row_diff_reduce_kernel(
@@ -422,6 +444,7 @@ def _unique_dim_row_diff_reduce_kernel(
     mask = chunks < num_chunks
     vals = tl.load(row_chunk_diff_ptr + row * num_chunks + chunks, mask=mask, other=0)
     tl.store(is_first_ptr + row, tl.sum(vals, axis=0) != 0)
+
 
 @libentry()
 @triton.jit
@@ -447,6 +470,7 @@ def _unique_dim_row_single_chunk_first_kernel(
         out = tl.sum(neq.to(tl.int32), axis=0) != 0
     tl.store(is_first_ptr + row, out)
 
+
 @libentry()
 @triton.jit
 def _unique_dim_gather_moved_kernel(
@@ -471,6 +495,7 @@ def _unique_dim_gather_moved_kernel(
     values = tl.load(flat_ptr + src_row * row_len + col, mask=mask)
     tl.store(output_ptr + row * row_len + col, values, mask=mask)
 
+
 @libentry()
 @triton.jit
 def _unique_dim_gather_moved_inverse_kernel(
@@ -492,6 +517,7 @@ def _unique_dim_gather_moved_inverse_kernel(
     tl.store(output_ptr + row * row_len + col, values, mask=mask)
     if chunk == 0:
         tl.store(inverse_ptr + src_row, row)
+
 
 @libentry()
 @triton.jit
@@ -517,6 +543,7 @@ def _unique_dim_gather_dim1_2d_inverse_kernel(
     if STORE_INVERSE and chunk == 0:
         tl.store(inverse_ptr + src_col, out_col)
 
+
 @libentry()
 @triton.jit
 def _unique_dim_inverse_permutation_kernel(
@@ -530,6 +557,7 @@ def _unique_dim_inverse_permutation_kernel(
     mask = offsets < num_rows
     sorted_indices = tl.load(sorted_indices_ptr + offsets, mask=mask, other=0)
     tl.store(inverse_ptr + sorted_indices, offsets.to(tl.int64), mask=mask)
+
 
 @libentry()
 @triton.jit
@@ -546,6 +574,7 @@ def _unique_dim_inverse_kernel(
     sorted_indices = tl.load(sorted_indices_ptr + offsets, mask=mask)
     inverse_sorted = tl.load(inverse_sorted_ptr + offsets, mask=mask)
     tl.store(inverse_ptr + sorted_indices, inverse_sorted, mask=mask)
+
 
 @libentry()
 @triton.jit
@@ -567,6 +596,7 @@ def _unique_dim_counts_kernel(
     )
     tl.store(counts_ptr + offsets, next_positions - positions, mask=mask)
 
+
 def _triton_num_warps(block_size: int) -> int:
     if block_size >= 8192:
         return 8
@@ -574,15 +604,18 @@ def _triton_num_warps(block_size: int) -> int:
         return 4
     return 1
 
+
 def _monotonic_key_bits(dtype: torch.dtype):
     """Return the per-element key width for ``dtype`` if it can be mapped
     into a monotonic int64 view, else ``None``."""
     return _INT_DTYPE_BITS.get(dtype)
 
+
 # Monotonic-remap kinds for the fused key-build kernel.
 _REMAP_INT = 0  # signed/unsigned int: value + KEY_OFFSET
 _REMAP_FP16 = 1  # 16-bit float: order-preserving bit twiddle
 _REMAP_FP32 = 2  # 32-bit float: order-preserving bit twiddle
+
 
 def _remap_info(flat: torch.Tensor):
     """Return ``(int_view, remap_kind, key_offset)`` describing how to map this
@@ -607,6 +640,7 @@ def _remap_info(flat: torch.Tensor):
     if dt == torch.float32:
         return flat.view(torch.int32), _REMAP_FP32, 0
     raise NotImplementedError(dt)
+
 
 @libentry()
 @triton.jit
@@ -664,6 +698,7 @@ def _unique_dim_build_key_kernel(
         out = gid * KEY_SCALE + val
     tl.store(out_ptr + offsets, out, mask=mask)
 
+
 def _build_composite_key(
     flat_view: torch.Tensor,
     col: int,
@@ -714,8 +749,10 @@ def _build_composite_key(
         )
     return out
 
+
 def _can_segmented_refine(dtype: torch.dtype) -> bool:
     return dtype in (torch.int8, torch.uint8, torch.int16, torch.int32)
+
 
 def _extract_column(flat: torch.Tensor, col: int) -> torch.Tensor:
     num_rows, row_stride = flat.shape
@@ -735,6 +772,7 @@ def _extract_column(flat: torch.Tensor, col: int) -> torch.Tensor:
         )
     return out
 
+
 def _segmented_rank_refine(
     flat_view: torch.Tensor,
     sorted_indices: torch.Tensor,
@@ -747,7 +785,9 @@ def _segmented_rank_refine(
     remap_kind: int,
 ) -> tuple[torch.Tensor, torch.Tensor, bool] | None:
     refined_indices = torch.empty_like(sorted_indices)
-    refined_keys = torch.empty(num_rows, dtype=torch.int64, device=sorted_indices.device)
+    refined_keys = torch.empty(
+        num_rows, dtype=torch.int64, device=sorted_indices.device
+    )
     status = torch.zeros((), dtype=torch.int32, device=sorted_indices.device)
     with torch_device_fn.device(sorted_indices.device.index):
         _unique_dim_segmented_rank_refine_kernel[(num_rows, 1, 1)](
@@ -771,8 +811,10 @@ def _segmented_rank_refine(
         return None
     return refined_indices, refined_keys, status_value == 0
 
+
 def _can_small_lex2_fast_path(dtype: torch.dtype) -> bool:
     return dtype in (torch.int8, torch.uint8, torch.int16, torch.int32)
+
 
 def _unique_dim_small_lex2_fast_path(
     flat: torch.Tensor,
@@ -824,6 +866,7 @@ def _unique_dim_small_lex2_fast_path(
         inverse_indices = torch.empty(0, dtype=torch.int64, device=flat.device)
         output = _unique_dim_gather_output(moved, sorted_indices, dim, input_shape)
     return output, inverse_indices, counts
+
 
 def _unique_dim_small_dim1_2d_fast_path(
     input: torch.Tensor,
@@ -892,12 +935,15 @@ def _unique_dim_small_dim1_2d_fast_path(
         counts = torch.ones(num_cols, dtype=torch.int64, device=input.device)
     return output, inverse_indices, counts
 
+
 def _triton_gather_1d(values: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
     num_elements = indices.numel()
     output = torch.empty(num_elements, dtype=values.dtype, device=values.device)
     if num_elements == 0:
         return output
-    block_size = min(_UNIQUE_DIM_GATHER_BLOCK_SIZE, triton.next_power_of_2(num_elements))
+    block_size = min(
+        _UNIQUE_DIM_GATHER_BLOCK_SIZE, triton.next_power_of_2(num_elements)
+    )
     grid = (triton.cdiv(num_elements, block_size), 1, 1)
     with torch_device_fn.device(values.device.index):
         _unique_dim_gather_1d_kernel[grid](
@@ -909,6 +955,7 @@ def _triton_gather_1d(values: torch.Tensor, indices: torch.Tensor) -> torch.Tens
             num_warps=_triton_num_warps(block_size),
         )
     return output
+
 
 def _argsort_keys(keys: torch.Tensor):
     """Stable ascending argsort of a 1D key tensor.
@@ -973,6 +1020,7 @@ def _argsort_keys(keys: torch.Tensor):
     sorted_keys, perm = torch.sort(keys)
     return perm, sorted_keys
 
+
 def _group_id_from_sorted(sorted_keys: torch.Tensor):
     """Dense lexicographic group ids for an ascending key tensor.
 
@@ -1014,6 +1062,7 @@ def _group_id_from_sorted(sorted_keys: torch.Tensor):
         ]
     )
     return group_id, int(group_id[-1].item())
+
 
 def _lex_argsort_rows_composite(flat: torch.Tensor):
     """Lex-sort rows with global first pass plus segmented prefix refinement.
@@ -1098,6 +1147,7 @@ def _lex_argsort_rows_composite(flat: torch.Tensor):
             break
     return indices, all_unique
 
+
 def _lex_argsort_rows_cascade(flat: torch.Tensor) -> torch.Tensor:
     """Generic-dtype fallback: cascade of stable argsorts, least to most
     significant column. ``O(M)`` argsorts of length ``D`` with ``O(D)`` memory
@@ -1114,12 +1164,14 @@ def _lex_argsort_rows_cascade(flat: torch.Tensor) -> torch.Tensor:
         indices = _triton_gather_1d(indices, perm)
     return indices
 
+
 def _lex_argsort_rows(flat: torch.Tensor) -> tuple[torch.Tensor, bool]:
     """Return indices that sort rows of a 2D tensor lexicographically."""
     composite = _lex_argsort_rows_composite(flat)
     if composite is not None:
         return composite
     return _lex_argsort_rows_cascade(flat), False
+
 
 def _unique_dim_row_hash(flat: torch.Tensor) -> torch.Tensor:
     num_rows, row_len = flat.shape
@@ -1147,6 +1199,7 @@ def _unique_dim_row_hash(flat: torch.Tensor) -> torch.Tensor:
             num_warps=_triton_num_warps(triton.next_power_of_2(num_chunks)),
         )
     return row_hash
+
 
 def _unique_dim_first_mask(flat: torch.Tensor, sorted_indices: torch.Tensor):
     """Return a bool mask for first rows in sorted lexicographic groups."""
@@ -1212,6 +1265,7 @@ def _unique_dim_first_mask(flat: torch.Tensor, sorted_indices: torch.Tensor):
         )
     return is_first
 
+
 def _unique_dim_gather_output(
     moved: torch.Tensor,
     unique_indices: torch.Tensor,
@@ -1246,6 +1300,7 @@ def _unique_dim_gather_output(
             num_warps=_triton_num_warps(block_size),
         )
     return moved_output.movedim(0, dim)
+
 
 def _unique_dim_gather_output_and_inverse(
     moved: torch.Tensor,
@@ -1287,6 +1342,7 @@ def _unique_dim_gather_output_and_inverse(
         )
     return moved_output.movedim(0, dim), inverse_indices
 
+
 def _unique_dim_inverse_from_permutation(sorted_indices: torch.Tensor) -> torch.Tensor:
     """Inverse mapping for the all-unique case: ``inverse[sorted_indices[i]] = i``.
 
@@ -1309,6 +1365,7 @@ def _unique_dim_inverse_from_permutation(sorted_indices: torch.Tensor) -> torch.
             num_warps=_triton_num_warps(block_size),
         )
     return inverse_indices
+
 
 def _unique_dim_inverse(
     sorted_indices: torch.Tensor,
@@ -1336,6 +1393,7 @@ def _unique_dim_inverse(
         )
     return inverse_indices
 
+
 def _unique_dim_unique_indices(
     sorted_indices: torch.Tensor,
     is_first: torch.Tensor,
@@ -1344,6 +1402,7 @@ def _unique_dim_unique_indices(
     first_positions = torch.nonzero(is_first, as_tuple=False).flatten()
     return _triton_gather_1d(sorted_indices, first_positions)
 
+
 def _unique_dim_unique_indices_and_inverse(
     sorted_indices: torch.Tensor,
     is_first: torch.Tensor,
@@ -1351,6 +1410,7 @@ def _unique_dim_unique_indices_and_inverse(
     unique_indices = _unique_dim_unique_indices(sorted_indices, is_first)
     inverse_indices = _unique_dim_inverse(sorted_indices, is_first)
     return unique_indices, inverse_indices
+
 
 def _unique_dim_counts(
     is_first: torch.Tensor,
@@ -1374,6 +1434,7 @@ def _unique_dim_counts(
             num_warps=_triton_num_warps(block_size),
         )
     return counts
+
 
 def unique_dim(
     input: torch.Tensor,

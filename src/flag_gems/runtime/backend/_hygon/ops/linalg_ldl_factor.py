@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 MAX_MATRIX_SIZE = 64
 
+
 @libentry()
 @triton.jit
 def ldl_factor_kernel(
@@ -68,6 +69,7 @@ def ldl_factor_kernel(
 
     tl.store(piv_batch + offs, offs + 1, mask=offs < n)
 
+
 def ldl_factor(A, *, hermitian=False):
     """
     Optimized LDL factorization for small batched square matrices.
@@ -86,9 +88,7 @@ def ldl_factor(A, *, hermitian=False):
         raise ValueError("linalg_ldl_factor: matrix must be square")
 
     if A.dtype not in (torch.float32, torch.float64):
-        raise TypeError(
-            "linalg_ldl_factor: only float32 and float64 are supported"
-        )
+        raise TypeError("linalg_ldl_factor: only float32 and float64 are supported")
 
     n = A.shape[-1]
     if n > MAX_MATRIX_SIZE:

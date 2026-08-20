@@ -9,6 +9,7 @@ _composite_keyset = torch._C.DispatchKeySet(
 )
 _unsqueeze_view = torch.ops.aten.unsqueeze.default
 
+
 def unsqueeze(A: torch.Tensor, dim: int) -> torch.Tensor:
     """Insert a dimension of size 1 at the specified position.
 
@@ -41,6 +42,7 @@ def unsqueeze(A: torch.Tensor, dim: int) -> torch.Tensor:
 
     # reshape delegates stride computation to PyTorch
     return A.reshape(new_shape)
+
 
 def unsqueeze_(A: torch.Tensor, dim: int) -> torch.Tensor:
     """In-place version of unsqueeze (zero-copy view operation).
