@@ -108,6 +108,7 @@ from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_ou
 from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .stack import stack
+from .swiglu import swiglu
 from .threshold import threshold, threshold_backward
 from .triu import triu
 from .unique import _unique2
@@ -252,6 +253,7 @@ __all__ = [
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "stack",
+    "swiglu",
     "threshold",
     "threshold_backward",
     "triu",
