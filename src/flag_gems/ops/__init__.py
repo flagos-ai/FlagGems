@@ -311,6 +311,7 @@ from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diagonal_scatter import diagonal_scatter
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
+from flag_gems.ops.dist import dist
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
@@ -492,6 +493,7 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex,
     linalg_lu_factor_ex_out,
 )
+from flag_gems.ops.linalg_matrix_norm import linalg_matrix_norm
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -541,6 +543,7 @@ from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_out
 from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
+from flag_gems.ops.masked_scatter_backward import masked_scatter_backward
 from flag_gems.ops.masked_select import masked_select
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool2d_with_indices import (
@@ -761,8 +764,7 @@ from flag_gems.ops.special_chebyshev_polynomial_w import (
 )
 from flag_gems.ops.special_digamma import special_digamma
 from flag_gems.ops.special_erf import special_erf
-
-# from flag_gems.ops.special_erfc import erfc, erfc_, special_erfc
+from flag_gems.ops.special_erfc import erfc, erfc_, special_erfc
 from flag_gems.ops.special_erfcx import special_erfcx
 from flag_gems.ops.special_erfinv import (
     special_erfinv,
@@ -1193,6 +1195,7 @@ __all__ = [
     "diff",
     "digamma",
     "digamma_",
+    "dist",
     "div_mode",
     "div_mode_",
     "dot",
@@ -1214,8 +1217,8 @@ __all__ = [
     "equal",
     "erf",
     "erf_",
-    # "erfc",
-    # "erfc_",
+    "erfc",
+    "erfc_",
     "erfinv",
     "erfinv_",
     "exp",
@@ -1413,6 +1416,7 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_lu_out",
+    "linalg_matrix_norm",
     "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
@@ -1482,6 +1486,7 @@ __all__ = [
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
+    "masked_scatter_backward",
     "masked_scatter_",
     "masked_select",
     "max",
@@ -1736,7 +1741,7 @@ __all__ = [
     "special_chebyshev_polynomial_w_out",
     "special_digamma",
     "special_erf",
-    # "special_erfc",
+    "special_erfc",
     "special_erfcx",
     "special_erfinv",
     "special_erfinv_",
