@@ -76,7 +76,12 @@ def test_diagonal_copy_int(shape, dtype, offset, dims):
     if dim1 == dim2:
         pytest.skip("dim1 and dim2 must be different")
 
-    inp = torch.randint(-1000, 1000, shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon" and dtype == torch.int16:
+        inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        inp = torch.randint(-1000, 1000, shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.diagonal_copy(ref_inp, offset, dim1, dim2)
