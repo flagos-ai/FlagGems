@@ -20,12 +20,18 @@ import flag_gems
 from . import base, consts
 
 
+class AddBenchmark(base.BinaryPointwiseBenchmark):
+    def set_more_shapes(self):
+        # Add decode-sized cases without replacing configured benchmark shapes.
+        return super().set_more_shapes() + [(1, 4096), (16, 4096)]
+
+
 @pytest.mark.add
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_add():
-    bench = base.BinaryPointwiseBenchmark(
+    bench = AddBenchmark(
         op_name="add",
         torch_op=torch.add,
         dtypes=consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES,
