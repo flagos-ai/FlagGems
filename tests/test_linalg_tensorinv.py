@@ -109,3 +109,156 @@ def test_linalg_tensorinv_ind1(shape, dtype):
         res_out = torch.linalg.tensorinv(A, ind=ind)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.linalg_tensorinv
+# Non-SPD inputs exercise partial pivoting.
+@pytest.mark.parametrize("shape", [(2, 2), (3, 3), (8, 8), (16, 16), (4, 6, 8, 3)])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_linalg_tensorinv_non_spd(shape, dtype):
+    """General (non symmetric / non positive-definite) invertible inputs."""
+    if len(shape) == 2:
+        ind = 1
+    else:
+        ind = 2
+    m = 1
+    for i in range(ind):
+        m *= shape[i]
+    n = 1
+    for i in range(ind, len(shape)):
+        n *= shape[i]
+    assert m == n
+
+    # Plain randn: general, non-SPD, invertible with high probability.  Scale
+    # to keep cond(A) moderate so float32 reference comparison is meaningful.
+    A = torch.randn(m, m, dtype=dtype, device=flag_gems.device) * 2.0
+    A = A.reshape(shape)
+
+    ref_A = utils.to_reference(A)
+    ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+
+    with flag_gems.use_gems():
+        res_out = torch.linalg.tensorinv(A, ind=ind)
+
+    # Looser tolerance: general randn matrices can be moderately conditioned.
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
+
+
+@pytest.mark.linalg_tensorinv
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_linalg_tensorinv_zero_diagonal_pivot(dtype):
+    """A permutation matrix: the diagonal is zero but a valid pivot exists
+    off the diagonal, so partial pivoting must still produce the correct
+    inverse.
+    """
+    A = torch.tensor([[0.0, 1.0], [1.0, 0.0]], dtype=dtype, device=flag_gems.device)
+    ind = 1
+
+    ref_A = utils.to_reference(A)
+    if dtype == torch.float16:
+        ref_A_fp32 = ref_A.to(torch.float32)
+        ref_out = torch.linalg.tensorinv(ref_A_fp32, ind=ind).to(torch.float16)
+    else:
+        ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+
+    with flag_gems.use_gems():
+        res_out = torch.linalg.tensorinv(A, ind=ind)
+
+    assert not torch.isnan(res_out).any(), "tensorinv produced NaN on permutation"
+    assert not torch.isinf(res_out).any(), "tensorinv produced Inf on permutation"
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
+
+
+@pytest.mark.linalg_tensorinv
+def test_linalg_tensorinv_blocked_path():
+    """Exercise the blocked (> _TENSORINV_BLOCK_MAX=64) dispatch path with a
+    non-SPD matrix, which both covers the larger-size code route and the
+    partial-pivoting logic in the blocked kernel.
+    """
+    dtype = torch.float32
+    n = 80  # > 64 -> blocked kernel
+    A = torch.randn(n, n, dtype=dtype, device=flag_gems.device) * 2.0
+    A = A @ A.mT + 0.1 * torch.eye(n, dtype=dtype, device=flag_gems.device)
+    ind = 1
+
+    ref_A = utils.to_reference(A)
+    ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+
+    with flag_gems.use_gems():
+        res_out = torch.linalg.tensorinv(A, ind=ind)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
+
+
+@pytest.mark.linalg_tensorinv
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_linalg_tensorinv_ind3(dtype):
+    """Cover ind=3 (prod(shape[:3]) == prod(shape[3:])), exercising the
+    matrix-size computation for ind values beyond {1, 2}.
+    """
+    shape = (2, 2, 2, 8)  # prod(shape[:3]) = 8 == prod(shape[3:]) = 8
+    ind = 3
+    m = 1
+    for i in range(ind):
+        m *= shape[i]
+
+    A = torch.randn(m, m, dtype=dtype, device=flag_gems.device) * 2.0
+    A = A.reshape(shape)
+
+    ref_A = utils.to_reference(A)
+    ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+
+    with flag_gems.use_gems():
+        res_out = torch.linalg.tensorinv(A, ind=ind)
+
+    assert tuple(res_out.shape) == shape[ind:] + shape[:ind]
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
+
+
+@pytest.mark.linalg_tensorinv
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_linalg_tensorinv_ind1_higher_dim(dtype):
+    """ind=1 on a >2D input: only the first dim is the rows axis, the rest
+    flatten to cols (prod must match). Covers the higher-dimensional reshape
+    path.
+    """
+    shape = (8, 2, 2, 2)  # prod(shape[:1]) = 8 == prod(shape[1:]) = 8
+    ind = 1
+    m = shape[0]
+
+    A = torch.randn(m, m, dtype=dtype, device=flag_gems.device) * 2.0
+    A = A.reshape(shape)
+
+    ref_A = utils.to_reference(A)
+    ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+
+    with flag_gems.use_gems():
+        res_out = torch.linalg.tensorinv(A, ind=ind)
+
+    assert tuple(res_out.shape) == shape[ind:] + shape[:ind]
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-2, reduce_dim=1)
+
+
+@pytest.mark.linalg_tensorinv
+@pytest.mark.parametrize(
+    "A_cpu",
+    [
+        torch.zeros(4, 4),  # exact-zero pivot -> rank 0
+        torch.tensor([[1.0, 2.0], [2.0, 4.0]]),  # exact-zero pivot -> rank 1
+    ],
+)
+def test_linalg_tensorinv_singular(A_cpu):
+    """A singular input with an exact-zero pivot must return inf/nan, not a
+    finite wrong inverse. (With partial pivoting a zero pivot means the whole
+    remaining column is zero.) Only structurally-exact zero pivots are
+    asserted; tiny-but-nonzero pivots from round-off are a tolerance question
+    outside this kernel's scope.
+    """
+    A = A_cpu.to(flag_gems.device)
+    with flag_gems.use_gems():
+        res_out = torch.linalg.tensorinv(A, ind=1)
+
+    assert torch.isnan(res_out).any() or torch.isinf(res_out).any(), (
+        "tensorinv on a singular (exact-zero-pivot) matrix must return "
+        "inf/nan, not a finite wrong inverse"
+    )

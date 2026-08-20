@@ -47,8 +47,8 @@ def scan_part_sum_kernel(
     inp_vals = tl.load(inp_ptrs, mask=mask)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+        | tl.constexpr(inp_vals.dtype.is_uint64())
+    ) | tl.constexpr(inp_vals.dtype.is_fp64()):
         inp_vals = inp_vals
     elif tl.constexpr(inp_vals.dtype.is_int()):
         inp_vals = inp_vals.to(tl.int32)
@@ -120,8 +120,8 @@ def scan_part_sum_abc_kernel(
         inp_vals = tl.load(inp_ptrs, mask=mask)
         if (
             tl.constexpr(inp_vals.dtype.is_int64())
-            or tl.constexpr(inp_vals.dtype.is_uint64())
-        ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+            | tl.constexpr(inp_vals.dtype.is_uint64())
+        ) | tl.constexpr(inp_vals.dtype.is_fp64()):
             inp_vals = inp_vals
         elif tl.constexpr(inp_vals.dtype.is_int()):
             inp_vals = inp_vals.to(tl.int32)
@@ -174,13 +174,13 @@ def cumsum_kernel_dim_low(
         n_offset_0 = tl.arange(0, BLOCK_N)
         offset_0 = m_offset[:, None] * N + n_offset_0[None, :]
         # set mask
-        mask_0 = m_offset[:, None] < M and n_offset_0[None, :] < N
+        mask_0 = (m_offset[:, None] < M) & (n_offset_0[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         inp_vals_0 = tl.load(inp_ptrs_0, mask_0, other=0.0)
         if (
             tl.constexpr(inp_vals_0.dtype.is_int64())
-            or tl.constexpr(inp_vals_0.dtype.is_uint64())
-        ) or tl.constexpr(inp_vals_0.dtype.is_fp64()):
+            | tl.constexpr(inp_vals_0.dtype.is_uint64())
+        ) | tl.constexpr(inp_vals_0.dtype.is_fp64()):
             inp_vals_0 = inp_vals_0
         elif tl.constexpr(inp_vals_0.dtype.is_int()):
             inp_vals_0 = inp_vals_0.to(tl.int32)
@@ -195,13 +195,13 @@ def cumsum_kernel_dim_low(
                 n_offset = i + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask, other=0.0)
                 if (
                     tl.constexpr(inp_vals.dtype.is_int64())
-                    or tl.constexpr(inp_vals.dtype.is_uint64())
-                ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+                    | tl.constexpr(inp_vals.dtype.is_uint64())
+                ) | tl.constexpr(inp_vals.dtype.is_fp64()):
                     inp_vals = inp_vals
                 elif tl.constexpr(inp_vals.dtype.is_int()):
                     inp_vals = inp_vals.to(tl.int32)
@@ -236,13 +236,13 @@ def cumsum_kernel_dim_high(
         n_offset = tile_id_n * BLOCK_N + tl.arange(0, BLOCK_N)
         m_offset_0 = tl.arange(0, BLOCK_M)
         offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
-        mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
+        mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         inp_vals_0 = tl.load(inp_ptrs_0, mask_0, other=0.0)
         if (
             tl.constexpr(inp_vals_0.dtype.is_int64())
-            or tl.constexpr(inp_vals_0.dtype.is_uint64())
-        ) or tl.constexpr(inp_vals_0.dtype.is_fp64()):
+            | tl.constexpr(inp_vals_0.dtype.is_uint64())
+        ) | tl.constexpr(inp_vals_0.dtype.is_fp64()):
             inp_vals_0 = inp_vals_0
         elif tl.constexpr(inp_vals_0.dtype.is_int()):
             inp_vals_0 = inp_vals_0.to(tl.int32)
@@ -257,13 +257,13 @@ def cumsum_kernel_dim_high(
                 m_offset = i + tl.arange(0, BLOCK_M)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask, other=0.0)
                 if (
                     tl.constexpr(inp_vals.dtype.is_int64())
-                    or tl.constexpr(inp_vals.dtype.is_uint64())
-                ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+                    | tl.constexpr(inp_vals.dtype.is_uint64())
+                ) | tl.constexpr(inp_vals.dtype.is_fp64()):
                     inp_vals = inp_vals
                 elif tl.constexpr(inp_vals.dtype.is_int()):
                     inp_vals = inp_vals.to(tl.int32)
@@ -302,13 +302,13 @@ def cumsum_kernel_dim_mid(
         m_offset_0 = tl.arange(0, BLOCK_M)
         offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
         # set mask
-        mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
+        mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         inp_vals_0 = tl.load(inp_ptrs_0, mask=mask_0, other=0.0)
         if (
             tl.constexpr(inp_vals_0.dtype.is_int64())
-            or tl.constexpr(inp_vals_0.dtype.is_uint64())
-        ) or tl.constexpr(inp_vals_0.dtype.is_fp64()):
+            | tl.constexpr(inp_vals_0.dtype.is_uint64())
+        ) | tl.constexpr(inp_vals_0.dtype.is_fp64()):
             inp_vals_0 = inp_vals_0
         elif tl.constexpr(inp_vals_0.dtype.is_int()):
             inp_vals_0 = inp_vals_0.to(tl.int32)
@@ -323,13 +323,13 @@ def cumsum_kernel_dim_mid(
                 m_offset = i + tl.arange(0, BLOCK_M)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask, other=0.0)
                 if (
                     tl.constexpr(inp_vals.dtype.is_int64())
-                    or tl.constexpr(inp_vals.dtype.is_uint64())
-                ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+                    | tl.constexpr(inp_vals.dtype.is_uint64())
+                ) | tl.constexpr(inp_vals.dtype.is_fp64()):
                     inp_vals = inp_vals
                 elif tl.constexpr(inp_vals.dtype.is_int()):
                     inp_vals = inp_vals.to(tl.int32)

@@ -26,7 +26,6 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_SIZE": 2**k}, num_stages=s, num_warps=1)
@@ -37,6 +36,7 @@ logger = logging.getLogger(__name__)
         "tile_size",
     ],
 )
+@libentry()
 @triton.jit
 def get_ne_kernel(
     sorted_data_ptr: tl.tensor,
@@ -61,7 +61,6 @@ def get_ne_kernel(
         tl.store(ne_out_ptr + offset, ne_result, mask=mask)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_SIZE": k}, num_stages=s, num_warps=1)
@@ -72,6 +71,7 @@ def get_ne_kernel(
         "tile_size",
     ],
 )
+@libentry()
 @triton.jit
 def get_unique_out_kernel(
     sorted_data_ptr: tl.tensor,

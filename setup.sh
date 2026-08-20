@@ -99,8 +99,9 @@ source tools/env.sh "${BACKEND}"
 # ── Install build tools ──────────────────────────────────────
 printf "Installing build tools ..."
 uv pip install -q \
-  "setuptools>=64.0" \
-  "setuptools-scm>=8" \
+  "wheel==0.45.0" \
+  "setuptools>=64.0,<77" \
+  "setuptools-scm>=8,<10" \
   "scikit-build-core==0.12.2" \
   "pybind11==3.0.3" \
   "cmake>=3.20,<4" \

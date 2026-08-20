@@ -6,121 +6,290 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
+# N <= _TENSORINV_BLOCK_MAX uses a single fused kernel holding the whole N x N
+# tile (plus identity) in registers; larger N uses a blocked path that tiles
+# rows/columns in BLOCK-wide strips and synchronises phases with
+# tl.debug_barrier().
+_TENSORINV_BLOCK_MAX = 64
+
 
 def check_inv_input(A, ind):
-    """Check if the input is valid for tensorinv."""
-    assert ind > 0, "ind must be positive"
-    size = A.shape
+    """Validate input for tensorinv: A is >=2D, 0 <= ind <= A.dim(), and
+    prod(A.shape[:ind]) == prod(A.shape[ind:]). Raises RuntimeError on
+    violation, matching torch.linalg.tensorinv's behaviour.
+    """
+    if A.dim() < 2:
+        raise RuntimeError(
+            "linalg.tensorinv: Expected input to be at least 2D, " f"got {A.dim()}D"
+        )
+    if ind < 0 or ind > A.dim():
+        raise RuntimeError(
+            "linalg.tensorinv: Expected 0 <= ind <= input.dim(), "
+            f"got ind={ind} for input.dim()={A.dim()}"
+        )
     m = 1
     for i in range(ind):
-        m *= size[i]
+        m *= A.shape[i]
     n = 1
-    for i in range(ind, len(size)):
-        n *= size[i]
-    assert (
-        m == n
-    ), f"Product of first {ind} dimensions ({m}) must equal product of rest ({n})"
+    for i in range(ind, A.dim()):
+        n *= A.shape[i]
+    if m != n:
+        raise RuntimeError(
+            "linalg.tensorinv: Expected self to satisfy the requirement "
+            "prod(self.shape[ind:]) == prod(self.shape[:ind]), "
+            f"but got {n} != {m}"
+        )
 
 
+@libentry()
 @triton.jit
-def gauss_jordan_kernel(
-    A_ptr,
-    B_ptr,
-    matrix_size,
-    stride_a,
-    stride_b,
+def _tensorinv_register_kernel(
+    A,
+    B,
+    N,
+    BLOCK_N: tl.constexpr,
 ):
-    """Gauss-Jordan elimination to compute matrix inverse.
+    """Gauss-Jordan with partial pivoting, fused (whole tile in registers).
 
-    Computes inverse of A in-place and stores result in B.
-    Both A and B are row-major square matrices of size matrix_size x matrix_size.
+    A and B are N x N row-major; B starts as the identity and becomes A^{-1}.
+    Both tiles are held in registers with vectorised row/column ops and a
+    single for-k loop over pivot columns.
     """
-    # Gauss-Jordan elimination with partial pivoting
-    n = matrix_size
+    pid = tle.program_id(0)
+    rows = tl.arange(0, BLOCK_N)
+    cols = tl.arange(0, BLOCK_N)
 
-    # For each pivot column k
-    for k in range(n):
-        # Find pivot row (maximum absolute value in column k)
-        # For simplicity in this kernel, we'll take the diagonal element
-        # This assumes the matrix is well-conditioned
+    a_off = pid * N * N + rows[:, None] * N + cols[None, :]
+    b_off = pid * N * N + rows[:, None] * N + cols[None, :]
+    load_mask = (rows[:, None] < N) & (cols[None, :] < N)
+    work_a = tl.load(A + a_off, mask=load_mask, other=0.0).to(tl.float32)
+    work_b = tl.load(B + b_off, mask=load_mask, other=0.0).to(tl.float32)
 
-        # Scale pivot row to make pivot element 1
-        pivot = tl.load(A_ptr + k * stride_a + k).to(tl.float32)
-        # Avoid division by zero - use 1.0 if pivot is too small
-        pivot = tl.where(tl.abs(pivot) < 1e-10, 1.0, pivot)
+    for k in range(N):
+        # --- Partial pivoting: pick max |A[:,k]| among rows >= k ---
+        col_k = tl.sum(tl.where(cols[None, :] == k, work_a, 0.0), axis=1)
+        abs_col = tl.abs(col_k)
+        abs_col = tl.where((rows < k) | (rows >= N), -1.0, abs_col)
+        pivot_val = tl.max(abs_col, axis=0)
+        pivot_row = tl.min(tl.where(abs_col == pivot_val, rows, BLOCK_N), axis=0)
 
-        for j in range(n):
-            a_kj = tl.load(A_ptr + k * stride_a + j).to(tl.float32)
-            tl.store(A_ptr + k * stride_a + j, a_kj / pivot)
-            b_kj = tl.load(B_ptr + k * stride_b + j).to(tl.float32)
-            tl.store(B_ptr + k * stride_b + j, b_kj / pivot)
+        # Swap rows k and pivot_row in BOTH A and B.
+        row_k_a = tl.sum(tl.where(rows[:, None] == k, work_a, 0.0), axis=0)
+        row_p_a = tl.sum(tl.where(rows[:, None] == pivot_row, work_a, 0.0), axis=0)
+        work_a = tl.where(rows[:, None] == k, row_p_a[None, :], work_a)
+        work_a = tl.where(rows[:, None] == pivot_row, row_k_a[None, :], work_a)
 
-        # Eliminate other rows
-        for i in range(n):
-            if i != k:
-                factor = tl.load(A_ptr + i * stride_a + k).to(tl.float32)
-                if tl.abs(factor) > 1e-10:
-                    for j in range(n):
-                        a_ij = tl.load(A_ptr + i * stride_a + j).to(tl.float32)
-                        a_kj = tl.load(A_ptr + k * stride_a + j).to(tl.float32)
-                        tl.store(A_ptr + i * stride_a + j, a_ij - factor * a_kj)
+        row_k_b = tl.sum(tl.where(rows[:, None] == k, work_b, 0.0), axis=0)
+        row_p_b = tl.sum(tl.where(rows[:, None] == pivot_row, work_b, 0.0), axis=0)
+        work_b = tl.where(rows[:, None] == k, row_p_b[None, :], work_b)
+        work_b = tl.where(rows[:, None] == pivot_row, row_k_b[None, :], work_b)
 
-                        b_ij = tl.load(B_ptr + i * stride_b + j).to(tl.float32)
-                        b_kj = tl.load(B_ptr + k * stride_b + j).to(tl.float32)
-                        tl.store(B_ptr + i * stride_b + j, b_ij - factor * b_kj)
+        # --- Normalise pivot row (pivot is now work_a[k, k]) ---
+        col_k = tl.sum(tl.where(cols[None, :] == k, work_a, 0.0), axis=1)
+        pivot = tl.sum(tl.where(rows == k, col_k, 0.0), axis=0)
+        # Divide directly by `pivot`: with partial pivoting a zero pivot means
+        # the whole remaining column is zero (A is singular), and the
+        # resulting inf/nan signals that to the caller.
+        row_k_a = tl.sum(tl.where(rows[:, None] == k, work_a, 0.0), axis=0)
+        row_k_b = tl.sum(tl.where(rows[:, None] == k, work_b, 0.0), axis=0)
+        work_a = tl.where(rows[:, None] == k, row_k_a[None, :] / pivot, work_a)
+        work_b = tl.where(rows[:, None] == k, row_k_b[None, :] / pivot, work_b)
+
+        # --- Eliminate column k from every other row (Gauss-Jordan, full row
+        # reduction so B ends as the inverse) ---
+        col_k = tl.sum(tl.where(cols[None, :] == k, work_a, 0.0), axis=1)
+        factor = tl.where(rows != k, col_k, 0.0)
+        u_row_a = tl.sum(tl.where(rows[:, None] == k, work_a, 0.0), axis=0)
+        u_row_b = tl.sum(tl.where(rows[:, None] == k, work_b, 0.0), axis=0)
+        work_a = tl.where(
+            rows[:, None] != k, work_a - factor[:, None] * u_row_a[None, :], work_a
+        )
+        work_b = tl.where(
+            rows[:, None] != k, work_b - factor[:, None] * u_row_b[None, :], work_b
+        )
+
+    tl.store(A + a_off, work_a.to(tl.float32), mask=load_mask)
+    tl.store(B + b_off, work_b.to(tl.float32), mask=load_mask)
+
+
+@libentry()
+@triton.jit
+def _tensorinv_blocked_kernel(
+    A,
+    B,
+    N,
+    BLOCK: tl.constexpr,
+):
+    """Gauss-Jordan with partial pivoting, blocked (tiles + debug_barrier).
+
+    Rows/columns are processed in BLOCK-wide strips with tl.debug_barrier()
+    between the pivot-scan, row-swap, normalise and eliminate phases so the
+    strips see a consistent matrix.  The same phases are applied to B (the
+    identity) in lockstep, so B becomes A^{-1}.
+    """
+    pid = tle.program_id(0)
+    base = pid * N * N
+
+    for k in range(N):
+        # --- Find pivot row: max |A[:, k]| among rows >= k ---
+        best_val = tl.full((), -1.0, dtype=tl.float32)
+        best_row = tl.full((), k, dtype=tl.int32)
+        for i0 in range(k, N, BLOCK):
+            rows = i0 + tl.arange(0, BLOCK)
+            col = tl.load(A + base + rows * N + k, mask=rows < N, other=0.0).to(
+                tl.float32
+            )
+            abs_col = tl.where((rows >= k) & (rows < N), tl.abs(col), -1.0)
+            tile_max = tl.max(abs_col, axis=0)
+            tile_row = tl.min(tl.where(abs_col == tile_max, rows, N), axis=0)
+            is_better = tile_max > best_val
+            best_row = tl.where(is_better, tile_row, best_row)
+            best_val = tl.where(is_better, tile_max, best_val)
+
+        # --- Swap rows k and best_row in A and B ---
+        for j0 in range(0, N, BLOCK):
+            cols = j0 + tl.arange(0, BLOCK)
+            cmask = cols < N
+            row_k_a = tl.load(A + base + k * N + cols, mask=cmask, other=0.0)
+            row_p_a = tl.load(A + base + best_row * N + cols, mask=cmask, other=0.0)
+            tl.store(A + base + k * N + cols, row_p_a, mask=cmask)
+            tl.store(A + base + best_row * N + cols, row_k_a, mask=cmask)
+            row_k_b = tl.load(B + base + k * N + cols, mask=cmask, other=0.0)
+            row_p_b = tl.load(B + base + best_row * N + cols, mask=cmask, other=0.0)
+            tl.store(B + base + k * N + cols, row_p_b, mask=cmask)
+            tl.store(B + base + best_row * N + cols, row_k_b, mask=cmask)
+
+        tl.debug_barrier()
+
+        # --- Normalise row k by the pivot ---
+        # Divide directly by `pivot`: a zero pivot means A is singular, and
+        # inf/nan propagation signals that to the caller.
+        pivot = tl.load(A + base + k * N + k).to(tl.float32)
+        for j0 in range(0, N, BLOCK):
+            cols = j0 + tl.arange(0, BLOCK)
+            cmask = cols < N
+            a_row = tl.load(A + base + k * N + cols, mask=cmask, other=0.0).to(
+                tl.float32
+            )
+            b_row = tl.load(B + base + k * N + cols, mask=cmask, other=0.0).to(
+                tl.float32
+            )
+            tl.store(A + base + k * N + cols, a_row / pivot, mask=cmask)
+            tl.store(B + base + k * N + cols, b_row / pivot, mask=cmask)
+
+        tl.debug_barrier()
+
+        # --- Eliminate column k from every row i != k ---
+        for i0 in range(0, N, BLOCK):
+            rows = i0 + tl.arange(0, BLOCK)
+            rmask = rows < N
+            factor = tl.load(A + base + rows * N + k, mask=rmask, other=0.0).to(
+                tl.float32
+            )
+            factor = tl.where(rows != k, factor, 0.0)
+            for j0 in range(0, N, BLOCK):
+                cols = j0 + tl.arange(0, BLOCK)
+                cmask = cols < N
+                tmask = rmask[:, None] & cmask[None, :]
+                u_row_a = tl.load(A + base + k * N + cols, mask=cmask, other=0.0).to(
+                    tl.float32
+                )
+                u_row_b = tl.load(B + base + k * N + cols, mask=cmask, other=0.0).to(
+                    tl.float32
+                )
+                tile_a = tl.load(
+                    A + base + rows[:, None] * N + cols[None, :],
+                    mask=tmask,
+                    other=0.0,
+                ).to(tl.float32)
+                tile_b = tl.load(
+                    B + base + rows[:, None] * N + cols[None, :],
+                    mask=tmask,
+                    other=0.0,
+                ).to(tl.float32)
+                tile_a = tile_a - factor[:, None] * u_row_a[None, :]
+                tile_b = tile_b - factor[:, None] * u_row_b[None, :]
+                tl.store(
+                    A + base + rows[:, None] * N + cols[None, :], tile_a, mask=tmask
+                )
+                tl.store(
+                    B + base + rows[:, None] * N + cols[None, :], tile_b, mask=tmask
+                )
+
+        tl.debug_barrier()
 
 
 def linalg_tensorinv(A, ind=2):
     """Compute the multiplicative inverse of tensordot.
 
     Args:
-        A: Input tensor
-        ind: Index at which to compute the inverse of tensordot
+        A: Input tensor with prod(A.shape[:ind]) == prod(A.shape[ind:]).
+        ind: Index at which to compute the inverse of tensordot.
 
     Returns:
-        Tensor X such that tensordot(A, X, ind) is the identity matrix
+        Tensor X such that tensordot(A, X, ind) is the identity matrix, with
+        shape A.shape[ind:] + A.shape[:ind].
     """
     check_inv_input(A, ind)
 
-    # Compute matrix size: product of first ind dimensions
+    # tensorinv reduces to a single dense matrix inverse: flatten the first
+    # `ind` dims into rows and the rest into cols, both of size matrix_size
+    # (validated equal by check_inv_input).
     matrix_size = 1
     for i in range(ind):
         matrix_size *= A.shape[i]
-
-    # Output shape is A.shape[ind:] + A.shape[:ind]
     output_shape = A.shape[ind:] + A.shape[:ind]
+    n = matrix_size
 
     logger.debug(
         f"GEMS linalg_tensorinv: input shape {A.shape}, ind={ind}, "
         f"matrix_size={matrix_size}, output shape {output_shape}"
     )
 
-    # Convert to float32 for computation
-    A_float = A.contiguous().to(torch.float32)
+    # Compute in float32 and cast back to A.dtype at the end.  clone() so the
+    # in-place Gauss-Jordan does not mutate the caller's tensor.
+    A_work = (
+        A.contiguous()
+        .to(torch.float32)
+        .reshape(n, n)
+        .clone(memory_format=torch.contiguous_format)
+    )
+    inverse = torch.eye(n, dtype=torch.float32, device=A.device).clone(
+        memory_format=torch.contiguous_format
+    )
 
-    # Reshape to 2D matrix (matrix_size x matrix_size)
-    A_reshaped = A_float.reshape(matrix_size, matrix_size).clone()
-
-    # Create identity matrix - this will be transformed to the inverse
-    inverse = torch.eye(matrix_size, dtype=torch.float32, device=A.device).clone()
-
-    # Run Gauss-Jordan elimination
     grid = (1,)
     with torch_device_fn.device(A.device):
-        gauss_jordan_kernel[grid](
-            A_reshaped,
-            inverse,
-            matrix_size,
-            A_reshaped.stride(0),
-            inverse.stride(0),
-        )
+        if n <= _TENSORINV_BLOCK_MAX:
+            # BLOCK_N tracks N (to the next power of two); tensorinv is a
+            # single matrix with no batch axis, so a small N should not pay
+            # for a larger tile.
+            block_n = max(2, triton.next_power_of_2(n))
+            num_warps = min(8, max(1, (block_n * block_n * 4) // 4096))
+            _tensorinv_register_kernel[grid](
+                A_work,
+                inverse,
+                n,
+                BLOCK_N=block_n,
+                num_warps=num_warps,
+            )
+        else:
+            block = min(64, max(8, triton.next_power_of_2(n)))
+            num_warps = min(4, max(1, (block * block * 4) // 4096))
+            _tensorinv_blocked_kernel[grid](
+                A_work,
+                inverse,
+                n,
+                BLOCK=block,
+                num_warps=num_warps,
+            )
 
-    # inverse now contains the result
     result = inverse.reshape(output_shape).to(A.dtype)
-
     return result
 
 

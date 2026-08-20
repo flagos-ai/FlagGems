@@ -19,16 +19,64 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils.pointwise_dynamic import ComplexMode
 
 logger = logging.getLogger(__name__)
 fmod = tl_extra_shim.fmod
 trunc = tl_extra_shim.trunc
 
 
+@pointwise_dynamic(
+    is_tensor=[True, True, True, True],
+    num_outputs=2,
+    promotion_methods=[
+        (0, 1, 2, 3, "INT_TO_FLOAT"),
+        (0, 1, 2, 3, "INT_TO_FLOAT"),
+    ],
+)
+@triton.jit
+def div_complex_kernel_hygon_fp64(ar, ai, br, bi):
+    # Smith's method avoids overflow by dividing by the larger component.
+    ar = ar.to(tl.float64)
+    ai = ai.to(tl.float64)
+    br = br.to(tl.float64)
+    bi = bi.to(tl.float64)
+
+    abs_br = tl.abs(br)
+    abs_bi = tl.abs(bi)
+    use_br = abs_br >= abs_bi
+
+    safe_br = tl.where(br == 0, 1.0, br)
+    safe_bi = tl.where(bi == 0, 1.0, bi)
+
+    ratio1 = tl.where(br == 0, 0.0, bi / safe_br)
+    denom1 = br + bi * ratio1
+    selected_denom1 = tl.where(use_br, denom1, 1.0)
+    real1 = (ar + ai * ratio1) / selected_denom1
+    imag1 = (ai - ar * ratio1) / selected_denom1
+
+    ratio2 = tl.where(bi == 0, 0.0, br / safe_bi)
+    denom2 = bi + br * ratio2
+    selected_denom2 = tl.where(use_br, 1.0, denom2)
+    real2 = (ar * ratio2 + ai) / selected_denom2
+    imag2 = (ai * ratio2 - ar) / selected_denom2
+
+    return tl.where(use_br, real1, real2), tl.where(use_br, imag1, imag2)
+
+
 @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def true_div_func(x, y):
     return x / y
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
+@triton.jit
+def complex_real_div_fp64_func(x, y):
+    is_zero = y == 0.0
+    safe_y = tl.where(is_zero, 1.0, y)
+    quotient = x.to(tl.float64) / safe_y.to(tl.float64)
+    return tl.where(is_zero, float("nan"), quotient)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
@@ -43,8 +91,29 @@ def true_div_func_scalar_tensor(x, y):
     return x / y
 
 
+true_div_func.register_complex(
+    mode=ComplexMode.CROSS, cross_kernel=div_complex_kernel_hygon_fp64
+)
+true_div_func_tensor_scalar.register_complex(
+    mode=ComplexMode.CROSS, tensorize_scalars=True, fallback_target=true_div_func
+)
+true_div_func_scalar_tensor.register_complex(
+    mode=ComplexMode.CROSS, tensorize_scalars=True, fallback_target=true_div_func
+)
+
+
 def true_divide(A, B):
     logger.debug("GEMS_HYGON TRUE_DIVIDE")
+    if (
+        isinstance(A, torch.Tensor)
+        and A.is_complex()
+        and isinstance(B, torch.Tensor)
+        and not B.is_complex()
+    ):
+        return torch.complex(
+            complex_real_div_fp64_func(A.real, B),
+            complex_real_div_fp64_func(A.imag, B),
+        )
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return true_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -54,6 +123,18 @@ def true_divide(A, B):
     else:
         # Both scalar
         return torch.tensor(A / B)
+
+
+def true_divide_out(A, B, out):
+    logger.debug("GEMS_HYGON TRUE_DIVIDE OUT")
+    if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        return true_div_func(A, B, out0=out)
+    elif isinstance(A, torch.Tensor):
+        return true_div_func_tensor_scalar(A, B, out0=out)
+    elif isinstance(B, torch.Tensor):
+        return true_div_func_scalar_tensor(A, B, out0=out)
+    else:
+        return torch.tensor(A / B) if out is None else out.fill_(A / B)
 
 
 def true_divide_(A, B):
@@ -120,10 +201,14 @@ def _int_floordiv(x, y):
     # whereas in Pytorch x // 0 returns -1 if x >=0 and -2 if x < 0
     # but this special case is coalesced into the c1 and c2 check so
     # there's extra handling.
-    r = x % y
+    is_zero = y == 0
+    safe_y = tl.where(is_zero, 1, y)
+    r = x % safe_y
     c1 = r != 0
-    c2 = (x < 0) ^ (y < 0)
-    return tl.where(c1 & c2, x // y - 1, x // y)
+    c2 = (x < 0) ^ (safe_y < 0)
+    quotient = tl.where(c1 & c2, x // safe_y - 1, x // safe_y)
+    zero_quotient = tl.where(x < 0, x - 2, tl.where(x == 0, 2, x + 1))
+    return tl.where(is_zero, zero_quotient, quotient)
 
 
 # TO be consistent with python, numpy and torch, we have to implement it in the
@@ -136,6 +221,12 @@ def _int_floordiv(x, y):
 # https://github.com/pytorch/pytorch/blob/d6d9183456cd07ca0b361a194b98c2fb196e7c36/c10/util/generic_math.h#L23
 @triton.jit
 def _float_floordiv(x, y):
+    # Hygon's libdevice fmod only accepts matching fp32/fp64 operands.
+    # Pointwise scalar promotion can otherwise produce (fp16/bf16, fp32).
+    orig_dtype = x.dtype
+    x = x.to(tl.float32)
+    y = y.to(tl.float32)
+
     # NOTE: fmod's sign is the same as the dividend
     remainder = fmod(x, y)
     imperfect = remainder != 0.0
@@ -156,17 +247,17 @@ def _float_floordiv(x, y):
     is_div_by_zero = y == 0.0
     float_division = x / y
     out = tl.where(is_div_by_zero, float_division, floor_q)
-    return out
+    return out.to(orig_dtype)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         if x.type.scalar.is_int16():
-            return _int_floordiv(x.to(tl.int32), y)
+            return _int_floordiv(x.to(tl.int32), y.to(tl.int32))
         elif x.type.scalar.is_uint16():
-            return _int_floordiv(x.to(tl.uint32), y)
+            return _int_floordiv(x.to(tl.uint32), y.to(tl.uint32))
         else:
             return _int_floordiv(x, y)
     else:
@@ -176,11 +267,11 @@ def floor_div_func(x, y):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_tensor_scalar(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         if x.type.scalar.is_int16():
-            return _int_floordiv(x.to(tl.int32), y)
+            return _int_floordiv(x.to(tl.int32), y.to(tl.int32))
         elif x.type.scalar.is_uint16():
-            return _int_floordiv(x.to(tl.uint32), y)
+            return _int_floordiv(x.to(tl.uint32), y.to(tl.uint32))
         else:
             return _int_floordiv(x, y)
     else:
@@ -190,11 +281,11 @@ def floor_div_func_tensor_scalar(x, y):
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_scalar_tensor(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         if x.type.scalar.is_int16():
-            return _int_floordiv(x.to(tl.int32), y)
+            return _int_floordiv(x.to(tl.int32), y.to(tl.int32))
         elif x.type.scalar.is_uint16():
-            return _int_floordiv(x.to(tl.uint32), y)
+            return _int_floordiv(x.to(tl.uint32), y.to(tl.uint32))
         else:
             return _int_floordiv(x, y)
     else:
