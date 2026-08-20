@@ -20,6 +20,7 @@ import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
+from packaging.version import Version as _Version
 
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
@@ -590,11 +591,43 @@ def _attn_bwd_dq(
 
 config_backward = runtime.get_tuned_config("attention_bwd")
 
+SMALL_HEAD_DIM_BWD_CONFIGS = [
+    triton.Config(
+        {"BLOCK_M1": BM1, "BLOCK_N1": BN1, "BLOCK_M2": BM2, "BLOCK_N2": BN2},
+        num_stages=s,
+        num_warps=w,
+    )
+    for (BM1, BN1, BM2, BN2) in [(32, 64, 64, 32)]
+    for s in [2, 3, 4]
+    for w in [4, 8]
+]
+config_backward = config_backward + SMALL_HEAD_DIM_BWD_CONFIGS
+
+
+def _prune_bwd_configs(configs, named_args, **kwargs):
+    BLOCK_DMODEL = kwargs.get("BLOCK_DMODEL", named_args.get("BLOCK_DMODEL", 128))
+    if BLOCK_DMODEL <= 32:
+        pruned = [
+            c
+            for c in configs
+            if c.kwargs["BLOCK_N1"] <= 64 and c.kwargs["BLOCK_M1"] <= 32
+        ]
+        return pruned if pruned else configs
+    return configs
+
+
+_bwd_prune_configs = (
+    {"early_config_prune": _prune_bwd_configs}
+    if _Version("3.6.0") <= _Version(triton.__version__) < _Version("3.8.0")
+    else {}
+)
+
 
 @libentry()
 @libtuner(
     configs=config_backward,
     key=["KV_CTX", "BLOCK_DMODEL"],
+    prune_configs_by=_bwd_prune_configs,
 )
 @triton.jit
 def _attn_bwd(
