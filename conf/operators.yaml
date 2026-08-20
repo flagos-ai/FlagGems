@@ -146,6 +146,19 @@ ops:
       - Quantization
     stages:
       - beta: '5.3'
+  - id: adaptive_avg_pool1d
+    description: |
+      Applies a one-dimensional adaptive average pooling over an input signal,
+      producing an output of the requested length.
+    for:
+      - adaptive_avg_pool1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: adaptive_avg_pool2d
     description: |
       Apply a 2D adaptive average pooling over an input signal composed of several input planes.
@@ -169,6 +182,19 @@ ops:
       - aten
       - KernelGen
       - reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: adaptive_max_pool2d
+    description: |
+      Applies two-dimensional adaptive max pooling and returns both pooled values
+      and the selected input indices.
+    for:
+      - adaptive_max_pool2d
+    labels:
+      - aten
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -678,6 +704,22 @@ ops:
       value is detected, `found_inf` is set to 1.0.
     for:
       - _amp_foreach_non_finite_check_and_unscale_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: amp_update_scale_
+    description: |
+      Updates the AMP loss scale in-place: when `found_inf` is non-zero the
+      scale is multiplied by `scale_backoff_factor` and the growth tracker
+      is reset to 0; otherwise the growth tracker is incremented and, once
+      it reaches `growth_interval`, the scale is multiplied by
+      `scale_growth_factor` and the tracker is reset to 0.
+    for:
+      - _amp_update_scale_
     labels:
       - aten
       - KernelGen
@@ -1388,6 +1430,21 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: batch_norm_impl_index_backward
+    description: |
+      Backward pass dispatcher for `_batch_norm_impl_index`. Selects the
+      matching batch-norm backward backend (native / cudnn / miopen) from the
+      `impl_index` returned by the forward and produces the gradients with
+      respect to the input, weight and bias.
+    for:
+      - _batch_norm_impl_index_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_no_update
     description: Applies Batch Normalization using precomputed running statistics without updating running_mean/running_var.
     for:
@@ -2458,6 +2515,26 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: convolution_double_backward
+    description: |
+      Second-order backward of a convolution, supporting both 1D (3-D operands
+      [N, C, L]) and 2D (4-D operands [N, C, H, W]) cases. Given the gradients of
+      the first-order gradients (ggI, ggW, ggb) and the output gradient (gO),
+      returns the gradients of the scalar `<gX, ggI> + <gW, ggW> + <gB, ggb>` with
+      respect to (gO, input, weight). The 2D path runs on Triton conv /
+      conv-transpose kernels plus a custom Triton weight-gradient correlation
+      kernel; 1D reuses the 2D path by unsqueezing the lone spatial axis
+      (mirroring how `conv1d` delegates to `conv2d`). 3D (5-D operands) is not
+      yet supported and raises `NotImplementedError`.
+    for:
+      - _convolution_double_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
     stages:
       - alpha: '5.4'
   - id: convolution_mode
@@ -3626,6 +3703,30 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: fake_quantize_per_channel_affine_cachemask
+    description: Applies per-channel affine fake quantization and returns the quantization-range mask.
+    for:
+      - fake_quantize_per_channel_affine_cachemask
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
+  - id: fake_quantize_per_channel_affine_cachemask_out
+    description: A variant of `fake_quantize_per_channel_affine_cachemask` that assigns the results to the provided output tensors.
+    for:
+      - fake_quantize_per_channel_affine_cachemask.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
   - id: feature_dropout
     description: |
       Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.
@@ -3881,6 +3982,72 @@ ops:
     description: Triton kernel implementation for float_power_.
     for:
       - float_power_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_scalar_tensor
+    description: Computes a scalar base raised element-wise to tensor exponents in float64.
+    for:
+      - float_power.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_scalar_tensor_out
+    description: Out variant of float_power.Scalar.
+    for:
+      - float_power.Scalar_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_scalar
+    description: Raises tensor elements to a scalar exponent in float64.
+    for:
+      - float_power.Tensor_Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_scalar_out
+    description: Out variant of float_power.Tensor_Scalar.
+    for:
+      - float_power.Tensor_Scalar_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_tensor
+    description: Raises tensor elements to tensor exponents in float64 with broadcasting.
+    for:
+      - float_power.Tensor_Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_tensor_out
+    description: Out variant of float_power.Tensor_Tensor.
+    for:
+      - float_power.Tensor_Tensor_out
     labels:
       - aten
       - KernelGen
@@ -5870,6 +6037,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_householder_product
+    description: Compute the matrix product of Householder matrices from QR decomposition.
+    for:
+      - linalg_householder_product
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linalg_ldl_solve
     description: Triton kernel implementation for linalg_ldl_solve.
     for:
@@ -6197,6 +6375,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: list_to_tensor
+    description: |
+      Constructs a 1-D int32 tensor from a Python list of integers. This is an
+      IR/prim operator; the FlagGems implementation copies the values into the
+      output tensor with a Triton kernel.
+    for:
+      - _list_to_tensor
+    labels:
+      - aten
+      - KernelGen
+      - IR
   - id: log
     description: Returns a new tensor with the natural logarithm of the elements of `input`.
     for:
@@ -9346,6 +9535,33 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: rshift
+    description: Applies a bitwise right shift to an integer tensor with a tensor or scalar shift value.
+    for:
+      - __rshift__.Scalar
+      - __rshift__.Tensor
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: rshift_out
+    description: |
+      A variant of `rshift()` that assigns the output to the given `out` parameter.
+    for:
+      - __rshift__.Scalar_out
+      - __rshift__.Tensor_out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: rsqrt
     description: Returns a new tensor with the reciprocal of the square-root of each of the elements of `input`.
     for:
@@ -10647,6 +10863,18 @@ ops:
       Alias for exp2; delegates to the exp2 kernel.
     for:
       - special_exp2
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_expit
+    description: Computes the expit (sigmoid) function element-wise. Returns 1 / (1 + exp(-x)).
+    for:
+      - special.expit
     labels:
       - aten
       - pointwise
@@ -12135,6 +12363,16 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.0'
+  - id: view_as_complex
+    description: Returns a view of the real input tensor as a complex tensor (zero-copy view operation).
+    for:
+      - view_as_complex
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: view_copy
     description: |
       Returns a copy of the tensor with the specified shape.
