@@ -690,6 +690,7 @@ _FULL_CONFIG = (
     ("linalg_lu_factor_ex.out", linalg_lu_factor_ex_out),
     ("linalg_ldl_solve", linalg_ldl_solve),
     ("linalg_lstsq", linalg_lstsq),
+    ("linalg_matmul", linalg_matmul),
     ("linalg_slogdet", linalg_slogdet),
     ("linalg_solve_triangular", linalg_solve_triangular),
     ("linalg_solve_triangular.out", linalg_solve_triangular_out),
