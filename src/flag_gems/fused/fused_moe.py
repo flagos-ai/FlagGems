@@ -68,6 +68,28 @@ _H20_QWEN_M1_BF16_PLAN = {
         "num_stages": 2,
     },
 }
+_H20_QWEN_FLASH_NEXT_M64_BF16_PLAN = {
+    # Decode proxy for the Qwen Flash-Next TP8 expert shape. GEMM1 retains the
+    # generic reduction tile, while GEMM2 uses a wider output tile, shallower
+    # pipeline, and BK=64. This plan is deliberately limited to the exact H20
+    # shape on which CUDA Graph replay was measured.
+    "gemm1": {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 64,
+        "BLOCK_SIZE_K": 128,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 3,
+    },
+    "gemm2": {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 128,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 2,
+    },
+}
 _H20_MIXTRAL_M512_PLAN = {
     # The generic fused GEMM1 tile (128x256, 8 warps) keeps two FP32
     # accumulators live and reaches 255 registers/thread. A 64x128 tile retains
@@ -93,6 +115,7 @@ _H20_EXACT_CONFIGS: dict[
     tuple[str, int, int, int, int, int], dict[str, dict[str, Any]]
 ] = {
     ("bf16", 1, 256, 2048, 128, 8): _H20_QWEN_M1_BF16_PLAN,
+    ("bf16", 64, 512, 2048, 64, 10): _H20_QWEN_FLASH_NEXT_M64_BF16_PLAN,
     ("bf16", 512, 8, 4096, 14336, 2): _H20_MIXTRAL_M512_PLAN,
     ("fp16", 512, 8, 4096, 14336, 2): _H20_MIXTRAL_M512_PLAN,
 }
@@ -274,17 +297,35 @@ def get_moe_configs(
 
     _block_n = block_n if block_n else 0
     _block_k = block_k if block_k else 0
-    key = f"{E},{N},{dtype},{_block_n},{_block_k}"
-    configs = device_table.get(key)
-    if configs is not None:
-        logger.debug(
-            "Using embedded MoE config for device=%s, key=%s", device_name, key
-        )
-        return configs
+
+    # The H100 E=512 FP16/BF16 tuning data predates dtype-specific keys and is
+    # stored under ``None``. Prefer an explicit dtype entry, then use that
+    # shared half-precision table only for this measured Qwen target. Keeping
+    # the compatibility fallback narrow avoids changing the embedded/direct
+    # reduction policy for unrelated devices and model families.
+    config_dtypes = [dtype]
+    if (
+        dtype in _PLAIN_HALF_CONFIG_DTYPES
+        and device_name == "NVIDIA_H100_80GB_HBM3"
+        and E == 512
+    ):
+        config_dtypes.append(None)
+
+    keys = [
+        f"{E},{N},{config_dtype},{_block_n},{_block_k}"
+        for config_dtype in config_dtypes
+    ]
+    for key in keys:
+        configs = device_table.get(key)
+        if configs is not None:
+            logger.debug(
+                "Using embedded MoE config for device=%s, key=%s", device_name, key
+            )
+            return configs
     logger.debug(
-        "No embedded MoE config for device=%s, key=%s. Will use default config.",
+        "No embedded MoE config for device=%s, keys=%s. Will use default config.",
         device_name,
-        key,
+        keys,
     )
     return None
 

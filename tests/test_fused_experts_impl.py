@@ -216,6 +216,56 @@ def test_h20_qwen_m1_bf16_exact_configs(monkeypatch):
     )
 
 
+def test_h20_qwen_flash_next_m64_bf16_exact_configs(monkeypatch):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    monkeypatch.setattr(fused_moe, "_is_h20", lambda: True)
+
+    w1_shape = (512, 128, 2048)
+    w2_shape = (512, 2048, 64)
+    gemm1 = fused_moe.try_get_optimal_moe_config(
+        w1_shape, w2_shape, 10, "bf16", 64, 512, gemm_stage="gemm1"
+    )
+    gemm2 = fused_moe.try_get_optimal_moe_config(
+        w1_shape, w2_shape, 10, "bf16", 64, 512, gemm_stage="gemm2"
+    )
+
+    assert gemm1 == {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 64,
+        "BLOCK_SIZE_K": 128,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 3,
+    }
+    assert gemm2 == {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 128,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 2,
+    }
+    assert gemm1["BLOCK_SIZE_M"] == gemm2["BLOCK_SIZE_M"]
+
+    # The measured plan must not leak to adjacent capture sizes, dimensions,
+    # dtypes, or expert routing policies.
+    for M, hidden_size, intermediate_size, topk, dtype in (
+        (63, 2048, 64, 10, "bf16"),
+        (64, 4096, 64, 10, "bf16"),
+        (64, 2048, 128, 10, "bf16"),
+        (64, 2048, 64, 8, "bf16"),
+        (64, 2048, 64, 10, "fp16"),
+    ):
+        adjacent_w1 = (512, 2 * intermediate_size, hidden_size)
+        adjacent_w2 = (512, hidden_size, intermediate_size)
+        assert (
+            fused_moe._get_h20_exact_config(
+                adjacent_w1, adjacent_w2, M, 512, topk, dtype, "gemm1"
+            )
+            is None
+        )
+
+
 def test_moe_block_size_m_validation():
     fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
     config = {"BLOCK_SIZE_M": 64}
@@ -223,6 +273,41 @@ def test_moe_block_size_m_validation():
 
     with pytest.raises(ValueError, match="must use the same BLOCK_SIZE_M"):
         fused_moe._validate_moe_block_size_m(config, config, {"BLOCK_SIZE_M": 128})
+
+
+def test_plain_half_embedded_config_falls_back_to_legacy_dtype(monkeypatch):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    device_name = "NVIDIA_H100_80GB_HBM3"
+    legacy = {64: {"BLOCK_SIZE_M": 16, "BLOCK_SIZE_N": 32}}
+    bf16 = {64: {"BLOCK_SIZE_M": 16, "BLOCK_SIZE_N": 64}}
+    device_table = {"512,64,None,0,0": legacy}
+
+    monkeypatch.setattr(fused_moe, "_get_device_name", lambda: device_name)
+    monkeypatch.setattr(
+        fused_moe,
+        "get_embedded_moe_configs",
+        lambda: ({device_name: device_table}, {}),
+    )
+
+    assert fused_moe.get_moe_configs(512, 64, "bf16") is legacy
+    assert fused_moe.get_moe_configs(512, 64, "fp16") is legacy
+    assert fused_moe.get_moe_configs(512, 64, "fp8_w8a8") is None
+
+    # A dtype-specific entry always has precedence over the shared legacy
+    # table, so existing H20 BF16/FP16 tuning remains authoritative.
+    device_table["512,64,bf16,0,0"] = bf16
+    assert fused_moe.get_moe_configs(512, 64, "bf16") is bf16
+    assert fused_moe.get_moe_configs(512, 64, "fp16") is legacy
+
+    # Keep the compatibility fallback scoped to the Qwen/H100 table. Other
+    # devices retain their existing dtype-specific/default selection policy.
+    monkeypatch.setattr(fused_moe, "_get_device_name", lambda: "NVIDIA_H20")
+    monkeypatch.setattr(
+        fused_moe,
+        "get_embedded_moe_configs",
+        lambda: ({"NVIDIA_H20": {"512,64,None,0,0": legacy}}, {}),
+    )
+    assert fused_moe.get_moe_configs(512, 64, "bf16") is None
 
 
 DISPATCH_FUSED_MOE_KERNEL_CONFIGS = [
