@@ -2674,6 +2674,18 @@ ops:
       - Math
     stages:
       - stable: '5.3'
+  - id: cosine_embedding_loss
+    description: Compute the cosine embedding loss.
+    for:
+      - cosine_embedding_loss
+    labels:
+      - aten
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: count_nonzero
     description: |
       Counts the number of non-zero values in the tensor `input` along the given `dim`.
