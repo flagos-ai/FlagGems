@@ -478,6 +478,13 @@ def _fallback_y0(x):
     return ans
 
 
+@triton.jit
+def _fallback_erfc(x):
+    # erfc(x) == 1 - erf(x); used when a backend's libdevice lacks a native
+    # erfc (e.g. the Ascend CANN backend, which does provide erf).
+    return 1.0 - tl.math.erf(x)
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "tanh": _fallback_tanh,
@@ -489,6 +496,7 @@ _FALLBACK_SYMBOLS = {
     "nextafter": _fallback_nextafter,
     "sinpi": _fallback_sinpi,
     "y0": _fallback_y0,
+    "erfc": _fallback_erfc,
 }
 
 
@@ -525,6 +533,7 @@ tl_extra_shim = _patch_missing_symbols(
         "div_rn",
         "div_rz",
         "erf",
+        "erfc",
         "erfcx",
         "erfinv",
         "exp",
