@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -8,9 +22,9 @@ from . import accuracy_utils as utils
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
-    TE_AVAILABLE = True
+    TE_OP = getattr(tex, "dswiglu", None)
 except ImportError:
-    TE_AVAILABLE = False
+    TE_OP = None
 
 
 def generate_input(
@@ -33,7 +47,7 @@ VALID_POINTWISE_SHAPES = filter_valid_shapes(utils.SWIGLU_SPECIAL_SHAPES)
 
 
 @pytest.mark.dswiglu
-@pytest.mark.skipif(not TE_AVAILABLE, reason="TransformerEngine is required")
+@pytest.mark.skipif(TE_OP is None, reason="'dswiglu' not found in TransformerEngine")
 @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_dswiglu(shape: tuple[int, ...], dtype: torch.dtype):
@@ -46,7 +60,7 @@ def test_dswiglu(shape: tuple[int, ...], dtype: torch.dtype):
     grad_shape[-1] = grad_shape[-1] // 2
     grad_output = generate_input(tuple(grad_shape), dtype, device)
 
-    te_grad_input = tex.dswiglu(grad_output, input_tensor, quantizer=None).to(device)
+    te_grad_input = TE_OP(grad_output, input_tensor, quantizer=None).to(device)
     te_grad_input = utils.to_reference(te_grad_input)
 
     with flag_gems.use_gems():

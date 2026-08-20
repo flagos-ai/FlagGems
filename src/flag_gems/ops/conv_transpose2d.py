@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Triton implementation of ``torch.nn.functional.conv_transpose2d``.
 
 The implementation uses semantic, parameter-regime dispatch only: a direct
@@ -672,13 +686,13 @@ def _conv_transpose2d_residue_kernel(
     height_residue = (output_residue_h + padding_height) % stride_height
     width_residue = (output_residue_w + padding_width) % stride_width
     for kh in range(weight_height):
-        kh_residue: tl.constexpr = (kh * dilation_height) % stride_height
+        kh_residue = (kh * dilation_height) % stride_height
         if kh_residue == height_residue:
             ih_unstrided = oh + padding_height - kh * dilation_height
             ih = ih_unstrided // stride_height
             valid_h = (n < batch_size) & (ih_unstrided >= 0) & (ih < input_height)
             for kw in range(weight_width):
-                kw_residue: tl.constexpr = (kw * dilation_width) % stride_width
+                kw_residue = (kw * dilation_width) % stride_width
                 if kw_residue == width_residue:
                     iw_unstrided = ow + padding_width - kw * dilation_width
                     iw = iw_unstrided // stride_width

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -53,7 +67,7 @@ from .bitwise_xor import (
     bitwise_xor_tensor_,
 )
 from .bmm import bmm, bmm_out
-from .cat import cat
+from .cat import cat, cat_out
 from .ceil import ceil, ceil_
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
@@ -114,10 +128,12 @@ from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
+from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
+from .linear import linear
 from .linspace import linspace
 from .log import log
 from .log_sigmoid import log_sigmoid
@@ -162,6 +178,7 @@ from .pow import (
     pow_tensor_tensor,
     pow_tensor_tensor_,
 )
+from .prelu import prelu
 from .quantile import quantile
 from .randn import randn
 from .randn_like import randn_like
@@ -549,4 +566,9 @@ __all__ = [
     "_upsample_nearest_exact1d_out",
     "_upsample_nearest_exact1d_vec",
     "_saft_softmax",
+    "layer_norm",
+    "layer_norm_backward",
+    "linear",
+    "cat_out",
+    "prelu",
 ]

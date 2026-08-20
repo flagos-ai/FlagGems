@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import os
@@ -9,6 +23,11 @@ from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
+
+# The generated kernel currently produces incorrect addresses for tensors
+# larger than this threshold on TsingMicro. Use the native implementation for
+# those inputs until the large-address kernel issue is resolved.
+_LARGE_INDEX_INPUT_NUMEL = 2**26
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -272,11 +291,16 @@ def index(inp, indices):
         raise ValueError("at least one index must be provided")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
+
+    if inp.numel() >= _LARGE_INDEX_INPUT_NUMEL:
+        return torch.ops.aten.index.Tensor(inp, indices)
 
     # Step 1: Process indices (convert bool/int8 to long, handle None)
     # Following PyTorch meta implementation

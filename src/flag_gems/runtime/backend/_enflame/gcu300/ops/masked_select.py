@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -118,9 +132,9 @@ def masked_select_single_pass_kernel(
 
 @libentry()
 @triton.jit
-def masked_select_out_size(mask_ptr, out_size_ptr, N: tl.constexpr):
-    offsets = tl.arange(0, N)
-    mask = tl.load(mask_ptr + offsets)
+def masked_select_out_size(mask_ptr, out_size_ptr, N, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.arange(0, BLOCK_SIZE)
+    mask = tl.load(mask_ptr + offsets, mask=offsets < N, other=0)
     out_size = tl.sum(mask)
     tl.store(out_size_ptr, out_size)
 
@@ -146,7 +160,7 @@ def masked_select(inp, mask):
     if N <= 4096:
         out_size = torch.zeros([1], dtype=torch.int, device=mask.device)
         with torch_device_fn.device(inp.device):
-            masked_select_out_size[(1,)](mask, out_size, N)
+            masked_select_out_size[(1,)](mask, out_size, N, BLOCK_SIZE=BLOCK_SIZE)
         out = torch.empty(out_size, dtype=inp.dtype, device=inp.device)
         with torch_device_fn.device(inp.device):
             masked_select_single_pass_kernel[(1,)](

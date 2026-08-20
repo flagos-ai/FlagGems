@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -441,7 +455,7 @@ class Conv2d(torch.autograd.Function):
     @staticmethod
     def backward(ctx, out_grad):
         logger.debug("GEMS_SUNRISE CONV2D_VJP")
-        (weight, input, bias) = ctx.saved_tensors
+        weight, input, bias = ctx.saved_tensors
         # (out_c equals origin cout divide groups)
         out_c, weight_c, weight_height, weight_width = ctx.weight_info
         in_n, input_height, input_width = ctx.input_info
@@ -600,9 +614,7 @@ class Conv2d(torch.autograd.Function):
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     if isinstance(padding, str):
         if padding == "same":
-            assert (
-                stride == 1
-            ), "Doesn't support any stride values other than 1 \
+            assert stride == 1, "Doesn't support any stride values other than 1 \
                 in padding = 'same' mode, received stride value {stride}"
             ih = input.shape[-2]
             iw = input.shape[-1]

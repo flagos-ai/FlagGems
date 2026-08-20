@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -209,16 +223,24 @@ def vdot(input: Tensor, other: Tensor):
     other_stride = other.stride()[0]
 
     if inp.is_complex():
+        # resolve_conj physically materializes the logical values (with conj applied),
+        # so after resolution we treat them as non-conjugated tensors.
+        if inp.is_conj():
+            inp = torch.resolve_conj(inp)
+        if other.is_conj():
+            other = torch.resolve_conj(other)
+
+        # vdot semantics: sum(conj(inp) * other)
+        # After resolve_conj, inp/other hold their logical values.
+        # We still need to conjugate inp for the vdot formula.
+        # So inp_is_conj=False means "this tensor is NOT pre-conjugated",
+        # and the kernel should apply conj to it (Case 1 does conj(inp)*other).
         inp_is_conj = False
         other_is_conj = False
 
-        if inp.is_conj():
-            inp_is_conj = True
-            inp = inp.conj()
-
-        if other.is_conj():
-            other_is_conj = True
-            other = other.conj()
+        # Get strides AFTER resolving conj (resolve_conj may return contiguous copy)
+        inp_stride = inp.stride()[0]
+        other_stride = other.stride()[0]
 
         inp_real = torch.view_as_real(inp)
         other_real = torch.view_as_real(other)
@@ -234,7 +256,7 @@ def vdot(input: Tensor, other: Tensor):
         grid_size = min(num_blocks, 1024)
 
         partial_real_sums = torch.empty(
-            grid_size, dtype=inp_real.dtype, device=inp.device
+            grid_size * 2, dtype=inp_real.dtype, device=inp.device
         )
         grid = (grid_size,)
         vdot_kernel_complex[grid](

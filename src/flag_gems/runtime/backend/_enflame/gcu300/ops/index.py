@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import os
@@ -39,14 +53,28 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
     code.newline()
-    code.writeline("from flag_gems.utils import libentry, libtuner")
-    code.writeline("from flag_gems import runtime")
+    code.writeline("from flag_gems.utils import libentry")
     code.writeline("from flag_gems.utils.shape_utils import volume")
     code.writeline("from flag_gems.utils import triton_lang_extension as ext")
     code.newline()
     code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
     code.writeline("_has_strided_buffer = True")
 
+    code.newline()
+    code.writeline("# GCU300 hardware limits")
+    code.writeline("_GCU_MMU_SOFT = 512 * 1024 * 1024  # 512MB")
+    code.writeline("_GCU_MMU_HARD = 766 * 1024 * 1024  # 766MB")
+    code.writeline("_GCU_MAX_GRID = 65535")
+    code.writeline("_GCU_MAX_GRID_Y = 255")
+    code.newline()
+    code.writeline("def _gcu_max_block(stride, budget, esz):")
+    with code.indent():
+        code.writeline("if stride == 0:")
+        with code.indent():
+            code.writeline("return 1024")
+        code.writeline(
+            "return max(1, 1 << ((budget // esz // stride + 1).bit_length() - 1))"
+        )
     code.newline()
     code.newline()
     return code
@@ -56,14 +84,6 @@ def generate_index_kernel(
     inp_rank, indices_len, index_rank, kernel_name: str, code: IndentedBuffer
 ):
     code.writeline("@libentry()")
-    code.writeline("@libtuner(")
-    with code.indent():
-        code.writeline('configs=runtime.get_tuned_config("index"),')
-        code.writeline('key=["M", "N"],')
-        code.writeline('strategy=["align32", "align32"],')
-        code.writeline("warmup=5,")
-        code.writeline("rep=10,")
-    code.writeline(")")
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
     with code.indent():
@@ -80,6 +100,12 @@ def generate_index_kernel(
         args += [
             "M,",
             "N,",
+            "m_offset,",
+            "n_offset,",
+        ]
+        args += [f"indices{i}_empty: tl.constexpr," for i in range(indices_len)]
+        args += [f"indices{i}_safe_ptr," for i in range(indices_len)]
+        args += [
             "BLOCK_SIZE0: tl.constexpr,",
             "BLOCK_SIZE1: tl.constexpr,",
         ]
@@ -104,16 +130,24 @@ def generate_index_kernel(
             code.writeline(f"indices_idx{i} = cur_idx % indices0_shape{i}")
             code.writeline(f"cur_idx = cur_idx // indices0_shape{i}")
         code.newline()
-        code.writeline("cur_idx = offset1")
+        code.writeline("cur_idx = offset1 + n_offset")
         for i in range(inp_rank - 1, indices_len - 1, -1):
             code.writeline(f"input_idx{i} = cur_idx % input_shape{i}")
             code.writeline(f"cur_idx = cur_idx // input_shape{i}")
         code.newline()
         code.writeline("mask0 = offset0 < M")
+        # GCU hardware validates addresses at instruction issue time, before mask.
+        # When indices tensor is empty (null pointer), substitute input_ptr as safe
+        # address and force mask to False to prevent null pointer access.
+        for i in range(indices_len):
+            code.writeline(
+                f"_idx_ptr{i} = tl.where(indices{i}_empty != 0, indices{i}_safe_ptr, indices{i}_ptr)"
+            )
+            code.writeline(f"_idx_mask{i} = mask0 & (indices{i}_empty == 0)")
         for i in range(indices_len):
             comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
             code.writeline(
-                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
+                f"cur_index{i} = tl.load(_idx_ptr{i} + {' + '.join(comp)}, mask=_idx_mask{i}, other=0)"
             )
         code.newline()
         index_mask = [
@@ -124,12 +158,21 @@ def generate_index_kernel(
         code.writeline("mask1 = offset1 < N")
         code.writeline("mask = index_mask & mask0 & mask1")
         code.newline()
-        comp = [f"cur_index{i} * input_stride{i}" for i in range(indices_len)]
+        # GCU hardware validates addresses at instruction issue time, before mask.
+        # Clamp indices to valid range to prevent invalid address computation.
+        for i in range(indices_len):
+            code.writeline(
+                f"safe_index{i} = tl.where(cur_index{i} >= 0, "
+                f"tl.minimum(cur_index{i}, input_shape{i} - 1), 0)"
+            )
+        comp = [f"safe_index{i} * input_stride{i}" for i in range(indices_len)]
         comp += [
             f"input_idx{i} * input_stride{i}" for i in range(indices_len, inp_rank)
         ]
         code.writeline(f"input_offset = {' + '.join(comp)}")
-        comp = [f"indices_idx{i} * out_stride{i}" for i in range(index_rank)]
+        # indices_idx{i} is relative to M-chunk; add m_offset for absolute position
+        comp = ["(indices_idx0 + m_offset) * out_stride0"]
+        comp += [f"indices_idx{i} * out_stride{i}" for i in range(1, index_rank)]
         comp += [
             f"input_idx{indices_len + i} * out_stride{index_rank + i}"
             for i in range(inp_rank - indices_len)
@@ -154,6 +197,7 @@ def generate_index_wrapper(
 ):
     code.writeline(f"def {wrapper_name}(input, indices, out):")
     with code.indent():
+        # --- dtype conversion (int64 -> int32 for GCU300) ---
         code.writeline("# convert all the inputs to int32 only if they are int64")
         code.writeline("if input.dtype == torch.int64:")
         code.writeline("  if _has_strided_buffer and isinstance(input, StridedBuffer):")
@@ -170,6 +214,16 @@ def generate_index_wrapper(
         code.writeline("  out_int64 = out")
         code.writeline("  out = out.to(torch.int32)")
         code.newline()
+
+        # --- safe dummy buffers for null pointer protection on GCU ---
+        # Same dtype as each indices tensor so tl.where can select between them.
+        for i in range(indices_len):
+            code.writeline(
+                f"_safe_buf{i} = torch.zeros(1, dtype=indices[{i}].dtype, device=indices[{i}].device)"
+            )
+        code.newline()
+
+        # --- shape/stride setup ---
         code.writeline("input_shape = input.shape")
         code.writeline("input_stride = input.stride()")
         for i in range(indices_len):
@@ -179,30 +233,121 @@ def generate_index_wrapper(
         code.writeline("out_stride = out.stride()")
         code.writeline("M = indices[0].numel()")
         code.writeline(f"N = volume(input_shape[{indices_len}: ])")
+        code.writeline("element_size = input.element_size()")
         code.newline()
-        code.writeline("grid = lambda meta: (")
-        with code.indent():
-            code.writeline("triton.cdiv(M, meta['BLOCK_SIZE0']), ")
-            code.writeline("triton.cdiv(N, meta['BLOCK_SIZE1']), ")
-        code.writeline(")")
+
+        # --- BLOCK_SIZE0 = 1 (required for indirect indexing on GCU) ---
+        # safe_index is an indirect index loaded from the indices tensor.
+        # Its value range is [0, input_shape-1], so the MMU span for
+        # indexed dims is (shape-1)*stride*element_size, independent of
+        # BLOCK_SIZE0. Setting BLOCK_SIZE0=1 makes each block touch
+        # exactly 1 row, so indexed dims contribute 0 to per-block span.
+        code.writeline("BLOCK_SIZE0 = 1")
         code.newline()
-        code.writeline(f"{kernel_name}[grid](")
+
+        # --- BLOCK_SIZE1: auto-select from MMU budget ---
+        # Only non-indexed (direct/contiguous) dims contribute to MMU span:
+        #   span = sum(stride_i * (BLOCK_i - 1)) * element_size
+        # For BLOCK_SIZE0=1, indexed dims contribute 0.
+        # For non-indexed dims, we use a single BLOCK_SIZE1 for all of them.
+        # Compute the effective stride sum for non-indexed dims.
+        code.writeline("_mmu_stride_sum = 0")
+        for i in range(indices_len, inp_rank):
+            code.writeline(f"_mmu_stride_sum += input_stride[{i}]")
+        for i in range(inp_rank - indices_len):
+            out_idx = index_rank + i
+            code.writeline(f"_mmu_stride_sum += out_stride[{out_idx}]")
+        code.writeline(
+            "BLOCK_SIZE1 = min(_gcu_max_block(_mmu_stride_sum, _GCU_MMU_SOFT, element_size), 1024)"
+        )
+        code.writeline("BLOCK_SIZE1 = max(BLOCK_SIZE1, 1)")
+        code.newline()
+
+        # --- MMU span verification ---
+        code.writeline("_mmu_span = _mmu_stride_sum * (BLOCK_SIZE1 - 1) * element_size")
+        code.writeline("if _mmu_span > _GCU_MMU_HARD:")
+        code.writeline(
+            '  raise RuntimeError(f"[MMU] span {{_mmu_span/(1024*1024):.1f}}MB '
+            'exceeds 766MB. BLOCK_SIZE1={{BLOCK_SIZE1}}")'
+        )
+        code.newline()
+
+        # --- chunked launch along dim0 and N dimensions ---
+        # Chunk along indices dim0 (not flat M) to keep flat-to-multidim
+        # decomposition consistent within each chunk.
+        # grid_x <= _GCU_MAX_GRID (65535), grid_y <= _GCU_MAX_GRID_Y (255)
+        code.writeline("_dim0_size = indices[0].shape[0]")
+        code.writeline("_inner_size = M // _dim0_size if _dim0_size > 0 else 1")
+        code.writeline(
+            "_d0_chunk = _GCU_MAX_GRID // _inner_size if _inner_size > 0 else _GCU_MAX_GRID"
+        )
+        code.writeline("_d0_chunk = max(_d0_chunk, 1)")
+        code.writeline("_n_d0chunks = (_dim0_size + _d0_chunk - 1) // _d0_chunk")
+        code.writeline("_n_chunk = _GCU_MAX_GRID_Y * BLOCK_SIZE1")
+        code.writeline("_n_nchunks = (N + _n_chunk - 1) // _n_chunk")
+        code.newline()
+        code.writeline("for _mi in range(_n_d0chunks):")
         with code.indent():
-            args = ["input,"]
-            args += [f"indices[{i}]," for i in range(indices_len)]
-            args += ["out,"]
-            args += [f"input_shape[{i}]," for i in range(inp_rank)]
+            code.writeline("_d0s = _mi * _d0_chunk")
+            code.writeline("_d0e = min(_d0s + _d0_chunk, _dim0_size)")
+            code.writeline("_cD0 = _d0e - _d0s")
+            code.writeline("if _cD0 == 0:")
+            with code.indent():
+                code.writeline("continue")
+            code.writeline("_cM = _cD0 * _inner_size")
+            code.writeline("_gx = (_cM + BLOCK_SIZE0 - 1) // BLOCK_SIZE0")
+            code.writeline(
+                'assert _gx <= _GCU_MAX_GRID, f"grid_x={{_gx}} > {{_GCU_MAX_GRID}}"'
+            )
+            code.newline()
+            # Slice indices along dim0 for this chunk
             for i in range(indices_len):
-                args += [f"indices{i}_shape[{j}]," for j in range(index_rank)]
-            args += [f"input_stride[{i}]," for i in range(inp_rank)]
-            for i in range(indices_len):
-                args += [f"indices{i}_stride[{j}]," for j in range(index_rank)]
-            args += [
-                f"out_stride[{i}]," for i in range(index_rank + inp_rank - indices_len)
-            ]
-            args += ["M,", "N,"]
-            code.writelines(args)
-        code.writeline(")")
+                code.writeline(f"_cidx{i} = indices[{i}][_d0s:_d0e]")
+            code.newline()
+            # m_offset in output dim0 units (not flat)
+            code.writeline("_m_offset = _d0s")
+            code.newline()
+            code.writeline("for _ni in range(_n_nchunks):")
+            with code.indent():
+                code.writeline("_ns = _ni * _n_chunk")
+                code.writeline("_ne = min(_ns + _n_chunk, N)")
+                code.writeline("_cN = _ne - _ns")
+                code.writeline("_gy = (_cN + BLOCK_SIZE1 - 1) // BLOCK_SIZE1")
+                code.writeline(
+                    "assert _gy <= _GCU_MAX_GRID_Y, "
+                    'f"grid_y={{_gy}} > {{_GCU_MAX_GRID_Y}}"'
+                )
+                code.newline()
+                # Kernel launch with full output tensor + offsets
+                code.writeline(f"{kernel_name}[(_gx, _gy)](")
+                with code.indent():
+                    args = ["input,"]
+                    for i in range(indices_len):
+                        args += [f"_cidx{i},"]
+                    args += ["out,"]  # full output tensor
+                    args += [f"input_shape[{i}]," for i in range(inp_rank)]
+                    for i in range(indices_len):
+                        args += [f"_cidx{i}.shape[{j}]," for j in range(index_rank)]
+                    args += [f"input_stride[{i}]," for i in range(inp_rank)]
+                    for i in range(indices_len):
+                        args += [f"indices{i}_stride[{j}]," for j in range(index_rank)]
+                    args += [
+                        f"out_stride[{i}],"
+                        for i in range(index_rank + inp_rank - indices_len)
+                    ]
+                    args += ["_cM,", "_cN,", "_m_offset,", "_ns,"]
+                    code.writelines(args)
+                code.writeline("BLOCK_SIZE0=BLOCK_SIZE0,")
+                code.writeline("BLOCK_SIZE1=BLOCK_SIZE1,")
+                # constexpr flags and safe ptrs as kwargs
+                for i in range(indices_len):
+                    code.writeline(f"indices{i}_empty=0,")
+                for i in range(indices_len):
+                    code.writeline(f"indices{i}_safe_ptr=_safe_buf{i},")
+                code.writeline(")")
+        code.newline()
+
+        # --- post-process ---
         code.writeline("if out_int64 is not None:")
         code.writeline("  out_int64.copy_(out.to(torch.int64))")
         code.writeline("return input")
@@ -292,9 +437,11 @@ def index(inp, indices):
         raise ValueError("at least one index must be provided")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 
@@ -432,7 +579,7 @@ def index(inp, indices):
 
     # Step 7: Handle empty tensor case
     if inp.numel() == 0:
-        return out
+        return out.contiguous()
 
     # Step 8: Extract only tensor indices for kernel
     tensor_indices = [idx for idx in indices if idx is not None]
@@ -453,5 +600,8 @@ def index(inp, indices):
         post_dims = list(range(index_rank + first_tensor_dim, out.ndim))
         new_order = pre_dims + broadcast_dims + post_dims
         out = out.permute(new_order)
+        result = torch.empty(out.shape, dtype=out.dtype, device=out.device)
+        result.copy_(out)
+        out = result
 
-    return out
+    return out.view(out.shape)
