@@ -1275,6 +1275,20 @@ def scaled_dot_product_flash_attention(
     B, H, S_q, D = query.shape
     S_kv = key.shape[2]
 
+    if runtime.device.vendor_name == "ascend":
+        out = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            dropout_p=dropout_p,
+            is_causal=is_causal,
+            scale=scale,
+        )
+        lse = torch.empty(B, H, S_q, dtype=torch.float32, device=query.device)
+        philox_seed = torch.empty((), dtype=torch.int64, device=query.device)
+        philox_offset = torch.empty((), dtype=torch.int64, device=query.device)
+        return (out, lse, None, None, S_q, S_kv, philox_seed, philox_offset, None)
+
     q = query.transpose(1, 2)
     k = key.transpose(1, 2)
     v = value.transpose(1, 2)
