@@ -25,7 +25,7 @@ from flag_gems.ops.topk import (
     topk_stage2_kernel,
 )
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
 if HAS_TLE:
@@ -157,117 +157,53 @@ def get_topk_bubble_res_2k(buffer, buffer_ind, k, axis, mask_val, DESCENDING, BL
     return ret, ret_ind
 
 
-BLOCK_BATCH = [1, 16]
-BLOCK_N = [128, 512, 1024, 2048]
-
 NRAM_LIMIT = 524288  # bytes, MLU hardware limit
 
 
-def topk_cfggen():
-    num_stage = [1, 3]
-    configs = [
-        triton.Config({"TILE_M": m, "TILE_N": n}, num_warps=1, num_stages=s)
-        for m in BLOCK_BATCH
-        for n in BLOCK_N
-        for s in num_stage
-    ]
-    return configs
+def _bubble_nram_estimate(tile_m, tile_n, k, dtype_size, idx_size=8):
+    # NRAM accounting for the bubble kernel's incremental-merge buffers.
+    return (
+        tile_m * k * dtype_size
+        + tile_m * k * idx_size
+        + tile_m * 2 * k * dtype_size
+        + tile_m * 2 * k * idx_size
+        + tile_m * tile_n * dtype_size
+        + tile_m * tile_n * dtype_size
+        + tile_m * tile_n * idx_size
+        + tile_m * k * dtype_size
+        + tile_m * k * idx_size
+        + tile_m * 2 * k * dtype_size
+        + tile_m * 2 * k * idx_size
+        + tile_m * k * dtype_size
+        + tile_m * k * idx_size
+    )
 
 
-def topk_config_prune(configs, named_args, **kwargs):
-    k = named_args["k"]
-    N = named_args["N"]
-    block_m = named_args["BLOCK_M"]
-    dtype_size = named_args.get("DTYPE_SIZE", kwargs.get("DTYPE_SIZE", 4))
-    idx_size = 8  # int64 for index
-    new_configs = []
+def pick_bubble_config(k, N, block_m, dtype_size):
+    """Deterministically pick (TILE_M, TILE_N, num_stages) for the bubble kernel.
 
-    for config in configs:
-        tile_n = config.kwargs["TILE_N"]
-        tile_m = config.kwargs["TILE_M"]
-        if tile_n < k or tile_m > block_m:
-            continue
-        if len(new_configs) >= 1:
-            last_tn = new_configs[-1].kwargs["TILE_N"]
-            last_tm = new_configs[-1].kwargs["TILE_M"]
-            if tile_n > N and last_tn >= N and last_tm == tile_m:
-                continue
+    Replaces the @libtuner autotune which compiled every pruned candidate
+    (~79s each, 600s+ total on first call). Prior autotuning showed
+    TILE_N=512, num_stages=3 as the consistent winner, so we prefer that and
+    only fall back to other tiles when the NRAM budget is exceeded.
+    """
+    # Prefer TILE_M=16 (more rows per core), fall back to 1; never exceed block_m.
+    tile_m_pref = [m for m in (16, 1) if m <= block_m] or [1]
+    # 512 is the tuned winner; keep larger/smaller tiles as NRAM fallbacks.
+    tile_n_pref = [tn for tn in (512, 1024, 2048, 128) if tn >= k]
+    if not tile_n_pref:
+        tile_n_pref = [triton.next_power_of_2(k)]
 
-        # NRAM budget check (incremental merge version):
-        # topk_buffer_n:     [tile_m, k]      * dtype_size
-        # topk_buffer_index: [tile_m, k]      * idx_size
-        # merge_buffer:      [tile_m, 2*k]    * dtype_size
-        # merge_buffer_ind:  [tile_m, 2*k]    * idx_size
-        # block_inp_val:     [tile_m, tile_n] * dtype_size
-        # bubble_res kep:    [tile_m, tile_n] * dtype_size
-        # bubble_res idx:    [tile_m, tile_n] * idx_size
-        # bubble_res ret/ind:[tile_m, k]      * (dtype+idx)
-        # bubble_res_2k kep: [tile_m, 2*k]    * dtype_size
-        # bubble_res_2k idx: [tile_m, 2*k]    * idx_size
-        # bubble_res_2k ret: [tile_m, k]      * (dtype+idx)
-        nram_estimate = (
-            tile_m * k * dtype_size
-            + tile_m * k * idx_size
-            + tile_m * 2 * k * dtype_size
-            + tile_m * 2 * k * idx_size
-            + tile_m * tile_n * dtype_size
-            + tile_m * tile_n * dtype_size
-            + tile_m * tile_n * idx_size
-            + tile_m * k * dtype_size
-            + tile_m * k * idx_size
-            + tile_m * 2 * k * dtype_size
-            + tile_m * 2 * k * idx_size
-            + tile_m * k * dtype_size
-            + tile_m * k * idx_size
-        )
-        if nram_estimate > NRAM_LIMIT:
-            continue
+    for tile_m in tile_m_pref:
+        for tile_n in tile_n_pref:
+            if _bubble_nram_estimate(tile_m, tile_n, k, dtype_size) <= NRAM_LIMIT:
+                return tile_m, tile_n, 3
 
-        config.kwargs["TILE_M_NUM"] = triton.cdiv(block_m, tile_m)
-        config.kwargs["TILE_N_NUM"] = triton.cdiv(N, tile_n)
-        new_configs.append(config)
-
-    if (N not in BLOCK_N) and (N <= max(BLOCK_N)):
-        for tm in BLOCK_BATCH:
-            tile_n = N
-            tile_m = tm
-            nram_estimate = (
-                tile_m * k * dtype_size
-                + tile_m * k * idx_size
-                + tile_m * 2 * k * dtype_size
-                + tile_m * 2 * k * idx_size
-                + tile_m * tile_n * dtype_size
-                + tile_m * tile_n * dtype_size
-                + tile_m * tile_n * idx_size
-                + tile_m * k * dtype_size
-                + tile_m * k * idx_size
-                + tile_m * 2 * k * dtype_size
-                + tile_m * 2 * k * idx_size
-                + tile_m * k * dtype_size
-                + tile_m * k * idx_size
-            )
-            if nram_estimate > NRAM_LIMIT:
-                continue
-            new_configs.append(
-                triton.Config(
-                    {
-                        "TILE_M": tm,
-                        "TILE_N": N,
-                        "TILE_M_NUM": triton.cdiv(block_m, tm),
-                        "TILE_N_NUM": 1,
-                    },
-                    num_warps=1,
-                    num_stages=3,
-                )
-            )
-    return new_configs
+    # Last resort: smallest tiles, still respecting k.
+    tile_n = tile_n_pref[-1]
+    return 1, tile_n, 1
 
 
-@libtuner(
-    configs=topk_cfggen(),
-    key=["k", "N", "M", "BLOCK_M", "DTYPE_SIZE"],
-    prune_configs_by={"early_config_prune": topk_config_prune},
-)
 @libentry()
 @triton.jit
 def topk_bubble_kernel(
@@ -633,7 +569,6 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         return (topk_out, topk_out_idx)
 
     if k <= math.log2(topk_elem_cnt):
-        logger.debug("GEMS_CAMBRICON TOPK")
         topk_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
         topk_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
 
@@ -641,6 +576,9 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
             return (min(batch_size, TOTAL_CORE_NUM),)
 
         block_m = triton.cdiv(batch_size, TOTAL_CORE_NUM)
+        tile_m, tile_n, num_stages = pick_bubble_config(
+            k, topk_elem_cnt, block_m, x.element_size()
+        )
         topk_bubble_kernel[grid_fn](
             x,
             topk_out,
@@ -649,12 +587,17 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
             batch_size,
             topk_elem_cnt,
             block_m,
+            TILE_M=tile_m,
+            TILE_N=tile_n,
+            TILE_M_NUM=triton.cdiv(block_m, tile_m),
+            TILE_N_NUM=triton.cdiv(topk_elem_cnt, tile_n),
             DESCENDING=descending,
             DTYPE_SIZE=x.element_size(),
+            num_warps=1,
+            num_stages=num_stages,
         )
         return (topk_out, topk_out_idx)
     else:
-        logger.debug("GEMS_CAMBRICON TOPK")
         # Note(Zhengzekang): Maybe we should add a heuristic search in selecting a proper chunk size.
         if topk_elem_cnt < 1024:
             chunk_size = 256
@@ -704,6 +647,9 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
                 return (min(batch_size, TOTAL_CORE_NUM),)
 
             block_m = triton.cdiv(batch_size, TOTAL_CORE_NUM)
+            tile_m, tile_n, num_stages = pick_bubble_config(
+                k, topk_elem_cnt, block_m, x.element_size()
+            )
             topk_bubble_kernel[grid_fn](
                 x,
                 topk_out,
@@ -712,8 +658,14 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
                 batch_size,
                 topk_elem_cnt,
                 block_m,
+                TILE_M=tile_m,
+                TILE_N=tile_n,
+                TILE_M_NUM=triton.cdiv(block_m, tile_m),
+                TILE_N_NUM=triton.cdiv(topk_elem_cnt, tile_n),
                 DESCENDING=descending,
                 DTYPE_SIZE=x.element_size(),
+                num_warps=1,
+                num_stages=num_stages,
             )
             return (topk_out, topk_out_idx)
 

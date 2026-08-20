@@ -31,10 +31,16 @@ def _input_fn(shape, dtype, device):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_multinomial_with_replacement():
+    dtypes = consts.FLOAT_DTYPES
+    if flag_gems.vendor_name == "cambricon":
+        # CNNL's native multinomial (cnnlGenerateRandMultinomial) does not
+        # support bfloat16, so the torch baseline raises CNNL_STATUS_BAD_PARAM
+        # and there is nothing to benchmark against. Drop bf16 on Cambricon.
+        dtypes = [d for d in consts.FLOAT_DTYPES if d != torch.bfloat16]
     bench = base.GenericBenchmark2DOnly(
         input_fn=_input_fn,
         op_name="multinomial",
         torch_op=torch.multinomial,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=dtypes,
     )
     bench.run()

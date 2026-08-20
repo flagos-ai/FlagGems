@@ -320,6 +320,7 @@ from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .view_copy import view_copy
 from .vstack import vstack
+from ._weight_norm import _weight_norm
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zero import zero, zero_out
@@ -750,6 +751,7 @@ __all__ = [
     "vector_norm",
     "view_copy",
     "vstack",
+    "_weight_norm",
     "weight_norm_interface",
     "weight_norm_interface_backward",
     "where_self",

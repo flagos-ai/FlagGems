@@ -54,13 +54,13 @@ def limit_grid(grid_0, grid_1):
 
 
 @libtuner(
+    # 精简后的 config: 前向 tile 的是输出空间, 实测最佳始终是 num_warps=1 的
+    # 小 block(8x8 / 8x16 / 16x8), num_warps=4 的大 block(16x16/16x32/32x32)
+    # 几乎总是垫底, 故全部移除。三个候选覆盖方形/宽/高三种输出形状:
     configs=[
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 32}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 8}, num_stages=5, num_warps=1),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 16}, num_stages=5, num_warps=1),
         triton.Config({"BLOCK_H": 8, "BLOCK_W": 8}, num_stages=5, num_warps=1),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 32}, num_stages=2, num_warps=4),
+        triton.Config({"BLOCK_H": 8, "BLOCK_W": 16}, num_stages=5, num_warps=1),
+        triton.Config({"BLOCK_H": 16, "BLOCK_W": 8}, num_stages=5, num_warps=1),
     ],
     key=["out_h", "out_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
     strategy=["align32", "align32", "align32", "align32", "align32", "align32"],
@@ -166,19 +166,20 @@ def max_pool2d_forward_kernel(
 
 
 @libtuner(
+    # 精简后的 config: 实测 num_stages 对本 kernel 性能无影响(0/5 耗时相同),
+    # 故统一固定 num_stages=0; 最佳 BLOCK 只随输入尺寸 in_h*in_w 变化, 与
+    # kernel/stride/dtype 无关, 保留覆盖 小/中/大 三档尺寸的 4 个 tile 即可:
+    #   8x16  -> 小图 (<=16),  16x32/32x32 -> 中图 (28~32),  32x64 -> 大图 (>=56)
+    # 精简后的 config: 实测 num_stages 对本 kernel 性能无影响(0/5 耗时相同),
+    # 故统一固定 num_stages=0; 最佳 BLOCK 只随输入尺寸 in_h*in_w 变化, 与
+    # kernel/stride/dtype 无关。
+    # 注意: 32x64 在中小 shape(如 28x28)上实测为 inf(编译/执行卡死), 且在
+    # 大图(56x56)上仅比 32x32 快约 30%, 权衡卡死风险后移除, 保留下面 3 档:
+    #   8x16 -> 小图 (<=16),  16x32 -> 中图,  32x32 -> 中大图 (28~56)
     configs=[
-        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 32}, num_warps=1, num_stages=0),
-        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 32}, num_warps=1, num_stages=5),
-        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 64}, num_warps=1, num_stages=0),
-        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 64}, num_warps=1, num_stages=5),
         triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 16}, num_warps=1, num_stages=0),
-        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 16}, num_warps=1, num_stages=5),
-        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 32}, num_warps=1, num_stages=0),
-        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 8}, num_warps=1, num_stages=0),
-        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 8}, num_warps=1, num_stages=5),
-        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 16}, num_warps=1, num_stages=5),
+        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 32}, num_warps=1, num_stages=0),
         triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 32}, num_warps=1, num_stages=0),
-        triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 32}, num_warps=1, num_stages=5),
     ],
     key=["in_h", "in_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
     strategy=["align32", "align32", "align32", "align32", "align32", "align32"],
