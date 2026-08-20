@@ -3655,6 +3655,18 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: fake_quantize_per_channel_affine_cachemask_backward
+    description: Applies the cache mask to the gradient of per-channel affine fake quantization.
+    for:
+      - fake_quantize_per_channel_affine_cachemask_backward
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
   - id: feature_dropout
     description: |
       Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.
