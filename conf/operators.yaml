@@ -12279,6 +12279,16 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.0'
+  - id: view_as_complex
+    description: Returns a view of the real input tensor as a complex tensor (zero-copy view operation).
+    for:
+      - view_as_complex
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: view_copy
     description: |
       Returns a copy of the tensor with the specified shape.

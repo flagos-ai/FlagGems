@@ -1118,6 +1118,7 @@ _FULL_CONFIG = (
     ("var.dim", var_dim),
     ("var_mean.correction", var_mean),
     ("vdot", vdot),
+    ("view_as_complex", view_as_complex),
     ("view_copy", view_copy),
     ("vstack", vstack),
     ("weight_int8pack_mm", weight_int8pack_mm),
