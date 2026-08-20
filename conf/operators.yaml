@@ -146,6 +146,19 @@ ops:
       - Quantization
     stages:
       - beta: '5.3'
+  - id: adaptive_avg_pool1d
+    description: |
+      Applies a one-dimensional adaptive average pooling over an input signal,
+      producing an output of the requested length.
+    for:
+      - adaptive_avg_pool1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: adaptive_avg_pool2d
     description: |
       Apply a 2D adaptive average pooling over an input signal composed of several input planes.
@@ -1417,6 +1430,21 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: batch_norm_impl_index_backward
+    description: |
+      Backward pass dispatcher for `_batch_norm_impl_index`. Selects the
+      matching batch-norm backward backend (native / cudnn / miopen) from the
+      `impl_index` returned by the forward and produces the gradients with
+      respect to the input, weight and bias.
+    for:
+      - _batch_norm_impl_index_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_no_update
     description: Applies Batch Normalization using precomputed running statistics without updating running_mean/running_var.
     for:
@@ -2489,6 +2517,26 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: convolution_double_backward
+    description: |
+      Second-order backward of a convolution, supporting both 1D (3-D operands
+      [N, C, L]) and 2D (4-D operands [N, C, H, W]) cases. Given the gradients of
+      the first-order gradients (ggI, ggW, ggb) and the output gradient (gO),
+      returns the gradients of the scalar `<gX, ggI> + <gW, ggW> + <gB, ggb>` with
+      respect to (gO, input, weight). The 2D path runs on Triton conv /
+      conv-transpose kernels plus a custom Triton weight-gradient correlation
+      kernel; 1D reuses the 2D path by unsqueezing the lone spatial axis
+      (mirroring how `conv1d` delegates to `conv2d`). 3D (5-D operands) is not
+      yet supported and raises `NotImplementedError`.
+    for:
+      - _convolution_double_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - alpha: '5.4'
   - id: convolution_mode
     description: |
       Low-level dispatcher backing the string-padding form of convolution.
@@ -2985,6 +3033,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: dist
+    description: |
+      Computes the p-norm distance between two tensors.
+    for:
+      - dist
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dispatch_fused_moe_kernel
     description: |
       Accelerates neural network training by combining token routing (dispatch/all-to-all communication),
@@ -3655,6 +3715,30 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: fake_quantize_per_channel_affine_cachemask
+    description: Applies per-channel affine fake quantization and returns the quantization-range mask.
+    for:
+      - fake_quantize_per_channel_affine_cachemask
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
+  - id: fake_quantize_per_channel_affine_cachemask_out
+    description: A variant of `fake_quantize_per_channel_affine_cachemask` that assigns the results to the provided output tensors.
+    for:
+      - fake_quantize_per_channel_affine_cachemask.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
   - id: feature_dropout
     description: |
       Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.
@@ -3910,6 +3994,72 @@ ops:
     description: Triton kernel implementation for float_power_.
     for:
       - float_power_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_scalar_tensor
+    description: Computes a scalar base raised element-wise to tensor exponents in float64.
+    for:
+      - float_power.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_scalar_tensor_out
+    description: Out variant of float_power.Scalar.
+    for:
+      - float_power.Scalar_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_scalar
+    description: Raises tensor elements to a scalar exponent in float64.
+    for:
+      - float_power.Tensor_Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_scalar_out
+    description: Out variant of float_power.Tensor_Scalar.
+    for:
+      - float_power.Tensor_Scalar_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_tensor
+    description: Raises tensor elements to tensor exponents in float64 with broadcasting.
+    for:
+      - float_power.Tensor_Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_tensor_out
+    description: Out variant of float_power.Tensor_Tensor.
+    for:
+      - float_power.Tensor_Tensor_out
     labels:
       - aten
       - KernelGen
@@ -5299,6 +5449,30 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: index_fill
+    description: |
+      Fills elements of the input tensor with a scalar or 0-dimensional tensor value
+      at positions selected by `index` along the given `dim`.
+    for:
+      - index_fill.int_Scalar
+      - index_fill.int_Tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: index_fill_
+    description: The in-place version of `index_fill()`.
+    for:
+      - index_fill_.int_Scalar
+      - index_fill_.int_Tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: index_put
     description: |
       Puts values from the tensor `values` into the tensor `input` using the indices specified
@@ -6122,6 +6296,21 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_matrix_norm
+    description: |
+      Computes the matrix norm over the given dimensions.
+      Supports ord values: 1, -1, 2, -2, inf, -inf, 'fro', 'nuc'.
+      For ord=2/-2/nuc, internally uses SVD (singular value decomposition).
+      For ord=1/-1/inf/-inf, uses max/min absolute column/row sums.
+      For ord='fro', uses Frobenius norm via per-row L2 reduction.
+    for:
+      - linalg_matrix_norm
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
@@ -6237,6 +6426,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: list_to_tensor
+    description: |
+      Constructs a 1-D int32 tensor from a Python list of integers. This is an
+      IR/prim operator; the FlagGems implementation copies the values into the
+      output tensor with a Triton kernel.
+    for:
+      - _list_to_tensor
+    labels:
+      - aten
+      - KernelGen
+      - IR
   - id: log
     description: Returns a new tensor with the natural logarithm of the elements of `input`.
     for:
@@ -7030,6 +7230,22 @@ ops:
       - tensor
     stages:
       - stable: '4.2'
+  - id: masked_scatter_backward
+    description: |
+      Backward of `masked_scatter` with respect to the `source` tensor.
+      Returns a tensor of shape `sizes` where the first ``mask.sum()`` elements
+      are the gradient values from the positions where ``mask`` was True
+      (obtained via stream-compaction / masked_select), and the remaining
+      elements are zero (the tail of `source` that was never consumed by the
+      forward pass).
+    for:
+      - masked_scatter_backward
+    labels:
+      - aten
+    kind:
+      - tensor
+    stages:
+      - alpha: '5.4'
   - id: masked_select
     description: |
       Returns a new 1-D tensor which indexes the `input` tensor according to
@@ -12214,6 +12430,16 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.0'
+  - id: view_as_complex
+    description: Returns a view of the real input tensor as a complex tensor (zero-copy view operation).
+    for:
+      - view_as_complex
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: view_copy
     description: |
       Returns a copy of the tensor with the specified shape.

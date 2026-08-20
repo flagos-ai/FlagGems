@@ -33,6 +33,9 @@ from flag_gems.ops._amp_update_scale_ import _amp_update_scale_
 from flag_gems.ops._batch_norm_impl_index import (
     batch_norm_impl_index as _batch_norm_impl_index,
 )
+from flag_gems.ops._batch_norm_impl_index_backward import (
+    _batch_norm_impl_index_backward,
+)
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
 from flag_gems.ops._cholesky_solve_helper import _cholesky_solve_helper
 from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
@@ -42,6 +45,7 @@ from flag_gems.ops._compute_linear_combination import (
 )
 from flag_gems.ops._conj import _conj
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
+from flag_gems.ops._convolution_double_backward import _convolution_double_backward
 from flag_gems.ops._convolution_mode import _convolution_mode
 from flag_gems.ops._cummin_helper import _cummin_helper
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
@@ -77,6 +81,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
+from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._make_dep_token import _make_dep_token
 from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._native_batch_norm_legit import (
@@ -144,6 +149,7 @@ from flag_gems.ops.absolute import absolute, absolute_
 from flag_gems.ops.acos import acos
 from flag_gems.ops.acos_ import acos_
 from flag_gems.ops.acosh import acosh, acosh_
+from flag_gems.ops.adaptive_avg_pool1d import adaptive_avg_pool1d
 from flag_gems.ops.adaptive_avg_pool2d import adaptive_avg_pool2d
 from flag_gems.ops.adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
 from flag_gems.ops.adaptive_max_pool2d import adaptive_max_pool2d
@@ -304,6 +310,7 @@ from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diagonal_scatter import diagonal_scatter
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
+from flag_gems.ops.dist import dist
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
@@ -335,6 +342,10 @@ from flag_gems.ops.eye_m import eye_m
 from flag_gems.ops.fake_quantize_per_channel_affine import (
     fake_quantize_per_channel_affine,
 )
+from flag_gems.ops.fake_quantize_per_channel_affine_cachemask import (
+    fake_quantize_per_channel_affine_cachemask,
+    fake_quantize_per_channel_affine_cachemask_out,
+)
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.fft import fft
 from flag_gems.ops.fill import (
@@ -357,10 +368,14 @@ from flag_gems.ops.flash_attention_backward import (
 from flag_gems.ops.flatten import flatten
 from flag_gems.ops.flip import flip
 from flag_gems.ops.float_power_ import (
+    float_power_scalar_tensor,
+    float_power_scalar_tensor_out,
     float_power_tensor_scalar,
     float_power_tensor_scalar_,
+    float_power_tensor_scalar_out,
     float_power_tensor_tensor,
     float_power_tensor_tensor_,
+    float_power_tensor_tensor_out,
 )
 from flag_gems.ops.floor import floor, floor_out
 from flag_gems.ops.floor_ import floor_
@@ -431,6 +446,7 @@ from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
 from flag_gems.ops.index_add import index_add, index_add_
 from flag_gems.ops.index_copy_ import index_copy, index_copy_
+from flag_gems.ops.index_fill import index_fill, index_fill_
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_reduce import index_reduce_
 from flag_gems.ops.index_select import index_select
@@ -477,6 +493,7 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex,
     linalg_lu_factor_ex_out,
 )
+from flag_gems.ops.linalg_matrix_norm import linalg_matrix_norm
 from flag_gems.ops.linalg_slogdet import linalg_slogdet
 from flag_gems.ops.linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -526,6 +543,7 @@ from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_out
 from flag_gems.ops.margin_ranking_loss import margin_ranking_loss
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_scatter import masked_scatter, masked_scatter_
+from flag_gems.ops.masked_scatter_backward import masked_scatter_backward
 from flag_gems.ops.masked_select import masked_select
 from flag_gems.ops.max import max, max_dim
 from flag_gems.ops.max_pool2d_with_indices import (
@@ -746,8 +764,7 @@ from flag_gems.ops.special_chebyshev_polynomial_w import (
 )
 from flag_gems.ops.special_digamma import special_digamma
 from flag_gems.ops.special_erf import special_erf
-
-# from flag_gems.ops.special_erfc import erfc, erfc_, special_erfc
+from flag_gems.ops.special_erfc import erfc, erfc_, special_erfc
 from flag_gems.ops.special_erfcx import special_erfcx
 from flag_gems.ops.special_erfinv import (
     special_erfinv,
@@ -853,6 +870,7 @@ from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
+from flag_gems.ops.view_as_complex import view_as_complex
 from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
@@ -895,6 +913,7 @@ __all__ = [
     "_amp_update_scale_",
     "_assert_async",
     "_batch_norm_impl_index",
+    "_batch_norm_impl_index_backward",
     "_batch_norm_no_update",
     "_cummin_helper",
     "_fake_quantize_learnable_per_tensor_affine",
@@ -908,6 +927,7 @@ __all__ = [
     "_conj",
     "_conv_depthwise2d",
     "_convert_weight_to_int4pack",
+    "_convolution_double_backward",
     "_convolution_mode",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
@@ -927,6 +947,7 @@ __all__ = [
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
     "_linalg_eigvals",
+    "_list_to_tensor",
     "_make_dep_token",
     "_masked_scale",
     "_native_batch_norm_legit",
@@ -976,6 +997,7 @@ __all__ = [
     "acos_",
     "acosh",
     "acosh_",
+    "adaptive_avg_pool1d",
     "adaptive_avg_pool2d",
     "adaptive_avg_pool3d_backward",
     "adaptive_max_pool2d",
@@ -1173,6 +1195,7 @@ __all__ = [
     "diff",
     "digamma",
     "digamma_",
+    "dist",
     "div_mode",
     "div_mode_",
     "dot",
@@ -1194,8 +1217,8 @@ __all__ = [
     "equal",
     "erf",
     "erf_",
-    # "erfc",
-    # "erfc_",
+    "erfc",
+    "erfc_",
     "erfinv",
     "erfinv_",
     "exp",
@@ -1214,6 +1237,8 @@ __all__ = [
     "eye",
     "eye_m",
     "fake_quantize_per_channel_affine",
+    "fake_quantize_per_channel_affine_cachemask",
+    "fake_quantize_per_channel_affine_cachemask_out",
     "feature_dropout",
     "feature_dropout_",
     "fft",
@@ -1231,10 +1256,14 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",
+    "float_power_scalar_tensor",
+    "float_power_scalar_tensor_out",
     "float_power_tensor_scalar",
     "float_power_tensor_scalar_",
+    "float_power_tensor_scalar_out",
     "float_power_tensor_tensor",
     "float_power_tensor_tensor_",
+    "float_power_tensor_tensor_out",
     "floor",
     "floor_",
     "floor_divide",
@@ -1326,6 +1355,8 @@ __all__ = [
     "index_add_",
     "index_copy",
     "index_copy_",
+    "index_fill",
+    "index_fill_",
     "index_put",
     "index_put_",
     "index_reduce_",
@@ -1387,6 +1418,7 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_lu_out",
+    "linalg_matrix_norm",
     "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
@@ -1456,6 +1488,7 @@ __all__ = [
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
+    "masked_scatter_backward",
     "masked_scatter_",
     "masked_select",
     "max",
@@ -1710,7 +1743,7 @@ __all__ = [
     "special_chebyshev_polynomial_w_out",
     "special_digamma",
     "special_erf",
-    # "special_erfc",
+    "special_erfc",
     "special_erfcx",
     "special_erfinv",
     "special_erfinv_",
@@ -1821,6 +1854,7 @@ __all__ = [
     "var_mean",
     "vdot",
     "vector_norm",
+    "view_as_complex",
     "view_copy",
     "vstack",
     "w8a8_block_fp8_matmul",
