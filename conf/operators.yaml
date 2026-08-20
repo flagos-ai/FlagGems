@@ -2499,6 +2499,26 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: convolution_double_backward
+    description: |
+      Second-order backward of a convolution, supporting both 1D (3-D operands
+      [N, C, L]) and 2D (4-D operands [N, C, H, W]) cases. Given the gradients of
+      the first-order gradients (ggI, ggW, ggb) and the output gradient (gO),
+      returns the gradients of the scalar `<gX, ggI> + <gW, ggW> + <gB, ggb>` with
+      respect to (gO, input, weight). The 2D path runs on Triton conv /
+      conv-transpose kernels plus a custom Triton weight-gradient correlation
+      kernel; 1D reuses the 2D path by unsqueezing the lone spatial axis
+      (mirroring how `conv1d` delegates to `conv2d`). 3D (5-D operands) is not
+      yet supported and raises `NotImplementedError`.
+    for:
+      - _convolution_double_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - alpha: '5.4'
   - id: convolution_mode
     description: |
       Low-level dispatcher backing the string-padding form of convolution.

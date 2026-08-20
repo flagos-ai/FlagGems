@@ -42,6 +42,7 @@ from flag_gems.ops._compute_linear_combination import (
 )
 from flag_gems.ops._conj import _conj
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
+from flag_gems.ops._convolution_double_backward import _convolution_double_backward
 from flag_gems.ops._convolution_mode import _convolution_mode
 from flag_gems.ops._cummin_helper import _cummin_helper
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
@@ -914,6 +915,7 @@ __all__ = [
     "_conj",
     "_conv_depthwise2d",
     "_convert_weight_to_int4pack",
+    "_convolution_double_backward",
     "_convolution_mode",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
