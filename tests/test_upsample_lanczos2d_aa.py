@@ -85,12 +85,16 @@ def _reference(
     weights_h = _weight_matrix(
         input.shape[-2], output_h, align_corners, scales_h, opmath_dtype
     ).to(input.device)
-    value = torch.einsum("nchi,oi->ncho", input.to(opmath_dtype), weights_w)
+    value = (
+        input.to(opmath_dtype).unsqueeze(-2) * weights_w.view(1, 1, 1, output_w, -1)
+    ).sum(dim=-1)
     if input.dtype == torch.uint8:
         value = value.round().clamp(0, 255).to(torch.uint8)
     else:
         value = value.to(input.dtype)
-    value = torch.einsum("nciw,oi->ncow", value.to(opmath_dtype), weights_h)
+    value = (
+        value.to(opmath_dtype).unsqueeze(-3) * weights_h.view(1, 1, output_h, -1, 1)
+    ).sum(dim=-2)
     if input.dtype == torch.uint8:
         return value.round().clamp(0, 255).to(torch.uint8)
     return value.to(input.dtype)
