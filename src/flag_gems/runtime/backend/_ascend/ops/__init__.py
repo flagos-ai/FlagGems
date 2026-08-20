@@ -54,6 +54,7 @@ from .index import index
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_select import index_select
+from .is_strides_like_format import is_strides_like_format
 from .isin import isin
 from .layernorm import layer_norm, native_layer_norm
 from .linalg_cross import linalg_cross, linalg_cross_out
@@ -173,6 +174,7 @@ __all__ = [
     "index_copy",
     "index_copy_",
     "index_select",
+    "is_strides_like_format",
     "isin",
     "layer_norm",
     "native_layer_norm",
