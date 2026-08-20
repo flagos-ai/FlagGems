@@ -3999,6 +3999,72 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: float_power_scalar_tensor
+    description: Computes a scalar base raised element-wise to tensor exponents in float64.
+    for:
+      - float_power.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_scalar_tensor_out
+    description: Out variant of float_power.Scalar.
+    for:
+      - float_power.Scalar_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_scalar
+    description: Raises tensor elements to a scalar exponent in float64.
+    for:
+      - float_power.Tensor_Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_scalar_out
+    description: Out variant of float_power.Tensor_Scalar.
+    for:
+      - float_power.Tensor_Scalar_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_tensor
+    description: Raises tensor elements to tensor exponents in float64 with broadcasting.
+    for:
+      - float_power.Tensor_Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_tensor_out
+    description: Out variant of float_power.Tensor_Tensor.
+    for:
+      - float_power.Tensor_Tensor_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: floor
     description: |
       Performs an element-wise floor operation, rounding each element of a tensor
