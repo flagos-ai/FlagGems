@@ -44,6 +44,7 @@ from flag_gems.ops._compute_linear_combination import (
     _compute_linear_combination_out,
 )
 from flag_gems.ops._conj import _conj
+from flag_gems.ops._conj_physical import _conj_physical, _conj_physical_out
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
 from flag_gems.ops._convolution_double_backward import _convolution_double_backward
 from flag_gems.ops._convolution_mode import _convolution_mode
@@ -925,6 +926,8 @@ __all__ = [
     "_compute_linear_combination",
     "_compute_linear_combination_out",
     "_conj",
+    "_conj_physical",
+    "_conj_physical_out",
     "_conv_depthwise2d",
     "_convert_weight_to_int4pack",
     "_convolution_double_backward",
