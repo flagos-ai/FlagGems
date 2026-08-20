@@ -620,6 +620,7 @@ _FULL_CONFIG = (
     ("i0", i0),
     ("i0.out", i0_out),
     ("i0_", i0_),
+    ("igamma", igamma),
     ("igamma_", igamma_),
     ("igammac_", igammac_),
     ("im2col", im2col),
