@@ -4,6 +4,23 @@ weight: 20
 ---
 
 <!--
+ Copyright 2026 FlagOS Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
+
+<!--
 # Installing FlagGems
 -->
 # 安装 FlagGems
@@ -59,17 +76,136 @@ pip install flag_gems
 > [!INFO]
 > **Info**
 >
-> This Python installation only installs the PyTorch operators implemented
-> in Python from *FlagGems*.
-> To install the C++-wrapped operators, you will have to
-> [build and install from source](#install-from-source).
--->
+> This installs the pure-Python operators from *FlagGems*.
+>
+> To use the C++ wrapped operators (which reduce dispatch overhead for
+> performance-critical paths), you can install a prebuilt native extension
+> wheel via an extra:
+>
+> ```shell
+> pip install "flag-gems[cpp-cuda]"
+> ```
+>
+> This pulls in the matching `flag-gems-cpp-cuda` package from the flagOS
+> PyPI index. Replace `cpp-cuda` with the extension for your vendor:
+> `cpp-musa`, `cpp-npu`, `cpp-gcu`, or `cpp-ix`.
+>
+> If a prebuilt wheel is not available for your platform, see
+> [Build and install from source](#install-from-source).
+>-->
 > [!INFO]
 > **提示**
 >
-> 这种纯 Python 包的安装方式仅安装 *FlagGems* 中用 Python 实现的算子。
-> 如果需要安装 C++ 封装的算子，你必须采用
-> [从源码构建安装](#install-from-source)方式。
+> 上述命令仅安装 *FlagGems* 中纯 Python 实现的算子。
+>
+> 如需使用 C++ 封装的算子（可减少性能关键路径上的 dispatch 开销），
+> 可以通过 extras 安装预构建的原生扩展 wheel：
+>
+> ```shell
+> pip install "flag-gems[cpp-cuda]"
+> ```
+>
+> 该命令会从 flagOS PyPI 仓库拉取匹配的 `flag-gems-cpp-cuda` 包。
+> 请将 `cpp-cuda` 替换为你所使用的硬件对应的扩展：
+> `cpp-musa`、`cpp-npu`、`cpp-gcu` 或 `cpp-ix`。
+>
+> 如果你的平台上没有可用的预构建 wheel，请参阅
+> [从源码构建安装](#install-from-source)。
+
+<!--
+### 2.1. Set up backend dependencies with `flaggems-setup` {#flaggems-setup}
+
+`pip install flag_gems` installs the pure-Python operator library, but it does
+**not** pull in PyTorch or the vendor-specific runtime packages for your
+accelerator. The `flaggems-setup` console script — installed alongside FlagGems
+— completes the environment by installing the PyTorch stack and vendor packages
+for a chosen backend from the flagOS PyPI index.
+
+This is the recommended follow-up when you installed FlagGems from PyPI (as
+opposed to installing from source with `setup.sh`, which already performs these
+steps for you).
+-->
+### 2.1. 使用 `flaggems-setup` 安装后端依赖 {#flaggems-setup}
+
+`pip install flag_gems` 只安装纯 Python 实现的算子库，**不会**为你的加速器
+安装 PyTorch 或厂商专属的运行时依赖包。随 FlagGems 一同安装的 `flaggems-setup`
+命令行脚本会从 flagOS PyPI 仓库为你选定的后端安装 PyTorch 及厂商依赖包，
+从而补全运行环境。
+
+如果你是从 PyPI 安装 FlagGems（而非用 `setup.sh` 从源码安装，后者已经替你
+完成了这些步骤），推荐在安装完成后执行这一步。
+
+<!--
+List the available backends:
+-->
+列出可用的后端：
+
+```shell
+flaggems-setup --list
+```
+
+<!--
+Install the dependencies for your backend (the backend keys are the same ones
+`setup.sh` accepts):
+-->
+为你的后端安装依赖（后端名称与 `setup.sh` 接受的完全一致）：
+
+```shell
+# NVIDIA CUDA 12.8
+flaggems-setup nvidia-cuda128
+
+# Huawei Ascend CANN 9.0.0
+flaggems-setup ascend-cann900
+
+# MetaX MACA 3.8.1
+flaggems-setup metax-maca3810
+```
+
+<!--
+Preview the exact commands without running them:
+-->
+在不实际执行的情况下预览将要运行的命令：
+
+```shell
+flaggems-setup nvidia-cuda128 --dry-run
+```
+
+<!--
+By default the script uses `uv pip` when `uv` is on your `PATH`, and falls back
+to `pip` otherwise. Override the installer explicitly with `--pip`:
+-->
+默认情况下，当 `uv` 位于 `PATH` 中时脚本会使用 `uv pip`，否则回退到 `pip`。
+你也可以用 `--pip` 显式指定安装器：
+
+```shell
+flaggems-setup nvidia-cuda128 --pip "pip"
+```
+
+<!--
+`flaggems-setup` also installs a Triton-family compiler for you. By default it
+selects **FlagTree** when the backend provides one, and falls back to **Triton**
+otherwise — the same policy as `setup.sh`. Override the choice with the
+`--compiler` flag or the `COMPILER` environment variable:
+
+```shell
+# Force vanilla Triton instead of the auto-selected FlagTree
+flaggems-setup nvidia-cuda128 --compiler triton
+COMPILER=triton flaggems-setup nvidia-cuda128
+```
+
+See [Environment variables](#env-vars) for the full `COMPILER` behavior.
+-->
+`flaggems-setup` 还会为你安装 Triton 系编译器。默认情况下，当后端提供
+FlagTree 时优先选择 **FlagTree**，否则回退到 **Triton**——策略与 `setup.sh`
+一致。你可以用 `--compiler` 标志或 `COMPILER` 环境变量覆盖该选择：
+
+```shell
+# 强制使用原生 Triton，而非自动选择的 FlagTree
+flaggems-setup nvidia-cuda128 --compiler triton
+COMPILER=triton flaggems-setup nvidia-cuda128
+```
+
+`COMPILER` 的完整行为参见[环境变量](#env-vars)。
 
 <!--
 ## 3. Build and install from source {#install-from-source}
@@ -130,8 +266,8 @@ For example:
 # Huawei Ascend CANN 9.0.0
 ./setup.sh ascend-cann900
 
-# MetaX MACA
-./setup.sh metax
+# MetaX MACA 3.8.1
+./setup.sh metax-maca3810
 ```
 
 <!--
@@ -204,26 +340,64 @@ uv pip install --no-build-isolation -e .
 <!--
 ### 3.4. C++ extensions (optional)
 
-To build with C++ wrapped operators, set `ENABLE_CPP=1`:
+FlagGems supports C++ wrapped operators for reduced dispatch overhead on
+performance-critical operations. The C++ extension is a **separate per-vendor
+package** (e.g., `flag-gems-cpp-cuda`) that installs compiled `.so` files into
+the `flag_gems/` namespace alongside the pure-Python operator implementations.
+
+There are two ways to get the C++ extensions:
+
+#### Option A: Build from source with `setup.sh`
 -->
 ### 3.4 C++ 扩展（可选）
 
-如需构建 C++ 封装的算子，设置 `ENABLE_CPP=1`：
+*FlagGems* 通过 C++ 封装算子在性能关键路径上减少 dispatch 开销。
+C++ 扩展是一个**独立的、按硬件供应商区分的包**（如 `flag-gems-cpp-cuda`），
+它将编译好的 `.so` 文件安装到 `flag_gems/` 命名空间下，与纯 Python 算子并列。
+
+C++ 扩展的获取方式有两种：
+
+#### 方式 A：通过 `setup.sh` 从源码构建
 
 ```shell
 ENABLE_CPP=1 ./setup.sh nvidia-cuda128
 ```
 
-<!--
-This sets the appropriate `CMAKE_ARGS` for your backend automatically.
-C++ extensions are still experimental — please assess before using in production.
+`setup.sh` 会自动完成以下操作：
+- 通过 `tools/set_cpp_vendor.sh` 向 `cpp/pyproject.toml` 注入正确的 vendor 标识
+- 设置对应的 `CMAKE_ARGS`（`-DFLAGGEMS_BACKEND=...`）
+- 从 `cpp/` 子目录构建并安装 C++ 扩展
 
+#### 方式 B：在 `cpp/` 子目录中手动构建
+
+C++ 扩展使用 `scikit-build-core` 作为构建后端，需要 CMake、C++ 工具链以及
+对应硬件厂商的 SDK。从 `cpp/` 子目录进行构建：
+
+```shell
+# 设置 vendor 标识（cuda、musa、npu、gcu 或 ix）
+tools/set_cpp_vendor.sh cuda
+
+# 构建并安装
+CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA" \
+  uv pip install --no-build-isolation ./cpp
+```
+
+<!--
 For manual control over CMake options, see the CMake options reference.
 -->
-此命令会自动为你的后端设置合适的 `CMAKE_ARGS`。
-C++ 扩展仍然是实验性功能，请在生产环境中使用前进行充分评估。
-
 如需手动控制 CMake 选项，请参阅 [CMake 选项参考](#cmake-options)。
+
+#### 运行时：通过 `USE_C_EXTENSION` 启用
+
+安装完成后，设置以下环境变量来激活 C++ 路径：
+
+```shell
+export USE_C_EXTENSION=1
+```
+
+如果不设置该变量，只有 `torch.ops.flag_gems.*` 及 `c_operators` pybind
+模块生效；ATen 替换和 `flag_gems.enable()` 的 C++ 分支仍需此变量。
+详见 [C++ 使用指南](/FlagGems/zh-cn/usage/cpp/)。
 
 <!--
 ## 4. References
@@ -331,6 +505,10 @@ are separated by semicolons (`;`), whereas for `CMAKE_ARGS`, they are separated
 by spaces.
 -->
 ### 4.4 `scikit-build-core` 选项 {#scikit-build-core-options}
+
+> [!NOTE]
+> 主包 `flag-gems` 使用 `setuptools` 作为构建后端。
+> `scikit-build-core` **仅用于**从 `cpp/` 子目录构建的 C++ 扩展。
 
 `scikit-build-core` 是一个构建后端，用来桥接 CMake 和 Python 构建系统，
 简化使用 CMake 构建 Python 模块的过程。

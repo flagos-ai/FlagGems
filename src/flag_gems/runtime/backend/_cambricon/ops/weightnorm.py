@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import copy
 import logging
 import math
@@ -8,7 +22,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, tl_extra_shim
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
@@ -16,10 +30,10 @@ logger = logging.getLogger(__name__)
 MAX_N = 31744
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_last(
     output,
@@ -85,9 +99,9 @@ def config_prune_for_first(configs, named_args, **kwargs):
                 max_block_m_without_pipe = (
                     MAX_NRAM_SIZE // 4 // (3 * BLOCK_COL_SIZE + 1)
                 )
-                BLOCK_ROW_SIZE = config.kwargs[
-                    "BLOCK_ROW_SIZE"
-                ] = max_block_m_without_pipe
+                BLOCK_ROW_SIZE = config.kwargs["BLOCK_ROW_SIZE"] = (
+                    max_block_m_without_pipe
+                )
                 num_stages = config.num_stages = 1
                 key = (BLOCK_ROW_SIZE, BLOCK_COL_SIZE, num_warps, num_stages)
                 configs_map.setdefault(key, config)
@@ -119,7 +133,6 @@ def tile_mode_for_first(args):
         return 2
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("weight_norm_kernel_first"),
     key=["M", "N"],
@@ -130,6 +143,7 @@ def tile_mode_for_first(args):
         "TILE_MODE": lambda args: tile_mode_for_first(args),
     },
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_first(
     output,
@@ -198,10 +212,10 @@ def weight_norm_kernel_first(
                 tl.store(output + offset, out, mask=mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_last(
     v_grad,
@@ -223,6 +237,9 @@ def weight_norm_bwd_kernel_last(
 
     g_value = tl.load(g + col_offset, mask=col_mask).to(tl.float32)
     norm_value = tl.load(norm + col_offset, mask=col_mask).to(tl.float32)
+    # norm_value is already sqrt(sum(v^2) + eps) from forward, guaranteed > 0.
+    norm_1 = 1 / norm_value
+    norm_3 = tl_extra_shim.pow(norm_1, 3)
 
     ty = tl.arange(0, BLOCK_ROW_SIZE)[None, :]
 
@@ -240,20 +257,17 @@ def weight_norm_bwd_kernel_last(
         mask = row_offset < M and col_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         w_value = tl.load(w + row_offset * N + col_offset, mask=mask).to(tl.float32)
-        v_grad_value = g_value * (
-            w_value / (norm_value + eps)
-            - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
-        )
+        v_grad_value = g_value * (w_value * norm_1 - v_value * norm_3 * vw_sum)
         tl.store(v_grad + row_offset * N + col_offset, v_grad_value, mask=mask)
 
-    g_grad_value = vw_sum / (norm_value + eps)
+    g_grad_value = vw_sum * norm_1
     tl.store(g_grad + col_offset, g_grad_value, mask=col_mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("weight_norm_kernel_first"), key=["M", "N"]
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_first(
     v_grad,
@@ -275,6 +289,9 @@ def weight_norm_bwd_kernel_first(
 
     g_value = tl.load(g + row_offset, mask=row_mask).to(tl.float32)
     norm_value = tl.load(norm + row_offset, mask=row_mask).to(tl.float32)
+    # norm_value is already sqrt(sum(v^2) + eps) from forward, guaranteed > 0.
+    norm_1 = 1 / norm_value
+    norm_3 = tl_extra_shim.pow(norm_1, 3)
 
     tx = tl.arange(0, BLOCK_COL_SIZE)[None, :]
 
@@ -292,13 +309,10 @@ def weight_norm_bwd_kernel_first(
         mask = col_offset < N and row_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         w_value = tl.load(w + row_offset * N + col_offset, mask=mask).to(tl.float32)
-        v_grad_value = g_value * (
-            w_value / (norm_value + eps)
-            - v_value / (norm_value * norm_value * norm_value + eps) * vw_sum
-        )
+        v_grad_value = g_value * (w_value * norm_1 - v_value * norm_3 * vw_sum)
         tl.store(v_grad + row_offset * N + col_offset, v_grad_value, mask=mask)
 
-    g_grad_value = vw_sum / (norm_value + eps)
+    g_grad_value = vw_sum * norm_1
     tl.store(g_grad + row_offset, g_grad_value, mask=row_mask)
 
 
@@ -307,7 +321,7 @@ def weight_norm_interface(v, g, dim=0):
     v = v.contiguous()
     g = g.contiguous()
     output = torch.empty_like(v)
-    norm = torch.empty_like(g)
+    norm = torch.empty_like(g, dtype=torch.float32)
     if dim == 0:
         M = v.shape[0]
         N = math.prod(v.shape[1:])

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -15,7 +29,6 @@ from ..utils import TOTAL_CORE_NUM
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_C": 2**n}, num_warps=1, num_stages=3)
@@ -23,6 +36,7 @@ logger = logging.getLogger(__name__)
     ],
     key=["C"],
 )
+@libentry()
 @triton.jit
 def softmax_forward_kernel(
     inp_ptr,
@@ -94,7 +108,6 @@ def softmax_forward_kernel(
             tl.store(final_sum_ptrs, final_sum)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"C_TILE_NUM": num}, num_warps=1, num_stages=s)
@@ -104,6 +117,7 @@ def softmax_forward_kernel(
     key=["C"],
     restore_value=["final_max_ptr"],
 )
+@libentry()
 @triton.jit
 def max_kernel(
     inp_ptr,
@@ -142,7 +156,6 @@ def max_kernel(
         tl.atomic_max(final_max_ptrs, final_max)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"C_TILE_NUM": num}, num_warps=1, num_stages=s)
@@ -152,6 +165,7 @@ def max_kernel(
     key=["C"],
     reset_to_zero=["final_sum_ptr"],
 )
+@libentry()
 @triton.jit
 def softmax_forward_with_max_kernel(
     inp_ptr,
@@ -194,7 +208,6 @@ def softmax_forward_with_max_kernel(
         tl.atomic_add(final_sum_ptrs, final_sum)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_N": 2**n}, num_warps=4, num_stages=0)
@@ -202,6 +215,7 @@ def softmax_forward_with_max_kernel(
     ],
     key=["N"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["ignore_index"])
 def nllloss_without_weight_kernel(
     inp_ptr,
@@ -240,13 +254,13 @@ def nllloss_without_weight_kernel(
     tl.store(out_ptrs, out, mask=tgt_mask and ignore_mask)
 
 
-@libentry()
 @triton.heuristics(
     values={
         "num_warps": lambda args: 1,
         "num_stages": lambda args: 0,
     },
 )
+@libentry()
 @triton.jit(do_not_specialize=["ignore_index"])
 def nllloss_with_weight_kernel(
     inp_ptr,
@@ -292,11 +306,11 @@ def nllloss_with_weight_kernel(
     tl.store(out_ptrs, out, mask=ignore_mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("cross_entropy_loss"),
     key=["C", "D"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["label_smoothing"])
 def celoss_probability_kernel(
     inp_ptr,
@@ -351,11 +365,11 @@ def celoss_probability_kernel(
     tl.store(out_ptrs, out, mask=offset_d < D)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("cross_entropy_loss"),
     key=["C", "D"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing"])
 def celoss_indices_smooth_kernel(
     inp_ptr,
@@ -477,7 +491,6 @@ def config_prune(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config(
@@ -499,6 +512,7 @@ def config_prune(configs, named_args, **kwargs):
         "early_config_prune": config_prune,
     },
 )
+@libentry()
 @triton.jit(do_not_specialize=["ignore_index", "mean_num"])
 def celoss_indice_bwd_with_saved_sum_kernel(
     out_grad_ptr,
@@ -622,11 +636,11 @@ def celoss_indice_bwd_with_saved_sum_kernel(
             )
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("cross_entropy_loss"),
     key=["C", "D"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["label_smoothing", "mean_num"])
 def celoss_probability_bwd(
     out_grad_ptr,
@@ -707,11 +721,11 @@ def celoss_probability_bwd(
         tl.store(inp_grad_ptrs, inp_grad, mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("cross_entropy_loss"),
     key=["C", "D"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing", "mean_num"])
 def celoss_indices_smooth_bwd(
     out_grad_ptr,

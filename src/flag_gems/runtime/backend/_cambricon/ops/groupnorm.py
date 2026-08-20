@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -38,16 +52,16 @@ def group_norm_kernel_opt_prune(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"SPLIT": s, "BLOCK_HW_SIZE": size}, num_stages=3, num_warps=1)
         for size in [64, 256, 512, 1024, 2048, 4096, 5120]
         for s in [1, 4, 6, 8, 16]
     ],
-    key=["X", "group_size", "C", "HW", "num_groups"],
+    key=["group_size", "C", "HW", "num_groups"],
     prune_configs_by={"early_config_prune": group_norm_kernel_opt_prune},
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def group_norm_kernel_opt(
     X,
@@ -195,7 +209,6 @@ def group_norm_backward_kernel_opt_prune(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"SPLIT": s, "BLOCK_HW_SIZE": size}, num_stages=3, num_warps=1)
@@ -203,8 +216,9 @@ def group_norm_backward_kernel_opt_prune(configs, named_args, **kwargs):
         for size in [64, 256, 512, 1024, 2048]
     ],
     prune_configs_by={"early_config_prune": group_norm_backward_kernel_opt_prune},
-    key=["X", "group_size", "C", "HW", "num_groups"],
+    key=["group_size", "C", "HW", "num_groups"],
 )
+@libentry()
 @triton.jit()
 def group_norm_backward_kernel_opt(
     grad_y,
@@ -369,7 +383,6 @@ def weight_bias_backward_kernel_opt_prune(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_N": bn, "BLOCK_HW_SIZE": size}, num_stages=3, num_warps=1)
@@ -377,8 +390,9 @@ def weight_bias_backward_kernel_opt_prune(configs, named_args, **kwargs):
         for size in [512, 1024, 2048]
     ],
     prune_configs_by={"early_config_prune": weight_bias_backward_kernel_opt_prune},
-    key=["X", "N", "C", "HW", "num_groups"],
+    key=["N", "C", "HW", "num_groups"],
 )
+@libentry()
 @triton.jit
 def weight_bias_backward_kernel_opt(
     dY,

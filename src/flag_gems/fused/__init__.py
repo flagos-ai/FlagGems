@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from flag_gems.fused.act_quant import act_quant_triton
 from flag_gems.fused.add_rms_norm import add_rms_norm
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
@@ -22,6 +36,7 @@ from flag_gems.fused.deepseek_v4_attention_dequantize_and_gather_k_cache import 
 )
 from flag_gems.fused.deepseek_v4_attention_fused_q_kv_rmsnorm import fused_q_kv_rmsnorm
 from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
+from flag_gems.fused.DSA.sparse_mla import triton_sparse_mla_fwd_interface
 from flag_gems.fused.FLA import (
     chunk_gated_delta_rule_fwd,
     fused_recurrent_gated_delta_rule_fwd,
@@ -177,6 +192,7 @@ __all__ = [
     "top_k_per_row_prefill",
     "topk_softmax",
     "topk_softplus_sqrt",
+    "triton_sparse_mla_fwd_interface",
     "unpack_seq_triton",
     "weight_norm",
 ]
