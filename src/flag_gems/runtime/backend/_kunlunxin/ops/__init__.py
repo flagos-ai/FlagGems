@@ -108,6 +108,7 @@ from .deg2rad import deg2rad, deg2rad_, deg2rad_out
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .diff import diff
 from .digamma_ import digamma_
 from .div import (
     div_mode,
@@ -284,13 +285,14 @@ from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
 from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from .soft_margin_loss_backward import soft_margin_loss_backward
-from .softmax import softmax, softmax_backward
+from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .special_log_softmax import special_log_softmax
 from .special_logsumexp import special_logsumexp
 from .sqrt import sqrt, sqrt_
+from .square import square, square_
 from .stack import stack
 from .std import std
 from .sub import sub, sub_, subtract_
@@ -463,6 +465,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diff",
     "div_mode",
     "div_mode_",
     "dot",
@@ -714,9 +717,13 @@ __all__ = [
     "slice_scatter",
     "softmax",
     "softmax_backward",
+    "softmax_backward_out",
+    "softmax_out",
     "softplus",
     "sort",
     "sort_stable",
+    "square",
+    "square_",
     "sqrt",
     "sqrt_",
     "stack",
