@@ -194,6 +194,49 @@ def _fallback_log2(x):
 
 
 @triton.jit
+def _fallback_lgamma(x):
+    # Lanczos approximation with reflection for x < 0.5.  This uses only core
+    # Triton math operations so vendor forks whose libdevice does not expose
+    # lgamma (for example Sunrise's tang backend) can still import and compile
+    # operators which reference tl_extra_shim.lgamma.
+    x = x.to(tl.float32)
+    reflect = x < 0.5
+    y = tl.where(reflect, 1.0 - x, x)
+    z = y - 1.0
+    a = 0.9999999999998099
+    a += 676.5203681218851 / (z + 1.0)
+    a += -1259.1392167224028 / (z + 2.0)
+    a += 771.3234287776531 / (z + 3.0)
+    a += -176.6150291621406 / (z + 4.0)
+    a += 12.507343278686905 / (z + 5.0)
+    a += -0.13857109526572012 / (z + 6.0)
+    a += 9.984369578019572e-6 / (z + 7.0)
+    a += 1.5056327351493116e-7 / (z + 8.0)
+    t = z + 7.5
+    result = 0.9189385332046727 + (z + 0.5) * tl.log(t) - t + tl.log(a)
+
+    pi = 3.141592653589793
+    # Reduce the sine argument around the nearest integer.  Direct evaluation
+    # of sin(pi*x) loses precision near distant negative poles, while some
+    # backends also flush very small sin arguments around zero.  A short Taylor
+    # expansion is accurate in that latter range and uses only core arithmetic.
+    reduced = x - tl.floor(x + 0.5)
+    angle = pi * reduced
+    angle2 = angle * angle
+    sin_taylor = angle * (1.0 - angle2 / 6.0 + angle2 * angle2 / 120.0)
+    sin_pi_x = tl.where(tl.abs(angle) < 0.01, sin_taylor, tl.sin(angle))
+    reflected = tl.log(pi) - tl.log(tl.abs(sin_pi_x)) - result
+    result = tl.where(reflect, reflected, result)
+
+    # The reflection formula's finite-precision sin(pi*x) is not exactly zero
+    # at negative integers, so mark Gamma's poles explicitly.  lgamma(+/-inf)
+    # is +inf; NaNs naturally propagate through the approximation.
+    is_pole = (x <= 0.0) & (x == tl.floor(x))
+    result = tl.where(is_pole | (tl.abs(x) == float("inf")), float("inf"), result)
+    return result
+
+
+@triton.jit
 def _fallback_j0(x):
     # Bessel J0(x) for float32/float64, used when a backend's libdevice lacks a
     # native j0 (e.g. the cambricon mlu fork).  Body adapted verbatim from the
@@ -485,6 +528,7 @@ _FALLBACK_SYMBOLS = {
     "floor": _fallback_floor,
     "j0": _fallback_j0,
     "j1": _fallback_j1,
+    "lgamma": _fallback_lgamma,
     "log2": _fallback_log2,
     "nextafter": _fallback_nextafter,
     "sinpi": _fallback_sinpi,
@@ -518,6 +562,7 @@ tl_extra_shim = _patch_missing_symbols(
     tl_extra_shim,
     (
         "acos",
+        "asin",
         "atan",
         "j0",
         "j1",
