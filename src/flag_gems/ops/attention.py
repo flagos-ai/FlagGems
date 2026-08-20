@@ -1363,7 +1363,7 @@ def flash_attention_forward(
             max_q,
             max_k,
             dropout_p,
-            scale,
+            softmax_scale,
             False,
             is_causal,
             non_null_window_left,
