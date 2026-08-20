@@ -34,10 +34,8 @@ def default_heuristics_for_num_warps(tile_size):
 def metax_heuristics_for_num_warps(tile_size):
     if tile_size <= 1024:
         return 4
-    elif tile_size <= 2048:
-        return 8
     else:
-        return 16
+        return 8  # MetaX C550: max 512 threads = 8 warps × 64 threads/warp
 
 
 def hygon_heuristics_for_num_warps(tile_size):
@@ -119,7 +117,7 @@ CODEGEN_COFIGS = {
     vendors.METAX: CodeGenConfig(
         2048,
         (65536, 65536, 65536),
-        16,
+        8,  # MetaX C550: max 512 threads = 8 warps × 64 threads/warp
         True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),

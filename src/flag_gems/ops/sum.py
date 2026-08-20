@@ -77,6 +77,13 @@ def sum(inp, *, dtype=None):
     logger.debug("GEMS SUM")
     inp = inp.contiguous()
     M = inp.numel()
+
+    if M == 0:
+        if dtype is None:
+            dtype = inp.dtype
+        out = torch.zeros([], dtype=dtype, device=inp.device)
+        return out
+
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
