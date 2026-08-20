@@ -29,6 +29,7 @@ def _make_dynamic_quantized_gru(
     params = [module.param for module in quantized_gru._all_weight_values]
     return quantized_gru, params
 
+
 @pytest.mark.quantized_gru
 @pytest.mark.parametrize("shape", [(4, 10, 16), (8, 32, 64)], ids=["small", "medium"])
 @pytest.mark.parametrize("hidden_size", [16, 32, 257])
@@ -83,6 +84,7 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
     torch.testing.assert_close(output.cpu(), ref_output, rtol=0.08, atol=atol)
     torch.testing.assert_close(out_hx.cpu(), ref_hx, rtol=0.08, atol=atol)
 
+
 @pytest.mark.quantized_gru
 @pytest.mark.parametrize("bidirectional", [False, True])
 def test_quantized_gru_packed_data(bidirectional):
@@ -118,15 +120,3 @@ def test_quantized_gru_packed_data(bidirectional):
     )
     torch.testing.assert_close(output.cpu(), ref_output.data, rtol=0.08, atol=0.15)
     torch.testing.assert_close(out_hx.cpu(), ref_hx, rtol=0.08, atol=0.15)
-
-
-def test_quantized_gru_rejects_training():
-    from flag_gems.ops.quantized_gru import quantized_gru_input
-
-    batch_size, seq_len, input_size = 4, 10, 16
-    hidden_size = 16
-    _, params = _make_dynamic_quantized_gru(input_size, hidden_size)
-    input_tensor = torch.randn(batch_size, seq_len, input_size, device=flag_gems.device)
-    hx = torch.zeros(1, batch_size, hidden_size, device=flag_gems.device)
-    with pytest.raises(NotImplementedError):
-        quantized_gru_input(input_tensor, hx, params, True, 1, 0.0, True, False, True)

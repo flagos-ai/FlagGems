@@ -472,10 +472,10 @@ from flag_gems.ops.linear import linear
 from flag_gems.ops.linear_backward import linear_backward
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
-from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log1p import log1p, log1p_out
 from flag_gems.ops.log1p_ import log1p_
 from flag_gems.ops.log2 import log2, log2_
+from flag_gems.ops.log10 import log10, log10_, log10_out
 from flag_gems.ops.log_ import log_
 from flag_gems.ops.log_normal_ import log_normal_
 from flag_gems.ops.log_sigmoid import log_sigmoid
@@ -1177,8 +1177,8 @@ __all__ = [
     "equal",
     "erf",
     "erf_",
-    "erfc",
-    "erfc_",
+    # "erfc",
+    # "erfc_",
     "erfinv",
     "erfinv_",
     "exp",
@@ -1684,7 +1684,7 @@ __all__ = [
     "special_chebyshev_polynomial_w_out",
     "special_digamma",
     "special_erf",
-    "special_erfc",
+    # "special_erfc",
     "special_erfcx",
     "special_erfinv",
     "special_erfinv_",
