@@ -515,6 +515,11 @@ _FULL_CONFIG = (
     ("eye", eye),
     ("eye.m", eye_m),
     ("fake_quantize_per_channel_affine", fake_quantize_per_channel_affine),
+    ("fake_quantize_per_tensor_affine", fake_quantize_per_tensor_affine),
+    (
+        "fake_quantize_per_tensor_affine.tensor_qparams",
+        fake_quantize_per_tensor_affine,
+    ),
     ("feature_dropout", feature_dropout),
     ("feature_dropout_", feature_dropout_),
     (

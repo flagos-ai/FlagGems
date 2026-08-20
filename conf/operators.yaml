@@ -3655,6 +3655,19 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: fake_quantize_per_tensor_affine
+    description: Applies per-tensor affine fake quantization using shared scale and zero-point parameters.
+    for:
+      - fake_quantize_per_tensor_affine
+      - fake_quantize_per_tensor_affine.tensor_qparams
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
   - id: feature_dropout
     description: |
       Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.
