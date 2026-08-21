@@ -6400,6 +6400,31 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
+  - id: linalg_qr
+    description: |
+      Computes the QR decomposition of a matrix (or a batch of matrices) via a
+      blocked Householder algorithm with a TSQR fast path for tall-skinny inputs.
+      Pure-Triton implementation supporting the "reduced", "complete" and "r" modes.
+    for:
+      - linalg_qr
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_qr_out
+    description: |
+      The `out=` variant of `linalg_qr`; writes the Q and R factors into the
+      caller-provided output tensors.
+    for:
+      - linalg_qr.out
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
