@@ -3401,6 +3401,20 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: embedding_sparse_backward
+    description: |
+      Calculates the sparse gradient of the weight matrix for an embedding
+      layer during backpropagation, returning an uncoalesced sparse COO tensor.
+    for:
+      - embedding_sparse_backward
+    labels:
+      - aten
+      - KernelGen
+      - NoCPU
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: empty
     description: Tensor factory operator — verifies dtype inference for newly allocated tensors.
     for:
