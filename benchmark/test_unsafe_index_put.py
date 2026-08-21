@@ -129,6 +129,9 @@ class UnsafeIndexPutAccTrueBenchmark(UnsafeIndexPutBenchmark):
 
 
 BENCH_FLOAT_DTYPES = [torch.float16, torch.float32, torch.float64, torch.bfloat16]
+if not flag_gems.runtime.device.support_fp64:
+    # The Ascend Triton backend has no fp64 support (fp64_enabled=False).
+    BENCH_FLOAT_DTYPES = [d for d in BENCH_FLOAT_DTYPES if d != torch.float64]
 BENCH_INT_DTYPES = [torch.int32, torch.int64]
 
 
@@ -155,6 +158,10 @@ def test_unsafe_index_put_acc_false_ints():
 
 
 @pytest.mark.unsafe_index_put
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "iluvatar" and torch.float64 in BENCH_FLOAT_DTYPES,
+    reason="skip when vendor is iluvatar and dtypes include f64",
+)
 def test_unsafe_index_put_acc_true_floats():
     bench = UnsafeIndexPutAccTrueBenchmark(
         op_name="_unsafe_index_put",

@@ -12074,7 +12074,6 @@ ops:
       - _unsafe_index_put
     labels:
       - aten
-      - KernelGen
     kind:
       - Math
     stages:

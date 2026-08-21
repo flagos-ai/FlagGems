@@ -54,7 +54,17 @@ from functools import lru_cache
 import torch
 import triton
 import triton.language as tl
-from triton import knobs
+
+try:
+    from triton import knobs
+except ImportError:
+    # old Triton：create virtual knobs object，hook set None
+    class _Knobs:
+        class runtime:
+            launch_enter_hook = None
+            launch_exit_hook = None
+
+    knobs = _Knobs()
 from triton.runtime import driver
 
 logger = logging.getLogger(__name__)
