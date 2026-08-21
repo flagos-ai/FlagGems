@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
 import flag_gems
 from benchmark.base import Benchmark
+from benchmark.conftest import Config
 
 try:
     from vllm.model_executor.layers.fla.ops import (
@@ -182,4 +185,164 @@ def test_perf_fused_recurrent_gated_delta_rule(qkv_contiguous):
         torch_op=_torch_op_wrapper,
     )
     bench.set_gems(flag_gems.fused_recurrent_gated_delta_rule_fwd)
+    bench.run()
+
+
+class FusedRecurrentGatedDeltaRuleFP8Benchmark(Benchmark):
+    DEFAULT_DTYPES = [torch.bfloat16]
+    DEFAULT_SHAPES = [
+        (1,),
+        (2,),
+        (4,),
+        (8,),
+        (16,),
+        (32,),
+        (64,),
+        (128,),
+        (256,),
+        (512,),
+    ]
+    DEFAULT_SHAPE_DESC = "num_sequences"
+
+    def init_user_config(self):
+        self.mode = Config.mode
+        self.set_dtypes(Config.user_desired_dtypes)
+        self.set_metrics(Config.user_desired_metrics)
+        self.shapes = self.DEFAULT_SHAPES
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
+
+    def get_input_iter(self, cur_dtype):
+        for (num_sequences,) in self.shapes:
+            yield self._build_inputs(num_sequences, cur_dtype)
+
+    @staticmethod
+    def _build_inputs(num_sequences: int, dtype: torch.dtype):
+        H, HV, K, V = 4, 8, 128, 128
+        mixed = torch.randn(
+            num_sequences,
+            2 * H * K + HV * V,
+            device=flag_gems.device,
+            dtype=dtype,
+        )
+        q, k, v = torch.split(mixed, (H * K, H * K, HV * V), dim=-1)
+        q = q.view(1, num_sequences, H, K)
+        k = k.view(1, num_sequences, H, K)
+        v = (0.125 * v).view(1, num_sequences, HV, V)
+        g = torch.empty(
+            1,
+            num_sequences,
+            HV,
+            device=flag_gems.device,
+            dtype=dtype,
+        ).uniform_(math.log(0.98), math.log(0.995))
+        beta = torch.rand(
+            1,
+            num_sequences,
+            HV,
+            device=flag_gems.device,
+            dtype=dtype,
+        )
+        state_bf16 = torch.zeros(
+            num_sequences,
+            HV,
+            K,
+            V,
+            device=flag_gems.device,
+            dtype=dtype,
+        )
+        state_fp8 = flag_gems.quantize_gdn_state_fp8(state_bf16)
+        cu_seqlens = torch.arange(
+            num_sequences + 1, device=flag_gems.device, dtype=torch.long
+        )
+        state_indices = torch.arange(
+            num_sequences, device=flag_gems.device, dtype=torch.long
+        )
+        return (
+            q,
+            k,
+            v,
+            g,
+            beta,
+            state_bf16,
+            state_fp8,
+            K**-0.5,
+            cu_seqlens,
+            state_indices,
+        )
+
+
+def _bf16_decode_wrapper(
+    q,
+    k,
+    v,
+    g,
+    beta,
+    state_bf16,
+    _state_fp8,
+    scale,
+    cu_seqlens,
+    state_indices,
+):
+    return flag_gems.fused_recurrent_gated_delta_rule_fwd(
+        q=q,
+        k=k,
+        v=v,
+        g=g,
+        beta=beta,
+        scale=scale,
+        initial_state=state_bf16,
+        inplace_final_state=True,
+        cu_seqlens=cu_seqlens,
+        ssm_state_indices=state_indices,
+        num_accepted_tokens=None,
+        use_qk_l2norm_in_kernel=True,
+    )
+
+
+def _fp8_w8a16_decode_wrapper(
+    q,
+    k,
+    v,
+    g,
+    beta,
+    _state_bf16,
+    state_fp8,
+    scale,
+    cu_seqlens,
+    state_indices,
+):
+    return flag_gems.fused_recurrent_gated_delta_rule_fp8_w8a16_decode(
+        q,
+        k,
+        v,
+        g,
+        beta,
+        state_fp8,
+        scale,
+        cu_seqlens,
+        state_indices,
+        True,
+    )
+
+
+def _fp8_decode_available():
+    return (
+        flag_gems.device == "cuda"
+        and torch.cuda.is_available()
+        and hasattr(torch, "float8_e4m3fn")
+        and torch.cuda.get_device_capability()[0] >= 9
+    )
+
+
+@pytest.mark.skipif(
+    not _fp8_decode_available(), reason="FP8 GDN decode requires SM90 or newer"
+)
+@pytest.mark.fused_recurrent_gated_delta_rule
+def test_perf_fused_recurrent_gated_delta_rule_fp8_w8a16():
+    torch.manual_seed(0)
+    bench = FusedRecurrentGatedDeltaRuleFP8Benchmark(
+        op_name="fused_recurrent_gated_delta_rule",
+        torch_op=_bf16_decode_wrapper,
+    )
+    bench.set_gems(_fp8_w8a16_decode_wrapper)
     bench.run()
