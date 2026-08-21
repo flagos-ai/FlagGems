@@ -19,6 +19,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.pad import constant_pad_nd as default_constant_pad_nd
+from flag_gems.ops.pad import pad as default_pad
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -482,3 +483,13 @@ def constant_pad_nd(x, pad, value=0):
     if out is None:
         return default_constant_pad_nd(x, pad, value)
     return out
+
+
+def pad(x, pad, mode="constant", value=None):
+    logger.debug("GEMS_MTHREADS PAD")
+
+    if mode == "constant":
+        if value is None:
+            value = 0
+        return constant_pad_nd(x, pad, value)
+    return default_pad(x, pad, mode, value)
