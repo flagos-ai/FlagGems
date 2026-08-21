@@ -1001,6 +1001,7 @@ _FULL_CONFIG = (
     ("softplus_backward", softplus_backward),
     ("softshrink", softshrink),
     ("softshrink.out", softshrink_out),
+    ("softshrink_backward", softshrink_backward),
     ("sort", sort),
     ("sort.stable", sort_stable),
     ("sparse_sampled_addmm", sparse_sampled_addmm, None, (SPARSE_CSR_DISPATCH_KEY,)),
