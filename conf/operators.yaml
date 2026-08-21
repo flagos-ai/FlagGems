@@ -1196,6 +1196,17 @@ ops:
       - Tensor
     stages:
       - stable: '5.3'
+  - id: conv_depthwise3d
+    description: Applies a 3D depthwise convolution over an input signal composed of several input planes.
+    for:
+      - conv_depthwise3d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: blackman_window
     description: Computes the Blackman window function.
     for:
