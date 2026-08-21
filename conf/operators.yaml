@@ -4904,8 +4904,6 @@ ops:
       - alpha: '5.4'
   - id: group_norm
     description: An internal IR for applying Group Normalization for last certain number of dimensions.
-    for:
-      - native_group_norm
     labels:
       - aten
       - Reduction
@@ -7993,6 +7991,17 @@ ops:
       empty save_mean/save_var tensors matching the aten schema.
     for:
       - _native_batch_norm_legit_no_training
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: native_group_norm
+    description: Apply native group normalization using the existing implementation.
+    for:
+      - native_group_norm
     labels:
       - aten
       - KernelGen

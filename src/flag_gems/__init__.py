@@ -813,7 +813,7 @@ _FULL_CONFIG = (
     ("native_batch_norm_backward", batch_norm_backward),
     ("native_dropout", dropout),
     ("native_dropout_backward", native_dropout_backward),
-    ("native_group_norm", group_norm),
+    ("native_group_norm", native_group_norm),
     ("native_group_norm_backward", group_norm_backward),
     ("native_layer_norm", native_layer_norm),
     ("native_layer_norm_backward", layer_norm_backward),
