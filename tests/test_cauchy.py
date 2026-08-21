@@ -28,9 +28,16 @@ if cfg.QUICK_MODE:
     CAUCHY_SIGMAS = [1.0]
 else:
     CAUCHY_SHAPES = [(1024,), (256, 256)]
-    CAUCHY_DTYPES = [torch.float32, torch.float64]
+    CAUCHY_DTYPES = utils.ALL_FLOAT_DTYPES
     CAUCHY_MEDIANS = [0.0, 1.0, -0.5]
     CAUCHY_SIGMAS = [1.0, 0.5, 2.0]
+
+
+def _to_numpy(tensor):
+    tensor = tensor.cpu()
+    if tensor.dtype in (torch.float16, torch.bfloat16):
+        tensor = tensor.float()
+    return tensor.numpy().flatten()
 
 
 @pytest.mark.cauchy_
@@ -64,8 +71,8 @@ def test_cauchy_accuracy(shape, dtype, median, sigma):
 
     # Check that distributions are similar using percentiles
     # (Cauchy has heavy tails, so we use robust statistics)
-    x_np = x.cpu().numpy().flatten()
-    ref_np = ref_x.cpu().numpy().flatten()
+    x_np = _to_numpy(x)
+    ref_np = _to_numpy(ref_x)
 
     # Check symmetry: median of (x - median) should be close to 0
     x_centered = x_np - median
@@ -133,8 +140,8 @@ def test_cauchy_out_accuracy(shape, dtype, median, sigma):
     ref_result = torch.ops.aten.cauchy(ref_x, median=median, sigma=sigma)
 
     # Same statistical checks as test_cauchy_accuracy
-    result_np = result.cpu().numpy().flatten()
-    ref_np = ref_result.cpu().numpy().flatten()
+    result_np = _to_numpy(result)
+    ref_np = _to_numpy(ref_result)
 
     result_centered = result_np - median
     ref_centered = ref_np - median
