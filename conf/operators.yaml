@@ -3200,6 +3200,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
+  - id: linalg_tensorsolve
+    description: |
+      Computes the solution X to the system tensordot(A, X) = B by flattening A
+      into a square matrix and solving the resulting linear system.
+    for:
+      - linalg_tensorsolve
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
