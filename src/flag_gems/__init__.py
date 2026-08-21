@@ -866,6 +866,7 @@ _FULL_CONFIG = (
     ("ones_like", ones_like),
     ("ormqr", ormqr),
     ("pad", pad),
+    ("pad_sequence", pad_sequence),
     ("pairwise_distance", pairwise_distance),
     ("pdist", pdist),
     ("permute_copy", permute_copy),

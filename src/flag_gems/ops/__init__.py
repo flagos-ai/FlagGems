@@ -632,6 +632,7 @@ from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
 from flag_gems.ops.ormqr import ormqr
 from flag_gems.ops.pad import constant_pad_nd, pad
+from flag_gems.ops.pad_sequence import pad_sequence
 from flag_gems.ops.pairwise_distance import pairwise_distance
 from flag_gems.ops.pdist import pdist
 from flag_gems.ops.per_token_group_quant_fp8 import (
@@ -1595,6 +1596,7 @@ __all__ = [
     "ones_like",
     "ormqr",
     "pad",
+    "pad_sequence",
     "pairwise_distance",
     "pdist",
     "per_token_group_quant_fp8",

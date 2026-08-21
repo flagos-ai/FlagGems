@@ -8625,6 +8625,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.1'
+  - id: pad_sequence
+    description: Pads a list of variable length tensors with a given padding value and stacks them into a single padded batch tensor.
+    for:
+      - pad_sequence
+    labels:
+      - aten
+      - sequence
+      - rnn
+    kind:
+      - Utility
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: pairwise_distance
     description: |
       Computes the pairwise distance between input vectors, or between columns of input matrices.
