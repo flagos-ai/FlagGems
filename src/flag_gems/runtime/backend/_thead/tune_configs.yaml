@@ -552,7 +552,7 @@ layer_norm_backward:
     param_map:
       META:
         BLOCK_ROW_SIZE: block_r
-        BLOCK_COL_SIZE: 2048
+        BLOCK_COL_SIZE: block_c
       num_warps: warps
     warps:
       - 4
@@ -563,6 +563,15 @@ layer_norm_backward:
       - 2
       - 4
       - 8
+    block_c:
+      - 16
+      - 32
+      - 64
+      - 128
+      - 256
+      - 512
+      - 1024
+      - 2048
 weight_bias_backward:
   - gen: true
     param_map:
