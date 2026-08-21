@@ -2446,6 +2446,22 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.3'
+  - id: _ctc_loss_backward
+    description: |
+      Computes the gradient of CTC loss w.r.t. log_probs.
+      This is the lower-level backward operator that computes gradients given
+      the forward outputs (neg_log_likelihood and log_alpha).
+    for:
+      - _ctc_loss_backward
+      - _ctc_loss_backward.Tensor
+      - _ctc_loss_backward.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: constant_pad_nd
     description: |
       Pads the input tensor boundaries with a constant value.
