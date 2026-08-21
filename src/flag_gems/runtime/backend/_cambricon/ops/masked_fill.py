@@ -26,11 +26,11 @@ from ..utils import MAX_GRID_SIZE_X
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("masked_fill"),
     key=["N"],
 )
+@libentry()
 @triton.jit
 def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
@@ -43,11 +43,11 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
     tl.store(out + offsets, value, fill_mask and mask)
 
 
-@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("masked_fill"),
     key=["N"],
 )
+@libentry()
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr):
     num_programs = tl.num_programs(0)
