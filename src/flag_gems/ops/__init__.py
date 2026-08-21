@@ -148,6 +148,9 @@ from flag_gems.ops._weight_int4pack_mm_with_scales_and_zeros import (
     _weight_int4pack_mm_with_scales_and_zeros,
 )
 from flag_gems.ops._weight_norm import _weight_norm
+from flag_gems.ops._weight_norm_differentiable_backward import (
+    _weight_norm_differentiable_backward,
+)
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.absolute import absolute, absolute_
 from flag_gems.ops.acos import acos
@@ -1000,6 +1003,7 @@ __all__ = [
     "_upsample_nearest_exact3d",
     "_weight_int4pack_mm_with_scales_and_zeros",
     "_weight_norm",
+    "_weight_norm_differentiable_backward",
     "abs",
     "abs_",
     "absolute",

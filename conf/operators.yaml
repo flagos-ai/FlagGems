@@ -12588,6 +12588,20 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: _weight_norm_differentiable_backward
+    description: |
+      Computes the differentiable gradients for the magnitude and direction
+      parameters of a weight-normalized tensor.
+    for:
+      - _weight_norm_differentiable_backward
+    labels:
+      - aten
+      - fused
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: weight_norm
     description: |
       Reparameterizes a module's weight tensor by decoupling its magnitude (g)
