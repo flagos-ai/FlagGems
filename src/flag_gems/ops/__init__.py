@@ -865,6 +865,11 @@ from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from flag_gems.ops.upsample_bilinear2d import upsample_bilinear2d
+from flag_gems.ops.upsample_lanczos2d_aa import (
+    _upsample_lanczos2d_aa,
+    _upsample_lanczos2d_aa_out,
+    _upsample_lanczos2d_aa_vec,
+)
 from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_linear1d_backward import upsample_linear1d_backward
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
@@ -994,6 +999,9 @@ __all__ = [
     "_upsample_bicubic2d_aa_backward",
     "_upsample_bilinear2d_aa",
     "_upsample_bilinear2d_aa_backward",
+    "_upsample_lanczos2d_aa",
+    "_upsample_lanczos2d_aa_out",
+    "_upsample_lanczos2d_aa_vec",
     "_upsample_nearest_exact1d",
     "_upsample_nearest_exact2d",
     "_upsample_nearest_exact2d_backward",
