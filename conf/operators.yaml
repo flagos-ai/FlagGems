@@ -12437,6 +12437,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.1'
+  - id: upsample_nearest_exact3d_backward
+    description: A backward case for `_upsample_nearest_exact3d()`.
+    for:
+      - _upsample_nearest_exact3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: upsample_trilinear3d
     description: Upsamples the input (NCDHW) using trilinear interpolation.
     for:
