@@ -2095,6 +2095,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '4.0'
+  - id: celu_backward
+    description: The backward version of `celu()`.
+    for:
+      - celu_backward
+    labels:
+      - aten
+      - nn.functional
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: channel_shuffle
     description: Divides the channels into groups and rearranges each group.
     for:
