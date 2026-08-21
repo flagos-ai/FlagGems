@@ -3351,6 +3351,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.1'
+  - id: leaky_relu_backward
+    description: The backward version of `leaky_relu()`.
+    for:
+      - leaky_relu_backward
+    labels:
+      - aten
+      - Activation
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: leaky_relu_out
     description: A variant of `leaky_relu()`.
     for:

@@ -4,7 +4,6 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
 
 
 @pytest.mark.leaky_relu
@@ -61,7 +60,9 @@ def test_leaky_relu_out(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_leaky_relu_backward(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    res_inp = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
     ref_inp = utils.to_reference(res_inp, True)
 
     negative_slope = 0.01
