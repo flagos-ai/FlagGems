@@ -13,6 +13,10 @@
 # limitations under the License.
 
 ops:
+  - id: batch_norm_with_update
+    description: Applies training-mode Batch Normalization using batch statistics and updates running_mean/running_var in place.
+    for:
+      - _batch_norm_with_update
   - id: batch_norm_impl_index
     description: Applies Batch Normalization and returns the normalized output along with saved statistics, a reserve tensor, and the backend implementation index.
     for:
