@@ -11,62 +11,31 @@ VENDOR = flag_gems.vendor_name
 _SVD_DTYPES = [torch.float32, torch.float64] if VENDOR == "nvidia" else [torch.float32]
 
 SVD_SHAPES_SMALL = [
-    (8, 1),
-    (1, 8),
     (2, 64),
-    (64, 2),
-    (2, 128),
-    (128, 2),
-    (2, 256),
-    (256, 2),
-    (3, 4),
-    (3, 64),
     (64, 3),
-    (4, 64),
-    (64, 4),
-    (8, 256),
     (256, 8),
-    (16, 256),
-    (256, 16),
-    (4, 4),
-    (8, 8),
-    (16, 16),
 ]
 
 SVD_SHAPES_MEDIUM = [
     (32, 512),
-    (512, 32),
     (64, 1024),
-    (1024, 64),
-    (128, 1024),
     (1024, 128),
-    (32, 32),
     (64, 64),
-    (128, 128),
 ]
 
 SVD_SHAPES_LARGE = [
     (256, 1024),
-    (1024, 256),
-    (384, 1024),
-    (1024, 384),
-    (512, 1024),
     (1024, 512),
-    (2, 2048),
     (2048, 2),
-    (256, 256),
     (512, 512),
-    (256, 512),
     (512, 256),
 ]
 
 # Batched SVD shapes — per-matrix (k, rows) within limits.
 SVD_SHAPES_BATCHED = [
     (4, 32, 64),
-    (8, 64, 128),
     (8, 128, 256),
     (2, 128, 512),
-    (16, 2, 256),
     (16, 2, 16),
     (16, 2, 2048),
     (4, 4, 64, 64),
@@ -149,39 +118,27 @@ class MatrixNormBenchmark(base.GenericBenchmark2DOnly):
         # Square-matrix sweep (fused-kernel ords, all levels).
         shapes += [
             (2, 128),
-            (128, 2),
             (8, 8),
-            (16, 16),
-            (32, 32),
             (64, 64),
-            (128, 128),
             (256, 256),
             (512, 512),
         ]
         # Batched shapes — always included (core + comprehensive).
         shapes += [
             (4, 32, 64),
-            (8, 64, 128),  # single batch dim, small k
             (8, 128, 256),
-            (4, 4, 64, 64),  # batch + multi-batch
-            (16, 2, 256),  # rank-2 batched
+            (4, 4, 64, 64),
+            (16, 2, 256),
         ]
         # SVD core shapes — always included, cover each dispatch path (float32-only).
         shapes += [
             (8, 1),
-            (1, 8),  # k=1: fro kernel
-            (2, 64),
-            (64, 2),  # k=2: rank2 closed form
+            (64, 2),
             (3, 4),
-            (3, 64),
-            (64, 3),  # k=3: gesvd / small-SVD (no Jacobi)
-            (4, 64),
-            (64, 4),  # k=4: Jacobi minimum (15 sweeps)
+            (64, 3),
             (16, 64),
-            (64, 16),  # k=16: small Jacobi (15 sweeps)
             (32, 128),
-            (128, 32),  # k=32: medium Jacobi (15 sweeps)
-            (128, 64),  # k=64: large Jacobi (20 sweeps)
+            (128, 64),
         ]
         # SVD tiers + batched SVD — comprehensive only (slow, many kernel launches).
         if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
