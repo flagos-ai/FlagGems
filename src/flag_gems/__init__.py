@@ -1117,6 +1117,7 @@ _FULL_CONFIG = (
     ("unique_consecutive", unique_consecutive),
     ("unique_dim", unique_dim),
     ("unsafe_chunk", unsafe_chunk),
+    ("unsafe_split_with_sizes", unsafe_split_with_sizes),
     ("unsqueeze", unsqueeze),
     ("unsqueeze_", unsqueeze_),
     ("upsample_bicubic2d", upsample_bicubic2d),
