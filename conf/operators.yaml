@@ -1196,6 +1196,20 @@ ops:
       - Tensor
     stages:
       - stable: '5.3'
+  - id: chalf
+    description: |
+      Returns a copy of the tensor cast to the ``complex32`` dtype. Real inputs are
+      down-cast to a complex tensor with zero imaginary part, and complex inputs have
+      both their real and imaginary components cast to half precision.
+    for:
+      - chalf
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: blackman_window
     description: Computes the Blackman window function.
     for:
