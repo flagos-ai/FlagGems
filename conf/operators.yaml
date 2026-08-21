@@ -3813,6 +3813,22 @@ ops:
       - Quantization
     stages:
       - alpha: '5.4'
+  - id: fill_mem_eff_dropout_mask_
+    description: |
+      Triton kernel implementation for `_fill_mem_eff_dropout_mask_`, the in-place
+      helper used by the memory efficient attention dropout path. It fills a
+      contiguous 4D float32 tensor of shape `(batch, heads, queries, keys)` with
+      random uniform values in [0, 1) drawn from a Philox4x32-10 stream
+      identified by `seed` and `offset`.
+    for:
+      - _fill_mem_eff_dropout_mask_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: fill_scalar
     description: Fills a scalar with the specified value.
     for:
