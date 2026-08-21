@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+import inspect
 import random
 from math import ceil
 
@@ -34,6 +36,7 @@ FUSED_MOE_CONFIGS = [
     (16, 8, 256, 512, 2),
     (32, 8, 128, 256, 4),
     # Qwen3.5 shapes (TP=4)
+    (1, 256, 2048, 128, 8),
     (10, 256, 2048, 128, 8),
     (256, 256, 2048, 128, 8),
 ]
@@ -102,6 +105,209 @@ def is_cuda_available():
 
 
 CUDA_AVAILABLE = is_cuda_available()
+
+
+def test_h20_mixtral_m512_exact_configs(monkeypatch):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    monkeypatch.setattr(fused_moe, "_is_h20", lambda: True)
+
+    expected = {
+        "BLOCK_SIZE_M": 64,
+        "BLOCK_SIZE_N": 128,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 3,
+    }
+    w1_shape = (8, 28672, 4096)
+    w2_shape = (8, 4096, 14336)
+    gemm1 = fused_moe.try_get_optimal_moe_config(
+        w1_shape, w2_shape, 2, "bf16", 512, 8, gemm_stage="gemm1"
+    )
+    gemm2 = fused_moe.try_get_optimal_moe_config(
+        w1_shape, w2_shape, 2, "bf16", 512, 8, gemm_stage="gemm2"
+    )
+
+    assert gemm1 == expected
+    assert gemm2 == expected
+    assert gemm1["BLOCK_SIZE_M"] == gemm2["BLOCK_SIZE_M"]
+
+    # Exact plans have stronger precedence than the nearest-M embedded table.
+    # This keeps a future YAML addition from silently disabling the measured
+    # H20 plan.
+    conflicting_embedded = {512: {**expected, "BLOCK_SIZE_M": 128}}
+    monkeypatch.setattr(
+        fused_moe,
+        "get_moe_configs",
+        lambda *args, **kwargs: conflicting_embedded,
+    )
+    selected, is_embedded = fused_moe.try_get_optimal_moe_config(
+        w1_shape,
+        w2_shape,
+        2,
+        "bf16",
+        512,
+        8,
+        gemm_stage="gemm1",
+        return_is_embedded=True,
+    )
+    assert selected == expected
+    assert is_embedded is False
+
+    # The override is deliberately exact: nearby batches retain the generic
+    # heuristic, while this measured plan is shared by BF16 and FP16.
+    adjacent = fused_moe._get_h20_exact_config(
+        w1_shape, w2_shape, 511, 8, 2, "bf16", "gemm1"
+    )
+    assert adjacent is None
+
+    fp16 = fused_moe._get_h20_exact_config(
+        w1_shape, w2_shape, 512, 8, 2, "fp16", "gemm1"
+    )
+    assert fp16 == expected
+    assert (
+        fused_moe._get_h20_exact_config(
+            w1_shape,
+            (8, 4096, 28672),
+            512,
+            8,
+            2,
+            "bf16",
+            "gemm1",
+        )
+        is None
+    )
+
+
+def test_h20_qwen_m1_bf16_exact_configs(monkeypatch):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    monkeypatch.setattr(fused_moe, "_is_h20", lambda: True)
+
+    w1_shape = (256, 256, 2048)
+    w2_shape = (256, 2048, 128)
+    gemm1 = fused_moe.try_get_optimal_moe_config(
+        w1_shape, w2_shape, 8, "bf16", 1, 256, gemm_stage="gemm1"
+    )
+    gemm2 = fused_moe.try_get_optimal_moe_config(
+        w1_shape, w2_shape, 8, "bf16", 1, 256, gemm_stage="gemm2"
+    )
+
+    assert gemm1 == {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 32,
+        "BLOCK_SIZE_K": 128,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 3,
+        "PAIR_GATE_UP_DOT": True,
+    }
+    assert gemm2 == {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 32,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 2,
+        "num_stages": 2,
+    }
+    assert gemm1["BLOCK_SIZE_M"] == gemm2["BLOCK_SIZE_M"]
+    assert (
+        fused_moe._get_h20_exact_config(w1_shape, w2_shape, 1, 256, 8, "fp16", "gemm1")
+        is None
+    )
+
+
+def test_h20_qwen_flash_next_m64_bf16_exact_configs(monkeypatch):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    monkeypatch.setattr(fused_moe, "_is_h20", lambda: True)
+
+    w1_shape = (512, 128, 2048)
+    w2_shape = (512, 2048, 64)
+    gemm1 = fused_moe.try_get_optimal_moe_config(
+        w1_shape, w2_shape, 10, "bf16", 64, 512, gemm_stage="gemm1"
+    )
+    gemm2 = fused_moe.try_get_optimal_moe_config(
+        w1_shape, w2_shape, 10, "bf16", 64, 512, gemm_stage="gemm2"
+    )
+
+    assert gemm1 == {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 64,
+        "BLOCK_SIZE_K": 128,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 3,
+    }
+    assert gemm2 == {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 128,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 2,
+    }
+    assert gemm1["BLOCK_SIZE_M"] == gemm2["BLOCK_SIZE_M"]
+
+    # The measured plan must not leak to adjacent capture sizes, dimensions,
+    # dtypes, or expert routing policies.
+    for M, hidden_size, intermediate_size, topk, dtype in (
+        (63, 2048, 64, 10, "bf16"),
+        (64, 4096, 64, 10, "bf16"),
+        (64, 2048, 128, 10, "bf16"),
+        (64, 2048, 64, 8, "bf16"),
+        (64, 2048, 64, 10, "fp16"),
+    ):
+        adjacent_w1 = (512, 2 * intermediate_size, hidden_size)
+        adjacent_w2 = (512, hidden_size, intermediate_size)
+        assert (
+            fused_moe._get_h20_exact_config(
+                adjacent_w1, adjacent_w2, M, 512, topk, dtype, "gemm1"
+            )
+            is None
+        )
+
+
+def test_moe_block_size_m_validation():
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    config = {"BLOCK_SIZE_M": 64}
+    fused_moe._validate_moe_block_size_m(config, config, config)
+
+    with pytest.raises(ValueError, match="must use the same BLOCK_SIZE_M"):
+        fused_moe._validate_moe_block_size_m(config, config, {"BLOCK_SIZE_M": 128})
+
+
+def test_plain_half_embedded_config_falls_back_to_legacy_dtype(monkeypatch):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    device_name = "NVIDIA_H100_80GB_HBM3"
+    legacy = {64: {"BLOCK_SIZE_M": 16, "BLOCK_SIZE_N": 32}}
+    bf16 = {64: {"BLOCK_SIZE_M": 16, "BLOCK_SIZE_N": 64}}
+    device_table = {"512,64,None,0,0": legacy}
+
+    monkeypatch.setattr(fused_moe, "_get_device_name", lambda: device_name)
+    monkeypatch.setattr(
+        fused_moe,
+        "get_embedded_moe_configs",
+        lambda: ({device_name: device_table}, {}),
+    )
+
+    assert fused_moe.get_moe_configs(512, 64, "bf16") is legacy
+    assert fused_moe.get_moe_configs(512, 64, "fp16") is legacy
+    assert fused_moe.get_moe_configs(512, 64, "fp8_w8a8") is None
+
+    # A dtype-specific entry always has precedence over the shared legacy
+    # table, so existing H20 BF16/FP16 tuning remains authoritative.
+    device_table["512,64,bf16,0,0"] = bf16
+    assert fused_moe.get_moe_configs(512, 64, "bf16") is bf16
+    assert fused_moe.get_moe_configs(512, 64, "fp16") is legacy
+
+    # Keep the compatibility fallback scoped to the Qwen/H100 table. Other
+    # devices retain their existing dtype-specific/default selection policy.
+    monkeypatch.setattr(fused_moe, "_get_device_name", lambda: "NVIDIA_H20")
+    monkeypatch.setattr(
+        fused_moe,
+        "get_embedded_moe_configs",
+        lambda: ({"NVIDIA_H20": {"512,64,None,0,0": legacy}}, {}),
+    )
+    assert fused_moe.get_moe_configs(512, 64, "bf16") is None
 
 
 DISPATCH_FUSED_MOE_KERNEL_CONFIGS = [
@@ -212,6 +418,7 @@ def torch_fused_moe_reference(
     w2: torch.Tensor,
     topk_weights: torch.Tensor,
     topk_ids: torch.Tensor,
+    apply_router_weight_on_input: bool = False,
 ) -> torch.Tensor:
     """Pure PyTorch reference implementation of fused MoE (no vLLM dependency).
 
@@ -224,6 +431,7 @@ def torch_fused_moe_reference(
         w2: (E, K, D)   -- down projection
         topk_weights: (M, topk)
         topk_ids: (M, topk)
+        apply_router_weight_on_input: apply each route's weight before GEMM1
 
     Returns:
         output: (M, K)
@@ -236,8 +444,11 @@ def torch_fused_moe_reference(
         for j in range(topk):
             e = topk_ids[m, j].item()
             weight = topk_weights[m, j]
+            hidden = hidden_states[m].to(torch.float32)
+            if apply_router_weight_on_input:
+                hidden = hidden * weight.to(torch.float32)
             # GEMM1: up-projection  (1, K) @ (K, 2D) -> (1, 2D)
-            z = hidden_states[m].to(torch.float32) @ w1[e].T.to(torch.float32)
+            z = hidden @ w1[e].T.to(torch.float32)
             # SiLU-and-Mul: split into gate and up, apply SwiGLU
             D = z.shape[-1] // 2
             gate = z[:D]
@@ -246,7 +457,10 @@ def torch_fused_moe_reference(
             # GEMM2: down-projection  (1, D) @ (D, K) -> (1, K)
             r = s @ w2[e].T.to(torch.float32)
             # Weighted accumulation
-            output[m] += (weight.to(torch.float32) * r).to(output.dtype)
+            if apply_router_weight_on_input:
+                output[m] += r.to(output.dtype)
+            else:
+                output[m] += (weight.to(torch.float32) * r).to(output.dtype)
 
     return output
 
@@ -310,6 +524,20 @@ try:
 except ImportError:
     HAS_VLLM_FUSED_MOE = False
 
+VLLM_FUSED_MOE_KWARGS = {}
+if HAS_VLLM_FUSED_MOE:
+    vllm_parameters = inspect.signature(vllm_fused_experts_impl).parameters
+    if "inplace" in vllm_parameters:
+        VLLM_FUSED_MOE_KWARGS["inplace"] = False
+    if "activation" in vllm_parameters:
+        VLLM_FUSED_MOE_KWARGS["activation"] = "silu"
+
+
+def _call_vllm_fused_experts(hidden_states, w1, w2, topk_weights, topk_ids):
+    return vllm_fused_experts_impl(
+        hidden_states, w1, w2, topk_weights, topk_ids, **VLLM_FUSED_MOE_KWARGS
+    )
+
 
 @pytest.mark.fused_experts_impl
 @pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vLLM is required")
@@ -344,14 +572,7 @@ def test_fused_moe_vs_vllm(config, dtype):
     result = flag_gems.fused_experts_impl(hidden_states, w1, w2, topk_weights, topk_ids)
 
     # Reference result
-    ref = vllm_fused_experts_impl(
-        hidden_states,
-        w1,
-        w2,
-        topk_weights,
-        topk_ids,
-        inplace=False,
-    )
+    ref = _call_vllm_fused_experts(hidden_states, w1, w2, topk_weights, topk_ids)
 
     torch_device_fn.synchronize()
 
@@ -1029,10 +1250,278 @@ def test_fused_moe_int4_w4a16(config):
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
+def _make_fused_moe_workspace_inputs(dtype):
+    device = flag_gems.device
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = (
+        4,
+        8,
+        64,
+        128,
+        2,
+    )
+    torch.manual_seed(0)
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1 = torch.randn(
+        num_experts,
+        intermediate_size * 2,
+        hidden_size,
+        device=device,
+        dtype=dtype,
+    ) * (hidden_size**-0.5)
+    w2 = torch.randn(
+        num_experts,
+        hidden_size,
+        intermediate_size,
+        device=device,
+        dtype=dtype,
+    ) * (intermediate_size**-0.5)
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = (topk_weights / topk_weights.sum(dim=-1, keepdim=True)).to(dtype)
+    return hidden_states, w1, w2, topk_weights, topk_ids
+
+
+@pytest.mark.fused_experts_impl
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="caller-owned fused MoE workspace is currently a generic NVIDIA path",
+)
+def test_fused_moe_caller_owned_output_and_workspaces(dtype):
+    args = _make_fused_moe_workspace_inputs(dtype)
+    hidden_states, w1, w2, _topk_weights, topk_ids = args
+    num_tokens, hidden_size = hidden_states.shape
+    topk = topk_ids.size(1)
+    gate_up_size = w1.size(1)
+    intermediate_size = gate_up_size // 2
+
+    reference = flag_gems.fused_experts_impl(*args)
+    cache13 = torch.empty(
+        num_tokens * topk * max(gate_up_size, hidden_size),
+        device=hidden_states.device,
+        dtype=dtype,
+    )
+    cache2 = torch.empty(
+        num_tokens * topk * intermediate_size,
+        device=hidden_states.device,
+        dtype=dtype,
+    )
+    output = torch.empty_like(hidden_states)
+
+    result = flag_gems.fused_experts_impl(
+        *args,
+        output=output,
+        intermediate_cache13=cache13,
+        intermediate_cache2=cache2,
+    )
+    torch_device_fn.synchronize()
+    assert result is output
+    torch.testing.assert_close(result, reference, rtol=1e-3, atol=1e-3)
+
+    # Reusing exactly the same buffers must not retain state from the prior
+    # invocation (important for CUDA Graph replay and workspace managers).
+    output.fill_(float("nan"))
+    repeated = flag_gems.fused_experts_impl(
+        *args,
+        output=output,
+        intermediate_cache13=cache13,
+        intermediate_cache2=cache2,
+    )
+    torch_device_fn.synchronize()
+    assert repeated is output
+    torch.testing.assert_close(repeated, reference, rtol=1e-3, atol=1e-3)
+
+
+@pytest.mark.fused_experts_impl
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="caller-owned fused MoE workspace is currently a generic NVIDIA path",
+)
+def test_fused_moe_output_may_alias_cache2_for_one_chunk(monkeypatch):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    args = _make_fused_moe_workspace_inputs(torch.bfloat16)
+    hidden_states, w1, w2, _topk_weights, topk_ids = args
+    num_tokens, hidden_size = hidden_states.shape
+    topk = topk_ids.size(1)
+    gate_up_size = w1.size(1)
+    intermediate_size = gate_up_size // 2
+
+    reference = flag_gems.fused_experts_impl(*args)
+    cache13 = torch.empty(
+        num_tokens * topk * max(gate_up_size, hidden_size),
+        device=hidden_states.device,
+        dtype=hidden_states.dtype,
+    )
+    common = torch.empty(
+        max(
+            hidden_states.numel(),
+            num_tokens * topk * intermediate_size,
+        ),
+        device=hidden_states.device,
+        dtype=hidden_states.dtype,
+    )
+    output = common[: hidden_states.numel()].view_as(hidden_states)
+
+    # Force the direct-sum size threshold low enough that this shape would
+    # otherwise use it. cache2/output aliasing must keep the regular GEMM2 +
+    # moe_sum ordering because direct-sum would read and write one buffer.
+    monkeypatch.setattr(fused_moe, "MOE_DIRECT_SUM_MIN_TOKENS", 1)
+    monkeypatch.setattr(fused_moe, "get_moe_configs", lambda *args, **kwargs: None)
+    direct_sum_flags = []
+    original_dispatch = fused_moe.dispatch_fused_moe_kernel
+
+    def dispatch_spy(*dispatch_args, **dispatch_kwargs):
+        direct_sum_flags.append(dispatch_kwargs.get("direct_sum", False))
+        return original_dispatch(*dispatch_args, **dispatch_kwargs)
+
+    monkeypatch.setattr(fused_moe, "dispatch_fused_moe_kernel", dispatch_spy)
+    result = fused_moe.fused_experts_impl(
+        *args,
+        output=output,
+        intermediate_cache13=cache13,
+        intermediate_cache2=common,
+    )
+    torch_device_fn.synchronize()
+
+    assert result is output
+    assert not any(direct_sum_flags)
+    torch.testing.assert_close(result, reference, rtol=1e-3, atol=1e-3)
+
+
+@pytest.mark.fused_experts_impl
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="caller-owned fused MoE workspace is currently a generic NVIDIA path",
+)
+def test_fused_moe_rejects_unsafe_workspace_aliases():
+    args = _make_fused_moe_workspace_inputs(torch.bfloat16)
+    hidden_states, w1, w2, _topk_weights, topk_ids = args
+    num_tokens, hidden_size = hidden_states.shape
+    topk = topk_ids.size(1)
+    gate_up_size = w1.size(1)
+    intermediate_size = gate_up_size // 2
+    cache13_numel = num_tokens * topk * max(gate_up_size, hidden_size)
+    cache2_numel = num_tokens * topk * intermediate_size
+
+    output = torch.empty_like(hidden_states)
+    cache13 = torch.empty(
+        cache13_numel, device=hidden_states.device, dtype=hidden_states.dtype
+    )
+    cache2 = torch.empty(
+        cache2_numel, device=hidden_states.device, dtype=hidden_states.dtype
+    )
+
+    with pytest.raises(ValueError, match="inplace=True and output"):
+        flag_gems.fused_experts_impl(*args, inplace=True, output=output)
+
+    with pytest.raises(ValueError, match="intermediate_cache13 is too small"):
+        flag_gems.fused_experts_impl(
+            *args,
+            intermediate_cache13=cache13[:-1],
+            intermediate_cache2=cache2,
+        )
+
+    shared_scratch = torch.empty(
+        max(cache13_numel, cache2_numel),
+        device=hidden_states.device,
+        dtype=hidden_states.dtype,
+    )
+    with pytest.raises(ValueError, match="must not overlap"):
+        flag_gems.fused_experts_impl(
+            *args,
+            intermediate_cache13=shared_scratch,
+            intermediate_cache2=shared_scratch,
+        )
+
+    output_cache13 = cache13[: hidden_states.numel()].view_as(hidden_states)
+    with pytest.raises(
+        ValueError, match="output must not overlap intermediate_cache13"
+    ):
+        flag_gems.fused_experts_impl(
+            *args,
+            output=output_cache13,
+            intermediate_cache13=cache13,
+            intermediate_cache2=cache2,
+        )
+
+    noncontiguous_cache2 = torch.empty(
+        cache2_numel * 2,
+        device=hidden_states.device,
+        dtype=hidden_states.dtype,
+    )[::2]
+    with pytest.raises(ValueError, match="intermediate_cache2 must be contiguous"):
+        flag_gems.fused_experts_impl(
+            *args,
+            intermediate_cache13=cache13,
+            intermediate_cache2=noncontiguous_cache2,
+        )
+
+
+@pytest.mark.fused_experts_impl
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="caller-owned fused MoE workspace is currently a generic NVIDIA path",
+)
+def test_fused_moe_rejects_multichunk_output_cache2_alias():
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = (
+        fused_moe.FUSED_MOE_CHUNK_SIZE + 1,
+        8,
+        16,
+        8,
+        2,
+    )
+    hidden_states = torch.zeros((num_tokens, hidden_size), device=device, dtype=dtype)
+    w1 = torch.zeros(
+        (num_experts, 2 * intermediate_size, hidden_size),
+        device=device,
+        dtype=dtype,
+    )
+    w2 = torch.zeros(
+        (num_experts, hidden_size, intermediate_size),
+        device=device,
+        dtype=dtype,
+    )
+    topk_weights = torch.full(
+        (num_tokens, topk), 1.0 / topk, device=device, dtype=dtype
+    )
+    topk_ids = torch.zeros((num_tokens, topk), device=device, dtype=torch.int64)
+    max_chunk = fused_moe.FUSED_MOE_CHUNK_SIZE
+    cache13 = torch.empty(
+        max_chunk * topk * max(2 * intermediate_size, hidden_size),
+        device=device,
+        dtype=dtype,
+    )
+    common = torch.empty(
+        max(
+            hidden_states.numel(),
+            max_chunk * topk * intermediate_size,
+        ),
+        device=device,
+        dtype=dtype,
+    )
+    output = common[: hidden_states.numel()].view_as(hidden_states)
+
+    with pytest.raises(ValueError, match="only for a single MoE chunk"):
+        flag_gems.fused_experts_impl(
+            hidden_states,
+            w1,
+            w2,
+            topk_weights,
+            topk_ids,
+            output=output,
+            intermediate_cache13=cache13,
+            intermediate_cache2=common,
+        )
+
+
 @pytest.mark.fused_experts_impl
 @pytest.mark.parametrize(
     "config",
     [
+        (1, 256, 2048, 128, 8),
         (4, 8, 128, 256, 2),
         (16, 8, 256, 512, 2),
     ],
@@ -1093,6 +1582,7 @@ def test_fused_moe_inplace(config, dtype):
 @pytest.mark.parametrize(
     "config",
     [
+        (1, 256, 2048, 128, 8),
         (4, 8, 128, 256, 2),
         (16, 8, 256, 512, 2),
     ],
@@ -1146,15 +1636,21 @@ def test_fused_moe_apply_router_weight_on_input(config, dtype):
     # Due to SiLU nonlinearity, these will differ, but both should be
     # close to the reference with weight on the respective path.
     ref = torch_fused_moe_reference(hidden_states, w1, w2, topk_weights, topk_ids)
+    ref_on_input = torch_fused_moe_reference(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        apply_router_weight_on_input=True,
+    )
 
     # The default (weight on output) should match our standard reference
     rtol = 1e-1
     atol = max(1e-2, ref.abs().max().item() * 1e-5)
     torch.testing.assert_close(result_default, ref, rtol=rtol, atol=atol)
 
-    # The apply_on_input result will differ but should be finite and nonzero
-    assert torch.isfinite(
-        result_on_input
-    ).all(), "result_on_input has non-finite values"
-
-    assert result_on_input.abs().sum() > 0, "result_on_input is all zeros"
+    atol_on_input = max(1e-2, ref_on_input.abs().max().item() * 1e-5)
+    torch.testing.assert_close(
+        result_on_input, ref_on_input, rtol=rtol, atol=atol_on_input
+    )

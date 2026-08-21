@@ -17,6 +17,8 @@ import torch
 
 import flag_gems
 from flag_gems.fused.moe_align_block_size import (
+    moe_align_block_size,
+    moe_align_block_size_compact,
     moe_align_block_size_singleton,
     moe_align_block_size_small_grouped,
 )
@@ -377,3 +379,91 @@ def test_accuracy_moe_align_block_size_fast_paths(fast_path):
     torch.testing.assert_close(actual[0][:num_tokens], expected[0][:num_tokens])
     torch.testing.assert_close(actual[1][:num_blocks], expected[1][:num_blocks])
     torch.testing.assert_close(actual[2], expected[2])
+
+
+@pytest.mark.moe_align_block_size
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability() != (9, 0),
+    reason="compact MoE alignment is currently enabled only on NVIDIA SM90",
+)
+@pytest.mark.parametrize("id_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize(
+    ("num_experts", "topk_ids_shape", "routing", "pad_sorted_ids"),
+    [
+        (512, (64, 10), "uniform", False),
+        (512, (64, 10), "skewed", False),
+        (257, (64, 10), "uniform", False),
+        (511, (64, 10), "uniform", False),
+        (256, (1, 1), "uniform", False),
+        (512, (128, 8), "uniform", False),
+        (512, (128, 8), "skewed", False),
+        (512, (1, 641), "uniform", True),
+    ],
+)
+def test_accuracy_moe_align_block_size_compact_qwen4(
+    num_experts, topk_ids_shape, routing, pad_sorted_ids, id_dtype
+):
+    device = flag_gems.device
+    block_size = 16
+    num_routes = topk_ids_shape[0] * topk_ids_shape[1]
+
+    if routing == "uniform":
+        topk_ids = torch.randint(
+            0,
+            num_experts,
+            topk_ids_shape,
+            dtype=id_dtype,
+            device=device,
+        )
+    else:
+        # Exercise MAX_BLOCKS_PER_EXPERT by sending every route to one expert.
+        topk_ids = torch.full(topk_ids_shape, 17, dtype=id_dtype, device=device)
+
+    actual = moe_align_block_size_compact(
+        topk_ids, block_size, num_experts, pad_sorted_ids
+    )
+    selected = moe_align_block_size(
+        topk_ids,
+        block_size,
+        num_experts,
+        pad_sorted_ids=pad_sorted_ids,
+    )
+    if pad_sorted_ids:
+        assert actual[0].numel() % block_size == 0
+        assert selected[0].numel() % block_size == 0
+
+    max_num_tokens_padded = num_routes + num_experts * (block_size - 1)
+    expected = (
+        torch.empty(max_num_tokens_padded, dtype=torch.int32, device=device),
+        torch.empty(
+            max_num_tokens_padded // block_size,
+            dtype=torch.int32,
+            device=device,
+        ),
+        torch.empty(1, dtype=torch.int32, device=device),
+    )
+    torch_moe_align_block_size(
+        topk_ids,
+        num_experts,
+        block_size,
+        expected[0],
+        expected[1],
+        expected[2],
+    )
+    _synchronize()
+
+    total_tokens = expected[2].item()
+    num_blocks = total_tokens // block_size
+    for output in (actual, selected):
+        _verify_expert_level_sorting(
+            output[0],
+            expected[0],
+            expected[1],
+            block_size,
+            total_tokens,
+            num_routes,
+        )
+        torch.testing.assert_close(output[1][:num_blocks], expected[1][:num_blocks])
+        torch.testing.assert_close(output[2], expected[2])

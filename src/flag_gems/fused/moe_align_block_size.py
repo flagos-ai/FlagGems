@@ -20,6 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
 from flag_gems.utils import has_triton_tle, libentry, libtuner
 
 if has_triton_tle(3, 6, 0):
@@ -42,6 +43,10 @@ logger = logging.getLogger(__name__)
 
 TLE_CLUSTER_SIZE = 8
 TLE_BIG_TOKEN_THRESHOLD_TOKENS = 4096
+COMPACT_ALIGN_MAX_ROUTES = 1024
+COMPACT_ALIGN_MIN_EXPERTS = 256
+COMPACT_ALIGN_MAX_EXPERTS = 512
+COMPACT_ALIGN_BLOCK_SIZE = 16
 _TRITON_ALLOCATOR_INSTALLED = False
 TLE_ATOMIC_WARPS_CONFIGS = [
     triton.Config(kwargs={}, num_warps=4),
@@ -82,6 +87,13 @@ def _supports_tle_cluster_remote() -> bool:
         return False
     major, _minor = torch.cuda.get_device_capability()
     return major >= 9
+
+
+def _supports_compact_align() -> bool:
+    """Restrict the measured compact path to NVIDIA SM90 devices."""
+    if runtime_device.vendor_name != "nvidia" or not torch.cuda.is_available():
+        return False
+    return torch.cuda.get_device_capability() == (9, 0)
 
 
 def _install_triton_default_allocator(device: torch.device) -> None:
@@ -786,6 +798,148 @@ def moe_align_block_size_small_grouped(
     return sorted_token_ids, expert_ids, num_tokens_post_pad
 
 
+@triton.jit
+def _moe_align_block_size_compact_count_prefix_init_kernel(
+    topk_ids_ptr,
+    expert_starts_ptr,
+    expert_ranks_ptr,
+    sorted_token_ids_ptr,
+    expert_ids_ptr,
+    num_tokens_post_pad_ptr,
+    NUM_ROUTES: tl.constexpr,
+    NUM_EXPERTS: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_EXPERT: tl.constexpr,
+    BLOCK_ROUTES: tl.constexpr,
+    MAX_PADDED: tl.constexpr,
+    INIT_BLOCK: tl.constexpr,
+    MAX_BLOCKS_PER_EXPERT: tl.constexpr,
+):
+    route_offsets = tl.arange(0, BLOCK_ROUTES)
+    route_mask = route_offsets < NUM_ROUTES
+    route_experts = tl.load(topk_ids_ptr + route_offsets, mask=route_mask, other=0).to(
+        tl.int32
+    )
+    counts = tl.histogram(route_experts, BLOCK_EXPERT, mask=route_mask).to(tl.int32)
+
+    expert_offsets = tl.arange(0, BLOCK_EXPERT)
+    expert_mask = expert_offsets < NUM_EXPERTS
+    counts = tl.where(expert_mask, counts, 0)
+    aligned_counts = tl.cdiv(counts, BLOCK_SIZE_M) * BLOCK_SIZE_M
+    expert_starts = tl.cumsum(aligned_counts, axis=0) - aligned_counts
+    total_tokens = tl.sum(aligned_counts, axis=0)
+
+    # The histogram and prefix sum share one CTA, so counts stay on chip instead
+    # of being materialized to global memory between two kernel launches.
+    tl.store(expert_starts_ptr + expert_offsets, expert_starts, mask=expert_mask)
+    tl.store(expert_ranks_ptr + expert_offsets, 0, mask=expert_mask)
+    tl.store(num_tokens_post_pad_ptr, total_tokens)
+
+    # Only the dynamically valid padded region is initialized. Values past
+    # total_tokens are never consumed by the grouped GEMM.
+    init_offsets = tl.arange(0, INIT_BLOCK)
+    for base in tl.static_range(0, MAX_PADDED, INIT_BLOCK):
+        offsets = base + init_offsets
+        tl.store(
+            sorted_token_ids_ptr + offsets,
+            NUM_ROUTES,
+            mask=offsets < total_tokens,
+        )
+
+    # Each active expert normally has a single block for decode-sized routing.
+    # The loop also covers skewed routing, up to all routes selecting one expert.
+    for block_idx in tl.static_range(0, MAX_BLOCKS_PER_EXPERT):
+        valid_block = expert_mask & (block_idx * BLOCK_SIZE_M < aligned_counts)
+        output_block = expert_starts // BLOCK_SIZE_M + block_idx
+        tl.store(
+            expert_ids_ptr + output_block,
+            expert_offsets,
+            mask=valid_block,
+        )
+
+
+@triton.jit
+def _moe_align_block_size_compact_scatter_kernel(
+    topk_ids_ptr,
+    expert_starts_ptr,
+    expert_ranks_ptr,
+    sorted_token_ids_ptr,
+    NUM_ROUTES: tl.constexpr,
+    BLOCK_ROUTES: tl.constexpr,
+):
+    route_offsets = tl.program_id(0) * BLOCK_ROUTES + tl.arange(0, BLOCK_ROUTES)
+    route_mask = route_offsets < NUM_ROUTES
+    expert_ids = tl.load(topk_ids_ptr + route_offsets, mask=route_mask, other=0).to(
+        tl.int32
+    )
+    ranks = tl.atomic_add(expert_ranks_ptr + expert_ids, 1, mask=route_mask)
+    starts = tl.load(expert_starts_ptr + expert_ids, mask=route_mask, other=0)
+    tl.store(
+        sorted_token_ids_ptr + starts + ranks,
+        route_offsets,
+        mask=route_mask,
+    )
+
+
+def moe_align_block_size_compact(
+    topk_ids: torch.Tensor,
+    block_size: int,
+    num_experts: int,
+    pad_sorted_ids: bool = False,
+) -> "tuple[torch.Tensor, torch.Tensor, torch.Tensor]":
+    """Align a decode-sized routing table without an E x E count matrix."""
+    num_routes = topk_ids.numel()
+    max_num_tokens_padded = num_routes + num_experts * (block_size - 1)
+    if pad_sorted_ids:
+        max_num_tokens_padded = round_up(max_num_tokens_padded, block_size)
+
+    sorted_token_ids = torch.empty(
+        (max_num_tokens_padded,), dtype=torch.int32, device=topk_ids.device
+    )
+    expert_ids = torch.empty(
+        (triton.cdiv(max_num_tokens_padded, block_size),),
+        dtype=torch.int32,
+        device=topk_ids.device,
+    )
+    num_tokens_post_pad = torch.empty((1,), dtype=torch.int32, device=topk_ids.device)
+    expert_starts = torch.empty(
+        (num_experts,), dtype=torch.int32, device=topk_ids.device
+    )
+    expert_ranks = torch.empty_like(expert_starts)
+
+    block_expert = triton.next_power_of_2(num_experts)
+    _moe_align_block_size_compact_count_prefix_init_kernel[(1,)](
+        topk_ids,
+        expert_starts,
+        expert_ranks,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_pad,
+        NUM_ROUTES=num_routes,
+        NUM_EXPERTS=num_experts,
+        BLOCK_SIZE_M=block_size,
+        BLOCK_EXPERT=block_expert,
+        BLOCK_ROUTES=triton.next_power_of_2(num_routes),
+        MAX_PADDED=max_num_tokens_padded,
+        INIT_BLOCK=256,
+        MAX_BLOCKS_PER_EXPERT=triton.cdiv(num_routes, block_size),
+        num_warps=4,
+    )
+    scatter_block = 128
+    _moe_align_block_size_compact_scatter_kernel[
+        (triton.cdiv(num_routes, scatter_block),)
+    ](
+        topk_ids,
+        expert_starts,
+        expert_ranks,
+        sorted_token_ids,
+        NUM_ROUTES=num_routes,
+        BLOCK_ROUTES=scatter_block,
+        num_warps=4,
+    )
+    return sorted_token_ids, expert_ids, num_tokens_post_pad
+
+
 def moe_align_block_size(
     topk_ids: torch.Tensor,
     block_size: int,
@@ -793,6 +947,27 @@ def moe_align_block_size(
     expert_map: Optional[torch.Tensor] = None,
     pad_sorted_ids: bool = False,
 ) -> "tuple[torch.Tensor, torch.Tensor, torch.Tensor]":
+    num_routes = topk_ids.numel()
+    if (
+        expert_map is None
+        and topk_ids.is_cuda
+        # Triton 3.6 deployments may have the cooperative TLE one-kernel
+        # implementation. Do not replace that path without device measurements.
+        and not HAS_TLE
+        # The compact launch parameters are measured on Hopper. Keep older
+        # architectures on their existing path until they are benchmarked.
+        and _supports_compact_align()
+        and block_size == COMPACT_ALIGN_BLOCK_SIZE
+        and 0 < num_routes <= COMPACT_ALIGN_MAX_ROUTES
+        and COMPACT_ALIGN_MIN_EXPERTS <= num_experts <= COMPACT_ALIGN_MAX_EXPERTS
+    ):
+        return moe_align_block_size_compact(
+            topk_ids,
+            block_size,
+            num_experts,
+            pad_sorted_ids,
+        )
+
     max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
     if pad_sorted_ids:
         max_num_tokens_padded = round_up(max_num_tokens_padded, block_size)
