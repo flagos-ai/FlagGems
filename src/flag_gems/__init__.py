@@ -32,6 +32,10 @@ from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
 from flag_gems.runtime.backend import SpecOpRegistrar
 from flag_gems.runtime.op_registrar import GeneralOpRegistrar
+from flag_gems.ops.flash_precompile import (
+    precompile_flash_attention,
+    precompile_for_model,
+)
 
 try:
     from flag_gems._version import commit_id as _commit_id
@@ -1336,11 +1340,68 @@ def all_registered_keys():
     return current_work_registrar.get_all_keys()
 
 
+def disable_flash_attention():
+    """
+    Convenience helper: disable FlashAttention-related operators and fall back
+    to the native PyTorch implementation.
+
+    When to use:
+    - When FlagGems FlashAttention underperforms (small batch, frequent JIT
+      compilation)
+    - When you need to compare against baseline performance
+
+    Usage:
+        import flag_gems
+        flag_gems.disable_flash_attention()  # disable attention first
+        flag_gems.enable()                   # then enable the other operators
+
+    Or specify it explicitly via enable(unused=...):
+        flag_gems.enable(unused=[
+            "_flash_attention_forward",
+            "_flash_attention_backward",
+            "_scaled_dot_product_flash_attention",
+            "_scaled_dot_product_flash_attention_backward",
+        ])
+    """
+    return [
+        "_flash_attention_forward",
+        "_flash_attention_backward",
+        "_scaled_dot_product_flash_attention",
+        "_scaled_dot_product_flash_attention_backward",
+    ]
+
+
+def disable_attention_all():
+    """
+    Convenience helper: disable all attention-related operators (including
+    flash/cudnn/efficient).
+
+    Usage:
+        import flag_gems
+        flag_gems.enable(unused=flag_gems.disable_attention_all())
+    """
+    return [
+        "_flash_attention_forward",
+        "_flash_attention_backward",
+        "_scaled_dot_product_flash_attention",
+        "_scaled_dot_product_flash_attention_backward",
+        "_cudnn_attention_forward",
+        "scaled_dot_product_cudnn_attention_backward",
+        "efficient_attention_backward",
+        "_scaled_dot_product_efficient_attention_backward",
+        "_scaled_dot_product_fused_attention_overrideable",
+    ]
+
+
 __all__ = [
     "all_registered_keys",
     "all_registered_ops",
+    "disable_attention_all",
+    "disable_flash_attention",
     "enable",
     "flagtune",
     "only_enable",
+    "precompile_flash_attention",
+    "precompile_for_model",
     "use_gems",
 ]
