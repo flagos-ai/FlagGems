@@ -6,9 +6,15 @@ import torch
 import flag_gems
 
 from . import base, consts, utils
+from .conftest import Config
 
 VENDOR = flag_gems.vendor_name
 _SVD_DTYPES = [torch.float32, torch.float64] if VENDOR == "nvidia" else [torch.float32]
+
+# Ascend: SVD kernels are fp32 only and non-SVD ords crash CANN native, so
+# benchmark the end-to-end operator (KERNEL mode can't time the torch baseline).
+if VENDOR == "ascend":
+    Config.mode = consts.BenchMode.OPERATOR
 
 SVD_SHAPES_SMALL = [
     (2, 64),
@@ -100,23 +106,14 @@ def matrix_norm_input_fn(shape, dtype, device):
 # ---------------------------------------------------------------------------
 
 
-class MatrixNormBenchmark(base.GenericBenchmark2DOnly):
+class MatrixNormBenchmark(base.Benchmark):
+    DEFAULT_SHAPE_DESC = "(*B), M, N"
     # Maximum total elements to keep benchmark time reasonable.
     MAX_ELEMENTS = 128 * 1024 * 1024  # 128M — include all default shapes
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.shapes = [
-            s for s in self.shapes if len(s) >= 2 and math.prod(s) <= self.MAX_ELEMENTS
-        ]
-        super().init_user_config()
-        if flag_gems.vendor_name == "ascend":
-            base.Config.mode = consts.BenchMode.OPERATOR
-
     def set_more_shapes(self):
-        shapes = super().set_more_shapes()
         # Square-matrix sweep (fused-kernel ords, all levels).
-        shapes += [
+        shapes = [
             (2, 128),
             (8, 8),
             (64, 64),
@@ -141,12 +138,16 @@ class MatrixNormBenchmark(base.GenericBenchmark2DOnly):
             (128, 64),
         ]
         # SVD tiers + batched SVD — comprehensive only (slow, many kernel launches).
-        if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+        if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
             shapes += SVD_SHAPES_SMALL
             shapes += SVD_SHAPES_MEDIUM
             shapes += SVD_SHAPES_LARGE
             shapes += SVD_SHAPES_BATCHED
         return [s for s in shapes if math.prod(s) <= self.MAX_ELEMENTS]
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            yield from matrix_norm_input_fn(shape, cur_dtype, self.device)
 
 
 # ---------------------------------------------------------------------------
@@ -168,9 +169,8 @@ def test_linalg_matrix_norm():
 
     bench = MatrixNormBenchmark(
         op_name="linalg_matrix_norm",
-        input_fn=matrix_norm_input_fn,
         torch_op=torch.linalg.matrix_norm,
-        gems_op=flag_gems.linalg_matrix_norm,
         dtypes=bench_dtypes,
     )
+    bench.set_gems(flag_gems.linalg_matrix_norm)
     bench.run()
