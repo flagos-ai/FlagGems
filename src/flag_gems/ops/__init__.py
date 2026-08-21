@@ -211,6 +211,7 @@ from flag_gems.ops.attention import (
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
+    scaled_dot_product_flash_attention,
 )
 from flag_gems.ops.avg_pool1d import avg_pool1d
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
@@ -707,7 +708,7 @@ from flag_gems.ops.scaled_grouped_mm import scaled_grouped_mm
 from flag_gems.ops.scaled_mm import scaled_mm, scaled_mm_out
 from flag_gems.ops.scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from flag_gems.ops.scatter import scatter, scatter_
-from flag_gems.ops.scatter_add import scatter_add, scatter_add_
+from flag_gems.ops.scatter_add import scatter_add_
 from flag_gems.ops.scatter_reduce import (
     scatter_reduce,
     scatter_reduce_,
@@ -1685,6 +1686,7 @@ __all__ = [
     "scaled_dot_product_attention_forward",
     "scaled_dot_product_cudnn_attention_backward",
     "scaled_dot_product_efficient_attention_backward",
+    "scaled_dot_product_flash_attention",
     "scaled_dot_product_flash_attention_backward",
     "scaled_grouped_mm",
     "scaled_mm",
@@ -1693,7 +1695,6 @@ __all__ = [
     "scaled_softmax_forward",
     "scatter",
     "scatter_",
-    "scatter_add",
     "scatter_add_",
     "scatter_reduce",
     "scatter_reduce_",

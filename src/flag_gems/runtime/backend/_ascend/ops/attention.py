@@ -20,11 +20,12 @@ import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
+from packaging.version import Version as _Version
 
 from flag_gems import runtime
 from flag_gems.config import use_c_extension
+from flag_gems.ops.attention import keep
 from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
-from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
@@ -532,11 +533,53 @@ def _attn_bwd_dq(
 
 config_backward = runtime.get_tuned_config("attention_bwd")
 
+# Add small head-dim configs and prune callback to avoid
+# shared memory overflow when compiling the backward Triton kernel.
+SMALL_HEAD_DIM_BWD_CONFIGS = [
+    triton.Config(
+        {"BLOCK_M1": BM1, "BLOCK_N1": BN1, "BLOCK_M2": BM2, "BLOCK_N2": BN2},
+        num_stages=s,
+        num_warps=w,
+    )
+    for (BM1, BN1, BM2, BN2) in [
+        (32, 64, 64, 32),
+    ]
+    for s in [2, 3, 4]
+    for w in [4, 8]
+]
+config_backward = config_backward + SMALL_HEAD_DIM_BWD_CONFIGS
+
+
+def _prune_bwd_configs(configs, named_args, **kwargs):
+    configs = [
+        c
+        for c in configs
+        if (c.kwargs.get("BLOCK_N1", 64) % c.kwargs.get("BLOCK_M1", 32) == 0)
+        and (c.kwargs.get("BLOCK_M2", 64) % c.kwargs.get("BLOCK_N2", 32) == 0)
+    ]
+    BLOCK_DMODEL = kwargs.get("BLOCK_DMODEL", named_args.get("BLOCK_DMODEL", 128))
+    if BLOCK_DMODEL <= 32:
+        pruned = [
+            c
+            for c in configs
+            if c.kwargs.get("BLOCK_N1", 64) <= 64 and c.kwargs.get("BLOCK_M1", 32) <= 32
+        ]
+        return pruned if pruned else configs
+    return configs
+
+
+_bwd_prune_configs = (
+    {"early_config_prune": _prune_bwd_configs}
+    if _Version("3.6.0") <= _Version(triton.__version__) < _Version("3.8.0")
+    else {}
+)
+
 
 @libentry()
 @libtuner(
     configs=config_backward,
     key=["KV_CTX", "BLOCK_DMODEL"],
+    prune_configs_by=_bwd_prune_configs,
 )
 @triton.jit
 def _attn_bwd(
@@ -1085,6 +1128,44 @@ def scaled_dot_product_attention(
         scale,
         enable_gqa,
     )
+
+
+def scaled_dot_product_flash_attention(
+    query,
+    key,
+    value,
+    dropout_p=0.0,
+    is_causal=False,
+    return_debug_mask=False,
+    *,
+    scale=None,
+):
+    logger.debug("GEMS _SCALED_DOT_PRODUCT_FLASH_ATTENTION")
+
+    B, H, S_q, D = query.shape
+    S_kv = key.shape[2]
+
+    q = query.transpose(1, 2)
+    k = key.transpose(1, 2)
+    v = value.transpose(1, 2)
+
+    out, lse, philox_seed, philox_offset, debug_mask = flash_attention_forward(
+        q,
+        k,
+        v,
+        cumulative_sequence_length_q=None,
+        cumulative_sequence_length_k=None,
+        max_q=S_q,
+        max_k=S_kv,
+        dropout_p=dropout_p,
+        is_causal=is_causal,
+        return_debug_mask=return_debug_mask,
+        scale=scale,
+    )
+
+    out = out.transpose(1, 2)
+
+    return (out, lse, None, None, S_q, S_kv, philox_seed, philox_offset, debug_mask)
 
 
 def flash_attention_forward(
