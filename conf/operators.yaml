@@ -5701,6 +5701,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: is_same_size
+    description: |
+      Returns True if `input` and `other` have the same shape.
+      The comparison reads shape metadata only and never accesses tensor storage.
+    for:
+      - is_same_size
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: isclose
     description: |
       Returns a new tensor with boolean elements representing if each element of `input`

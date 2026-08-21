@@ -645,6 +645,7 @@ _FULL_CONFIG = (
     ("index_select", index_select),
     ("index_select_backward", index_select_backward),
     ("is_nonzero", is_nonzero),
+    ("is_same_size", is_same_size),
     ("isclose", isclose),
     ("isfinite", isfinite),
     ("isin.Scalar_Tensor", isin),
