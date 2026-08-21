@@ -31,12 +31,21 @@ without any C++ involvement:
   arbitrary GPU scheduling (same tolerance class as PyTorch's own CPU-vs-CUDA
   divergence); integer accumulation is exact.
 
-All host-side stride/divisor scalars are packed into one small cached int64
-``meta`` tensor per call. Besides keeping the kernel signatures short, this
-sidesteps Triton's per-argument specialization cost in the Python launcher
-(~80 scalar arguments would otherwise be type-specialized on every launch).
-The meta tensors are cached keyed by the exact shapes/strides, so repeated
-calls with the same shapes pay no rebuild cost.
+Performance notes for the pure-Python wrapper:
+
+- All host-side stride/divisor scalars are packed into one small cached int64
+  ``meta`` tensor per call (cached keyed by the exact shapes/strides), which
+  keeps the kernel signatures short and sidesteps Triton's per-argument
+  specialization cost in the Python launcher.
+- The output clone is ``empty_like`` + a Triton copy kernel (vectorized flat
+  copy in the common contiguous case), avoiding the patched ``aten::clone``
+  dispatch under ``use_gems``.
+- Kernel launches go through a cached ``CompiledKernel`` (``_fast_launch``),
+  skipping triton's per-call binder/specialization, which costs ~15us of
+  Python per launch and dominates small shapes. The cache key captures
+  everything the compiled kernel depends on (constexpr values, argument
+  dtypes, each user tensor's 16-byte alignment, num_warps); on signature
+  drift in future triton versions the normal launch path is used instead.
 """
 
 import logging
@@ -45,10 +54,61 @@ from functools import lru_cache
 import torch
 import triton
 import triton.language as tl
+from triton import knobs
+from triton.runtime import driver
 
 logger = logging.getLogger(__name__)
 
 _MAX_NDIM = 6
+
+# Cached CompiledKernel direct launches; see the module docstring.
+_FAST_CACHE = {}
+
+
+def _aligned(t):
+    # torch's caching allocator returns 512B-aligned blocks; only views can
+    # be misaligned, so this check is only needed for user-provided tensors.
+    return t.data_ptr() & 15 == 0
+
+
+def _fast_launch(jit_fn, grid, args, key, num_warps=4):
+    """Launch a cached CompiledKernel, skipping triton's per-call binder.
+
+    ``key`` must capture everything the compiled kernel depends on: constexpr
+    values, argument dtypes, each user tensor's 16-byte alignment and
+    num_warps. Callers build it cheaply from values they already hold.
+    """
+    cache_key = (jit_fn, key)
+    kern = _FAST_CACHE.get(cache_key)
+    if kern is None:
+        kern = jit_fn[grid](*args, num_warps=num_warps)
+        if hasattr(kern, "result"):
+            kern = kern.result()
+        _FAST_CACHE[cache_key] = kern
+        return
+    try:
+        # Direct launch on the current stream, skipping the per-call binder
+        # and the launch-metadata LazyDict. The metadata is None-safe because
+        # the cache key already captures 16-byte alignments and our kernels
+        # declare no launch_metadata function.
+        device = driver.active.get_current_device()
+        stream = driver.active.get_current_stream(device)
+        kern.run(
+            grid[0],
+            grid[1] if len(grid) > 1 else 1,
+            grid[2] if len(grid) > 2 else 1,
+            stream,
+            kern.function,
+            kern.packed_metadata,
+            None,
+            knobs.runtime.launch_enter_hook,
+            knobs.runtime.launch_exit_hook,
+            *args,
+        )
+    except (TypeError, AttributeError):
+        # triton internals changed; the normal path is always correct
+        jit_fn[grid](*args, num_warps=num_warps)
+
 
 # Meta layout (offsets into the meta tensor). The main and scratch kernels
 # share this single layout (the scratch kernel loads only the fields it needs):
@@ -910,8 +970,12 @@ def _launch_copy(dst, src):
         block, num_warps = 8192, 8
     else:
         block, num_warps = 1024, 4
-    _unsafe_index_put_copy_kernel[(triton.cdiv(numel, block),)](
-        src, dst, meta, numel, contiguous, block, num_warps=num_warps
+    _fast_launch(
+        _unsafe_index_put_copy_kernel,
+        (triton.cdiv(numel, block),),
+        (src, dst, meta, numel, contiguous, block),
+        (contiguous, block, num_warps, src.dtype, dst.dtype, _aligned(src)),
+        num_warps=num_warps,
     )
 
 
@@ -953,6 +1017,9 @@ def _launch(out, indices, values, idx_shape, suffix_shape, idx_numel, suffix_num
     # Pad index tensor list for kernel args (kernel always takes _MAX_NDIM
     # pointers; padded slots are never read thanks to the M constexpr).
     kernel_idx = indices + [indices[0]] * (_MAX_NDIM - m)
+    # dtype + 16-byte-alignment tags of the index tensors (part of the fast
+    # launch cache key; the padded pointer slots reuse indices[0]).
+    key = tuple((t.dtype, _aligned(t)) for t in indices)
 
     block_idx, block_suf = _heuristic_2d_blocks(idx_numel, suffix_numel)
     grid = (
@@ -973,71 +1040,103 @@ def _launch(out, indices, values, idx_shape, suffix_shape, idx_numel, suffix_num
         scratch = torch.empty(max_off + 1, dtype=scratch_dtype, device=out.device)
 
         # Prologue: seed the scratch slots with cast(orig).
-        _unsafe_index_put_scratch_kernel[grid](
-            out,
-            scratch,
-            *kernel_idx,
-            meta,
-            idx_numel,
-            suffix_numel,
-            m,
-            idx_ndim,
-            suf_ndim,
-            True,
-            block_idx,
-            block_suf,
+        _fast_launch(
+            _unsafe_index_put_scratch_kernel,
+            grid,
+            (
+                out,
+                scratch,
+                *kernel_idx,
+                meta,
+                idx_numel,
+                suffix_numel,
+                m,
+                idx_ndim,
+                suf_ndim,
+                True,
+                block_idx,
+                block_suf,
+            ),
+            (m, idx_ndim, suf_ndim, True, block_idx, block_suf, out.dtype, *key),
             num_warps=4,
         )
         # Main: atomic_add cast deltas into scratch.
-        _unsafe_index_put_kernel[grid](
-            out,
-            values,
-            scratch,
-            *kernel_idx,
-            meta,
-            idx_numel,
-            suffix_numel,
-            m,
-            idx_ndim,
-            suf_ndim,
-            True,
-            True,
-            block_idx,
-            block_suf,
+        _fast_launch(
+            _unsafe_index_put_kernel,
+            grid,
+            (
+                out,
+                values,
+                scratch,
+                *kernel_idx,
+                meta,
+                idx_numel,
+                suffix_numel,
+                m,
+                idx_ndim,
+                suf_ndim,
+                True,
+                True,
+                block_idx,
+                block_suf,
+            ),
+            (m, idx_ndim, suf_ndim, True, True, block_idx, block_suf, out.dtype, values.dtype, *key),
             num_warps=4,
         )
         # Epilogue: out = cast(scratch) with a single rounding.
-        _unsafe_index_put_scratch_kernel[grid](
-            out,
-            scratch,
-            *kernel_idx,
-            meta,
-            idx_numel,
-            suffix_numel,
-            m,
-            idx_ndim,
-            suf_ndim,
-            False,
-            block_idx,
-            block_suf,
+        _fast_launch(
+            _unsafe_index_put_scratch_kernel,
+            grid,
+            (
+                out,
+                scratch,
+                *kernel_idx,
+                meta,
+                idx_numel,
+                suffix_numel,
+                m,
+                idx_ndim,
+                suf_ndim,
+                False,
+                block_idx,
+                block_suf,
+            ),
+            (m, idx_ndim, suf_ndim, False, block_idx, block_suf, out.dtype, *key),
             num_warps=4,
         )
     else:
-        _unsafe_index_put_kernel[grid](
-            out,
-            values,
-            out,  # scratch_ptr is unused when USE_SCRATCH is False
-            *kernel_idx,
-            meta,
-            idx_numel,
-            suffix_numel,
-            m,
-            idx_ndim,
-            suf_ndim,
-            accumulate,
-            False,
-            block_idx,
-            block_suf,
+        # scratch_ptr is unused when USE_SCRATCH is False
+        _fast_launch(
+            _unsafe_index_put_kernel,
+            grid,
+            (
+                out,
+                values,
+                out,
+                *kernel_idx,
+                meta,
+                idx_numel,
+                suffix_numel,
+                m,
+                idx_ndim,
+                suf_ndim,
+                accumulate,
+                False,
+                block_idx,
+                block_suf,
+            ),
+            (
+                m,
+                idx_ndim,
+                suf_ndim,
+                accumulate,
+                False,
+                block_idx,
+                block_suf,
+                out.dtype,
+                values.dtype,
+                *key,
+            ),
             num_warps=4,
         )
 
@@ -1087,7 +1186,7 @@ def _unsafe_index_put(inp, indices, values, accumulate=False):
     processed = []
     for idx in indices:
         if idx is None:
-            raise TypeError("_unsafe_index_put does not accept None indices " "(expected Tensor, but got NoneType)")
+            raise TypeError("_unsafe_index_put does not accept None indices (expected Tensor, but got NoneType)")
         if idx.device != inp.device:
             idx = idx.to(inp.device)
         if idx.dtype in (torch.bool, torch.uint8):
