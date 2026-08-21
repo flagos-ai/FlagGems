@@ -2291,6 +2291,23 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: coalesced_
+    description: |
+      Sets the `coalesced` flag of a sparse coordinate (COO) tensor in place
+      and returns `self`. This is a metadata-only mutation: the underlying
+      indices/values data is not modified, only the `is_coalesced` bit is
+      toggled. The flag flip is dispatched through the native backend kernel
+      (below the autograd key); a Triton identity kernel is provided over the
+      values data as the per-element implementation.
+    for:
+      - _coalesced_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: col2im
     description: |
       Rearranges column blocks back into a multidimensional tensor (inverse of im2col).
