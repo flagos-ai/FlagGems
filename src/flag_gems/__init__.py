@@ -461,6 +461,8 @@ _FULL_CONFIG = (
     ("deg2rad", deg2rad),
     ("deg2rad.out", deg2rad_out),
     ("deg2rad_", deg2rad_),
+    ("dsplit.int", dsplit),
+    ("dsplit.array", dsplit),
     ("dequantize", dequantize),
     ("dequantize.self", dequantize),
     ("diag", diag),
