@@ -35,9 +35,15 @@ jobs:
       pr_id: ${{ steps.get-pr-id.outputs.PR_ID }}
       labels: ${{ fromJSON(steps.get-labels.outputs.result) }}
       backend_matrix: ${{ steps.build-backend-matrix.outputs.matrix }}
+      docs_changed: ${{ steps.docs-changed.outputs.any_changed }}
     steps:
       - id: changed-files
         uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96  # v47.0.6
+      - id: docs-changed
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96  # v47.0.6
+        with:
+          files: |
+            docs/**
       - id: wait-for-triage
         uses: ArcticLampyrid/action-wait-for-workflow@ff297b23789206858260877c4b83026d90c6db8c  # v1.3.0
         with:
@@ -100,8 +106,8 @@ jobs:
 
   build-doc:
     needs: preprocess
-    if: (contains(needs.preprocess.outputs.labels, 'documentation') &&
-      github.event.pull_request.merged == true)
+    if: needs.preprocess.outputs.docs_changed == 'true' &&
+      (github.event_name == 'push' || github.event.pull_request.merged == true)
     uses: ./.github/workflows/sync-docs.yaml
 
   cpp-op:
