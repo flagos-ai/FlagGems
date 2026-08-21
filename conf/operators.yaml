@@ -3264,6 +3264,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
+  - id: linalg_eigvalsh
+    description: |
+      Computes the eigenvalues of a complex Hermitian or real symmetric matrix,
+      returned in ascending order.
+    for:
+      - linalg_eigvalsh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
