@@ -4966,6 +4966,19 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.3'
+  - id: grid_sampler_3d
+    description: |
+      Given an `input` and a flow-field `grid` in 3D, computes the `output` using `input` values
+      and pixel locations from `grid` with trilinear or nearest interpolation.
+    for:
+      - grid_sampler_3d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: grid_sampler_3d_backward
     description: Backward pass for 3D grid sampling with bilinear/nearest interpolation and multiple padding modes.
     for:
