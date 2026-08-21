@@ -370,7 +370,13 @@ def radix_sort(arr, k_bits=8, descending=False):
         grid_r = triton.cdiv(num_bins, TILE_R)
         TILE_N = 2048
         grid_n = triton.cdiv(n, TILE_N)
-        while grid_n > MAX_GRID_DIM:
+        # TILE_N must be a power of 2 and stay within triton's maximum tensor
+        # numel (2 ** 20). The old loop grew TILE_N unboundedly, which broke
+        # compilation for very large n (e.g. isin sorting a 2 ** 28-element
+        # array pushed TILE_N to 2 ** 21 > 2 ** 20). GCU supports grid.x up to
+        # 65535, so once TILE_N hits the cap, grid_n may exceed MAX_GRID_DIM.
+        TILE_N_MAX = 1 << 16
+        while grid_n > MAX_GRID_DIM and TILE_N < TILE_N_MAX:
             TILE_N *= 2
             grid_n = triton.cdiv(n, TILE_N)
         grid_m = min(m, MAX_GRID_DIM)

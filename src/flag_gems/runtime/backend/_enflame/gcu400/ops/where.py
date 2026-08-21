@@ -76,6 +76,19 @@ def where_self_out(condition, self, other, out=None):
         out_shape = torch.broadcast_shapes(c.shape, a.shape, b.shape)
         out = torch.empty(out_shape, dtype=result_type, device=device)
 
+    # Workaround for a triton_gcu / GCU400 LLVM backend bug:
+    # for single-element pointwise kernels, the compiler emits
+    # `extract_vector_elt (v16i32 = bitcast v512i1)` for the boundary-check
+    # mask, which the backend cannot select ("LLVM ERROR: Cannot select").
+    # Avoid launching the triton kernel altogether: compute the single value
+    # on host and write it back through the aten cross-device copy path.
+    if out.numel() == 1:
+        c_val = bool(c.reshape(()).item())
+        a_val = a.reshape(()).item()
+        b_val = b.reshape(()).item()
+        out.copy_(torch.tensor(a_val if c_val else b_val, dtype=out.dtype))
+        return out
+
     ndim = max(c.ndim, a.ndim, b.ndim)
     where_inner.instantiate(ndim)
     where_inner(c, a, b, out0=out)

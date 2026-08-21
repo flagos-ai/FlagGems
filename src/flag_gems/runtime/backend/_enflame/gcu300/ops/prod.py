@@ -125,7 +125,7 @@ def prod_kernel(
         offset = m_offset[:, None] * N + n_offset[None, :]
 
         # set mask
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         full_val = 1.0
         target_type = tl.float32

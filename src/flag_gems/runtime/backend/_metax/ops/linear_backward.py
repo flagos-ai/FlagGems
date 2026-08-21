@@ -572,7 +572,7 @@ def _transpose_kernel(src_ptr, dst_ptr, M, N, BM: tl.constexpr, BN: tl.constexpr
 
 
 # Host
-def run(input, grad_output, weight, output_mask):
+def linear_backward(input, grad_output, weight, output_mask):
     m0 = bool(output_mask[0])
     m1 = bool(output_mask[1])
     m2 = bool(output_mask[2])

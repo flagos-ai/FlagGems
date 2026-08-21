@@ -43,8 +43,8 @@ def nll_loss_forward_kernel(
     mask_n = offsets_n < N
 
     tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
-    assert tgt >= 0 and tgt < C, "Invalid target value"
-    ignore_mask = not (tgt == ignore_index) and mask_n
+    assert (tgt >= 0) & (tgt < C), "Invalid target value"
+    ignore_mask = (not (tgt == ignore_index)) & mask_n
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
@@ -96,7 +96,7 @@ def nll_loss_backward_kernel(
     mask_n = offsets_n < N
 
     tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
-    ignore_mask = not (tgt == ignore_index) and mask_n
+    ignore_mask = (not (tgt == ignore_index)) & mask_n
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
@@ -141,8 +141,8 @@ def nll_loss2d_forward_kernel(
 
     tgt_ptrs = tgt_ptr + offset_n * D + offset_d
     tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
-    assert tgt >= 0 and tgt < C, "Invalid target value"
-    ignore_mask = not (tgt == ignore_index) and mask_block
+    assert (tgt >= 0) & (tgt < C), "Invalid target value"
+    ignore_mask = (not (tgt == ignore_index)) & mask_block
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)
@@ -199,7 +199,7 @@ def nll_loss2d_backward_kernel(
 
     tgt_ptrs = tgt_ptr + offset_n * D + offset_d
     tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
-    ignore_mask = not (tgt == ignore_index) and mask_block
+    ignore_mask = (not (tgt == ignore_index)) & mask_block
 
     if wgt_ptr is None:
         wgt_tgt = ignore_mask.to(tl.float32)

@@ -106,7 +106,7 @@ def max_kernel_dim_low(
         n_offset_0 = tl.arange(0, BLOCK_N)
         offset_0 = m_offset[:, None] * N + n_offset_0[None, :]
         # set mask
-        mask_0 = m_offset[:, None] < M and n_offset_0[None, :] < N
+        mask_0 = (m_offset[:, None] < M) & (n_offset_0[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         inp_vals_0 = tl.load(inp_ptrs_0, mask=mask_0, other=min_value)
         result_value, result_index = tl.max(inp_vals_0, axis=1, return_indices=True)
@@ -118,7 +118,7 @@ def max_kernel_dim_low(
                 n_offset = i + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
                 max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
@@ -165,7 +165,7 @@ def max_kernel_dim_high(
         m_offset_0 = tl.arange(0, BLOCK_M)
         offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
         # set mask
-        mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
+        mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         inp_vals_0 = tl.load(inp_ptrs_0, mask=mask_0, other=min_value)
         result_value, result_index = tl.max(inp_vals_0, axis=0, return_indices=True)
@@ -175,7 +175,7 @@ def max_kernel_dim_high(
                 m_offset = i + tl.arange(0, BLOCK_M)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
                 max_value, max_index = tl.max(inp_vals, axis=0, return_indices=True)
@@ -225,7 +225,7 @@ def max_kernel_dim_mid(
         m_offset_0 = tl.arange(0, BLOCK_M)
         offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
         # set mask
-        mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
+        mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         inp_vals_0 = tl.load(inp_ptrs_0, mask=mask_0, other=min_value)
         result_value, result_index = tl.max(inp_vals_0, axis=0, return_indices=True)
@@ -234,7 +234,7 @@ def max_kernel_dim_mid(
                 m_offset = i + tl.arange(0, BLOCK_M)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
                 max_value, max_index = tl.max(inp_vals, axis=0, return_indices=True)

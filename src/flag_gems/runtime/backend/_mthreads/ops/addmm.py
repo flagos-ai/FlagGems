@@ -20,7 +20,6 @@ import triton
 import triton.language as tl
 from triton.tools.tensor_descriptor import TensorDescriptor
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
@@ -54,8 +53,26 @@ def is_sqmma_compatible(a, b, N, K):
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("addmm"),
+    configs=[
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 16},
+            num_stages=1,
+            num_warps=8,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 256, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 16},
+            num_stages=1,
+            num_warps=16,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
+            num_stages=1,
+            num_warps=4,
+        ),
+    ],
     key=["M", "N", "K"],
+    warmup=5,
+    rep=5,
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
@@ -124,7 +141,7 @@ def addmm_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
+def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
     logger.debug("GEMS_MTHREADS ADDMM_FMA")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
@@ -135,7 +152,8 @@ def addmm_fma(bias, mat1, mat2, *, beta=1, alpha=1):
 
     mat1 = mat1.contiguous()
     mat2 = mat2.contiguous()
-    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+    if out is None or out.dtype != mat1.dtype:
+        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     bias = bias.broadcast_to(out.shape).contiguous()
 
     grid = lambda META: (
@@ -177,11 +195,23 @@ def addmm_sqmma_descriptor_pre_hook(nargs):
 @libtuner(
     configs=[
         triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
+            num_stages=3,
+            num_warps=4,
+            pre_hook=addmm_sqmma_descriptor_pre_hook,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
+            num_stages=3,
+            num_warps=4,
+            pre_hook=addmm_sqmma_descriptor_pre_hook,
+        ),
+        triton.Config(
             {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
             num_stages=1,
             num_warps=4,
             pre_hook=addmm_sqmma_descriptor_pre_hook,
-        )
+        ),
     ],
     key=["M", "N", "K"],
     strategy=["default", "default", "default"],
@@ -227,7 +257,7 @@ def addmm_sqmma_kernel(
     tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], result)
 
 
-def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
+def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K, out=None):
     logger.debug("GEMS_MTHREADS ADDMM_SQMMA")
     device = mat1.device
     assert broadcastable_to(
@@ -241,7 +271,10 @@ def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K):
     b_type = mat2.dtype
     assert a_type == b_type, "Mat A and Mat B should have the same dtype"
     c_type = a_type
-    C = torch.empty((M, N), dtype=c_type, device=device)
+    if out is None or out.dtype != mat1.dtype:
+        C = torch.empty((M, N), dtype=c_type, device=device)
+    else:
+        C = out
     bias = bias.broadcast_to(C.shape).contiguous()
     desc_a = TensorDescriptor.from_tensor(mat1, [1, 1])
     desc_b = TensorDescriptor.from_tensor(mat2, [1, 1])
@@ -341,3 +374,35 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
         result = addmm_fma(bias_c, mat1, mat2, alpha=alpha, beta=beta)
     out.copy_(result)
     return out
+
+
+def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
+    logger.debug("GEMS_MTHREADS ADDMM_OUT")
+    assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
+    assert broadcastable_to(
+        bias.shape, (mat1.shape[0], mat2.shape[1])
+    ), "Incompatible input shape"
+    M, K = mat1.shape
+    _, N = mat2.shape
+    if out is not None:
+        assert out.shape == (M, N), "Incompatible output shape"
+
+    if is_sqmma_compatible(mat1, mat2, N, K):
+        result = addmm_sqmma(
+            mat1,
+            mat2,
+            bias,
+            mat1.dtype,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+            out=out,
+        )
+    else:
+        result = addmm_fma(bias, mat1, mat2, alpha=alpha, beta=beta, out=out)
+    if out is not None and out.dtype != result.dtype:
+        out.copy_(result)
+        return out
+    return result

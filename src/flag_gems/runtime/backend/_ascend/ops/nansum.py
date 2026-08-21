@@ -1,6 +1,5 @@
 import logging
 import math
-import threading
 
 import torch
 import triton
@@ -44,113 +43,6 @@ def _get_num_vector_cores() -> int:
     except Exception:
         _num_vector_cores_cache = _DEFAULT_NUM_VECTOR_CORES
     return _num_vector_cores_cache
-
-
-_precompiled_inner: dict = {}
-_precompiled_non_inner: dict = {}
-_precompiled_multi_dim: dict = {}
-_precompiled_lock = threading.Lock()
-
-
-def _launch_inner_cached(
-    out_flat, work, M, N, tile_m, tile_n, num_warps, num_stages, grid
-):
-    cache_key = (tile_m, tile_n, work.dtype)
-    device = torch_device_fn.current_device()
-    device_cache = _precompiled_inner.get(device)
-    if device_cache is None:
-        device_cache = {}
-        _precompiled_inner[device] = device_cache
-
-    compiled = device_cache.get(cache_key)
-    if compiled is None:
-        with _precompiled_lock:
-            compiled = device_cache.get(cache_key)
-            if compiled is None:
-                compiled, _ = nansum_dim_kernel_inner.run(
-                    out_flat,
-                    work,
-                    M,
-                    N,
-                    TILE_M=tile_m,
-                    TILE_N=tile_n,
-                    num_warps=num_warps,
-                    num_stages=num_stages,
-                    grid=grid,
-                    warmup=True,
-                )
-                device_cache[cache_key] = compiled
-
-    g = grid + (1, 1) if len(grid) == 1 else grid + (1,) if len(grid) == 2 else grid
-    compiled[g[:3]](out_flat, work, M, N)
-
-
-def _launch_non_inner_cached(
-    out_flat, work, M, N, K, tile_n, tile_k, one_tile, num_warps, num_stages, grid
-):
-    cache_key = (tile_n, tile_k, one_tile, work.dtype)
-    device = torch_device_fn.current_device()
-    device_cache = _precompiled_non_inner.get(device)
-    if device_cache is None:
-        device_cache = {}
-        _precompiled_non_inner[device] = device_cache
-
-    compiled = device_cache.get(cache_key)
-    if compiled is None:
-        with _precompiled_lock:
-            compiled = device_cache.get(cache_key)
-            if compiled is None:
-                compiled, _ = nansum_dim_kernel_non_inner.run(
-                    out_flat,
-                    work,
-                    M,
-                    N,
-                    K,
-                    TILE_N=tile_n,
-                    TILE_K=tile_k,
-                    ONE_TILE_PER_CTA=one_tile,
-                    num_warps=num_warps,
-                    num_stages=num_stages,
-                    grid=grid,
-                    warmup=True,
-                )
-                device_cache[cache_key] = compiled
-
-    g = grid + (1, 1) if len(grid) == 1 else grid + (1,) if len(grid) == 2 else grid
-    compiled[g[:3]](out_flat, work, M, N, K)
-
-
-def _launch_multi_dim_cached(
-    work, out_flat, M, N, block_m, block_n, num_warps, num_stages, grid
-):
-    cache_key = (block_m, block_n, work.dtype)
-    device = torch_device_fn.current_device()
-    device_cache = _precompiled_multi_dim.get(device)
-    if device_cache is None:
-        device_cache = {}
-        _precompiled_multi_dim[device] = device_cache
-
-    compiled = device_cache.get(cache_key)
-    if compiled is None:
-        with _precompiled_lock:
-            compiled = device_cache.get(cache_key)
-            if compiled is None:
-                compiled, _ = nansum_dim_kernel.run(
-                    work,
-                    out_flat,
-                    M,
-                    N,
-                    BLOCK_M=block_m,
-                    BLOCK_N=block_n,
-                    num_warps=num_warps,
-                    num_stages=num_stages,
-                    grid=grid,
-                    warmup=True,
-                )
-                device_cache[cache_key] = compiled
-
-    g = grid + (1, 1) if len(grid) == 1 else grid + (1,) if len(grid) == 2 else grid
-    compiled[g[:3]](work, out_flat, M, N)
 
 
 def _nansum_heur_tile_n_inner(args):
@@ -752,18 +644,17 @@ def nansum_dim(inp, dim=None, keepdim=False, *, dtype=None):
                     "M": M,
                 }
             )
-            _launch_non_inner_cached(
+            nansum_dim_kernel_non_inner[(M, triton.cdiv(K, tile_k))](
                 out_flat,
                 work,
                 M,
                 N,
                 K,
-                tile_n,
-                tile_k,
-                one_tile,
-                nw,
-                2,
-                (M, triton.cdiv(K, tile_k)),
+                TILE_N=tile_n,
+                TILE_K=tile_k,
+                ONE_TILE_PER_CTA=one_tile,
+                num_warps=nw,
+                num_stages=2,
             )
         else:
             tile_n = _nansum_heur_tile_n_inner({"N": N, "M": M})
@@ -778,16 +669,15 @@ def nansum_dim(inp, dim=None, keepdim=False, *, dtype=None):
                 min(num_cores * 256, max(1, total_elems // MIN_DATA_PER_BLOCK)),
             )
             grid_size = min(triton.cdiv(M, tile_m), max_grid)
-            _launch_inner_cached(
+            nansum_dim_kernel_inner[(grid_size,)](
                 out_flat,
                 work,
                 M,
                 N,
-                tile_m,
-                tile_n,
-                nw,
-                2,
-                (grid_size,),
+                TILE_M=tile_m,
+                TILE_N=tile_n,
+                num_warps=nw,
+                num_stages=2,
             )
 
         result = out_flat.to(dtype)
@@ -826,16 +716,15 @@ def nansum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     max_tasks = triton.cdiv(M, block_m)
     grid_size = max_tasks if max_tasks <= num_cores else min(max_tasks, num_cores * 6)
 
-    _launch_multi_dim_cached(
+    nansum_dim_kernel[(grid_size,)](
         work,
         out_flat,
         M,
         N,
-        block_m,
-        block_n,
-        nw,
-        2,
-        (grid_size,),
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        num_warps=nw,
+        num_stages=2,
     )
 
     out_flat = out_flat.reshape(shape_list)

@@ -52,72 +52,128 @@ def _cat_build_working_list_uint8_view(
     return mode, payload, original_dtype
 
 
+# GCU limits each grid dimension as follows (triton_gcu GcuLauncher):
+#   grid.x <= 65535, grid.y <= 255, grid.z <= 255.
+# Only grid.x can be large, so we always keep num_tensors (<= 4) on grid.y,
+# keep the "rows" axis chunked on grid.z (with an in-kernel loop), and pack
+# per-row blocks on grid.x (scaling BLOCK_X to stay within 65535).
+_MAX_GRID_DIM = 65535
+_MAX_GRID_DIM_Y = 255
+_MAX_GRID_DIM_Z = 255
+_BLOCK_MIN = 2048
+
+
 @triton.jit
-def cat_copy_func_kernel_4(
+def cat_copy_contig_kernel_4(
     out_ptr,
     in_ptr_a,
     in_ptr_b,
     in_ptr_c,
     in_ptr_d,
-    dim_size_in_a,
-    dim_size_in_b,
-    dim_size_in_c,
-    dim_size_in_d,
-    dim_size_out,
-    dim_prod_post,
     dim_offset_a: tl.int64,
     dim_offset_b: tl.int64,
     dim_offset_c: tl.int64,
     dim_offset_d: tl.int64,
-    total_elements_a,
-    total_elements_b,
-    total_elements_c,
-    total_elements_d,
+    total_elements_a: tl.int64,
+    total_elements_b: tl.int64,
+    total_elements_c: tl.int64,
+    total_elements_d: tl.int64,
+    grid_x,
     BLOCK_X: tl.constexpr,
-    ENABLE_I64: tl.constexpr,
 ):
-    pid_x = tl.program_id(0).to(tl.int64)
-    pid_y = tl.program_id(1).to(tl.int64)
+    # dim == 0: every input occupies a contiguous block of the output, so this
+    # is a plain 1D masked copy with a per-tensor output base.
+    # Grid: (grid_x, num_tensors, grid_z); block_id = pid_z*grid_x + pid_x.
+    pid_x = tl.program_id(0)
+    pid_t = tl.program_id(1)
+    pid_z = tl.program_id(2)
 
-    if pid_y == 0:
+    if pid_t == 0:
         in_ptr = in_ptr_a
-        dim_size_in = dim_size_in_a
-        dim_offset = tl.cast(dim_offset_a, tl.int64)
+        dim_offset = dim_offset_a
         total_elements = total_elements_a
-    elif pid_y == 1:
+    elif pid_t == 1:
         in_ptr = in_ptr_b
-        dim_size_in = dim_size_in_b
-        dim_offset = tl.cast(dim_offset_b, tl.int64)
+        dim_offset = dim_offset_b
         total_elements = total_elements_b
-    elif pid_y == 2:
+    elif pid_t == 2:
         in_ptr = in_ptr_c
-        dim_size_in = dim_size_in_c
-        dim_offset = tl.cast(dim_offset_c, tl.int64)
+        dim_offset = dim_offset_c
         total_elements = total_elements_c
     else:
         in_ptr = in_ptr_d
-        dim_size_in = dim_size_in_d
-        dim_offset = tl.cast(dim_offset_d, tl.int64)
+        dim_offset = dim_offset_d
         total_elements = total_elements_d
 
-    block_start = pid_x * BLOCK_X
+    block_start = (pid_z.to(tl.int64) * grid_x + pid_x) * BLOCK_X
     offsets = tl.arange(0, BLOCK_X)
     mask = block_start + offsets < total_elements
 
-    idx = block_start + offsets
+    data = tl.load(in_ptr + block_start + offsets, mask=mask)
+    tl.store(out_ptr + block_start + dim_offset + offsets, data, mask=mask)
 
-    pre_idx = idx // (dim_size_in * dim_prod_post)
-    dim_idx = (idx // dim_prod_post) % dim_size_in
-    post_idx = idx % dim_prod_post
 
-    out_idx = (
-        pre_idx * dim_size_out * dim_prod_post
-        + (dim_idx + dim_offset) * dim_prod_post
-        + post_idx
-    )
+@triton.jit
+def cat_copy_row_kernel_4(
+    out_ptr,
+    in_ptr_a,
+    in_ptr_b,
+    in_ptr_c,
+    in_ptr_d,
+    dim_size_in_a: tl.int64,
+    dim_size_in_b: tl.int64,
+    dim_size_in_c: tl.int64,
+    dim_size_in_d: tl.int64,
+    dim_offset_a: tl.int64,
+    dim_offset_b: tl.int64,
+    dim_offset_c: tl.int64,
+    dim_offset_d: tl.int64,
+    dim_size_out: tl.int64,
+    dim_prod_post: tl.int64,
+    rows,
+    grid_z,
+    BLOCK_X: tl.constexpr,
+):
+    # dim > 0: view each input as [pre, row_size] and the output as
+    # [pre, dim_size_out*dim_prod_post]. Grid: (blocks_per_row, num_tensors,
+    # grid_z). pid_col/pid_row0/pid_t map directly onto the axes -> NO division
+    # at all; each program loops over the rows assigned to its z-slot.
+    pid_col = tl.program_id(0)
+    pid_t = tl.program_id(1)
+    pid_row0 = tl.program_id(2)
 
-    data = tl.load(in_ptr + idx, mask=mask)
-    tl.store(out_ptr + out_idx, data, mask=mask)
+    if pid_t == 0:
+        in_ptr = in_ptr_a
+        dim_size_in = dim_size_in_a
+        dim_offset = dim_offset_a
+    elif pid_t == 1:
+        in_ptr = in_ptr_b
+        dim_size_in = dim_size_in_b
+        dim_offset = dim_offset_b
+    elif pid_t == 2:
+        in_ptr = in_ptr_c
+        dim_size_in = dim_size_in_c
+        dim_offset = dim_offset_c
+    else:
+        in_ptr = in_ptr_d
+        dim_size_in = dim_size_in_d
+        dim_offset = dim_offset_d
+
+    row_size = dim_size_in * dim_prod_post
+    out_row_size = dim_size_out * dim_prod_post
+
+    offsets = tl.arange(0, BLOCK_X)
+    col_start = pid_col.to(tl.int64) * BLOCK_X
+    mask = col_start + offsets < row_size
+
+    rows_per_prog = tl.cdiv(rows, grid_z)
+    for r in range(rows_per_prog):
+        row = (pid_row0 + r * grid_z).to(tl.int64)
+        if row < rows:
+            base_in = row * row_size + col_start
+            base_out = row * out_row_size + dim_offset * dim_prod_post + col_start
+            data = tl.load(in_ptr + base_in + offsets, mask=mask)
+            tl.store(out_ptr + base_out + offsets, data, mask=mask)
 
 
 def _cat_run_kernel(
@@ -126,41 +182,42 @@ def _cat_run_kernel(
     out_shape: List[int],
     out: torch.Tensor,
 ):
+    dim %= A[0].ndim
+    dim_size_out = out_shape[dim]
+
+    # pre: number of independent "rows" (product of leading dims)
+    pre = 1
+    for d in range(dim):
+        pre *= A[0].shape[d]
+
+    # dim_prod_post: number of contiguous elements after `dim`
+    dim_prod_post = 1
+    for d in range(dim + 1, A[0].ndim):
+        dim_prod_post *= A[0].shape[d]
+
     dim_offset = 0
     i = 0
     while i < len(A):
         tensors_in_batch = A[i : i + 4]
         num_tensors_in_batch = len(tensors_in_batch)
 
-        args = []
-        total_elements_list = []
+        slots = []
+        max_numel = 0
+        max_row_size = 0
         current_dim_offset = dim_offset
 
         for j in range(4):
             if j < num_tensors_in_batch:
                 tensor = tensors_in_batch[j].contiguous()
-                shape = tensor.shape
                 total_elements = tensor.numel()
-                dim_size_in = shape[dim]
-
-                args.extend([tensor, dim_size_in, current_dim_offset, total_elements])
-                total_elements_list.append(total_elements)
+                dim_size_in = tensor.shape[dim]
+                slots.append((tensor, dim_size_in, current_dim_offset, total_elements))
+                max_numel = max(max_numel, total_elements)
+                max_row_size = max(max_row_size, dim_size_in * dim_prod_post)
                 current_dim_offset += dim_size_in
             else:
-                args.extend([tensors_in_batch[0], 0, 0, 0])
-                total_elements_list.append(0)
-
-        dim_size_out = out_shape[dim]
-        dim_prod_post = 1
-        for d in range(dim + 1, A[0].ndim):
-            dim_prod_post *= A[0].shape[d]
-
-        grid_y = num_tensors_in_batch
-        max_elements_in_batch = max(total_elements_list) if total_elements_list else 0
-        BLOCK = 2048
-        if max_elements_in_batch // BLOCK > 65535:
-            BLOCK = 32768
-        grid = (triton.cdiv(max_elements_in_batch, BLOCK), grid_y)
+                # Placeholders for unused tensor slots (never dereferenced).
+                slots.append((tensors_in_batch[0], 0, 0, 0))
 
         (
             tensor_a,
@@ -179,31 +236,75 @@ def _cat_run_kernel(
             dim_size_in_d,
             dim_offset_d,
             total_elements_d,
-        ) = args
+        ) = [item for slot in slots for item in slot]
 
-        cat_copy_func_kernel_4[grid](
-            out,
-            tensor_a,
-            tensor_b,
-            tensor_c,
-            tensor_d,
-            dim_size_in_a,
-            dim_size_in_b,
-            dim_size_in_c,
-            dim_size_in_d,
-            dim_size_out,
-            dim_prod_post,
-            dim_offset_a,
-            dim_offset_b,
-            dim_offset_c,
-            dim_offset_d,
-            total_elements_a,
-            total_elements_b,
-            total_elements_c,
-            total_elements_d,
-            BLOCK_X=BLOCK,
-            ENABLE_I64=True,
-        )
+        if dim == 0:
+            # Contiguous block copy: one masked 1D copy per tensor.
+            num_elems = max(1, max_numel)
+            BLOCK = _BLOCK_MIN
+            # Prefer a single x-axis (grid_z == 1) with fewer, larger blocks to
+            # minimize block-scheduling overhead. Cap BLOCK at 32K and let the
+            # grid_z axis absorb anything larger (tensors > ~2.1G elements).
+            while triton.cdiv(num_elems, BLOCK) > _MAX_GRID_DIM and BLOCK < 32768:
+                BLOCK *= 2
+            total_blocks = triton.cdiv(num_elems, BLOCK)
+            grid_x = min(total_blocks, _MAX_GRID_DIM)
+            grid_z = triton.cdiv(total_blocks, grid_x)
+            grid = (grid_x, num_tensors_in_batch, grid_z)
+
+            cat_copy_contig_kernel_4[grid](
+                out,
+                tensor_a,
+                tensor_b,
+                tensor_c,
+                tensor_d,
+                # For dim == 0 the output base is the cumulative *numel* offset
+                # (= dim_offset * dim_prod_post), not the dim-unit offset.
+                dim_offset_a * dim_prod_post,
+                dim_offset_b * dim_prod_post,
+                dim_offset_c * dim_prod_post,
+                dim_offset_d * dim_prod_post,
+                total_elements_a,
+                total_elements_b,
+                total_elements_c,
+                total_elements_d,
+                grid_x,
+                BLOCK_X=BLOCK,
+            )
+        else:
+            # Row-based copy: grid = (blocks_per_row, num_tensors, grid_z),
+            # no division, rows handled by the in-kernel loop.
+            row_size = max(1, max_row_size)
+            BLOCK = _BLOCK_MIN
+            if row_size < BLOCK:
+                # Shrink the block to fit a small row for better lane utilization.
+                BLOCK = max(64, triton.next_power_of_2(row_size))
+            while triton.cdiv(row_size, BLOCK) > _MAX_GRID_DIM:
+                BLOCK *= 2
+            blocks_per_row = triton.cdiv(row_size, BLOCK)
+            grid_z = min(_MAX_GRID_DIM_Z, max(1, pre))
+            grid = (blocks_per_row, num_tensors_in_batch, grid_z)
+
+            cat_copy_row_kernel_4[grid](
+                out,
+                tensor_a,
+                tensor_b,
+                tensor_c,
+                tensor_d,
+                dim_size_in_a,
+                dim_size_in_b,
+                dim_size_in_c,
+                dim_size_in_d,
+                dim_offset_a,
+                dim_offset_b,
+                dim_offset_c,
+                dim_offset_d,
+                dim_size_out,
+                dim_prod_post,
+                pre,
+                grid_z,
+                BLOCK_X=BLOCK,
+            )
 
         dim_offset = current_dim_offset
         i += num_tensors_in_batch
@@ -267,7 +368,7 @@ def cat_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME CAT_OUT")
+    logger.debug("GEMS_ENFLAME CAT")
     A = list(A)
     if _should_use_uint8_view_path(A):
         mode, payload, original_dtype = _cat_build_working_list_uint8_view(A, dim)
