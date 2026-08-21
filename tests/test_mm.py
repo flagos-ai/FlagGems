@@ -202,6 +202,76 @@ def test_mm_kernel_general_host_tma_vllm_column_major_weight_compile_error():
 
 
 @pytest.mark.mm
+@pytest.mark.parametrize("a_column_major", [False, True])
+@pytest.mark.parametrize("b_column_major", [False, True])
+@pytest.mark.parametrize("output_dtype", [torch.bfloat16, torch.float32])
+@pytest.mark.skipif(
+    not hasattr(triton.language, "make_tensor_descriptor")
+    or flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability()[0] < 9,
+    reason="Device-side TMA tensor descriptors and a Hopper GPU are required.",
+)
+def test_mm_kernel_general_device_tma_layouts(
+    a_column_major, b_column_major, output_dtype
+):
+    from flag_gems.runtime.backend._nvidia.hopper.ops.mm import (
+        mm_kernel_general_device_tma,
+    )
+
+    torch.manual_seed(0)
+    M, K, N = 72, 72, 136
+    dtype = torch.bfloat16
+
+    if a_column_major:
+        mat1 = torch.randn((K, M), dtype=dtype, device=flag_gems.device).t()
+    else:
+        mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    if b_column_major:
+        mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    else:
+        mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    out = torch.empty((M, N), dtype=output_dtype, device=flag_gems.device)
+
+    ref_mat1 = utils.to_reference(mat1, True)
+    ref_mat2 = utils.to_reference(mat2, True)
+    ref_out = torch.mm(ref_mat1, ref_mat2)
+
+    def alloc_fn(size, alignment, stream):
+        return torch.empty(size, dtype=torch.int8, device=flag_gems.device)
+
+    triton.set_allocator(alloc_fn)
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+    )
+    mm_kernel_general_device_tma.fn.fn[grid](
+        mat1,
+        mat2,
+        out,
+        M,
+        N,
+        K,
+        mat1.stride(0),
+        mat1.stride(1),
+        mat2.stride(0),
+        mat2.stride(1),
+        out.stride(0),
+        out.stride(1),
+        BLOCK_M=64,
+        BLOCK_N=128,
+        BLOCK_K=64,
+        GROUP_M=8,
+        A_ROW_MAJOR=not a_column_major,
+        B_ROW_MAJOR=not b_column_major,
+        dtype="bfloat16",
+        num_warps=4,
+        num_stages=2,
+    )
+
+    utils.gems_assert_close(out, ref_out, output_dtype, reduce_dim=K)
+
+
+@pytest.mark.mm
 @pytest.mark.parametrize("M, K", MK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_mm_self_transpose(M, K, dtype):
