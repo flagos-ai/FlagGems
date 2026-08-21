@@ -14,7 +14,7 @@
 
 import importlib
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum, auto
 from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
@@ -1494,6 +1494,18 @@ class PointwiseDynamicFunction:
             )
         )
 
+    def _disable_block_pointer(self):
+        """Disable block-pointer codegen for this operator instance.
+
+        The default codegen config is a shared singleton returned by
+        ``get_codegen_config()``, so it must never be mutated in place. When an
+        operand is broadcasted (zero strides) or the task is too large, copy the
+        config and flip ``prefer_block_pointer`` off so that other pointwise
+        operators are unaffected.
+        """
+        if self.config.prefer_block_pointer:
+            self.config = replace(self.config, prefer_block_pointer=False)
+
     def prepare_args(self, *args, _skip_tensor_check=False, **kwargs):
         # output allocation(when needed)
         # task simplification & task-rank infernece & input-output reinterpretation
@@ -1530,7 +1542,7 @@ class PointwiseDynamicFunction:
         tensors = out_tensors + in_tensors
         INT32_MAX = torch.iinfo(torch.int32).max
         if tensors[0].numel() > INT32_MAX:
-            self.config.prefer_block_pointer = False
+            self._disable_block_pointer()
         if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
             allocated_outputs = [
                 torch.empty_like(tensors[0], dtype=dtype)
@@ -1562,6 +1574,18 @@ class PointwiseDynamicFunction:
             shapes = tuple(item.shape for item in in_tensors)
 
             task_shape = broadcast_shapes(shapes)
+
+            # Block pointers cannot represent zero strides. Broadcasted operands
+            # get a 0 stride on the expanded axes (e.g. weight (d,) -> (B, S, d)
+            # or a keepdim tensor (B, S, 1) -> (B, S, d)); passing such strides
+            # to tl.make_block_ptr fails Triton's TensorDescriptor assertion
+            # "Last dimension must be contiguous" (or silently miscompiles on
+            # older Triton). Fall back to the plain multi-index path.
+            if self.config.prefer_block_pointer and any(
+                0 in broadcasted_stride(item.shape, item.stride(), task_shape)
+                for item in tensors
+            ):
+                self._disable_block_pointer()
 
             if out_tensors:
                 for index, item in enumerate(out_tensors):
