@@ -3264,6 +3264,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
+  - id: linalg_eig
+    description: |
+      Computes the eigenvalue decomposition of a general square matrix, returning
+      the complex eigenvalues and eigenvectors. Also supports batches of matrices.
+    for:
+      - linalg_eig
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
