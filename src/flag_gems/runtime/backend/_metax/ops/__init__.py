@@ -60,6 +60,7 @@ from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w_out,
 )
 from .special_gammainc import special_gammainc
+from .special_hermite_polynomial_he import special_hermite_polynomial_he
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
@@ -153,6 +154,7 @@ __all__ = [
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
     "special_gammainc",
+    "special_hermite_polynomial_he",
     "special_shifted_chebyshev_polynomial_w",
     "tanh",
     "to_copy",
