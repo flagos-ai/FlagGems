@@ -95,6 +95,15 @@ def _reference(grad_output, input_size, align_corners, scales_h, scales_w):
     ).to(grad_output.dtype)
 
 
+def _disable_gemm_path(monkeypatch):
+    # Accuracy tests should exercise the Triton kernels directly.  The GEMM
+    # optimization uses torch.mm, whose FP32 precision depends on the runner's
+    # global TF32 setting (enabled by default on the A100 CI runner).
+    monkeypatch.setattr(
+        lanczos_backward_module, "_should_use_gemm_path", lambda *args: False
+    )
+
+
 @pytest.mark.upsample_lanczos2d_aa_backward
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize(
@@ -114,6 +123,7 @@ def test_upsample_lanczos2d_aa_backward(
     scales_h,
     scales_w,
 ):
+    _disable_gemm_path(monkeypatch)
     if not QUICK_MODE:
         # Keep the semantic matrix CI-safe: the separately tested fused path
         # has large shape-dependent static loops and is expensive to compile.
@@ -150,6 +160,7 @@ def test_upsample_lanczos2d_aa_backward(
     ],
 )
 def test_upsample_lanczos2d_aa_backward_dtypes(monkeypatch, dtype, tolerance):
+    _disable_gemm_path(monkeypatch)
     monkeypatch.setattr(lanczos_backward_module, "_FUSE_THRESHOLD", 0)
     grad = torch.randn((1, 2, 11, 13), dtype=dtype, device=flag_gems.device)
     grad_cpu = utils.to_reference(grad).cpu()
@@ -163,6 +174,7 @@ def test_upsample_lanczos2d_aa_backward_dtypes(monkeypatch, dtype, tolerance):
 def test_upsample_lanczos2d_aa_backward_precomputed_path(monkeypatch):
     # Force the two-pass path so CI compiles and validates its independent
     # precomputed-weight kernels in addition to the fused gather path.
+    _disable_gemm_path(monkeypatch)
     monkeypatch.setattr(lanczos_backward_module, "_FUSE_THRESHOLD", 0)
     grad = torch.randn((2, 3, 9, 31), device=flag_gems.device)
     grad_cpu = utils.to_reference(grad).cpu()
@@ -173,7 +185,8 @@ def test_upsample_lanczos2d_aa_backward_precomputed_path(monkeypatch):
 
 
 @pytest.mark.upsample_lanczos2d_aa_backward_grad_input
-def test_upsample_lanczos2d_aa_backward_out():
+def test_upsample_lanczos2d_aa_backward_out(monkeypatch):
+    _disable_gemm_path(monkeypatch)
     grad = torch.randn((1, 2, 11, 13), device=flag_gems.device)
     grad_cpu = utils.to_reference(grad).cpu()
     output = torch.empty(0, device=flag_gems.device)
@@ -186,7 +199,8 @@ def test_upsample_lanczos2d_aa_backward_out():
 
 
 @pytest.mark.upsample_lanczos2d_aa_backward
-def test_upsample_lanczos2d_aa_backward_noncontiguous_grad():
+def test_upsample_lanczos2d_aa_backward_noncontiguous_grad(monkeypatch):
+    _disable_gemm_path(monkeypatch)
     grad = torch.randn((1, 2, 13, 11), device=flag_gems.device).transpose(-1, -2)
     assert not grad.is_contiguous()
     grad_cpu = utils.to_reference(grad).cpu()
