@@ -3289,6 +3289,28 @@ ops:
     stages:
       - alpha: '5.0'
       - beta: '5.3'
+  - id: iand_scalar
+    description: The scalar version of `iand_tensor`.
+    for:
+      - __iand__.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: iand_tensor
+    description: The in-place version of bitwise and operation for two tensors.
+    for:
+      - __iand__.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dunder_ior_scalar
     description: The scalar version of `dunder_ior_tensor`.
     for:
