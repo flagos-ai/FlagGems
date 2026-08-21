@@ -3158,7 +3158,6 @@ ops:
     for:
       - div_.Tensor
       - divide_.Tensor
-      - true_divide_.Tensor
     labels:
       - aten
     kind:
@@ -11958,6 +11957,18 @@ ops:
     description: Performs element-wise true division between two tensors.
     for:
       - true_divide.Tensor
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: true_divide_
+    description: Performs element-wise true division in-place between two tensors.
+    for:
+      - true_divide_.Tensor
     labels:
       - aten
       - KernelGen

@@ -1104,7 +1104,7 @@ _FULL_CONFIG = (
     ("true_divide.Tensor", true_divide_tensor),
     ("true_divide.out", true_divide_out),
     ("true_divide_.Scalar", true_divide_),
-    ("true_divide_.Tensor", true_divide_),
+    ("true_divide_.Tensor", true_divide_tensor_),
     ("trunc", trunc),
     ("trunc_", trunc_),
     ("unbind.int", unbind),
