@@ -755,6 +755,7 @@ from flag_gems.ops.softmax import (
 )
 from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
+from flag_gems.ops.softshrink_backward import softshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
@@ -1469,6 +1470,7 @@ __all__ = [
     "logaddexp2_out",
     "logcumsumexp",
     "logcumsumexp_out",
+    "softshrink_backward",
     "unflatten",
     "unsafe_chunk",
     "xlogy",
