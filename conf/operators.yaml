@@ -12473,6 +12473,28 @@ ops:
       - BLAS
     stages:
       - alpha: '5.3'
+  - id: wrapped_linear_prepack
+    description: Quantizes and packs a linear weight and bias for the paired wrapped quantized linear operator.
+    for:
+      - _wrapped_linear_prepack
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
+  - id: wrapped_quantized_linear_prepacked
+    description: Applies a quantized linear operation using a weight produced by wrapped_linear_prepack.
+    for:
+      - _wrapped_quantized_linear_prepacked
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
   - id: _weight_norm
     description: |
       Reparameterizes a module's weight tensor by decoupling its magnitude (g)
