@@ -1218,6 +1218,29 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: binomial
+    description: |
+      Draws samples from a binomial distribution with the number of trials
+      given by `count` and the success probability given by `prob`.
+    for:
+      - binomial
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+  - id: binomial_out
+    description: |
+      A variant of binomial() that writes the result into the out tensor.
+    for:
+      - binomial.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
   - id: functional_assert_async
     description: |
       Functional version of _assert_async that takes a dependency token and returns a new token.
