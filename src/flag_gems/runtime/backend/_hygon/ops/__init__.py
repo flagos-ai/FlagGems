@@ -58,6 +58,7 @@ from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
 from .isin import isin
 from .lcm import lcm, lcm_
+from .linalg_lstsq import linalg_lstsq
 from .linalg_matrix_norm import linalg_matrix_norm
 from .log_normal_ import log_normal_
 from .masked_scatter_backward import masked_scatter_backward
@@ -150,6 +151,7 @@ __all__ = [
     "isin",
     "lcm",
     "lcm_",
+    "linalg_lstsq",
     "linalg_matrix_norm",
     "log_normal_",
     "masked_scatter_backward",

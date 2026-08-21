@@ -82,7 +82,21 @@ def _gems_supports(dtype):
 def _require_dtype(dtype):
     """Skip when the backend has no kernel for `dtype`, so a run stays red
     only for real defects. Called inside the test rather than as a skipif mark
-    so nothing touches the device at collection time."""
+    so nothing touches the device at collection time.
+
+    Two questions, cheapest first. A backend that declares `support_fp64 =
+    False` means it, and asking the operator cannot substitute: `_gems_supports`
+    probes with a 4x2 solve, which routes to the monolithic path and so answers
+    for one of four code paths. Measured on an Iluvatar BI-V150, which declares
+    False: float64 `tl.dot` does not compile, `torch.matmul` reports "gemm of
+    double is not supported on CoreX", cuSOLVER has neither `Dormqr` nor
+    `Dorgqr`, and every float64 copy warns "limited support" -- yet the 4x2
+    probe succeeds and a 256x256 float64 solve then returns NaN. The declared
+    flag is the honest gate; the probe stays as a second one for backends that
+    do have fp64 but lack this kernel.
+    """
+    if dtype in (torch.float64, torch.complex128) and not utils.fp64_is_supported:
+        pytest.skip(f"backend declares no fp64 support; {dtype} unavailable")
     if not _gems_supports(dtype):
         pytest.skip(f"gems linalg_lstsq has no {dtype} kernel on this device")
 
@@ -102,11 +116,75 @@ def test_linalg_lstsq_gems_path_active():
     )
 
 
+class _Ref:
+    """Just the two fields the assertions read, so the solve can move off-device."""
+
+    __slots__ = ("solution", "residuals")
+
+    def __init__(self, solution, residuals):
+        self.solution = solution
+        self.residuals = residuals
+
+
+def _cpu_ref(A, b, driver="gels"):
+    """gels reference solved on the CPU, returned where the device expects it.
+
+    The tests below that build their own reference used to call
+    `torch.linalg.lstsq` on the DEVICE tensors, which runs the vendor's kernel
+    rather than a trusted one. On Iluvatar that raises outright --
+    `cusolver error ... cusolverDnDormqr_bufferSize` -- because its cuSOLVER
+    shim has no float64 QR, so the test failed on the reference rather than on
+    the operator. Solve on the CPU instead: same answer on every backend.
+
+    Only `solution` and `residuals` are carried, which is all the callers use;
+    the one test that also needs `rank` and `singular_values` keeps torch on
+    the device, since it is asserting torch's tuple contract rather than
+    numbers.
+    """
+    out = torch.linalg.lstsq(
+        A.detach().cpu().to(torch.float64),
+        b.detach().cpu().to(torch.float64),
+        driver=driver,
+    )
+    ref_dt = torch.float64 if utils.fp64_is_supported else torch.float32
+    dev = torch.device("cpu") if utils.TO_CPU else A.device
+    return _Ref(
+        out.solution.to(device=dev, dtype=ref_dt),
+        out.residuals.to(device=dev, dtype=ref_dt),
+    )
+
+
 def _ref_and_gems(A, b, dtype):
-    """Reference via CPU gels; gems via the aten override under use_gems."""
-    ref_A = utils.to_reference(A)
-    ref_b = utils.to_reference(b)
-    ref = torch.linalg.lstsq(ref_A, ref_b, driver="gels")
+    """Reference via gels on the CPU in float64; gems via the aten override.
+
+    The reference is computed on the CPU, NOT through to_reference: on backends
+    where to_reference keeps the tensor on the device, `torch.linalg.lstsq` is
+    the VENDOR's kernel rather than truth, and it is neither reliably accurate
+    nor reliably present. Measured on a MetaX C550, against a float64 CPU
+    solve, this op was off by 5.2e-08 while the vendor's own fp32 lstsq was off
+    by 1.3e-04 -- so two cases were failing on the reference's error, not ours.
+    On maca3810 the fp64 device solve does not exist at all and raises
+    `invalid device function`. A CPU solve has neither problem and is the same
+    reference on every backend.
+
+    The result is placed where gems_assert_close expects it. Under `--ref=cpu`
+    (TO_CPU) that helper moves `res` to the CPU and asserts the reference is
+    ALREADY there, so the reference must stay on the CPU; otherwise it compares
+    on the device and the reference has to be moved back. The dtype of the copy
+    is gated on fp64 support, so devices without it (Ascend 910B) get an fp32
+    reference as before.
+    """
+    ref_dt = torch.float64 if utils.fp64_is_supported else torch.float32
+    ref_dev = torch.device("cpu") if utils.TO_CPU else A.device
+    out = torch.linalg.lstsq(
+        A.detach().cpu().to(torch.float64),
+        b.detach().cpu().to(torch.float64),
+        driver="gels",
+    )
+    ref = _Ref(
+        out.solution.to(device=ref_dev, dtype=ref_dt),
+        out.residuals.to(device=ref_dev, dtype=ref_dt),
+    )
 
     with flag_gems.use_gems():
         res = torch.ops.aten.linalg_lstsq(A, b, driver="gels")
@@ -390,6 +468,10 @@ def test_linalg_lstsq_near_singular(dtype):
     A[:, 4] = A[:, 1] + eps  # column 4 nearly duplicates column 1
     b = torch.randn(m, dtype=dtype, device=flag_gems.device)
 
+    # Deliberately torch ON THE DEVICE, not _cpu_ref: this test asserts that
+    # gems returns the same 4-tuple contract torch does here -- shapes for
+    # solution, residuals, rank and singular_values -- so the device's own
+    # torch is the correct reference, and _Ref carries only two of those four.
     ref = torch.linalg.lstsq(A, b, driver="gels")
     with flag_gems.use_gems():
         res = torch.ops.aten.linalg_lstsq(A, b, driver="gels")
@@ -485,12 +567,14 @@ def test_linalg_lstsq_complex_fallback():
     A = torch.randn(m, n, dtype=torch.complex64, device=flag_gems.device)
     b = torch.randn(m, dtype=torch.complex64, device=flag_gems.device)
 
-    ref = torch.linalg.lstsq(A.cpu(), b.cpu(), driver="gels").solution.to(
-        flag_gems.device
-    )
+    ref = torch.linalg.lstsq(A.cpu(), b.cpu(), driver="gels").solution
     with flag_gems.use_gems():
         res = torch.ops.aten.linalg_lstsq(A, b)
-    assert torch.allclose(res[0], ref, atol=1e-4, rtol=1e-4)
+    # Compare on the CPU. torch.allclose on complex tensors needs an elementwise
+    # complex abs, and Iluvatar's runtime compiler cannot build one:
+    # `[IXRTC] nvrtcCompileProgram failed ... abs_kernel<std::complex<float>>`.
+    # The comparison gains nothing from running on the device.
+    assert torch.allclose(res[0].cpu(), ref, atol=1e-4, rtol=1e-4)
 
 
 @pytest.mark.linalg_lstsq
@@ -516,7 +600,7 @@ def test_linalg_lstsq_square_wy(batch, shape, dtype):
     dev = flag_gems.device
     A = _cond_bounded((*batch, m, n), dtype, dev, seed=42)
     b = _det_randn((*batch, m), dtype, dev, seed=43)
-    ref = torch.linalg.lstsq(A, b, driver="gels")
+    ref = _cpu_ref(A, b)
     with flag_gems.use_gems():
         res = torch.ops.aten.linalg_lstsq(A, b, driver="gels")
     assert res[0].shape == ref.solution.shape
@@ -536,11 +620,15 @@ def test_linalg_lstsq_square_wy_fp64(dtype):
     dev = flag_gems.device
     A = _cond_bounded((m, n), dtype, dev, seed=46)
     b = _det_randn((m,), dtype, dev, seed=47)
-    ref = torch.linalg.lstsq(A, b, driver="gels")
+    ref = _cpu_ref(A, b)
     with flag_gems.use_gems():
         res = torch.ops.aten.linalg_lstsq(A, b, driver="gels")
+    # to_cpu, not bare arithmetic: under --ref=cpu the reference stays on the
+    # CPU while res is on the device, and this test compares them directly
+    # rather than through gems_assert_close.
+    sol = utils.to_cpu(res[0], ref.solution)
     sc = ref.solution.abs().max().clamp_min(1.0)
-    err = ((res[0] - ref.solution).abs().max() / sc).item()
+    err = ((sol - ref.solution).abs().max() / sc).item()
     assert err < 1e-6, f"fp64 square lstsq relerr {err:.2e} too large"
 
 
@@ -564,7 +652,7 @@ def test_linalg_lstsq_underdetermined_wy(batch, shape, dtype):
     dev = flag_gems.device
     A = _cond_bounded((*batch, m, n), dtype, dev, seed=44)
     b = _det_randn((*batch, m), dtype, dev, seed=45)
-    ref = torch.linalg.lstsq(A, b, driver="gels")
+    ref = _cpu_ref(A, b)
     with flag_gems.use_gems():
         res = torch.ops.aten.linalg_lstsq(A, b, driver="gels")
     assert res[0].shape == ref.solution.shape
