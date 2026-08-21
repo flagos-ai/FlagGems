@@ -6325,6 +6325,17 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
+  - id: matrix_exp
+    description: Computes the matrix exponential of a square matrix using Padé approximation with scaling and squaring.
+    for:
+      - linalg_matrix_exp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
