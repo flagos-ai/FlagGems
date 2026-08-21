@@ -177,3 +177,42 @@ def test_cumprod_inplace_bool_unsupported():
     with flag_gems.use_gems():
         with pytest.raises((RuntimeError, NotImplementedError)):
             inp.cumprod_(1)
+
+
+CUMPROD_BACKWARD_SHAPE_DIMS = [
+    ((1024,), 0),
+    ((128, 64), 0),
+    ((128, 64), 1),
+    ((32, 128, 16), 1),
+    ((4, 5, 6), -2),
+    ((8, 3, 7, 5), 2),
+]
+
+
+@pytest.mark.cumprod_backward
+@pytest.mark.parametrize("shape_dim", CUMPROD_BACKWARD_SHAPE_DIMS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("with_zero", [False, True])
+def test_cumprod_backward(shape_dim, dtype, with_zero):
+    shape, dim = shape_dim
+    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(0.95, 1.05)
+    if with_zero:
+        # Inject a zero along the reduction dim to exercise the zero-handling path.
+        idx = tuple(torch.randint(0, s, (1,)).item() for s in shape)
+        inp[idx] = 0.0
+    grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    output = torch.cumprod(inp, dim=dim)
+
+    ref_grad = utils.to_reference(grad, True)
+    ref_inp = utils.to_reference(inp, True)
+    ref_output = utils.to_reference(output, True)
+    ref_out = torch.ops.aten.cumprod_backward(ref_grad, ref_inp, dim, ref_output)
+
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.cumprod_backward(grad, inp, dim, output)
+
+    # The backward reverse-cumsum accumulates reduce_dim terms; for low-precision
+    # dtypes a single element can differ by ~1 ULP due to reordering vs the aten
+    # reference, so allow a slightly wider absolute tolerance.
+    atol = 1e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim], atol=atol)

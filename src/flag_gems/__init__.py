@@ -450,6 +450,7 @@ _FULL_CONFIG = (
     ("cummin", cummin),
     ("cumprod", cumprod),
     ("cumprod_", cumprod_),
+    ("cumprod_backward", cumprod_backward),
     ("cumsum", cumsum),
     ("cumsum.out", cumsum_out),
     ("cumsum_", cumsum_),

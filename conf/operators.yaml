@@ -2826,6 +2826,22 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: cumprod_backward
+    description: |
+      Backward pass for `cumprod`. Given the output gradient, the forward input and the forward
+      output, computes the gradient with respect to the input. Zero elements along the reduction
+      dimension are handled explicitly: the reverse cumulative sum of `grad * output` divided by
+      `input` gives the gradient for non-zero positions, while the first zero position uses a
+      modified cumulative product. Accumulation is performed in float32 for numerical stability.
+    for:
+      - cumprod_backward
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cumsum
     destination: Returns the cumulative sum of elements of `input` in the dimension `dim`.
     for:

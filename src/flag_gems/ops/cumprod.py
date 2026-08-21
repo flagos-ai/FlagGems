@@ -428,3 +428,357 @@ def cumprod_(inp, dim, *, dtype=None):
     out = cumprod_wrapper(inp, dim, inp.dtype)
     inp.copy_(out)
     return inp
+
+
+@triton.jit
+def _cumprod_backward_kernel(
+    grad_ptr,
+    input_ptr,
+    output_ptr,
+    grad_input_ptr,
+    N,  # length along reduction dim
+    stride_d,  # stride along reduction dim (same for all tensors)
+    stride_b,  # batch stride (same for all tensors)
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    base = pid * stride_b
+
+    offs = tl.arange(0, BLOCK)
+    mask = offs < N
+
+    g = tl.load(
+        grad_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+    inp = tl.load(
+        input_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+    out = tl.load(
+        output_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+
+    go = g * out
+
+    # Reverse cumulative sum: rev_cs[i] = sum_{j=i}^{N-1} go[j]
+    total_go = tl.sum(go, axis=0)
+    inc_cs = tl.cumsum(go, axis=0)
+    rev_cs = total_go - inc_cs + go
+
+    safe_inp = tl.where(inp == 0.0, 1.0, inp)
+    grad_input = tl.where(mask, rev_cs / safe_inp, 0.0)
+    grad_input = tl.where(inp == 0.0, 0.0, grad_input)
+
+    is_zero = (inp == 0.0) & mask
+    has_zero = tl.max(is_zero.to(tl.int32), axis=0)
+
+    if has_zero != 0:
+        large_val = 2147483647
+        zero_indices = tl.where(is_zero, offs.to(tl.int32), large_val)
+        k = tl.min(zero_indices, axis=0)
+
+        grad_input = tl.where(offs.to(tl.int32) > k, 0.0, grad_input)
+
+        inp_mod = tl.where(offs.to(tl.int32) == k, 1.0, inp)
+        inp_mod = tl.where(mask, inp_mod, 1.0)
+        cumprod_mod = tl.cumprod(inp_mod, axis=0)
+
+        gcm = g * cumprod_mod
+        zero_val = tl.sum(tl.where(offs.to(tl.int32) >= k, gcm, 0.0), axis=0)
+
+        grad_input = tl.where(offs.to(tl.int32) == k, zero_val, grad_input)
+
+    tl.store(
+        grad_input_ptr + base + offs * stride_d,
+        grad_input.to(tl.float32),
+        mask=mask,
+        cache_modifier=".cs",
+    )
+
+
+@triton.jit
+def _cumprod_backward_kernel_2d_batch(
+    grad_ptr,
+    input_ptr,
+    output_ptr,
+    grad_input_ptr,
+    N,
+    stride_d,
+    stride_b0,
+    stride_b1,
+    BLOCK: tl.constexpr,
+):
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    base = pid0 * stride_b0 + pid1 * stride_b1
+
+    offs = tl.arange(0, BLOCK)
+    mask = offs < N
+
+    g = tl.load(
+        grad_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+    inp = tl.load(
+        input_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+    out = tl.load(
+        output_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+
+    go = g * out
+
+    total_go = tl.sum(go, axis=0)
+    inc_cs = tl.cumsum(go, axis=0)
+    rev_cs = total_go - inc_cs + go
+
+    safe_inp = tl.where(inp == 0.0, 1.0, inp)
+    grad_input = tl.where(mask, rev_cs / safe_inp, 0.0)
+    grad_input = tl.where(inp == 0.0, 0.0, grad_input)
+
+    is_zero = (inp == 0.0) & mask
+    has_zero = tl.max(is_zero.to(tl.int32), axis=0)
+
+    if has_zero != 0:
+        large_val = 2147483647
+        zero_indices = tl.where(is_zero, offs.to(tl.int32), large_val)
+        k = tl.min(zero_indices, axis=0)
+
+        grad_input = tl.where(offs.to(tl.int32) > k, 0.0, grad_input)
+
+        inp_mod = tl.where(offs.to(tl.int32) == k, 1.0, inp)
+        inp_mod = tl.where(mask, inp_mod, 1.0)
+        cumprod_mod = tl.cumprod(inp_mod, axis=0)
+
+        gcm = g * cumprod_mod
+        zero_val = tl.sum(tl.where(offs.to(tl.int32) >= k, gcm, 0.0), axis=0)
+
+        grad_input = tl.where(offs.to(tl.int32) == k, zero_val, grad_input)
+
+    tl.store(
+        grad_input_ptr + base + offs * stride_d,
+        grad_input.to(tl.float32),
+        mask=mask,
+        cache_modifier=".cs",
+    )
+
+
+@triton.jit
+def _cumprod_backward_kernel_3d_batch(
+    grad_ptr,
+    input_ptr,
+    output_ptr,
+    grad_input_ptr,
+    N,
+    stride_d,
+    stride_b0,
+    stride_b1,
+    stride_b2,
+    BLOCK: tl.constexpr,
+):
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    pid2 = tl.program_id(2)
+    base = pid0 * stride_b0 + pid1 * stride_b1 + pid2 * stride_b2
+
+    offs = tl.arange(0, BLOCK)
+    mask = offs < N
+
+    g = tl.load(
+        grad_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+    inp = tl.load(
+        input_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+    out = tl.load(
+        output_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+
+    go = g * out
+
+    total_go = tl.sum(go, axis=0)
+    inc_cs = tl.cumsum(go, axis=0)
+    rev_cs = total_go - inc_cs + go
+
+    safe_inp = tl.where(inp == 0.0, 1.0, inp)
+    grad_input = tl.where(mask, rev_cs / safe_inp, 0.0)
+    grad_input = tl.where(inp == 0.0, 0.0, grad_input)
+
+    is_zero = (inp == 0.0) & mask
+    has_zero = tl.max(is_zero.to(tl.int32), axis=0)
+
+    if has_zero != 0:
+        large_val = 2147483647
+        zero_indices = tl.where(is_zero, offs.to(tl.int32), large_val)
+        k = tl.min(zero_indices, axis=0)
+
+        grad_input = tl.where(offs.to(tl.int32) > k, 0.0, grad_input)
+
+        inp_mod = tl.where(offs.to(tl.int32) == k, 1.0, inp)
+        inp_mod = tl.where(mask, inp_mod, 1.0)
+        cumprod_mod = tl.cumprod(inp_mod, axis=0)
+
+        gcm = g * cumprod_mod
+        zero_val = tl.sum(tl.where(offs.to(tl.int32) >= k, gcm, 0.0), axis=0)
+
+        grad_input = tl.where(offs.to(tl.int32) == k, zero_val, grad_input)
+
+    tl.store(
+        grad_input_ptr + base + offs * stride_d,
+        grad_input.to(tl.float32),
+        mask=mask,
+        cache_modifier=".cs",
+    )
+
+
+def cumprod_backward(grad, input, dim, output):
+    logger.debug("GEMS CUMPROD_BACKWARD")
+    ndim = input.ndim
+    dim = int(dim)
+    if dim < 0:
+        dim += ndim
+
+    N = input.shape[dim]
+
+    batch_size = 1
+    for i in range(ndim):
+        if i != dim:
+            batch_size *= input.shape[i]
+
+    grad_input = torch.empty_like(grad)
+
+    # aten::cumprod_backward has two regimes: when the input has no zero it
+    # trusts the supplied `output`, but as soon as any zero is present it
+    # discards `output` and recomputes cumprod internally in high precision
+    # (the passed low-precision output would otherwise inject rounding error
+    # that the reference never sees). Mirror that here: for low-precision
+    # dtypes with a zero anywhere, recompute the forward cumprod in fp32 so
+    # the reverse-cumsum below matches the reference. This is a whole-tensor
+    # decision, matching aten's global branch rather than a per-line one.
+    if output.dtype in (torch.float16, torch.bfloat16) and torch.any(input == 0):
+        output = torch.cumprod(input.to(torch.float32), dim)
+
+    grad_stride = grad.stride()
+    input_stride = input.stride()
+    output_stride = output.stride()
+    gi_stride = grad_input.stride()
+
+    batch_dims = [i for i in range(ndim) if i != dim]
+
+    BLOCK = 16
+    while BLOCK < N:
+        BLOCK *= 2
+
+    # Choose num_warps based on N to reduce overhead for small lines
+    if BLOCK <= 32:
+        num_warps = 1
+    elif BLOCK <= 64:
+        num_warps = 2
+    elif BLOCK <= 128:
+        num_warps = 4
+    else:
+        num_warps = 8
+
+    # Check if all tensors have the same layout (strides)
+    same_layout = (
+        grad_stride == input_stride
+        and grad_stride == output_stride
+        and grad_stride == gi_stride
+    )
+
+    if not same_layout:
+        # Fall back to contiguous approach when layouts differ
+        grad_2d = grad.movedim(dim, -1).reshape(-1, N).contiguous()
+        input_2d = input.movedim(dim, -1).reshape(-1, N).contiguous()
+        output_2d = output.movedim(dim, -1).reshape(-1, N).contiguous()
+        gi_2d = torch.empty((batch_size, N), dtype=grad.dtype, device=grad.device)
+
+        grid = (batch_size,)
+        _cumprod_backward_kernel[grid](
+            grad_2d,
+            input_2d,
+            output_2d,
+            gi_2d,
+            N,
+            1,
+            N,
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
+        grad_input = (
+            gi_2d.reshape([input.shape[i] for i in range(ndim) if i != dim] + [N])
+            .movedim(-1, dim)
+            .contiguous()
+        )
+        return grad_input
+
+    # All tensors share the same layout - use stride-based kernels, computing
+    # batch offsets arithmetically in-kernel to avoid host-side copies.
+    stride_d = grad_stride[dim]
+
+    if len(batch_dims) == 0:
+        grid = (1,)
+        _cumprod_backward_kernel[grid](
+            grad,
+            input,
+            output,
+            grad_input,
+            N,
+            stride_d,
+            0,
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
+    elif len(batch_dims) == 1:
+        stride_b = grad_stride[batch_dims[0]]
+        grid = (batch_size,)
+        _cumprod_backward_kernel[grid](
+            grad,
+            input,
+            output,
+            grad_input,
+            N,
+            stride_d,
+            stride_b,
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
+    elif len(batch_dims) == 2:
+        stride_b0 = grad_stride[batch_dims[0]]
+        stride_b1 = grad_stride[batch_dims[1]]
+        s0 = input.shape[batch_dims[0]]
+        s1 = input.shape[batch_dims[1]]
+        grid = (s0, s1)
+        _cumprod_backward_kernel_2d_batch[grid](
+            grad,
+            input,
+            output,
+            grad_input,
+            N,
+            stride_d,
+            stride_b0,
+            stride_b1,
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
+    else:
+        stride_b0 = grad_stride[batch_dims[0]]
+        stride_b1 = grad_stride[batch_dims[1]]
+        stride_b2 = grad_stride[batch_dims[2]]
+        s0 = input.shape[batch_dims[0]]
+        s1 = input.shape[batch_dims[1]]
+        s2 = input.shape[batch_dims[2]]
+        grid = (s0, s1, s2)
+        _cumprod_backward_kernel_3d_batch[grid](
+            grad,
+            input,
+            output,
+            grad_input,
+            N,
+            stride_d,
+            stride_b0,
+            stride_b1,
+            stride_b2,
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
+
+    return grad_input
