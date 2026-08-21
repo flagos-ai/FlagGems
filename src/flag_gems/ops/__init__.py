@@ -258,6 +258,7 @@ from flag_gems.ops.broadcast_to import broadcast_to
 from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
+from flag_gems.ops.causal_conv1d import causal_conv1d_fn, causal_conv1d_update
 from flag_gems.ops.cdist import _cdist_backward, _cdist_forward, cdist
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
@@ -321,6 +322,7 @@ from flag_gems.ops.div import (
 )
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
+from flag_gems.ops.dwconv2d_hwc import dwconv2d_hwc
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
@@ -1128,6 +1130,8 @@ __all__ = [
     "bucketize",
     "cat",
     "cat_out",
+    "causal_conv1d_fn",
+    "causal_conv1d_update",
     "cauchy",
     "cauchy_",
     "cdist",
@@ -1203,6 +1207,7 @@ __all__ = [
     "dot",
     "dropout",
     "dropout_backward",
+    "dwconv2d_hwc",
     "efficient_attention_backward",
     "elu",
     "elu_",
