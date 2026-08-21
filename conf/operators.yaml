@@ -8168,6 +8168,23 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: nll_loss2d
+    description: |
+      Negative log likelihood loss for a 4D input (N, C, H, W) of log-probabilities
+      and a 3D integer target (N, H, W). Returns only the loss tensor, applying the
+      requested reduction (none/mean/sum) with optional per-class weights and an
+      ignore_index.
+    for:
+      - nll_loss2d
+    marks:
+      - nll_loss2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: nll_loss2d_backward
     description: |
       An internal IR for supporting `torch.nn.NLLLoss2d`, which has been deprecated

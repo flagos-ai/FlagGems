@@ -829,6 +829,7 @@ _FULL_CONFIG = (
     ("new_ones", new_ones),
     ("nextafter", nextafter),
     ("nextafter_", nextafter_),
+    ("nll_loss2d", nll_loss2d),
     ("nll_loss2d_backward", nll_loss2d_backward),
     ("nll_loss2d_forward", nll_loss2d_forward),
     ("nll_loss_backward", nll_loss_backward),
