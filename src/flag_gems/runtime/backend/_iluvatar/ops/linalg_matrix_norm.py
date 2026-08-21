@@ -433,6 +433,52 @@ def _svdvals_rank2(input):
 
 @libentry()
 @triton.jit
+def _gram_sym_kernel(
+    A,
+    G,
+    K,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """G = A @ Aᵀ computed elementwise (no ``tl.dot``).
+
+    A is (batch, K, K); G[b, i, j] = Σ_r A[b, i, r] · A[b, j, r].
+    The reduction is ``tl.sum`` over the K axis with a plain elementwise
+    product, so it works for *any* K — including K < 16, which ``tl.dot``
+    rejects ("Input shapes should have M >= 1, N >= 1 and K >= 16", hit on
+    Triton 3.6 corex in CI for the small k=4/k=8 Jacobi Gram check).
+    """
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    pid_b = tl.program_id(2)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+    a_base = A + pid_b * K * K
+    g_base = G + pid_b * K * K
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k0 in range(0, K, BLOCK_K):
+        a = tl.load(
+            a_base + offs_m[:, None] * K + (k0 + offs_k)[None, :],
+            mask=(offs_m[:, None] < K) & ((k0 + offs_k)[None, :] < K),
+            other=0.0,
+        )
+        b = tl.load(
+            a_base + offs_n[:, None] * K + (k0 + offs_k)[None, :],
+            mask=(offs_n[:, None] < K) & ((k0 + offs_k)[None, :] < K),
+            other=0.0,
+        )
+        acc += tl.sum(a[:, None, :] * b[None, :, :], axis=2)
+    tl.store(
+        g_base + offs_m[:, None] * K + offs_n[None, :],
+        acc,
+        mask=(offs_m[:, None] < K) & (offs_n[None, :] < K),
+    )
+
+
+@libentry()
+@triton.jit
 def _fused_dbdsqr_kernel(
     D,
     E,
@@ -609,8 +655,20 @@ def _svdvals_hybrid(input):
                 torch_device_fn.synchronize()
                 a_work = a_work.clone()
 
-        # Convergence check: Gram off-diagonal ≤ tol × max diagonal
-        gram = flag_gems.bmm(a_work, a_work.transpose(1, 2))
+        # Convergence check: Gram off-diagonal ≤ tol × max diagonal.
+        # Computed with the elementwise _gram_sym_kernel (no tl.dot), so the
+        # check works for every k — flag_gems.bmm's tl.dot requires K >= 16
+        # and fails to compile for the small k=4/k=8 work matrices on CoreX.
+        gram = torch.empty((batch, k, k), dtype=torch.float32, device=device)
+        _gram_sym_kernel[(triton.cdiv(k, 16), triton.cdiv(k, 16), batch)](
+            a_work,
+            gram,
+            k,
+            BLOCK_M=16,
+            BLOCK_N=16,
+            BLOCK_K=32,
+            num_warps=4,
+        )
         k_idx = torch.arange(k, device=device)
         diag = gram[:, k_idx, k_idx]
         off_mask = ~torch.eye(k, dtype=torch.bool, device=device)
