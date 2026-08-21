@@ -3264,6 +3264,32 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
+  - id: hardtanh_backward
+    description: The backward version of hardtanh().
+    for:
+      - hardtanh_backward
+    labels:
+      - aten
+      - pointwise
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
+  - id: hardtanh_out
+    description: A variant of hardtanh() that assigns the output to the out tensor.
+    for:
+      - hardtanh_out
+    labels:
+      - aten
+      - pointwise
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - beta: '5.1'
   - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
