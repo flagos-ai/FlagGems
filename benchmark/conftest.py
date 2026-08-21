@@ -222,6 +222,20 @@ def pytest_configure(config):
     global REPORT_FILE
     global REGISTERED_MARKS
 
+    # Register FlashAttention benchmark-specific markers
+    config.addinivalue_line(
+        "markers",
+        "flash_attention_mainstream: FlashAttention tests for mainstream models (Qwen, DeepSeek, GLM, Llama) with real GQA configs",
+    )
+    config.addinivalue_line(
+        "markers",
+        "flash_attention_dynamic: FlashAttention tests with dynamic sequence lengths (autoregressive simulation)",
+    )
+    config.addinivalue_line(
+        "markers",
+        "flash_attention_perf: FlashAttention performance regression tests against PyTorch native",
+    )
+
     Config = BenchConfig()
 
     REGISTERED_MARKS = {
