@@ -4079,6 +4079,20 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: flipud
+    description: |
+      Flips a tensor in the up-to-down direction by reversing dimension 0.
+      The input must have at least one dimension.
+    for:
+      - flipud
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: float_power_
     description: Triton kernel implementation for float_power_.
     for:
