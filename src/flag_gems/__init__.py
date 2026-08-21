@@ -115,6 +115,8 @@ _FULL_CONFIG = (
     ("_compute_linear_combination", _compute_linear_combination),
     ("_compute_linear_combination.out", _compute_linear_combination_out),
     ("_conj", _conj),
+    ("_conj_copy", _conj_copy),
+    ("_conj_copy.out", _conj_copy_out),
     ("_cummin_helper", _cummin_helper),
     ("_conv_depthwise2d", _conv_depthwise2d),
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
