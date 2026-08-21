@@ -742,6 +742,7 @@ _FULL_CONFIG = (
     ("logit", logit),
     ("logit.out", logit_out),
     ("logit_", logit_),
+    ("logit_backward", logit_backward),
     ("logspace", logspace),
     ("logsumexp", logsumexp),
     ("lstm", lstm),
