@@ -19,6 +19,7 @@ from .greater_equal import greater_equal_
 from .groupnorm import group_norm
 from .hadamard_transform import hadamard_transform
 from .index import index
+from .index_add import index_add, index_add_
 from .index_put import index_put, index_put_
 from .index_select import index_select
 from .isin import isin
@@ -98,6 +99,8 @@ __all__ = [
     "group_norm",
     "hadamard_transform",
     "index",
+    "index_add",
+    "index_add_",
     "index_put",
     "index_put_",
     "index_select",

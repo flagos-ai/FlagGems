@@ -22,11 +22,20 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.index_add import index_add as _common_index_add
+from flag_gems.ops.index_add import index_add_ as _common_index_add_
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils.triton_version_utils import _triton_version_at_least
 
 logger = logging.getLogger(__name__)
+
+_TRITON_SUPPORTS_BF16_ATOMIC_ADD = _triton_version_at_least(3, 4)
+_CONTIGUOUS_SUFFIX_TILE_MIN = 80
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
 
 # Keep this cache in the op file: deployment may load this vendor op against an
 # older compatible FlagGems package tree. A shared test contract covers both
@@ -37,7 +46,13 @@ _INDEX_OUT_OF_BOUNDS_MESSAGE = "0 <= index < self.size(dim)"
 
 
 def _read_index_bounds(index):
-    return index.min().item(), index.max().item()
+    # One fused min+max kernel and a single sync instead of two separate
+    # min()/max() passes; dispatched at the CompositeExplicitAutograd level
+    # to stay clear of FlagGems' own op overrides.
+    lower, upper = torch.ops.aten.aminmax.default.redispatch(
+        _FALLBACK_KEYSET, index, dim=None, keepdim=False
+    )
+    return lower.item(), upper.item()
 
 
 def _resolve_index_for_kernel(index):
@@ -210,7 +225,7 @@ def _can_use_contiguous_suffix_path(inp, dim, index, src):
         and index.ndim == 1
         and index.dtype in (torch.int32, torch.int64)
         and inp.dtype == src.dtype
-        and inp.dtype in (torch.float16, torch.float32)
+        and inp.dtype in (torch.float16, torch.float32, torch.bfloat16)
         and index.numel() == src.size(dim)
         and inp.is_contiguous()
         and src.is_contiguous()
@@ -220,64 +235,16 @@ def _can_use_contiguous_suffix_path(inp, dim, index, src):
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("index_add"))
+@libtuner(
+    configs=runtime.get_tuned_config("index_add_contiguous_suffix_tile"),
+    key=["row_count", "suffix_size"],
+    strategy=["log", "log"],
+    restore_value=["out"],
+    warmup=5,
+    rep=10,
+)
 @triton.jit
-def index_add_kernel(
-    out_ptr,
-    index_ptr,
-    src_ptr,
-    M,
-    N,
-    alpha,
-    inp_len,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    """
-    Kernel for index_add operation with autotune.
-
-    After dim_compress, tensors are reshaped so that:
-    - inp has shape (M, inp_len) where inp_len is the size of target dimension
-    - src has shape (M, N) where N is the size of index
-
-    For each row m and each index position n:
-        out[m, index[n]] += alpha * src[m, n]
-    """
-    pid_m = ext.program_id(axis=0)
-    pid_n = ext.program_id(axis=1)
-
-    # Calculate row and column offsets
-    rows_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    cols_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
-
-    # Create masks
-    rows_mask = rows_offset < M
-    cols_mask = cols_offset < N
-    block_mask = rows_mask & cols_mask
-
-    # Load indices for this block of columns
-    cur_indices = tl.load(index_ptr + cols_offset, mask=cols_mask, other=0)
-
-    # Calculate offsets into inp/out (which has shape M x inp_len)
-    inp_off = rows_offset * inp_len + cur_indices
-
-    # Calculate offsets into src (which has shape M x N)
-    src_off = rows_offset * N + cols_offset
-
-    # Load source values
-    cur_src = tl.load(src_ptr + src_off, mask=block_mask, other=0.0)
-
-    # Use atomic_add to correctly handle repeated indices in index,
-    # aligned with the common op (src/flag_gems/ops/index_add.py).
-    # When multiple source elements map to the same output position (duplicate
-    # indices), plain load-store would cause race conditions or lost updates.
-    # atomic_add guarantees all contributions are accumulated correctly.
-    tl.atomic_add(out_ptr + inp_off, alpha * cur_src, mask=block_mask)
-
-
-@libentry()
-@triton.jit
-def _index_add_contiguous_suffix_kernel(
+def _index_add_contiguous_suffix_tile_kernel(
     out,
     index,
     src,
@@ -288,6 +255,7 @@ def _index_add_contiguous_suffix_kernel(
     alpha,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    ACCUMULATE_FP32: tl.constexpr,
 ):
     rows = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     cols = ext.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
@@ -299,24 +267,85 @@ def _index_add_contiguous_suffix_kernel(
     src_offsets = rows * suffix_size + cols
     out_offsets = (prefix * out_dim + receiver) * suffix_size + cols
     values = tl.load(src + src_offsets, mask=mask, other=0.0)
-    tl.atomic_add(out + out_offsets, values * alpha, mask=mask)
+    if ACCUMULATE_FP32:
+        values = values.to(tl.float32)
+    tl.atomic_add(out + out_offsets, values * alpha, mask=mask, sem="relaxed")
 
 
-def _contiguous_suffix_config(suffix_size):
-    block_n = min(512, triton.next_power_of_2(suffix_size))
-    return 4, block_n
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("index_add_contiguous_suffix_flat"),
+    key=["total_count", "suffix_size"],
+    strategy=["log", "log"],
+    restore_value=["out"],
+    warmup=5,
+    rep=10,
+)
+@triton.jit
+def _index_add_contiguous_suffix_flat_kernel(
+    out,
+    index,
+    src,
+    total_count,
+    index_len,
+    out_dim,
+    suffix_size,
+    alpha,
+    BLOCK_SIZE: tl.constexpr,
+    ACCUMULATE_FP32: tl.constexpr,
+):
+    # A 1D layout packs valid elements densely regardless of suffix width,
+    # avoiding the mostly-masked tiles the 2D kernel produces for narrow
+    # suffixes or leading-dim scatter.
+    offsets = ext.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < total_count
+
+    cols = offsets % suffix_size
+    rows = offsets // suffix_size
+    src_dim_idx = rows % index_len
+    prefix_idx = rows // index_len
+    dst_dim_idx = tl.load(index + src_dim_idx, mask=mask, other=0).to(tl.int64)
+    valid = mask & (dst_dim_idx >= 0) & (dst_dim_idx < out_dim)
+
+    src_offsets = rows * suffix_size + cols
+    out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
+    values = tl.load(src + src_offsets, mask=mask, other=0.0)
+    if ACCUMULATE_FP32:
+        values = values.to(tl.float32)
+    tl.atomic_add(out + out_offsets, values * alpha, mask=valid, sem="relaxed")
 
 
-def _run_contiguous_suffix_path(out, dim, index, src, alpha):
+def _run_contiguous_suffix_flat_path(out, dim, index, src, alpha):
     suffix_size = _volume(src.shape[dim + 1 :])
     row_count = _volume(src.shape[:dim]) * index.numel()
-    block_m, block_n = _contiguous_suffix_config(suffix_size)
-    grid = (
-        triton.cdiv(row_count, block_m),
-        triton.cdiv(suffix_size, block_n),
+    total_count = row_count * suffix_size
+    grid = lambda meta: (triton.cdiv(total_count, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(out.device):
+        _index_add_contiguous_suffix_flat_kernel[grid](
+            out,
+            index,
+            src,
+            total_count,
+            index.numel(),
+            out.size(dim),
+            suffix_size,
+            alpha,
+            ACCUMULATE_FP32=(
+                out.dtype == torch.float32 and src.dtype == torch.bfloat16
+            ),
+        )
+    return out
+
+
+def _run_contiguous_suffix_tile_path(out, dim, index, src, alpha):
+    suffix_size = _volume(src.shape[dim + 1 :])
+    row_count = _volume(src.shape[:dim]) * index.numel()
+    grid = lambda meta: (
+        triton.cdiv(row_count, meta["BLOCK_M"]),
+        triton.cdiv(suffix_size, meta["BLOCK_N"]),
     )
     with torch_device_fn.device(out.device):
-        _index_add_contiguous_suffix_kernel[grid](
+        _index_add_contiguous_suffix_tile_kernel[grid](
             out,
             index,
             src,
@@ -325,151 +354,85 @@ def _run_contiguous_suffix_path(out, dim, index, src, alpha):
             out.size(dim),
             suffix_size,
             alpha,
-            BLOCK_M=block_m,
-            BLOCK_N=block_n,
+            ACCUMULATE_FP32=(
+                out.dtype == torch.float32 and src.dtype == torch.bfloat16
+            ),
         )
     return out
 
 
+def _run_contiguous_suffix_path(out, dim, index, src, alpha):
+    # View contiguous tensors as [prefix, index_len, suffix] and scatter-add
+    # dense suffix tiles without generic rank/stride address decomposition.
+    # Narrow suffixes waste most lanes of the 2D tile kernel. On C550,
+    # suffixes 65 through 79 underfill the second tile and flat wins across
+    # fp32, fp16, and bf16; tile wins consistently from 80 onward.
+    suffix_size = _volume(src.shape[dim + 1 :])
+    if dim == 0 or suffix_size < _CONTIGUOUS_SUFFIX_TILE_MIN:
+        return _run_contiguous_suffix_flat_path(out, dim, index, src, alpha)
+    return _run_contiguous_suffix_tile_path(out, dim, index, src, alpha)
+
+
 def index_add(inp, dim, index, src, alpha=1):
-    """
-    Optimized index_add for mthreads backend.
+    logger.debug("GEMS_METAX INDEX_ADD")
 
-    self.index_add_(dim, index, source, alpha=1) -> Tensor
-
-    For a 3-D tensor the output is:
-        self[index[i], :, :] += alpha * src[i, :, :]  # if dim == 0
-        self[:, index[i], :] += alpha * src[:, i, :]  # if dim == 1
-        self[:, :, index[i]] += alpha * src[:, :, i]  # if dim == 2
-    """
-    logger.debug("GEMS_MTHREADS INDEX_ADD")
-
-    dim = _normalize_dim(inp, dim)
-    if _can_return_empty_index(inp, dim, index, src):
+    normalized_dim = _normalize_dim(inp, dim)
+    if _can_return_empty_index(inp, normalized_dim, index, src):
         return inp.clone()
 
+    index = _resolve_index_for_kernel(index)
+
     use_contiguous_suffix_path = _can_use_contiguous_suffix_path(
-        inp, dim, index, src
+        inp, normalized_dim, index, src
     ) and not torch._C._is_alias_of(inp, src)
+    if not use_contiguous_suffix_path:
+        if not inp.is_contiguous() or not src.is_contiguous():
+            return _common_index_add(
+                inp.contiguous(), dim, index, src.contiguous(), alpha
+            )
+        return _common_index_add(inp, dim, index, src, alpha)
 
-    # Make inputs contiguous. resolve_neg() is a no-op for normal indices.
-    inp = inp.contiguous()
-    index = _resolve_index_for_kernel(index).contiguous()
-    src = src.contiguous()
-
-    inp_len = inp.size(dim)
-    N = index.numel()
-    M = src.numel() // N
-
-    # Bounds check: the common op (src/flag_gems/ops/index_add.py) performs this
-    # inside the Triton kernel. Other backends (kunlunxin, ascend, cambricon) do
-    # it in Python instead, which we follow here.
-    # Use min/max to avoid allocating full-size boolean tensors.
-    _assert_index_in_bounds(index, inp_len, cacheable=use_contiguous_suffix_path)
-
-    if use_contiguous_suffix_path:
-        out = inp.clone()
-        return _run_contiguous_suffix_path(out, dim, index, src, alpha)
-
-    # Move target dim to last position for coalesced memory access
-    final_dim = inp.ndim - 1
-    if dim != final_dim:
-        inp = dim_compress(inp, dim)
-        src = dim_compress(src, dim)
-
-    # Clone input for output
-    out = inp.clone()
-
-    # Calculate grid with autotune
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        triton.cdiv(N, meta["BLOCK_N"]),
+    _assert_index_in_bounds(index, inp.size(normalized_dim))
+    accumulate_fp32 = (
+        inp.dtype == torch.bfloat16 and not _TRITON_SUPPORTS_BF16_ATOMIC_ADD
     )
-
-    with torch_device_fn.device(inp.device):
-        index_add_kernel[grid](out, index, src, M, N, alpha, inp_len)
-
-    # Restore original dimension order if needed
-    if dim != final_dim:
-        order = list(range(out.ndim - 1))
-        order.insert(dim, final_dim)
-        return out.permute(order).contiguous()
-    else:
-        return out
+    out = inp.float() if accumulate_fp32 else inp.clone()
+    res = _run_contiguous_suffix_path(
+        out, normalized_dim, index.contiguous(), src, alpha
+    )
+    return res.to(inp.dtype) if accumulate_fp32 else res
 
 
 def index_add_(inp, dim, index, src, alpha=1):
-    """
-    In-place version of index_add.
-    """
-    logger.debug("GEMS_MTHREADS INDEX_ADD_")
+    logger.debug("GEMS_METAX INDEX_ADD_")
 
-    dim = _normalize_dim(inp, dim)
+    normalized_dim = _normalize_dim(inp, dim)
     if torch._C._is_alias_of(inp, src):
         raise RuntimeError(
             "input and source overlap; clone source before calling index_add_"
         )
-    if _can_return_empty_index(inp, dim, index, src):
+    if _can_return_empty_index(inp, normalized_dim, index, src):
         return inp
 
-    use_contiguous_suffix_path = _can_use_contiguous_suffix_path(
-        inp, dim, index, src
-    ) and not torch._C._is_alias_of(inp, src)
+    index = _resolve_index_for_kernel(index)
 
-    # Make index and src contiguous. resolve_neg() is a no-op normally.
-    index = _resolve_index_for_kernel(index).contiguous()
-    src = src.contiguous()
+    if not _can_use_contiguous_suffix_path(inp, normalized_dim, index, src):
+        if not inp.is_contiguous() or not src.is_contiguous():
+            out = _common_index_add(
+                inp.contiguous(), dim, index, src.contiguous(), alpha
+            )
+            inp.copy_(out)
+            return inp
+        return _common_index_add_(inp, dim, index, src, alpha)
 
-    inp_len = inp.size(dim)
-    N = index.numel()
-    M = src.numel() // N
-
-    # Bounds check: the common op (src/flag_gems/ops/index_add.py) performs this
-    # inside the Triton kernel. Other backends (kunlunxin, ascend, cambricon) do
-    # it in Python instead, which we follow here.
-    # Use min/max to avoid allocating full-size boolean tensors.
-    _assert_index_in_bounds(index, inp_len, cacheable=use_contiguous_suffix_path)
-
-    if use_contiguous_suffix_path:
-        return _run_contiguous_suffix_path(inp, dim, index, src, alpha)
-
-    # Move target dim to last position
-    final_dim = inp.ndim - 1
-
-    if dim != final_dim:
-        # Need to work on a permuted copy
-        inp_work = dim_compress(inp.clone().contiguous(), dim)
-        src_work = dim_compress(src, dim)
-
-        # Calculate grid with autotune
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            triton.cdiv(N, meta["BLOCK_N"]),
-        )
-
-        with torch_device_fn.device(inp.device):
-            index_add_kernel[grid](inp_work, index, src_work, M, N, alpha, inp_len)
-
-        # Restore original dimension order and copy back
-        order = list(range(inp_work.ndim - 1))
-        order.insert(dim, final_dim)
-        inp_work = inp_work.permute(order).contiguous()
-        inp.copy_(inp_work)
-    else:
-        # Can work directly on input if already contiguous
-        inp_contig = inp.contiguous()
-
-        # Calculate grid with autotune
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            triton.cdiv(N, meta["BLOCK_N"]),
-        )
-
-        with torch_device_fn.device(inp.device):
-            index_add_kernel[grid](inp_contig, index, src, M, N, alpha, inp_len)
-
-        # Copy back if input wasn't contiguous
-        if not inp.is_contiguous():
-            inp.copy_(inp_contig)
-
+    _assert_index_in_bounds(index, inp.size(normalized_dim))
+    accumulate_fp32 = (
+        inp.dtype == torch.bfloat16 and not _TRITON_SUPPORTS_BF16_ATOMIC_ADD
+    )
+    out = inp.float() if accumulate_fp32 else inp
+    res = _run_contiguous_suffix_path(
+        out, normalized_dim, index.contiguous(), src, alpha
+    )
+    if accumulate_fp32:
+        inp.copy_(res)
     return inp
