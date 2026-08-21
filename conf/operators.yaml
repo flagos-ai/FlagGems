@@ -6723,6 +6723,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: quantized_gru
+    description: |
+      Quantized GRU (Gated Recurrent Unit) implementation using Triton fused gate kernel for efficient RNN inference.
+    for:
+      - quantized_gru.input
+      - quantized_gru.data
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Data
+    stages:
+      - stable: '2.2'
   - id: unflatten
     description: Expand a single dimension into multiple dimensions (inverse of flatten).
     for:
