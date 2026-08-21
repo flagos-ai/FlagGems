@@ -18,7 +18,9 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
+from flag_gems import runtime
+from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
@@ -42,7 +44,13 @@ def uniform_to_cauchy(u, median, sigma):
     return median + sigma * (tl.sin(angle) / tl.cos(angle))
 
 
-# @triton.heuristics(runtime.get_heuristic_config("cauchy"))
+@triton.jit
+def uniform_to_cauchy_tan(u, median, sigma):
+    u = tl.maximum(1.0e-7, u)
+    u = tl.minimum(1.0 - 1.0e-7, u)
+    return median + sigma * tl_extra_shim.tan(PI * (u - 0.5))
+
+
 configs = [
     triton.Config({"BLOCK": 256}, num_warps=8, num_stages=2),
     triton.Config({"BLOCK": 512}, num_warps=4, num_stages=2),
@@ -53,7 +61,17 @@ configs = [
 ]
 
 
-@triton.autotune(configs=configs, key=["N"])
+# CoreX includes changing Philox offsets in autotune cache keys, so each call
+# would retune; its libdevice tan is also faster than separate sin and cos.
+if device.vendor_name == "iluvatar":
+    _uniform_to_cauchy = uniform_to_cauchy_tan
+    _cauchy_kernel_config = triton.heuristics(runtime.get_heuristic_config("cauchy"))
+else:
+    _uniform_to_cauchy = uniform_to_cauchy
+    _cauchy_kernel_config = triton.autotune(configs=configs, key=["N"])
+
+
+@_cauchy_kernel_config
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "median", "sigma"])
 def cauchy_kernel(
     out_ptr,
@@ -76,10 +94,10 @@ def cauchy_kernel(
     r1 = uint_to_uniform_float(r1)
     r2 = uint_to_uniform_float(r2)
     r3 = uint_to_uniform_float(r3)
-    c0 = uniform_to_cauchy(r0, median, sigma)
-    c1 = uniform_to_cauchy(r1, median, sigma)
-    c2 = uniform_to_cauchy(r2, median, sigma)
-    c3 = uniform_to_cauchy(r3, median, sigma)
+    c0 = _uniform_to_cauchy(r0, median, sigma)
+    c1 = _uniform_to_cauchy(r1, median, sigma)
+    c2 = _uniform_to_cauchy(r2, median, sigma)
+    c3 = _uniform_to_cauchy(r3, median, sigma)
     off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
