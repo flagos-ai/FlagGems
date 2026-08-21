@@ -1119,6 +1119,7 @@ _FULL_CONFIG = (
     ("unfold", unfold),
     ("unfold_backward", unfold_backward),
     ("unfold_copy", unfold_copy),
+    ("uniform", uniform),
     ("uniform_", uniform_),
     ("unique_consecutive", unique_consecutive),
     ("unique_dim", unique_dim),

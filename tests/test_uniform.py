@@ -30,3 +30,15 @@ def test_accuracy_uniform(shape, dtype):
 
     assert (x <= 3.0).all()
     assert (x >= -3.0).all()
+
+
+@pytest.mark.uniform
+@pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_uniform(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        out = torch.ops.aten.uniform(x, -3, 3)
+
+    assert (out <= 3.0).all()
+    assert (out >= -3.0).all()

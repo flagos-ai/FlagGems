@@ -855,7 +855,7 @@ from flag_gems.ops.unflatten import unflatten
 from flag_gems.ops.unfold import unfold
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
-from flag_gems.ops.uniform import uniform_
+from flag_gems.ops.uniform import uniform, uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
@@ -1850,6 +1850,7 @@ __all__ = [
     "unfold",
     "unfold_backward",
     "unfold_copy",
+    "uniform",
     "uniform_",
     "unique_consecutive",
     "unique_dim",

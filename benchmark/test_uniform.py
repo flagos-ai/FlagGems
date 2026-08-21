@@ -32,3 +32,17 @@ def test_uniform_inplace():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.uniform
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_uniform():
+    bench = base.GenericBenchmark(
+        input_fn=utils.unary_input_fn,
+        op_name="uniform",
+        torch_op=torch.ops.aten.uniform,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
