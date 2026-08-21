@@ -72,6 +72,54 @@ def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
     utils.gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=K)
 
 
+@pytest.mark.addmm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("bias_shape", [(), (1, 128), (128, 1)])
+def test_addmm_broadcast_bias(dtype, bias_shape):
+    if bias_shape == () and flag_gems.vendor_name != "ascend":
+        pytest.skip("Issue #5385: scalar-bias support is landing per backend")
+
+    M, N, K = 128, 128, 128
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    bias = torch.randn(bias_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.addmm(
+        utils.to_reference(bias, True),
+        utils.to_reference(mat1, True),
+        utils.to_reference(mat2, True),
+    )
+    with flag_gems.use_gems():
+        result = torch.addmm(bias, mat1, mat2)
+
+    utils.gems_assert_close(result, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.addmm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("b_column_major", [True, False])
+def test_addmm_padded_strides(dtype, b_column_major):
+    M, N, K, padding = 64, 128, 64, 7
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    if b_column_major:
+        storage = torch.randn((N, K + padding), dtype=dtype, device=flag_gems.device)
+        mat2 = storage[:, :K].t()
+    else:
+        storage = torch.randn((K, N + padding), dtype=dtype, device=flag_gems.device)
+        mat2 = storage[:, :N]
+    bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.addmm(
+        utils.to_reference(bias, True),
+        utils.to_reference(mat1, True),
+        utils.to_reference(mat2, True),
+    )
+    with flag_gems.use_gems():
+        result = torch.addmm(bias, mat1, mat2)
+
+    utils.gems_assert_close(result, ref_out, dtype, reduce_dim=K)
+
+
 @pytest.mark.addmm_out
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
@@ -103,6 +151,32 @@ def test_addmm_out(M, N, K, scalar, dtype):
     torch.addmm(ref_bias2, ref_mat1, ref_mat2, alpha=alpha, beta=beta, out=ref_out)
     with flag_gems.use_gems():
         torch.addmm(bias2, mat1, mat2, alpha=alpha, beta=beta, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.addmm_out
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("b_column_major", [True, False])
+def test_addmm_out_noncontiguous(dtype, b_column_major):
+    M, N, K = 15, 17, 32
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    if b_column_major:
+        mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    else:
+        mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    out = torch.empty((N, M), dtype=dtype, device=flag_gems.device).t()
+    ref_out = utils.to_reference(out, True)
+
+    torch.addmm(
+        utils.to_reference(bias, True),
+        utils.to_reference(mat1, True),
+        utils.to_reference(mat2, True),
+        out=ref_out,
+    )
+    with flag_gems.use_gems():
+        torch.addmm(bias, mat1, mat2, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
