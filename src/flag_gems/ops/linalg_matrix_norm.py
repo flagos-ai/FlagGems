@@ -326,7 +326,7 @@ def _abs_norm_kernel(
 # ---------------------------------------------------------------------------
 
 
-def _fro_norm(A, dim, keepdim, dtype):
+def _fro_norm(A, dim, keepdim, dtype, out=None):
     """Frobenius norm (ord=\"fro\").  Mirrors C++ ``fro_norm``.
 
     Uses the unified ``_fro_kernel``: TILE_2D=False for small/batched
@@ -342,11 +342,16 @@ def _fro_norm(A, dim, keepdim, dtype):
         total = M * N
         use_fp64 = _use_fp64_acc(A.dtype)
         if total <= 65536:
+            direct = out is not None and out.is_contiguous() and out.numel() == 1
+            buf = (
+                out.reshape(-1)
+                if direct
+                else torch.empty(1, dtype=out_dtype, device=A.device)
+            )
             flat = A.reshape(1, total)
-            tmp = torch.empty(1, dtype=out_dtype, device=A.device)
             _fro_kernel[(1,)](
                 flat,
-                tmp,
+                buf,
                 0,
                 total,
                 1,
@@ -356,7 +361,9 @@ def _fro_norm(A, dim, keepdim, dtype):
                 USE_FP64=use_fp64,
                 num_warps=8,
             )
-            result = tmp.view(())
+            if direct:
+                return out
+            result = buf.view(())
         else:
             if M <= 1024 and N <= 1024:
                 BM, BN = 32, 32
@@ -367,10 +374,12 @@ def _fro_norm(A, dim, keepdim, dtype):
             grid_m = triton.cdiv(M, BM)
             grid_n = triton.cdiv(N, BN)
             grid_size = int(grid_m * grid_n)
-            out = torch.zeros((), dtype=_acc_dtype(A.dtype), device=A.device)
+            # Atomic accumulator must be fp32/fp64; the host sqrt+cast below is
+            # the last step, so out= is finalized by the impl fallback copy.
+            acc = torch.zeros((), dtype=_acc_dtype(A.dtype), device=A.device)
             _fro_kernel[(grid_size,)](
                 A,
-                out,
+                acc,
                 M,
                 N,
                 BM,
@@ -380,7 +389,7 @@ def _fro_norm(A, dim, keepdim, dtype):
                 USE_FP64=use_fp64,
                 num_warps=8,
             )
-            result = gems_sqrt(out).to(out_dtype)
+            result = gems_sqrt(acc).to(out_dtype)
         if result.dtype != out_dtype:
             result = result.to(out_dtype)
         if keepdim:
@@ -402,11 +411,16 @@ def _fro_norm(A, dim, keepdim, dtype):
     # _fro_kernel's contiguous linear indexing.  Force a contiguous copy.
     flat = A_perm.reshape(batch, mat_size).contiguous()
 
-    result = torch.empty(batch, dtype=out_dtype, device=flat.device)
+    direct = out is not None and out.is_contiguous() and out.numel() == batch
+    buf = (
+        out.reshape(-1)
+        if direct
+        else torch.empty(batch, dtype=out_dtype, device=flat.device)
+    )
     blk_n = triton.next_power_of_2(min(mat_size, 512))
     _fro_kernel[(batch,)](
         flat,
-        result,
+        buf,
         0,
         mat_size,
         1,
@@ -416,7 +430,10 @@ def _fro_norm(A, dim, keepdim, dtype):
         USE_FP64=_use_fp64_acc(A.dtype),
         num_warps=8,
     )
+    if direct:
+        return out
 
+    result = buf
     if result.dtype != out_dtype:
         result = result.to(out_dtype)
     if keepdim:
@@ -482,7 +499,7 @@ def _choose_fast_tile(M, N):
     return BM, BN, int(grid_m), int(grid_n)
 
 
-def _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim):
+def _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim, out=None):
     d0, d1 = dim
     ndim = A.ndim
     all_dims = list(range(ndim))
@@ -499,6 +516,14 @@ def _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim):
     is_min = ord_val < 0
     abs_ord = abs(float(ord_val))
     use_fp64 = _use_fp64_acc(Ab.dtype)
+    # _abs_norm_kernel's atomic_min/max need an fp32 buffer; when ``out`` is
+    # fp32 (the atomic store dtype) we write straight into it (zero-copy).
+    direct = (
+        out is not None
+        and out.dtype == torch.float32
+        and out.is_contiguous()
+        and out.numel() == batch
+    )
 
     if math.isinf(abs_ord):
         # --- inf/-inf: multi-block per matrix (row-parallel) ---
@@ -508,7 +533,13 @@ def _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim):
         init_val = float("inf") if is_min else 0.0
         # Output buffer must be fp32: tl.atomic_min / tl.atomic_max only
         # support fp32.  USE_FP64 controls internal summation precision.
-        result = torch.full((batch,), init_val, dtype=torch.float32, device=Ab.device)
+        result = (
+            out.reshape(-1)
+            if direct
+            else torch.full((batch,), init_val, dtype=torch.float32, device=Ab.device)
+        )
+        if direct:
+            result.fill_(init_val)
         _dummy = torch.empty(1, device=Ab.device)
         _abs_norm_kernel[(batch, grid_dim)](
             Ab,
@@ -533,7 +564,13 @@ def _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim):
         grid_dim = triton.cdiv(mat_N, tile_n_raw)
         blk_dim = triton.next_power_of_2(min(mat_M, 32))
         init_val = float("inf") if is_min else 0.0
-        result = torch.full((batch,), init_val, dtype=torch.float32, device=Ab.device)
+        result = (
+            out.reshape(-1)
+            if direct
+            else torch.full((batch,), init_val, dtype=torch.float32, device=Ab.device)
+        )
+        if direct:
+            result.fill_(init_val)
         _dummy = torch.empty(1, device=Ab.device)
         _abs_norm_kernel[(batch, grid_dim)](
             Ab,
@@ -554,6 +591,9 @@ def _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim):
     else:
         raise RuntimeError(f"_batched_kernel_dispatch: unsupported ord {ord_val}")
 
+    if direct:
+        return out
+
     if result.dtype != out_dtype:
         result = result.to(out_dtype)
 
@@ -568,7 +608,7 @@ def _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim):
     return result
 
 
-def _ord1_norm(A, ord_val, dim, keepdim, dtype):
+def _ord1_norm(A, ord_val, dim, keepdim, dtype, out=None):
     """1-norm (ord=1 / ord=-1).  Mirrors C++ ``ord1_norm``.
 
     Uses ``_abs_norm_kernel``: TILED=True (2D grid → partial buffer → host
@@ -610,12 +650,25 @@ def _ord1_norm(A, ord_val, dim, keepdim, dtype):
             init_val = float("inf") if is_min else 0.0
             # Output buffer must be fp32: tl.atomic_min / tl.atomic_max only
             # support fp32.  Precision gain comes from internal fp64 summation
-            # when USE_FP64=True, not from the output dtype.
-            out = torch.full((), init_val, dtype=torch.float32, device=A.device)
+            # when USE_FP64=True, not from the output dtype.  An fp32 ``out``
+            # is used directly as the atomic accumulator (zero-copy).
+            direct = (
+                out is not None
+                and out_dtype == torch.float32
+                and out.is_contiguous()
+                and out.numel() == 1
+            )
+            acc = (
+                out
+                if direct
+                else torch.full((), init_val, dtype=torch.float32, device=A.device)
+            )
+            if direct:
+                acc.fill_(init_val)
             _dummy = torch.empty(1, device=A.device)
             _abs_norm_kernel[(grid_n,)](
                 A,
-                out,
+                acc,
                 _dummy,
                 M,
                 N,
@@ -628,7 +681,9 @@ def _ord1_norm(A, ord_val, dim, keepdim, dtype):
                 USE_FP64=use_fp64,
                 num_warps=8,
             )
-            result = out.to(out_dtype).view(())
+            if direct:
+                return out
+            result = acc.to(out_dtype).view(())
 
         if keepdim:
             result = result.reshape(1, 1)
@@ -637,10 +692,10 @@ def _ord1_norm(A, ord_val, dim, keepdim, dtype):
         return result
 
     # --- Batched path ---
-    return _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim)
+    return _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim, out=out)
 
 
-def _ordinf_norm(A, ord_val, dim, keepdim, dtype):
+def _ordinf_norm(A, ord_val, dim, keepdim, dtype, out=None):
     """Infinity-norm (ord=inf / ord=-inf).  Mirrors C++ ``ordinf_norm``.
 
     Uses ``_abs_norm_kernel``: same TILED/BATCHED dispatch as ``_ord1_norm``,
@@ -678,11 +733,25 @@ def _ordinf_norm(A, ord_val, dim, keepdim, dtype):
             result = (gems_min(partial) if is_min else gems_max(partial)).view(())
         else:
             init_val = float("inf") if is_min else 0.0
-            out = torch.full((), init_val, dtype=torch.float32, device=A.device)
+            # fp32 ``out`` is used directly as the atomic accumulator
+            # (zero-copy); otherwise keep an fp32 acc and cast below.
+            direct = (
+                out is not None
+                and out_dtype == torch.float32
+                and out.is_contiguous()
+                and out.numel() == 1
+            )
+            acc = (
+                out
+                if direct
+                else torch.full((), init_val, dtype=torch.float32, device=A.device)
+            )
+            if direct:
+                acc.fill_(init_val)
             _dummy = torch.empty(1, device=A.device)
             _abs_norm_kernel[(grid_m,)](
                 A,
-                out,
+                acc,
                 _dummy,
                 M,
                 N,
@@ -695,7 +764,9 @@ def _ordinf_norm(A, ord_val, dim, keepdim, dtype):
                 USE_FP64=use_fp64,
                 num_warps=8,
             )
-            result = out.to(out_dtype).view(())
+            if direct:
+                return out
+            result = acc.to(out_dtype).view(())
 
         if keepdim:
             result = result.reshape(1, 1)
@@ -704,7 +775,7 @@ def _ordinf_norm(A, ord_val, dim, keepdim, dtype):
         return result
 
     # --- Batched path ---
-    return _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim)
+    return _batched_kernel_dispatch(A, dim, ord_val, out_dtype, keepdim, out=out)
 
 
 def _nuc_norm(A, dim, keepdim=False, dtype=None):
@@ -735,8 +806,47 @@ def _nuc_norm(A, dim, keepdim=False, dtype=None):
 # ===========================================================================
 
 
-def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
-    """Matrix norm -- main entry point.
+def _matrix_norm_out_shape(A, d0, d1, keepdim):
+    """Final shape of a matrix-norm result over dims (d0, d1).
+
+    ``keepdim`` keeps the reduced dims as size 1; otherwise they are dropped.
+    The row-major linear index of batch element ``b`` is identical in this
+    shape and in the ``(batch,)`` flat buffer the reduce kernels write, so an
+    ``out`` resized to this shape can be written directly by those kernels."""
+    out_shape = list(A.shape)
+    if keepdim:
+        out_shape[d0] = 1
+        out_shape[d1] = 1
+    else:
+        del out_shape[max(d0, d1)]
+        del out_shape[min(d0, d1)]
+    return tuple(out_shape)
+
+
+def _check_matrix_norm_out(out, expected_dtype, device):
+    """Validate a user-provided ``out`` (mirrors lu_factor's out contract)."""
+    if out.dtype != expected_dtype:
+        raise RuntimeError(
+            "linalg_matrix_norm expected out tensor dtype "
+            f"{expected_dtype} but got: {out.dtype}"
+        )
+    if out.device != device:
+        raise RuntimeError(
+            "linalg_matrix_norm: expected out tensor to be on the same device "
+            f"as the result, but got {out.device} and {device}"
+        )
+
+
+def _linalg_matrix_norm_impl(
+    A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None, *, out=None
+):
+    """Matrix norm compute -- validation + ord dispatch.
+
+    ``out=None`` returns a freshly-allocated result.  When ``out`` is given,
+    it is validated and resized up front (before the compute) and the ord
+    helpers write the per-matrix norms straight into its storage where the
+    final store allows it; otherwise a single final copy is made.  Pattern
+    follows ``linalg_lu_factor``.
 
     Dispatch order::
 
@@ -747,8 +857,6 @@ def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
                         abs==1  → _ord1_norm
                         isinf   → _ordinf_norm
     """
-    logger.debug("GEMS LINALG_MATRIX_NORM")
-
     # --- validate -----------------------------------------------------------
     if A.ndim < 2:
         raise RuntimeError(
@@ -764,39 +872,87 @@ def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
         )
 
     # --- dtype guard for SVD-based ords -------------------------------------
+    # Upcast before the out-dtype check so the expected result dtype matches
+    # what the (upcast) SVD helpers actually produce.
     _svd_ord = (isinstance(ord, str) and ord == "nuc") or (
         not isinstance(ord, str) and abs(float(ord)) == 2
     )
     if _svd_ord and A.dtype in (torch.float16, torch.bfloat16):
         A = A.float()  # upcast to fp32 for SVD
 
+    # --- out validation + resize up front (before any compute) --------------
+    if out is not None:
+        out_dtype = dtype if dtype is not None else A.dtype
+        _check_matrix_norm_out(out, out_dtype, A.device)
+        out.resize_(_matrix_norm_out_shape(A, dim[0], dim[1], keepdim))
+
     # --- string ord: fro / nuc ----------------------------------------------
     if isinstance(ord, str):
         if ord == "fro":
-            return _fro_norm(A, dim, keepdim, dtype)
-        if ord == "nuc":
-            return _nuc_norm(A, dim=dim, keepdim=keepdim, dtype=dtype)
-        raise RuntimeError(
-            f"linalg_matrix_norm: Order '{ord}' not supported. " "Use 'fro' or 'nuc'."
-        )
+            result = _fro_norm(A, dim, keepdim, dtype, out=out)
+        elif ord == "nuc":
+            result = _nuc_norm(A, dim=dim, keepdim=keepdim, dtype=dtype)
+        else:
+            raise RuntimeError(
+                f"linalg_matrix_norm: Order '{ord}' not supported. "
+                "Use 'fro' or 'nuc'."
+            )
+    else:
+        # --- numeric ord ----------------------------------------------------
+        ord_val = float(ord)
+        if ord_val not in _SUPPORTED_NUMERIC:
+            raise RuntimeError(
+                f"linalg_matrix_norm: Order {ord} not supported. "
+                "Use 1, -1, 2, -2, inf, -inf."
+            )
+        abs_ord = abs(ord_val)
+        if abs_ord == 2.0:
+            result = _ord2_norm(A, ord_val, dim, keepdim, dtype)
+        elif abs_ord == 1.0:
+            result = _ord1_norm(A, ord_val, dim, keepdim, dtype, out=out)
+        elif math.isinf(abs_ord):
+            result = _ordinf_norm(A, ord_val, dim, keepdim, dtype, out=out)
+        else:
+            raise RuntimeError(f"linalg_matrix_norm: Order {ord} not supported.")
 
-    # --- numeric ord --------------------------------------------------------
-    ord_val = float(ord)
-    if ord_val not in _SUPPORTED_NUMERIC:
-        raise RuntimeError(
-            f"linalg_matrix_norm: Order {ord} not supported. "
-            "Use 1, -1, 2, -2, inf, -inf."
-        )
+    # --- out variant epilogue: single fallback copy when not written direct -
+    if out is not None and result is not out:
+        out.resize_(result.shape)
+        out.copy_(result)
+        return out
+    return result
 
-    abs_ord = abs(ord_val)
-    if abs_ord == 2.0:
-        return _ord2_norm(A, ord_val, dim, keepdim, dtype)
-    if abs_ord == 1.0:
-        return _ord1_norm(A, ord_val, dim, keepdim, dtype)
-    if math.isinf(abs_ord):
-        return _ordinf_norm(A, ord_val, dim, keepdim, dtype)
 
-    raise RuntimeError(f"linalg_matrix_norm: Order {ord} not supported.")
+def linalg_matrix_norm(
+    A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None, *, out=None
+):
+    """Matrix norm -- main entry point.
+
+    Computes the norm over ``dim`` for the given ``ord``.  When ``out`` is
+    provided, writes the result into it and returns the same (aliased) tensor
+    (out variant); otherwise returns a freshly-allocated result.
+    """
+    logger.debug("GEMS LINALG_MATRIX_NORM")
+    return _linalg_matrix_norm_impl(
+        A, ord=ord, dim=dim, keepdim=keepdim, dtype=dtype, out=out
+    )
+
+
+def linalg_matrix_norm_out(
+    A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None, *, out=None
+):
+    """Matrix norm out variant (torch ``linalg_matrix_norm.out`` overload).
+
+    Requires a pre-allocated ``out`` and delegates to the shared impl, which
+    performs the validation / resize / direct write and returns the aliased
+    ``out``.  Pattern follows ``linalg_lu_factor_out``.
+    """
+    logger.debug("GEMS LINALG_MATRIX_NORM_OUT")
+    if out is None:
+        raise TypeError("linalg_matrix_norm(): out must be provided for out variant")
+    return _linalg_matrix_norm_impl(
+        A, ord=ord, dim=dim, keepdim=keepdim, dtype=dtype, out=out
+    )
 
 
 # ===========================================================================
