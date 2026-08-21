@@ -52,6 +52,27 @@ def input_fn(shape, dtype, device):
         yield inp, weight, bias, running_mean, running_var, training, momentum, eps, cudnn_enabled
 
 
+def native_batch_norm_input_fn(shape, dtype, device):
+    channel_count = shape[1]
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    weight = torch.randn(channel_count, dtype=dtype, device=device)
+    bias = torch.randn(channel_count, dtype=dtype, device=device)
+    running_mean = torch.zeros(channel_count, dtype=dtype, device=device)
+    running_var = torch.ones(channel_count, dtype=dtype, device=device)
+    yield inp, weight, bias, running_mean, running_var, True, 0.1, 1e-5
+
+
+@pytest.mark.native_batch_norm
+def test_native_batch_norm():
+    bench = NormBenchmark(
+        op_name="native_batch_norm",
+        input_fn=native_batch_norm_input_fn,
+        torch_op=torch.ops.aten.native_batch_norm.default,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.batch_norm
 def test_batch_norm():
     bench = NormBenchmark(
