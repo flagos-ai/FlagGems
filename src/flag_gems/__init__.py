@@ -446,6 +446,7 @@ _FULL_CONFIG = (
     ("cudnn_batch_norm_backward", cudnn_batch_norm_backward),
     ("cudnn_convolution", cudnn_convolution),
     ("cummax", cummax),
+    ("cummaxmin_backward", cummaxmin_backward),
     ("cummin", cummin),
     ("cumprod", cumprod),
     ("cumprod_", cumprod_),
