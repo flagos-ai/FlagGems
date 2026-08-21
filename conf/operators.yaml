@@ -6831,6 +6831,28 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: upsample_lanczos2d_aa_backward
+    description: Compute the input gradient for antialiased Lanczos-3 2D resizing.
+    for:
+      - _upsample_lanczos2d_aa_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: upsample_lanczos2d_aa_backward_grad_input
+    description: Out variant of antialiased Lanczos-3 2D resize backward.
+    for:
+      - _upsample_lanczos2d_aa_backward.grad_input
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: weight_int4pack_mm_with_scales_and_zeros
     description: |
       Int4 quantized matrix multiplication with separate scales and zeros. Computes
