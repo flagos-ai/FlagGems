@@ -5816,6 +5816,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: istft
+    description: Reconstructs a time-domain signal from its short-time Fourier transform.
+    for:
+      - istft
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: jagged_to_padded_dense_forward
     description: |
       Converts a jagged (variable-length) tensor to a padded dense tensor.

@@ -466,6 +466,7 @@ from flag_gems.ops.isinf import isinf
 from flag_gems.ops.isnan import isnan
 from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.isposinf import isposinf
+from flag_gems.ops.istft import istft
 from flag_gems.ops.kron import kron
 from flag_gems.ops.kthvalue import kthvalue
 from flag_gems.ops.layernorm import layer_norm, layer_norm_backward
@@ -1386,6 +1387,7 @@ __all__ = [
     "isneginf",
     "isneginf_out",
     "isposinf",
+    "istft",
     "kron",
     "kthvalue",
     "layer_norm",
