@@ -830,6 +830,7 @@ from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.svd import svd
+from flag_gems.ops.sym_size import sym_size
 from flag_gems.ops.sym_storage_offset import sym_storage_offset
 from flag_gems.ops.sym_stride import sym_stride
 from flag_gems.ops.t_copy import t_copy, t_copy_out
@@ -1814,6 +1815,7 @@ __all__ = [
     "sum_dim_out",
     "sum_out",
     "svd",
+    "sym_size",
     "sym_storage_offset",
     "sym_stride",
     "t_copy",
