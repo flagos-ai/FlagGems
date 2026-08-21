@@ -9396,6 +9396,16 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.4'
+  - id: replication_pad1d_backward
+    description: The backward version of `replication_pad1d()`.
+    for:
+      - replication_pad1d_backward
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - beta: '5.1'
   - id: replication_pad1d_out
     description: A variant of `replication_pad1d` that assigns the output to the `out` tensor.
     for:
