@@ -286,6 +286,10 @@ from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.conv_transpose2d import conv_transpose2d
+from flag_gems.ops.convolution_backward_overrideable import (
+    convolution_backward_overrideable,
+    convolution_backward_overrideable_out,
+)
 from flag_gems.ops.copy import copy, copy_
 from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.copysign_ import copysign_
@@ -1161,6 +1165,8 @@ __all__ = [
     "conv3d",
     "conv_transpose1d",
     "conv_transpose2d",
+    "convolution_backward_overrideable",
+    "convolution_backward_overrideable_out",
     "copy",
     "copy_",
     "copysign",
