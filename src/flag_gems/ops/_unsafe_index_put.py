@@ -134,8 +134,8 @@ def _unsafe_index_put_kernel(
     idx4_ptr,
     idx5_ptr,
     meta_ptr,
-    idx_numel: "i64",
-    suffix_numel: "i64",
+    idx_numel,
+    suffix_numel,
     M: tl.constexpr,
     IDX_NDIM: tl.constexpr,
     SUF_NDIM: tl.constexpr,
@@ -411,7 +411,9 @@ def _unsafe_index_put_kernel(
             # Scratch-based accumulate for outputs whose dtype lacks native
             # atomic_add. Scratch slots were seeded by the prologue; here we
             # only add the cast delta. Lossless for all supported dtypes.
-            tl.atomic_add(scratch_ptr + self_off, v.to(scratch_ptr.dtype.element_ty), mask=mask)
+            tl.atomic_add(
+                scratch_ptr + self_off, v.to(scratch_ptr.dtype.element_ty), mask=mask
+            )
         else:
             tl.atomic_add(out_ptr + self_off, v, mask=mask)
     else:
@@ -429,8 +431,8 @@ def _unsafe_index_put_scratch_kernel(
     idx4_ptr,
     idx5_ptr,
     meta_ptr,
-    idx_numel: "i64",
-    suffix_numel: "i64",
+    idx_numel,
+    suffix_numel,
     M: tl.constexpr,
     IDX_NDIM: tl.constexpr,
     SUF_NDIM: tl.constexpr,
@@ -680,7 +682,9 @@ def _unsafe_index_put_scratch_kernel(
 
     if PROLOGUE:
         orig = tl.load(out_ptr + self_off, mask=mask, other=0)
-        tl.store(scratch_ptr + self_off, orig.to(scratch_ptr.dtype.element_ty), mask=mask)
+        tl.store(
+            scratch_ptr + self_off, orig.to(scratch_ptr.dtype.element_ty), mask=mask
+        )
     else:
         v32 = tl.load(scratch_ptr + self_off, mask=mask, other=0)
         tl.store(out_ptr + self_off, v32.to(out_ptr.dtype.element_ty), mask=mask)
@@ -691,7 +695,7 @@ def _unsafe_index_put_copy_kernel(
     in_ptr,
     out_ptr,
     meta_ptr,
-    numel: "i64",
+    numel,
     CONTIGUOUS: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
@@ -709,7 +713,7 @@ def _unsafe_index_put_copy_kernel(
         v = tl.load(in_ptr + off, mask=mask, other=0)
         tl.store(out_ptr + off, v, mask=mask)
     else:
-        shape0 = tl.load(meta_ptr + 0)
+        # shape0 = tl.load(meta_ptr + 0)
         shape1 = tl.load(meta_ptr + 1)
         shape2 = tl.load(meta_ptr + 2)
         shape3 = tl.load(meta_ptr + 3)
@@ -926,11 +930,25 @@ def _idx_key(indices):
 
 
 @lru_cache(maxsize=1024)
-def _store_meta(device, out_shape, out_stride, idx_key, val_shape, val_stride, idx_shape, suffix_shape, m):
+def _store_meta(
+    device,
+    out_shape,
+    out_stride,
+    idx_key,
+    val_shape,
+    val_stride,
+    idx_shape,
+    suffix_shape,
+    m,
+):
     """Small int64 kernel-parameter buffer, cached per exact shapes/strides."""
-    tensor_strides = [_broadcast_strides(idx_key[i][0], idx_key[i][1], idx_shape) for i in range(m)]
+    tensor_strides = [
+        _broadcast_strides(idx_key[i][0], idx_key[i][1], idx_shape) for i in range(m)
+    ]
     ts = _pad_2d(tensor_strides, _MAX_NDIM, _MAX_NDIM, 0)
-    val_strides = _broadcast_strides(val_shape, val_stride, tuple(idx_shape) + tuple(suffix_shape))
+    val_strides = _broadcast_strides(
+        val_shape, val_stride, tuple(idx_shape) + tuple(suffix_shape)
+    )
     idx_ndim = len(idx_shape)
     vals = (
         list(_pad(_trailing_divisors(idx_shape), _MAX_NDIM, 1))
@@ -997,7 +1015,9 @@ _SCRATCH_DTYPES = {
 }
 
 
-def _launch(out, indices, values, idx_shape, suffix_shape, idx_numel, suffix_numel, accumulate):
+def _launch(
+    out, indices, values, idx_shape, suffix_shape, idx_numel, suffix_numel, accumulate
+):
     """2D-grid kernel launch; accumulate=True uses scratch for narrow dtypes."""
     m = len(indices)
     idx_ndim = len(idx_shape)
@@ -1080,7 +1100,18 @@ def _launch(out, indices, values, idx_shape, suffix_shape, idx_numel, suffix_num
                 block_idx,
                 block_suf,
             ),
-            (m, idx_ndim, suf_ndim, True, True, block_idx, block_suf, out.dtype, values.dtype, *key),
+            (
+                m,
+                idx_ndim,
+                suf_ndim,
+                True,
+                True,
+                block_idx,
+                block_suf,
+                out.dtype,
+                values.dtype,
+                *key,
+            ),
             num_warps=4,
         )
         # Epilogue: out = cast(scratch) with a single rounding.
@@ -1186,7 +1217,9 @@ def _unsafe_index_put(inp, indices, values, accumulate=False):
     processed = []
     for idx in indices:
         if idx is None:
-            raise TypeError("_unsafe_index_put does not accept None indices (expected Tensor, but got NoneType)")
+            raise TypeError(
+                "_unsafe_index_put does not accept None indices (expected Tensor, but got NoneType)"
+            )
         if idx.device != inp.device:
             idx = idx.to(inp.device)
         if idx.dtype in (torch.bool, torch.uint8):
@@ -1194,7 +1227,9 @@ def _unsafe_index_put(inp, indices, values, accumulate=False):
         elif idx.dtype in (torch.int32, torch.int64):
             processed.append(idx)
         else:
-            raise TypeError("tensors used as indices must be long, int, byte or bool tensors")
+            raise TypeError(
+                "tensors used as indices must be long, int, byte or bool tensors"
+            )
 
     m = len(processed)
     if m > inp.dim():
@@ -1229,5 +1264,14 @@ def _unsafe_index_put(inp, indices, values, accumulate=False):
     if idx_numel == 0 or suffix_numel == 0:
         return out
 
-    _launch(out, processed, values, idx_shape, suffix_shape, idx_numel, suffix_numel, accumulate)
+    _launch(
+        out,
+        processed,
+        values,
+        idx_shape,
+        suffix_shape,
+        idx_numel,
+        suffix_numel,
+        accumulate,
+    )
     return out
