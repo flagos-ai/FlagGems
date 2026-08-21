@@ -181,9 +181,8 @@ def test_dw_tle_matches_baseline(M, N, dtype):
         },
     )
 
-    rtol = 1e-3 if dtype == torch.float32 else 1e-2
-    atol = 1e-3 if dtype == torch.float32 else 1e-2
-    torch.testing.assert_close(dw_tle, dw_base, rtol=rtol, atol=atol)
+    # Compare TLE kernel output against baseline kernel output (both float32).
+    utils.gems_assert_close(dw_tle, dw_base, dtype)
 
 
 @_tle_skip
@@ -227,19 +226,6 @@ def test_rms_norm_end_to_end_with_tle_dispatch(M, N, dtype):
         ref_out.float(), (ref_inp, ref_weight), grad_out.float()
     )
 
-    out_tol = (
-        dict(rtol=1e-2, atol=1e-2)
-        if dtype == torch.float16
-        else dict(rtol=1e-3, atol=1e-3)
-    )
-    dw_tol = (
-        dict(rtol=2e-2, atol=2e-2)
-        if dtype == torch.float16
-        else dict(rtol=1e-3, atol=1e-3)
-    )
-
-    torch.testing.assert_close(res_out.float(), ref_out.float(), **out_tol)
-    torch.testing.assert_close(res_grad.float(), ref_grad.float(), **out_tol)
-    torch.testing.assert_close(
-        res_weight_grad.float(), ref_weight_grad_f32.float(), **dw_tol
-    )
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_grad, ref_grad, dtype)
+    utils.gems_assert_close(res_weight_grad, ref_weight_grad_f32, dtype, reduce_dim=N)
