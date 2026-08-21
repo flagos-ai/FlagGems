@@ -16,17 +16,16 @@ import logging
 import math
 
 import torch
+import trident
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.jit
 def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
     pid = ext.program_id(0)
@@ -37,6 +36,14 @@ def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
     arange_val = cols * step + step_offset + start
     mask = cols + pid * BLOCK_SIZE
     tl.store(y_ptr + cols, arange_val, mask=mask < size)
+
+
+@trident.jit
+def _arange_start(result, start, end, step, size):
+    BLOCK_SIZE = 128
+    grid = triton.cdiv(size, BLOCK_SIZE)
+    arange_func[grid,](result, start, end, step, size, BLOCK_SIZE)
+    return result
 
 
 def arange_start(
@@ -63,9 +70,6 @@ def arange_start(
         size = math.ceil((end - start) / step)
     size = int(size)
 
-    BLOCK_SIZE = 128
-    grid = triton.cdiv(size, BLOCK_SIZE)
-
     if dtype is None:
         dtype = torch.int64
 
@@ -78,8 +82,7 @@ def arange_start(
         )  # Note(Zhengzekang): Torch default value is CPU, but triton is target to GPU.
 
     result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
-    arange_func[grid,](result, start, end, step, size, BLOCK_SIZE)
-    return result
+    return _arange_start(result, start, end, step, size)
 
 
 def arange(end, *, dtype=None, layout=None, device=None, pin_memory=None):
