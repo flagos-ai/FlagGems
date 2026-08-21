@@ -490,6 +490,7 @@ _FULL_CONFIG = (
     ("elu_backward", elu_backward),
     ("embedding", embedding),
     ("embedding_backward", embedding_backward),
+    ("embedding_bag", embedding_bag),
     ("embedding_dense_backward", embedding_dense_backward),
     # ("empty.memory_format", empty),
     ("empty_permuted", empty_permuted),
