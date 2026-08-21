@@ -24,7 +24,7 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 # Maximum supported polynomial degree (arbitrary but safe bound)
-_MAX_POLY_DEGREE: tl.constexpr = 101
+_MAX_POLY_DEGREE = tl.constexpr(101)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
