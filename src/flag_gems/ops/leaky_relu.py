@@ -99,6 +99,10 @@ def _leaky_relu_backward_kernel(
 
 
 def leaky_relu_backward(grad_output, self, negative_slope=0.01, self_is_result=False):
+    # self_is_result is accepted for aten signature compatibility but needs no
+    # special handling: when negative_slope > 0 the forward output preserves the
+    # sign of the input (x >= 0 -> x >= 0, x < 0 -> negative_slope * x < 0),
+    # so gating on `self` is equivalent to gating on the forward result.
     logger.debug("GEMS LEAKY_RELU BACKWARD")
     if not grad_output.is_contiguous():
         grad_output = grad_output.contiguous()
