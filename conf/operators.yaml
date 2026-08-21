@@ -2778,6 +2778,20 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: cummaxmin_backward
+    description: |
+      Backward pass shared by `cummax` and `cummin`. Scatter-adds the output gradient back to the
+      input positions selected during the forward pass (given by `indices`), accumulating in
+      float32 for numerical stability. Equivalent to `grad_input.scatter_add_(dim, indices, grad_output)`.
+    for:
+      - cummaxmin_backward
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cummin
     description: |
       Returns a named tuple `(values, indices)` where values is the cumulative minimum of elements
@@ -5466,6 +5480,30 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: index_fill
+    description: |
+      Fills elements of the input tensor with a scalar or 0-dimensional tensor value
+      at positions selected by `index` along the given `dim`.
+    for:
+      - index_fill.int_Scalar
+      - index_fill.int_Tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: index_fill_
+    description: The in-place version of `index_fill()`.
+    for:
+      - index_fill_.int_Scalar
+      - index_fill_.int_Tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: index_put
     description: |
       Puts values from the tensor `values` into the tensor `input` using the indices specified
