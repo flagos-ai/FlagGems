@@ -298,6 +298,7 @@ from flag_gems.ops.copysign_ import copysign_
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.cosh import cosh, cosh_, cosh_out
 from flag_gems.ops.count_nonzero import count_nonzero
+from flag_gems.ops.cov import cov
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
@@ -1185,6 +1186,7 @@ __all__ = [
     "cosh_",
     "cosh_out",
     "count_nonzero",
+    "cov",
     "ctc_loss",
     "cudnn_attention_forward",
     "cudnn_batch_norm_backward",

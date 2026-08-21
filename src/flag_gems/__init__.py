@@ -446,6 +446,7 @@ _FULL_CONFIG = (
     ("cosh.out", cosh_out),
     ("cosh_", cosh_),
     ("count_nonzero", count_nonzero),
+    ("cov", cov),
     ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("cudnn_batch_norm_backward", cudnn_batch_norm_backward),

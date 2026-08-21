@@ -2751,6 +2751,22 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: cov
+    description: |
+      Estimates the covariance matrix of the variables given by the input
+      matrix, where rows are the variables and columns are the observations.
+      Supports Bessel's correction and optional frequency/analytic observation
+      weights, with the internal computation carried out in float32 for
+      numerical stability.
+    for:
+      - cov
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: cp_gather_indexer_k_quant_cache
     description: This is a fused operator that gathers FP8 K cache values and scales.
     for:
