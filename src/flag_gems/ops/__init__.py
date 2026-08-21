@@ -569,10 +569,12 @@ from flag_gems.ops.max_pool3d_with_indices_backward import (
 from flag_gems.ops.max_unpool2d import max_unpool2d
 from flag_gems.ops.max_unpool3d import max_unpool3d
 from flag_gems.ops.maximum import maximum
+from flag_gems.ops.maximum_backward import maximum_backward
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
+from flag_gems.ops.minimum_backward import minimum_backward
 from flag_gems.ops.miopen_batch_norm_backward import miopen_batch_norm_backward
 from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mish_backward import mish_backward
@@ -893,6 +895,7 @@ from flag_gems.ops.where import (
     where_self,
     where_self_out,
 )
+from flag_gems.ops.where_backward import where_backward
 from flag_gems.ops.xlogy import (
     xlogy,
     xlogy_out,
@@ -1469,8 +1472,11 @@ __all__ = [
     "logaddexp2_out",
     "logcumsumexp",
     "logcumsumexp_out",
+    "maximum_backward",
+    "minimum_backward",
     "unflatten",
     "unsafe_chunk",
+    "where_backward",
     "xlogy",
     "xlogy_out",
     "xlogy_tensor_scalar",
