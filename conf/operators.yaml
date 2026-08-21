@@ -6831,6 +6831,21 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: weight_int4pack_mm
+    description: |
+      Int4 packed weight matrix multiplication. Computes C = A @ dequant(W).T
+      where W is a byte-pair int4 packed uint8 tensor of shape (N, K//2).
+      Weights are pre-dequantized into float32 and then processed by a Triton
+      GEMM kernel.
+    for:
+      - _weight_int4pack_mm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - beta: '1.0'
   - id: weight_int4pack_mm_with_scales_and_zeros
     description: |
       Int4 quantized matrix multiplication with separate scales and zeros. Computes

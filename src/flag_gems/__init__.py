@@ -160,6 +160,7 @@ _FULL_CONFIG = (
     ("_linalg_eigvals", _linalg_eigvals),
     ("_list_to_tensor", _list_to_tensor),
     ("_scaled_dot_product_cudnn_attention", _scaled_dot_product_cudnn_attention),
+    ("_weight_int4pack_mm", _weight_int4pack_mm),
     (
         "_weight_int4pack_mm_with_scales_and_zeros",
         _weight_int4pack_mm_with_scales_and_zeros,
