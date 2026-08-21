@@ -123,6 +123,7 @@ _FULL_CONFIG = (
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
     ("_convolution_double_backward", _convolution_double_backward),
     ("_convolution_mode", _convolution_mode),
+    ("_cudnn_attention_backward", cudnn_attention_backward),
     ("_cudnn_attention_forward", cudnn_attention_forward),
     ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
     ("_efficient_attention_backward", efficient_attention_backward),
