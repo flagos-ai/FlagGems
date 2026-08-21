@@ -84,6 +84,7 @@ from .repeat_interleave import (
 )
 from .resolve_conj import resolve_conj
 from .round_ import round_
+from .scaled_grouped_mm import scaled_grouped_mm
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
 from .special_gammainc import special_gammainc
@@ -179,6 +180,7 @@ __all__ = [
     "repeat_interleave_tensor",
     "resolve_conj",
     "round_",
+    "scaled_grouped_mm",
     "softplus_backward",
     "sort",
     "sort_stable",
