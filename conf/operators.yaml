@@ -3401,6 +3401,20 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: embedding_renorm_
+    description: >
+      In-place renormalization of the embedding rows selected by indices: each
+      unique indexed row whose norm_type-norm exceeds max_norm is scaled down so
+      its norm equals max_norm.
+    for:
+      - embedding_renorm_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: empty
     description: Tensor factory operator — verifies dtype inference for newly allocated tensors.
     for:
