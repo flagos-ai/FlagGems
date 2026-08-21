@@ -42,6 +42,8 @@ BUILTIN_MARKS = (
     "tryfirst",
     "trylast",
 )
+BENCHMARK_CONTROL_MARKS = ("skip_native",)
+NON_OPERATOR_MARKS = BUILTIN_MARKS + BENCHMARK_CONTROL_MARKS
 REGISTERED_MARKS = []
 TEST_RESULTS = {}
 REPORT_FILE = "benchmark_result.json"
@@ -95,6 +97,67 @@ class BenchConfig:
         self.shape_file = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
         self.query = False
         self.parallel = 0
+        self.skip_native = False
+        self.native_baseline_skip_reason = None
+
+
+def _get_native_baseline_skip_reason(marker, current_vendor):
+    if marker.args:
+        raise pytest.UsageError(
+            "skip_native only accepts the keyword arguments 'vendors' and 'reason'"
+        )
+
+    unexpected = set(marker.kwargs) - {"vendors", "reason"}
+    if unexpected:
+        raise pytest.UsageError(
+            f"skip_native got unexpected argument(s): {', '.join(sorted(unexpected))}"
+        )
+
+    vendors = marker.kwargs.get("vendors")
+    if isinstance(vendors, str):
+        vendors = (vendors,)
+    elif isinstance(vendors, (list, tuple, set, frozenset)):
+        vendors = tuple(vendors)
+    else:
+        raise pytest.UsageError(
+            "skip_native requires 'vendors' to be a vendor name or a collection of vendor names"
+        )
+
+    if not vendors or not all(
+        isinstance(vendor, str) and vendor.strip() for vendor in vendors
+    ):
+        raise pytest.UsageError(
+            "skip_native requires at least one non-empty vendor name"
+        )
+
+    reason = marker.kwargs.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        raise pytest.UsageError("skip_native requires a non-empty 'reason'")
+
+    normalized_vendors = {vendor.strip().lower() for vendor in vendors}
+    if current_vendor.lower() not in normalized_vendors:
+        return None
+    return reason.strip()
+
+
+def _deactivate_inactive_native_marker(item, current_vendor):
+    marker = item.get_closest_marker("skip_native")
+    if marker is None:
+        return
+
+    try:
+        reason = _get_native_baseline_skip_reason(marker, current_vendor)
+    except pytest.UsageError:
+        # Keep invalid markers visible so the setup fixture reports the error.
+        return
+
+    if reason is not None:
+        return
+
+    for node in reversed(item.listchain()):
+        if marker in node.own_markers:
+            node.own_markers.remove(marker)
+            return
 
 
 def pytest_addoption(parser):
@@ -222,6 +285,11 @@ def pytest_configure(config):
     global REPORT_FILE
     global REGISTERED_MARKS
 
+    config.addinivalue_line(
+        "markers",
+        "skip_native(vendors, reason): skip the native benchmark baseline for selected vendors",
+    )
+
     Config = BenchConfig()
 
     REGISTERED_MARKS = {
@@ -299,6 +367,25 @@ def clear_function_cache():
     torch_device_fn.empty_cache()
 
 
+@pytest.fixture(scope="function", autouse=True)
+def configure_native_baseline(request):
+    Config.skip_native = False
+    Config.native_baseline_skip_reason = None
+    marker = request.node.get_closest_marker("skip_native")
+    reason = (
+        _get_native_baseline_skip_reason(marker, vendor_name)
+        if marker is not None
+        else None
+    )
+    Config.skip_native = reason is not None
+    Config.native_baseline_skip_reason = reason
+    try:
+        yield
+    finally:
+        Config.skip_native = False
+        Config.native_baseline_skip_reason = None
+
+
 @pytest.fixture(scope="module", autouse=True)
 def clear_module_cache():
     yield
@@ -312,7 +399,7 @@ def extract_and_log_op_attributes(request):
 
     # Extract the 'recommended_shapes' attribute from the pytest marker decoration.
     for mark in request.node.iter_markers():
-        if mark.name in BUILTIN_MARKS:
+        if mark.name in NON_OPERATOR_MARKS:
             continue
         op_specified_shapes = mark.kwargs.get("recommended_shapes")
         shape_desc = mark.kwargs.get("shape_desc", "M, N")
@@ -353,8 +440,8 @@ def pytest_runtest_makereport(item, call):
     out = yield
     report = out.get_result()
     all_marks = [mark.name for mark in item.iter_markers()]
-    # exclude builtin marks
-    marks = [mark for mark in all_marks if mark not in BUILTIN_MARKS]
+    # exclude pytest and benchmark control marks
+    marks = [mark for mark in all_marks if mark not in NON_OPERATOR_MARKS]
     # Assume the first mark is the operator's ID
     opid = marks[0] if marks else item.nodeid
     # Set the operator ID for the next function to use
@@ -403,6 +490,10 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
         json.dump(data, f, indent=2, default=str)
 
 
+def pytest_itemcollected(item):
+    _deactivate_inactive_native_marker(item, vendor_name)
+
+
 def pytest_collection_modifyitems(session, config, items):
     collect_marks_file = config.getoption("--collect-marks")
     if not collect_marks_file:
@@ -424,7 +515,7 @@ def pytest_collection_modifyitems(session, config, items):
         op_marks = [
             mark.name
             for mark in all_marks
-            if mark.name not in BUILTIN_MARKS and mark.name not in REGISTERED_MARKS
+            if mark.name not in NON_OPERATOR_MARKS and mark.name not in REGISTERED_MARKS
         ]
 
         data["marks"] = op_marks
