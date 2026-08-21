@@ -94,7 +94,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         dtype = x.dtype
     if dim is None:
         out = mean(x, dtype=dtype)
-        if not keepdim:
+        if keepdim:
             out = out.reshape([1] * x.ndim)
         return out
 
