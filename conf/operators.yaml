@@ -8380,6 +8380,20 @@ ops:
       - Reduction
     stages:
       - alpha: '5.4'
+  - id: norm_except_dim
+    description: |
+      Computes the p-norm of a tensor over all dimensions except the given
+      one, keeping that dimension so the result broadcasts against the input.
+    for:
+      - norm_except_dim
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: norm_scalar
     description: A variant of `norm` that computes the norm over all elements.
     for:
