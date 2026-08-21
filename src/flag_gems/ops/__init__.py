@@ -336,6 +336,7 @@ from flag_gems.ops.expand import expand, expand_
 from flag_gems.ops.expand_as import expand_as
 from flag_gems.ops.expand_copy import expand_copy
 from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
+from flag_gems.ops.exponential import exponential
 from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
@@ -1234,6 +1235,7 @@ __all__ = [
     "expm1",
     "expm1_",
     "expm1_out",
+    "exponential",
     "exponential_",
     "eye",
     "eye_m",
