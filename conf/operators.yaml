@@ -4079,6 +4079,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: float_power
+    description: Computes a tensor base raised element-wise to tensor exponents in float64.
+    for:
+      - float_power
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - beta: '5.1'
   - id: float_power_
     description: Triton kernel implementation for float_power_.
     for:
