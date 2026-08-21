@@ -1078,6 +1078,7 @@ _FULL_CONFIG = (
     ("svd", svd),
     ("sym_storage_offset", sym_storage_offset),
     ("sym_stride", sym_stride),
+    ("t_", t_),
     ("t_copy", t_copy),
     ("t_copy.out", t_copy_out),
     ("take", take),
