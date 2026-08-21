@@ -844,3 +844,22 @@ repeat_interleave_tensor:
     - [128, 256, 256]
     - [64, 64, 64, 64]
   shape_desc: "M, N, K"
+adaptive_max_pool3d:
+  shapes:
+    # Global pool
+    - [[1, 4, 8, 24, 32], [1, 1, 1]]
+    - [[1, 128, 1, 64, 64], [1, 1, 1]]
+    # Uniform divisible (strided max-pool equivalent)
+    - [[4, 32, 16, 32, 32], [8, 16, 16]]
+    - [[2, 16, 8, 16, 16], [4, 8, 8]]
+    # out_d=1 (reduce D dim then pool2d over H,W)
+    - [[2, 8, 8, 8, 8], [1, 4, 4]]
+    - [[1, 64, 64, 112, 112], [1, 1, 1]]
+    # HW identity, uniform D (Path B1/B2)
+    - [[1, 256, 64, 112, 112], [1, 112, 112]]
+    - [[1, 32, 16, 64, 64], [4, 64, 64]]
+    # General 3D pool (all dims change, uniform windows)
+    - [[2, 8, 16, 32, 32], [4, 16, 16]]
+    # Non-uniform windows
+    - [[1, 16, 7, 12, 12], [3, 6, 6]]
+  shape_desc: "[input_shape, output_size]"
