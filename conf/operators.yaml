@@ -5042,6 +5042,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: hardsigmoid_backward
+    description: |
+      The backward pass for `hardsigmoid`. Computes the gradient of the hardsigmoid
+      activation function: ``grad_output * (|self| < 3) / 6``.
+    for:
+      - hardsigmoid_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: hardsigmoid_out
     description: |
       A variant of `hardsigmoid` that supports an output tensor to receive the result.

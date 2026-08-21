@@ -607,6 +607,7 @@ _FULL_CONFIG = (
     ("hardsigmoid", hardsigmoid),
     ("hardsigmoid.out", hardsigmoid_out),
     ("hardsigmoid_", hardsigmoid_),
+    ("hardsigmoid_backward", hardsigmoid_backward),
     ("hardswish", hardswish),
     ("hardswish_", hardswish_),
     ("hardswish_out", hardswish_out),
