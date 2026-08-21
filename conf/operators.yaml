@@ -13,6 +13,19 @@
 # limitations under the License.
 
 ops:
+  - id: _linalg_svd
+    description: |
+      Computes the singular value decomposition (SVD) of a matrix; the private
+      primitive backing torch.linalg.svd and torch.linalg.svdvals.
+    for:
+      - _linalg_svd
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_impl_index
     description: Applies Batch Normalization and returns the normalized output along with saved statistics, a reserve tensor, and the backend implementation index.
     for:
