@@ -5293,6 +5293,21 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: hsplit
+    description: |
+      Splits a tensor into multiple sub-tensors horizontally (column-wise),
+      returning views that share storage with the input. Equivalent to
+      tensor_split with dim=1 for 2D+ tensors, or dim=0 for 1D tensors.
+    for:
+      - hsplit.array
+      - hsplit.int
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: hstack
     description: |
       Stack tensors in sequence horizontally (column wise). This is equivalent to concatenation

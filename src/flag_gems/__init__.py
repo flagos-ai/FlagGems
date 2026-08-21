@@ -619,6 +619,8 @@ _FULL_CONFIG = (
     ("hardtanh_", hardtanh_),
     ("heaviside", heaviside),
     ("histc", histc),
+    ("hsplit.array", hsplit),
+    ("hsplit.int", hsplit),
     ("hstack", hstack),
     ("huber_loss", huber_loss),
     ("huber_loss.out", huber_loss_out),
