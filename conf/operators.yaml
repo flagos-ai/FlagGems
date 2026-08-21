@@ -3200,6 +3200,16 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
+  - id: matmul_backward
+    description: Computes the gradients of `matmul` with respect to its input matrices.
+    for:
+      - matmul_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
   - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
