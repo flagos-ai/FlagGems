@@ -13,6 +13,17 @@
 # limitations under the License.
 
 ops:
+  - id: batch_norm_with_update_functional
+    description: Functional variant of _batch_norm_with_update that applies training-mode Batch Normalization and updates running statistics.
+    for:
+      - _batch_norm_with_update_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_impl_index
     description: Applies Batch Normalization and returns the normalized output along with saved statistics, a reserve tensor, and the backend implementation index.
     for:
