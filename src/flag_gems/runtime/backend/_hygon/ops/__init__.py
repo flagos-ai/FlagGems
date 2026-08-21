@@ -72,6 +72,7 @@ from .max_unpool2d import max_unpool2d
 from .median import median_dim, median_dim_values
 from .mm import mm
 from .mul import mul, mul_
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .nll_loss_backward import heur_block_n, nll_loss_backward
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
@@ -163,6 +164,10 @@ __all__ = [
     "mul",
     "mul_",
     "mm",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "nansum",
     "nansum_out",
     "nll_loss_backward",

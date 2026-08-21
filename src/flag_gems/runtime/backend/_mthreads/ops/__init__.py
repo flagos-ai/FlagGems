@@ -60,6 +60,7 @@ from .min import min, min_dim
 from .mish import mish, mish_
 from .mode import mode
 from .mul import mul, mul_
+from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nonzero_numpy import nonzero_numpy
 from .norm import norm, norm_scalar, norm_scalaropt_dim
 from .normal import normal_
@@ -154,6 +155,10 @@ __all__ = [
     "mode",
     "mul",
     "mul_",
+    "nanmedian",
+    "nanmedian_dim",
+    "nanmedian_dim_values",
+    "nanmedian_out",
     "nonzero_numpy",
     "norm",
     "norm_scalar",
