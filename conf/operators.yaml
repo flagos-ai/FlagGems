@@ -3694,6 +3694,17 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: exponential
+    description: Returns a new tensor with elements drawn from an exponential PDF (probability density function).
+    for:
+      - exponential
+    labels:
+      - aten
+      - skip_precision_check
+    kind:
+      - Distribution
+    stages:
+      - alpha: '5.4'
   - id: exponential_
     description: Fills `self` tensor with elements drawn from a PDF (probability density function).
     for:
