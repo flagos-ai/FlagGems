@@ -12553,6 +12553,24 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: vsplit
+    description: |
+      Split a tensor vertically (row-wise) into multiple tensors. Pure layout operation returning zero-copy views.
+    for:
+      - vsplit.int
+      - vsplit.array
+    marks:
+      - vsplit
+    labels:
+      - aten
+      - KernelGen
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+    device:
+      - nvidia
   - id: vstack
     description: Stack tensors in sequence vertically (row wise).
     for:
