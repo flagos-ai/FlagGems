@@ -1218,6 +1218,33 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: convolution_overrideable
+    description: |
+      Generic overrideable convolution dispatch. Infers the spatial rank from
+      the weight tensor and routes to the FlagGems Triton convolution kernels
+      (forward `conv2d` im2col kernel and transposed conv variants), supporting
+      stride, padding, dilation, transposed, output_padding and groups.
+    for:
+      - convolution_overrideable
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - alpha: '5.4'
+  - id: convolution_overrideable_out
+    description: |
+      A variant of convolution_overrideable() that writes the result into the out tensor.
+    for:
+      - convolution_overrideable.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - alpha: '5.4'
   - id: functional_assert_async
     description: |
       Functional version of _assert_async that takes a dependency token and returns a new token.
