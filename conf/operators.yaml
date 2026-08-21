@@ -3033,6 +3033,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: dist
+    description: |
+      Computes the p-norm distance between two tensors.
+    for:
+      - dist
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dispatch_fused_moe_kernel
     description: |
       Accelerates neural network training by combining token routing (dispatch/all-to-all communication),
@@ -5437,6 +5449,30 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: index_fill
+    description: |
+      Fills elements of the input tensor with a scalar or 0-dimensional tensor value
+      at positions selected by `index` along the given `dim`.
+    for:
+      - index_fill.int_Scalar
+      - index_fill.int_Tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: index_fill_
+    description: The in-place version of `index_fill()`.
+    for:
+      - index_fill_.int_Scalar
+      - index_fill_.int_Tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: index_put
     description: |
       Puts values from the tensor `values` into the tensor `input` using the indices specified
@@ -6258,6 +6294,21 @@ ops:
       - aten
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_matrix_norm
+    description: |
+      Computes the matrix norm over the given dimensions.
+      Supports ord values: 1, -1, 2, -2, inf, -inf, 'fro', 'nuc'.
+      For ord=2/-2/nuc, internally uses SVD (singular value decomposition).
+      For ord=1/-1/inf/-inf, uses max/min absolute column/row sums.
+      For ord='fro', uses Frobenius norm via per-row L2 reduction.
+    for:
+      - linalg_matrix_norm
+    labels:
+      - aten
+    kind:
+      - LinearAlg
     stages:
       - alpha: '5.4'
   - id: linalg_slogdet
@@ -7179,6 +7230,22 @@ ops:
       - tensor
     stages:
       - stable: '4.2'
+  - id: masked_scatter_backward
+    description: |
+      Backward of `masked_scatter` with respect to the `source` tensor.
+      Returns a tensor of shape `sizes` where the first ``mask.sum()`` elements
+      are the gradient values from the positions where ``mask`` was True
+      (obtained via stream-compaction / masked_select), and the remaining
+      elements are zero (the tail of `source` that was never consumed by the
+      forward pass).
+    for:
+      - masked_scatter_backward
+    labels:
+      - aten
+    kind:
+      - tensor
+    stages:
+      - alpha: '5.4'
   - id: masked_select
     description: |
       Returns a new 1-D tensor which indexes the `input` tensor according to
