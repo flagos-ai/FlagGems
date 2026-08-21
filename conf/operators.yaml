@@ -2929,6 +2929,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: det
+    description: |
+      Computes the determinant of a square matrix via LU decomposition with
+      partial pivoting. Equivalent to linalg.det.
+    for:
+      - det
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: dgeglu
     description: |
       Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid function.
