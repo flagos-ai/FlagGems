@@ -26,6 +26,19 @@ random.seed(time.time() // 100)
 
 device = flag_gems.device
 
+UNIQUE_DIM_FLOAT_DTYPES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "mthreads"
+            and dtype == torch.bfloat16
+            and not utils.TO_CPU,
+            reason="native MUSA unique_dim does not support bfloat16 reference",
+        ),
+    )
+    for dtype in utils.FLOAT_DTYPES
+]
+
 
 # Shapes that exercise 2D / 3D / higher-rank paths together with dim choices,
 # including negative dims and a "no other dim" 1D layout.
@@ -150,7 +163,7 @@ def test_unique_dim_int(shape, dim, dtype, pattern, return_inverse, return_count
         ((4, 8, 6), -1),
     ],
 )
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", UNIQUE_DIM_FLOAT_DTYPES)
 @pytest.mark.parametrize("return_inverse", [True])
 @pytest.mark.parametrize("return_counts", [True])
 def test_unique_dim_float(shape, dim, dtype, return_inverse, return_counts):
