@@ -13,6 +13,18 @@
 # limitations under the License.
 
 ops:
+  - id: batch_norm_elemt
+    description: |
+      Applies element-wise batch normalization using precomputed mean and inverse standard deviation.
+    for:
+      - batch_norm_elemt
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_impl_index
     description: Applies Batch Normalization and returns the normalized output along with saved statistics, a reserve tensor, and the backend implementation index.
     for:
