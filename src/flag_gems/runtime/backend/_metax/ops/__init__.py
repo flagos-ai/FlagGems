@@ -20,6 +20,7 @@ from .groupnorm import group_norm
 from .hadamard_transform import hadamard_transform
 from .index import index
 from .index_put import index_put, index_put_
+from .index_reduce import index_reduce_
 from .index_select import index_select
 from .isin import isin
 from .kthvalue import kthvalue
@@ -100,6 +101,7 @@ __all__ = [
     "index",
     "index_put",
     "index_put_",
+    "index_reduce_",
     "index_select",
     "isin",
     "kthvalue",
