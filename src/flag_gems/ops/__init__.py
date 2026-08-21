@@ -269,6 +269,7 @@ from flag_gems.ops.chalf import chalf
 from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.cholesky_inverse import cholesky_inverse
 from flag_gems.ops.cholesky_solve import cholesky_solve, cholesky_solve_out
+from flag_gems.ops.choose_qparams_optimized import choose_qparams_optimized
 from flag_gems.ops.chunk import chunk
 from flag_gems.ops.clamp import (
     clamp,
@@ -1150,6 +1151,7 @@ __all__ = [
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
+    "choose_qparams_optimized",
     "chunk",
     "clamp",
     "clamp_",
