@@ -5135,6 +5135,19 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: hardtanh_backward
+    description: |
+      The backward pass for hardtanh activation function. Computes the gradient of hardtanh:
+      grad_output when min_val < x < max_val, 0 otherwise.
+    for:
+      - hardtanh_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: has_compatible_shallow_copy_type
     description: |
       Metadata-only check that returns True when `self` can shallow-copy the

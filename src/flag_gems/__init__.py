@@ -612,6 +612,7 @@ _FULL_CONFIG = (
     ("hardswish_out", hardswish_out),
     ("heaviside_", heaviside_),
     ("hardtanh_", hardtanh_),
+    ("hardtanh_backward", hardtanh_backward),
     ("heaviside", heaviside),
     ("histc", histc),
     ("hstack", hstack),
