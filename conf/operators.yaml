@@ -12401,6 +12401,30 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: upsample_nearest_exact1d_backward
+    description: A backward case for `_upsample_nearest_exact1d()`.
+    for:
+      - _upsample_nearest_exact1d_backward
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: upsample_nearest_exact1d_backward_grad_input
+    description: An out variant of `_upsample_nearest_exact1d_backward()`.
+    for:
+      - _upsample_nearest_exact1d_backward.grad_input
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: upsample_nearest_exact2d
     description: Triton kernel implementation for _upsample_nearest_exact2d.
     for:
