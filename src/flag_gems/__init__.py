@@ -1058,6 +1058,7 @@ _FULL_CONFIG = (
     ("special_shifted_chebyshev_polynomial_w", special_shifted_chebyshev_polynomial_w),
     ("special_sinc", special_sinc),
     ("special_xlog1py", special_xlog1py),
+    ("split_with_sizes", split_with_sizes),
     ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
     ("sqrt_", sqrt_),
