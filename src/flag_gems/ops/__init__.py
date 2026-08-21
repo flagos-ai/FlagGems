@@ -301,6 +301,7 @@ from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
 from flag_gems.ops.cumsum_ import cumsum_
+from flag_gems.ops.cumulative_trapezoid import cumulative_trapezoid
 from flag_gems.ops.deg2rad import deg2rad, deg2rad_, deg2rad_out
 from flag_gems.ops.dequantize import dequantize
 from flag_gems.ops.diag import diag
@@ -1184,6 +1185,7 @@ __all__ = [
     "cumsum",
     "cumsum_",
     "cumsum_out",
+    "cumulative_trapezoid",
     "deg2rad",
     "deg2rad_",
     "deg2rad_out",
