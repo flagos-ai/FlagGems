@@ -2761,6 +2761,20 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: cummaxmin_backward
+    description: |
+      Backward pass shared by `cummax` and `cummin`. Scatter-adds the output gradient back to the
+      input positions selected during the forward pass (given by `indices`), accumulating in
+      float32 for numerical stability. Equivalent to `grad_input.scatter_add_(dim, indices, grad_output)`.
+    for:
+      - cummaxmin_backward
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cummin
     description: |
       Returns a named tuple `(values, indices)` where values is the cumulative minimum of elements

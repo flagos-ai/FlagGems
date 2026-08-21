@@ -12,18 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import triton
+import pytest
+import torch
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
-
-
-@pointwise_dynamic(is_tensor=(True,), promotion_methods=[(0, "DEFAULT")])
-@triton.jit
-def copy(src):
-    return src
+from . import base, consts, utils
 
 
-@pointwise_dynamic(is_tensor=(True,), promotion_methods=[(0, "DEFAULT")])
-@triton.jit
-def copy_(src):
-    return src
+def input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    grad = utils.generate_tensor_input(shape, dtype, device)
+    _, indices = torch.cummax(inp, dim=1)
+    yield grad, inp, indices, 1
+
+
+@pytest.mark.cummaxmin_backward
+def test_cummaxmin_backward():
+    bench = base.GenericBenchmark2DOnly(
+        input_fn=input_fn,
+        op_name="cummaxmin_backward",
+        torch_op=torch.ops.aten.cummaxmin_backward,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+
+    bench.run()
