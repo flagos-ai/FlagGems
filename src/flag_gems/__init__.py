@@ -1024,7 +1024,7 @@ _FULL_CONFIG = (
     ("special_exp2", special_exp2),
     ("special_expit", special_expit),
     ("special_gammainc", special_gammainc),
-    ("special_gammaincc", igammac),
+    ("special_gammaincc", special_gammaincc),
     ("special_gammaincc.out", igammac_out),
     ("special_gammaln", special_gammaln),
     ("special_gammaln.out", special_gammaln_out),

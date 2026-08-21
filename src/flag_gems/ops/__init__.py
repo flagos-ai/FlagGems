@@ -774,6 +774,7 @@ from flag_gems.ops.special_erfinv import (
 from flag_gems.ops.special_exp2 import special_exp2
 from flag_gems.ops.special_expit import special_expit
 from flag_gems.ops.special_gammainc import special_gammainc
+from flag_gems.ops.special_gammaincc import special_gammaincc
 from flag_gems.ops.special_gammaln import special_gammaln, special_gammaln_out
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
@@ -1752,6 +1753,7 @@ __all__ = [
     "special_exp2",
     "special_expit",
     "special_gammainc",
+    "special_gammaincc",
     "special_gammaln",
     "special_gammaln_out",
     "special_hermite_polynomial_h",

@@ -5350,8 +5350,6 @@ ops:
   - id: igammac
     description: |
       Computes the regularized upper incomplete gamma function Q(a, x) element-wise.
-    for:
-      - special.gammaincc
     labels:
       - aten
     kind:
@@ -10972,6 +10970,20 @@ ops:
     labels:
       - aten
       - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_gammaincc
+    description: |
+      Computes the regularized upper incomplete gamma function Q(a, x) element-wise.
+      Out-of-place counterpart of igammac_; delegates to the igammac kernel.
+    for:
+      - special_gammaincc
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
     kind:
       - Math
     stages:
