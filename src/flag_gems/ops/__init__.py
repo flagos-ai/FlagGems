@@ -672,6 +672,7 @@ from flag_gems.ops.reflection_pad3d import reflection_pad3d, reflection_pad3d_ou
 from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
 from flag_gems.ops.relu import relu, relu_
 from flag_gems.ops.relu6 import relu6
+from flag_gems.ops.relu6_backward import relu6_backward
 from flag_gems.ops.remainder import remainder, remainder_
 from flag_gems.ops.renorm import renorm
 from flag_gems.ops.renorm_ import renorm_
@@ -1469,6 +1470,7 @@ __all__ = [
     "logaddexp2_out",
     "logcumsumexp",
     "logcumsumexp_out",
+    "relu6_backward",
     "unflatten",
     "unsafe_chunk",
     "xlogy",

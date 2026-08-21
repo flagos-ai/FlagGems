@@ -909,6 +909,7 @@ _FULL_CONFIG = (
     ("reflection_pad3d_backward", reflection_pad3d_backward),
     ("relu", relu),
     ("relu6", relu6),
+    ("relu6_backward", relu6_backward),
     ("relu_", relu_),
     ("remainder", remainder),
     ("remainder.Scalar", remainder),
