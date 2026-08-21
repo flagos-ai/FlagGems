@@ -37,6 +37,26 @@ else:
 random.seed(time.time() // 100)
 
 
+@pytest.mark.underscore_softmax
+@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("neg_inf", [True, False])
+def test__softmax(shape, dtype, dim, neg_inf, caplog):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if neg_inf:
+        inp = torch.where(inp < 0.0, float("-inf"), inp)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.ops.aten._softmax.default(ref_inp, dim, False)
+    with caplog.at_level("DEBUG", logger="flag_gems.ops._softmax"):
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten._softmax.default(inp, dim, False)
+
+    assert "GEMS _SOFTMAX" in caplog.text
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
 # Issue 2852: This fails at (1, 2) (200, 40999, 3)
 @pytest.mark.softmax
 @pytest.mark.parametrize("shape", SHAPES)
