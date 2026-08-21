@@ -12145,6 +12145,20 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: unsafe_index_put
+    description: |
+      Functional advanced indexing scatter: returns a new tensor with `values`
+      put at the positions given by `indices`; with accumulate=True, sums into
+      the existing values via atomic_add (widened fp32/int32 scratch for
+      dtypes without native atomics).
+    for:
+      - _unsafe_index_put
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: unsafe_masked_index
     description: Gathers elements from self at given indices where mask is True, filling unmasked positions with a scalar value.
     for:

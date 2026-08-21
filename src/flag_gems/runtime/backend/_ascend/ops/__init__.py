@@ -111,6 +111,7 @@ from .stack import stack
 from .threshold import threshold, threshold_backward
 from .triu import triu
 from .unique import _unique2
+from .unsafe_index_put import _unsafe_index_put
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
@@ -123,6 +124,7 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_unique2",
+    "_unsafe_index_put",
     "_upsample_bicubic2d_aa",
     "addmm",
     "all",
