@@ -44,16 +44,19 @@ jobs:
           skip_reviews: "true"
           fork_review_bypass: "true"
           permissions: "write,admin"
+          param_separator: " "
 
       - id: parse-command
         if: ${{ steps.check.outputs.continue == 'true' }}
         env:
           PULL_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ steps.check.outputs.comment_body }}
         run: |
           # Parse command arguments
-          params=${{ steps.check.outputs.params }}
-          op=$(echo $params | cut -d ':' -f 1)
-          runner=$(echo $params | cut -d ':' -f 2)
+          # Comment format: "/test <op>:<runner>", e.g. "/test constant_pad_nd:mthreads"
+          params="${COMMENT_BODY#/test }"
+          op="${params%%:*}"
+          runner="${params##*:}"
           echo "OP_ID=${op}" >> $GITHUB_OUTPUT
           echo "RUNNER=${runner}" >> $GITHUB_OUTPUT
           echo "PR_NUMBER=${PULL_NUMBER}" >> $GITHUB_OUTPUT
@@ -96,6 +99,26 @@ jobs:
               BACKEND="nvidia-cuda128"
               echo "COMPILER=triton" >> $GITHUB_ENV
               ;;
+            ascend)
+              VENDOR="ascend"
+              # The ascend runner pool contains nodes with two different CANN
+              # toolkits (8.5.x and 9.0.x). The job may land on either node, so
+              # detect the CANN version on the node and pick the matching
+              # backend: 8.5.x -> ascend-cann850, 9.0.x -> ascend-cann900
+              CANN_VERSION=$(ls -d /usr/local/Ascend/cann-* 2>/dev/null | sed 's|.*/cann-||' | sort -V | tail -1)
+              case "${CANN_VERSION}" in
+                8.5*)
+                  BACKEND="ascend-cann850"
+                  ;;
+                9.0*)
+                  BACKEND="ascend-cann900"
+                  ;;
+                *)
+                  echo "::error::Cannot detect CANN version on ascend runner (got '${CANN_VERSION}')" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
             cann850)
               VENDOR="ascend"
               BACKEND="ascend-cann850"
@@ -107,6 +130,42 @@ jobs:
             mthreads)
               VENDOR="mthreads"
               BACKEND="mthreads-musa520"
+              ;;
+            metax)
+              VENDOR="metax"
+              # The metax runner pool contains nodes with two different MACA
+              # drivers (3.7.x and 3.8.x). The job may land on either node, so
+              # detect the driver on the node and pick the matching backend:
+              #   3.7.x -> metax-maca3720, 3.8.x -> metax-maca3810
+              MACA_VERSION=$(mx-smi 2>/dev/null | awk -F': ' '/MACA Version/{split($2,a," "); print a[1]}')
+              case "${MACA_VERSION}" in
+                3.7.*)
+                  BACKEND="metax-maca3720"
+                  ;;
+                3.8.*)
+                  BACKEND="metax-maca3810"
+                  ;;
+                *)
+                  echo "::error::Cannot detect MACA version on metax runner (got '${MACA_VERSION}')" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
+            maca372)
+              VENDOR="metax"
+              BACKEND="metax-maca3720"
+              ;;
+            maca381)
+              VENDOR="metax"
+              BACKEND="metax-maca3810"
+              ;;
+            enflame)
+              VENDOR="enflame"
+              BACKEND="enflame-tops1106"
+              ;;
+            cambricon)
+              VENDOR="cambricon"
+              BACKEND="cambricon-neuware472"
               ;;
             *)
               VENDOR="${RUNNER_LABEL}"
