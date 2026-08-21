@@ -13,6 +13,20 @@
 # limitations under the License.
 
 ops:
+  - id: assert_tensor_metadata
+    description: |
+      Asserts that the input tensor's metadata (size, stride, dtype, device,
+      layout) matches the provided expected values. Raises a RuntimeError on
+      any mismatch and returns nothing. Arguments left as None are not checked.
+    for:
+      - _assert_tensor_metadata
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_impl_index
     description: Applies Batch Normalization and returns the normalized output along with saved statistics, a reserve tensor, and the backend implementation index.
     for:

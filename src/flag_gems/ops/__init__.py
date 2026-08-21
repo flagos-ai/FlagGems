@@ -30,6 +30,7 @@ from flag_gems.ops._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from flag_gems.ops._amp_update_scale_ import _amp_update_scale_
+from flag_gems.ops._assert_tensor_metadata import _assert_tensor_metadata
 from flag_gems.ops._batch_norm_impl_index import (
     batch_norm_impl_index as _batch_norm_impl_index,
 )
@@ -912,6 +913,7 @@ __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_amp_update_scale_",
     "_assert_async",
+    "_assert_tensor_metadata",
     "_batch_norm_impl_index",
     "_batch_norm_impl_index_backward",
     "_batch_norm_no_update",

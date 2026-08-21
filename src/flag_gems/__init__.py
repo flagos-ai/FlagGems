@@ -104,6 +104,7 @@ _FULL_CONFIG = (
     ("_add_relu_.Tensor", _add_relu_),
     ("_amp_update_scale_", _amp_update_scale_),
     ("_assert_async", _assert_async),
+    ("_assert_tensor_metadata", _assert_tensor_metadata),
     ("_batch_norm_impl_index", _batch_norm_impl_index),
     ("_batch_norm_impl_index_backward", _batch_norm_impl_index_backward),
     ("_batch_norm_no_update", _batch_norm_no_update),
