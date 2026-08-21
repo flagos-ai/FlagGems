@@ -154,6 +154,7 @@ _FULL_CONFIG = (
     ("_index_put_impl_", _index_put_impl_),
     ("_is_all_true", _is_all_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
+    ("_linalg_det", _linalg_det),
     ("_linalg_eigvals", _linalg_eigvals),
     ("_list_to_tensor", _list_to_tensor),
     ("_scaled_dot_product_cudnn_attention", _scaled_dot_product_cudnn_attention),

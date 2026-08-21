@@ -80,6 +80,7 @@ from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
+from flag_gems.ops._linalg_det import _linalg_det
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._make_dep_token import _make_dep_token
@@ -946,6 +947,7 @@ __all__ = [
     "_index_put_impl_",
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
+    "_linalg_det",
     "_linalg_eigvals",
     "_list_to_tensor",
     "_make_dep_token",
