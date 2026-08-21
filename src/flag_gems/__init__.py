@@ -162,6 +162,7 @@ _FULL_CONFIG = (
         _weight_int4pack_mm_with_scales_and_zeros,
     ),
     ("binary_cross_entropy_backward", binary_cross_entropy_backward),
+    ("conv_transpose3d", conv_transpose3d),
     ("grid_sampler_3d_backward", grid_sampler_3d_backward),
     ("linalg_svdvals", linalg_svdvals),
     ("_log_softmax", log_softmax),
