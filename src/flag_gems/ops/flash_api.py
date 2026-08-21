@@ -968,9 +968,9 @@ def mha_fwd(
     q_dtype = q.dtype
     q_device = q.device
 
-    # Hopper (SM 9.x) 快速路径: gluon FA3 warp-specialization。
-    # kernel 约束:head_size<=64、seqlen 为 128 的整数倍、bf16、无 dropout/alibi/
-    # softcap/sliding-window。不满足则回退到原生 Triton kernel。
+    # Hopper (SM 9.x) fast path: gluon FA3 warp-specialization.
+    # Kernel constraints: head_size<=64, seqlen multiple of 128, bf16, no dropout/alibi/
+    # softcap/sliding-window. Falls back to native Triton kernel otherwise.
     if not _DISABLE_GLUON and hasattr(torch.cuda, "get_device_capability"):
         _bsz, _sq, _nh, _hd = q.size()
         _sk = k.size(1)
@@ -991,8 +991,9 @@ def mha_fwd(
         if use_gluon:
             from flag_gems.ops.gluon_flash_wrapper import gluon_flash_attn
 
-            # causal 判定:入口既可能直接传 is_causal 布尔,也可能用
-            # window_size_right==0 表达因果(原生逻辑在后面才做此转换)。
+            # Causal detection: entry may pass is_causal bool directly, or use
+            # window_size_right==0 to express causality (native logic does this
+            # conversion later).
             gluon_causal = bool(is_causal) or window_size_right == 0
             out_gluon, lse_gluon = gluon_flash_attn(
                 q, k, v, causal=gluon_causal, softmax_scale=softmax_scale
@@ -1000,8 +1001,8 @@ def mha_fwd(
             if out is None:
                 out = torch.empty_like(out_gluon)
             out.copy_(out_gluon)
-            # 与原生 mha_fwd 保持相同的 8 元组返回签名。
-            # 无 dropout,故 philox 参数为空;不返回 softmax 调试掩码。
+            # Match native mha_fwd's 8-tuple return signature.
+            # No dropout, so philox params are empty; no softmax debug mask returned.
             philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
             return out, q, k, v, lse_gluon, philox_args, None, None
 
