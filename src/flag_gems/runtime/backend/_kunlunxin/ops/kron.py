@@ -77,52 +77,27 @@ def calculate_indices(batch_idx, shape_a, shape_b):
     return a_idx, b_idx
 
 
-# --- Per-output-row div/mod kernel (XPU rewrite) --------------------------------
-# The original kernel tiled the output as a 2D [BLOCK_M, BLOCK_N] grid and read A/B
-# with  a_row = offs_m // M2 ,  b_col = offs_n % N2  etc. Two problems on XPU:
-#   1) BLOCK_M = next_pow2(cdiv(M,12)) is UNBOUNDED -> M=4096 gives BLOCK_M=512 and a
-#      giant [512,4096] all-int64 tile: grid collapses to ~8 programs (768 cores idle)
-#      and the int64 div/mod offset math blows the MLIR up (2.9M-line IR dump) ->
-#      ~0.06 GB/s catastrophe ([64,64] kron [64,64] -> 540ms, speedup 0.000).
-#   2) The all-int64 2D-tile offset math is huge.
+# --- XPU kron kernel (performance rewrite 2026-08-17) -----------------------
+# One program owns R consecutive output rows; each output row is written as a
+# flat stride-1 contiguous run in BLOCK_N chunks:
+#   C[row, col] = A[i1, j1] * B[i2, j2] with i1 = row//M2, i2 = row%M2 and
+#   j1 = col//N2, j2 = col%N2 recovered from the flat column index.
 #
-# Rewrite: one program owns ONE output ROW (row = i1*M2 + i2) and writes the whole
-# row as a stride-1 CONTIGUOUS run. Within a row, C[row, col] where col = j1*N2 + j2
-# equals A[i1, j1] * B[i2, j2]; so j1 = col // N2, j2 = col % N2 recover the A/B
-# columns for each output column. Thus:
-#   * store  = c_base + col, col = arange(0, BLOCK_N)   -> stride-1 block DMA (fast).
-#   * A/B reads use the div/mod (col//N2, col%N2) -> discrete gather (slower), but on
-#     XPU a discrete READ is ~1.5x cheaper than a discrete write, so putting the
-#     div/mod on the read side and keeping the WRITE contiguous is the right trade.
-# The row is looped in BLOCK_N chunks so N of any size works. N is a constexpr so the
-# store index `row*N + col` is a compile-time-strided contiguous run.
-#
-# WHY NOT the 2D outer-product ([BLOCK_N1,N2] = A-row-slice (x) B-row): it is contiguous
-# on BOTH sides in theory, but on this XPU the 2D store `c_off = row*N + j1[:,None]*N2 +
-# n2[None,:]` SILENTLY MISCOMPILES (columns get duplicated/transposed; verified WRONG for
-# (2,2)x(2,2) .. (8,16)x(2,3)). A 1-D per-(row,j1) [N2] store is correct only when N2 is
-# large (N2=64 ok, N2=2/3/5 wrong -- small contiguous writes coalesce incorrectly). Only
-# the full-row 1-D contiguous store below is correct for ALL shapes.
-#
-# BATCHING: the kernel handles ONE (A,B)->C matrix per launch (no in-kernel batch
-# indirection). An earlier version loaded the per-batch A/B indices from a `map`
-# tensor inside the kernel (`a_batch_idx = tl.load(map_ptr + ...)`) and used that
-# loaded scalar as an address multiplier -> on XPU that data-dependent scalar gather
-# FAULTS (KL_XID_KERNEL_EXCEPTION, err 66250/721). So batching is done on the host
-# instead: kron() loops the output batches and launches this kernel once per batch
-# on host-sliced contiguous 2D views. batch_size is 1 for all 2D inputs (the whole
-# benchmark), so the loop is a no-op there; only genuinely batched (>=3D) inputs pay
-# the extra launches, and those tensors are small.
+# Why this shape is fast on XPU vs the previous implementation:
+#   * N2 is a tl.constexpr: the per-lane 64-bit col//N2, col%N2 compile into
+#     magic-multiply sequences (~3 cyc) instead of runtime 64-bit divisions
+#     (30-60 cyc each). The previous kernel passed N2 as a runtime i64 and this
+#     single detail accounted for ~10-50x of the runtime on 16x16..256x256.
+#   * The store is a flat contiguous 1-D run (BLOCK_N lanes) per chunk, which
+#     is the only store pattern that gets near-copy bandwidth on P800 (2-D
+#     tile stores measure 3-13x slower; a [BJ,BN2] tile + tl.reshape is
+#     UNSUPPORTED on this backend -- inferReshapeOpEncoding is an UNREACHABLE
+#     TODO, verified by CompilationError; a scalar-a outer-product variant was
+#     ~1.3-2x slower than this flat layout).
+#   * NEED_MASK: when N % BLOCK_N == 0 the loads/stores are unmasked entirely.
 BLOCK_N_CAP = 8192
 
 
-def heur_block_n(args):
-    import builtins
-
-    return builtins.min(triton.next_power_of_2(args["N"]), BLOCK_N_CAP)
-
-
-@triton.heuristics({"BLOCK_N": heur_block_n})
 @triton.jit
 def kron_kernel(
     a_ptr,
@@ -131,25 +106,72 @@ def kron_kernel(
     M,
     N1,
     M2,
-    N2,
-    N: tl.constexpr,
+    N,
+    BATCH: tl.constexpr,
+    a1: tl.int64,
+    b0: tl.int64,
+    b1: tl.int64,
+    a_stride: tl.int64,
+    N2: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+    R: tl.constexpr,
 ):
-    row = ext.program_id(0)
-    i1 = row // M2
-    i2 = row % M2
-    a_base = i1 * N1
-    b_base = i2 * N2
-    c_base = row * N
-    for off in range(0, N, BLOCK_N):
-        col = off + tl.arange(0, BLOCK_N)
-        mask = col < N
-        j1 = col // N2
-        j2 = col % N2
-        a = tl.load(a_ptr + a_base + j1, mask=mask, other=0.0).to(tl.float32)
-        b = tl.load(b_ptr + b_base + j2, mask=mask, other=0.0).to(tl.float32)
-        out = (a * b).to(c_ptr.dtype.element_ty)
-        tl.store(c_ptr + c_base + col, out, mask=mask)
+    pid = ext.program_id(0)
+    nrb = (M + R - 1) // R
+    if BATCH:
+        bt = pid // nrb
+        rb = pid % nrb
+        ob1 = bt % (a1 * b1)
+        ob0 = bt // (a1 * b1)
+        aj = (ob0 // b0) * a1 + (ob1 // b1)
+        bj = (ob0 % b0) * b1 + (ob1 % b1)
+        a_off = aj * a_stride
+        b_off = bj * (M2 * N2)
+        c_b = bt * (M * N)
+    else:
+        rb = pid
+        a_off = 0
+        b_off = 0
+        c_b = 0
+    r0 = rb * R
+    for r in tl.static_range(R):
+        row = r0 + r
+        i1 = row // M2
+        i2 = row % M2
+        a_base = a_off + i1 * N1
+        b_base = b_off + i2 * N2
+        c_base = c_b + row * N
+        for off in range(0, N, BLOCK_N):
+            col = off + tl.arange(0, BLOCK_N)
+            j1 = col // N2
+            j2 = col % N2
+            if NEED_MASK:
+                mask = col < N
+                a = tl.load(a_ptr + a_base + j1, mask=mask, other=0.0).to(tl.float32)
+                b = tl.load(b_ptr + b_base + j2, mask=mask, other=0.0).to(tl.float32)
+                out = (a * b).to(c_ptr.dtype.element_ty)
+                tl.store(c_ptr + c_base + col, out, mask=mask)
+            else:
+                a = tl.load(a_ptr + a_base + j1).to(tl.float32)
+                b = tl.load(b_ptr + b_base + j2).to(tl.float32)
+                out = (a * b).to(c_ptr.dtype.element_ty)
+                tl.store(c_ptr + c_base + col, out)
+
+
+def _pick_block_n(N):
+    # Measured sweet spots on P800 XPU: N<=4096 -> next_pow2(N) (a 4096 block is
+    # best for N == 4096); N >= 8192 -> 8192 (best for N == 16384 / 65536).
+    return min(triton.next_power_of_2(N), BLOCK_N_CAP)
+
+
+def _pick_rows(M):
+    # R must divide M (the kernel has no tail guard). Larger R amortizes launch
+    # for the tiny-row batched case; R = 1 is used for the 2-D case (grid = M).
+    for r in (64, 32, 16, 8, 4, 2, 1):
+        if M % r == 0:
+            return r
+    return 1
 
 
 def kron(A, B):
@@ -186,26 +208,80 @@ def kron(A, B):
     if not B_view.is_contiguous():
         B_view = B_view.contiguous()
 
-    with torch_device_fn.device(A.device):
-        # One program owns ONE output row and writes it as a contiguous run.
-        # grid = M. Batching is on the host: launch the kernel once per output batch
-        # on host-sliced contiguous 2D views (batch_size is 1 for all 2D inputs). This
-        # avoids the in-kernel data-dependent scalar gather that faults on XPU (see
-        # header note).
-        grid = (M,)
+    block_n = _pick_block_n(N)
+    # XPU codegen quirk: unmasked loads/stores are incorrect for BLOCK_N <= 32
+    # (silent miscompile, verified on 8/16/32-lane tiles); mask them.
+    need_mask = (N % block_n) != 0 or block_n <= 32
 
-        for bt in range(batch_size):
-            a_idx, b_idx = calculate_indices(bt, A_prepared.shape, B_prepared.shape)
-            kron_kernel[grid](
-                A_view[a_idx],
-                B_view[b_idx],
-                C_reshaped[bt],
+    with torch_device_fn.device(A.device):
+        if batch_size == 1:
+            kron_kernel[(M,)](
+                A_view[0],
+                B_view[0],
+                C_reshaped[0],
                 M,
                 N1,
                 M2,
-                N2,
                 N,
+                False,
+                1,
+                1,
+                1,
+                M1 * N1,
+                N2,
+                block_n,
+                need_mask,
+                1,
             )
+        elif A_prepared.dim() == 4 and B_prepared.dim() == 4:
+            # Generic 2-D batch decompose; both inputs are 4-D after padding.
+            a0, a1, _, _ = A_prepared.shape
+            b0, b1, _, _ = B_prepared.shape
+            R = _pick_rows(M)
+            grid = ((batch_size * M) // R,)
+            kron_kernel[grid](
+                A_view,
+                B_view,
+                C_reshaped,
+                M,
+                N1,
+                M2,
+                N,
+                True,
+                a1,
+                b0,
+                b1,
+                M1 * N1,
+                N2,
+                block_n,
+                need_mask,
+                R,
+            )
+        else:
+            # Odd batch layouts (3-D inputs, rank-5+): per-batch host loop.
+            grid = (M,)
+            for bt in range(batch_size):
+                a_idx, b_idx = calculate_indices(
+                    bt, A_prepared.shape, B_prepared.shape
+                )
+                kron_kernel[grid](
+                    A_view[a_idx],
+                    B_view[b_idx],
+                    C_reshaped[bt],
+                    M,
+                    N1,
+                    M2,
+                    N,
+                    False,
+                    1,
+                    1,
+                    1,
+                    M1 * N1,
+                    N2,
+                    block_n,
+                    need_mask,
+                    1,
+                )
 
     if A.dim() <= 1 and B.dim() <= 1:
         return C.reshape(-1)

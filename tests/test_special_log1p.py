@@ -78,6 +78,8 @@ def test_special_log1p_nan_inf():
 @pytest.mark.special_log1p
 def test_special_log1p_small_values():
     """Test special_log1p precision for very small values."""
+    if flag_gems.vendor_name == "kunlunxin" and (not utils.fp64_is_supported):
+        pytest.skip("kunlunxin not support float64")
     inp = torch.tensor(
         [1e-15, 1e-10, 1e-8, 1e-5, -1e-5, -1e-8],
         dtype=torch.float64,

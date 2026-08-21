@@ -19,9 +19,12 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
+from .cumsum import cumsum
+from .sum import sum_dim
 from .topk import _get_finfo_val, _get_iinfo_val, argsort
 
 logger = logging.getLogger(__name__)
@@ -140,7 +143,7 @@ def compute_global_hist_kernel(
         bit_offset = p * num_bits_per_pass
         for r_start in range(0, r, TILE_R):  # parallel
             bin_indices = r_start + tl.arange(0, TILE_R)
-            acc = tl.zeros((TILE_R, TILE_N), dtype=tl.int64)
+            acc = tl.zeros((TILE_R, TILE_N), dtype=tl.int32)
             for n_start in range(cta_n_start, cta_n_end, TILE_N):  # sequantial
                 n_offsets = n_start + tl.arange(0, TILE_N)  # (TILE_N, )
                 mask = n_offsets < cta_n_end
@@ -343,19 +346,37 @@ def scatter_kernel(
         tl.store(idx_out_ptr + dest_idx, idx, mask=bin_mask)
 
 
-def radix_sort_low_mem(arr, k_bits=4, descending=False):
-    if arr.ndim == 1:
-        arr = arr.unsqueeze(0)
-    M, N = arr.shape
-    arr_in = arr
-    arr_out = torch.empty_like(arr_in)
+@libentry()
+@triton.jit
+def init_indices_kernel(indices, total, N, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    tl.store(indices + offsets, offsets % N, mask=offsets < total)
 
-    indices = (
-        torch.arange(N, device=arr.device, dtype=torch.int64)
-        .broadcast_to(arr.shape)
-        .clone()
-    )
-    idx_in = indices
+
+@libentry()
+@triton.jit
+def init_sort_buffers_kernel(
+    source, values, indices, total, N, BLOCK_SIZE: tl.constexpr
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < total
+    tl.store(values + offsets, tl.load(source + offsets, mask=mask), mask=mask)
+    tl.store(indices + offsets, offsets % N, mask=mask)
+
+
+def radix_sort_low_mem(arr, k_bits=4, descending=False):
+    original_shape = arr.shape
+    N = arr.shape[-1]
+    arr = arr.reshape(-1, N)
+    M = arr.shape[0]
+    arr_in = torch.empty_like(arr)
+    arr_out = torch.empty_like(arr)
+    idx_in = torch.empty(arr.shape, device=arr.device, dtype=torch.int64)
+    index_block = 256
+    with torch_device_fn.device(arr.device):
+        init_sort_buffers_kernel[(triton.cdiv(M * N, index_block),)](
+            arr, arr_in, idx_in, M * N, N, BLOCK_SIZE=index_block
+        )
     idx_out = torch.empty_like(idx_in)
 
     dtype = arr.dtype
@@ -392,11 +413,11 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
                 is_use_mask_zero=True,
             )
 
-            total_counts_per_bin = counts.sum(dim=1)
+            total_counts_per_bin = sum_dim(counts, dim=[1])
             bin_global_starts = (
-                torch.cumsum(total_counts_per_bin, dim=1) - total_counts_per_bin
+                cumsum(total_counts_per_bin, dim=1) - total_counts_per_bin
             )
-            block_prefix_sum = torch.cumsum(counts, dim=1) - counts
+            block_prefix_sum = cumsum(counts, dim=1) - counts
             global_offsets = (
                 bin_global_starts.unsqueeze(1)
                 .broadcast_to(block_prefix_sum.shape)
@@ -422,7 +443,7 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
             arr_in, arr_out = arr_out, arr_in
             idx_in, idx_out = idx_out, idx_in
 
-    return arr_in, idx_in
+    return arr_in.reshape(original_shape), idx_in.reshape(original_shape)
 
 
 def radix_sort(arr, k_bits=8, descending=False):
@@ -444,9 +465,10 @@ def radix_sort(arr, k_bits=8, descending=False):
     grid_for_global_hist = (m * grid_n, 1, 1)
 
     with torch_device_fn.device(arr.device):
-        global_hist = torch.zeros(
+        global_hist = torch.empty(
             (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
         )
+        zero_(global_hist)
         compute_global_hist_kernel[grid_for_global_hist](
             arr,
             global_hist,
@@ -459,15 +481,15 @@ def radix_sort(arr, k_bits=8, descending=False):
             k_bits,
             descending,
         )
-        ex_cumsum_bins = torch.cumsum(global_hist, -1) - global_hist
+        ex_cumsum_bins = cumsum(global_hist, dim=-1) - global_hist
         ex_cumsum_bins = ex_cumsum_bins.to(torch.uint32)
 
         # sort
-        arr_in = torch.clone(arr)
-        indices_in = (
-            torch.arange(0, n, dtype=torch.int64, device=arr_in.device)
-            .broadcast_to(arr.shape)
-            .contiguous()
+        arr_in = torch.empty_like(arr)
+        indices_in = torch.empty(arr.shape, dtype=torch.int64, device=arr.device)
+        init_block = 256
+        init_sort_buffers_kernel[(triton.cdiv(arr.numel(), init_block),)](
+            arr, arr_in, indices_in, arr.numel(), n, BLOCK_SIZE=init_block
         )
         arr_out = torch.empty_like(arr)
         indices_out = torch.empty_like(indices_in)
@@ -547,10 +569,17 @@ def sort_kernel(
 def sort(inp, dim=-1, descending=False):
     logger.debug("GEMS_KUNLUNXIN SORT")
     sort_elem_cnt = inp.shape[dim]
+    if sort_elem_cnt == 0:
+        return inp, torch.empty_like(inp, dtype=torch.int64)
     if sort_elem_cnt == 1:
-        return inp, torch.zeros_like(inp, dtype=torch.int64)
-    elif sort_elem_cnt > 512:  # TODO: Optimize implementation for large cases.
-        return torch.sort(inp, stable=False, dim=dim, descending=descending)
+        indices = torch.empty_like(inp, dtype=torch.int64)
+        with torch_device_fn.device(inp.device):
+            init_indices_kernel[(triton.cdiv(inp.numel(), 256),)](
+                indices, inp.numel(), 1, BLOCK_SIZE=256
+            )
+        return inp, indices
+    elif sort_elem_cnt > 512:
+        return sort_stable(inp, stable=True, dim=dim, descending=descending)
     block_size = triton.next_power_of_2(sort_elem_cnt)
 
     if dim < 0:
@@ -587,8 +616,15 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
     # We only implement stable radix sort here
     _ = stable
     sort_elem_cnt = inp.shape[dim]
+    if sort_elem_cnt == 0:
+        return inp, torch.empty_like(inp, dtype=torch.int64)
     if sort_elem_cnt == 1:
-        return inp, torch.zeros_like(inp, dtype=torch.int64)
+        indices = torch.empty_like(inp, dtype=torch.int64)
+        with torch_device_fn.device(inp.device):
+            init_indices_kernel[(triton.cdiv(inp.numel(), 256),)](
+                indices, inp.numel(), 1, BLOCK_SIZE=256
+            )
+        return inp, indices
 
     if dim < 0:
         dim = dim + inp.ndim

@@ -25,6 +25,12 @@ from . import accuracy_utils as utils
 # special.hermite_polynomial_h reference only supports float32 and float64
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_special_hermite_polynomial_h(shape, dtype):
+    if (
+        dtype == torch.float64
+        and flag_gems.vendor_name == "kunlunxin"
+        and not utils.fp64_is_supported
+    ):
+        pytest.skip("kunlunxin does not support float64")
     # Test with tensor n in [0, 9]
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
@@ -50,6 +56,12 @@ def test_special_hermite_polynomial_h(shape, dtype):
 # special.hermite_polynomial_h reference only supports float32 and float64
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_special_hermite_polynomial_h_scalar(shape, dtype):
+    if (
+        dtype == torch.float64
+        and flag_gems.vendor_name == "kunlunxin"
+        and not utils.fp64_is_supported
+    ):
+        pytest.skip("kunlunxin does not support float64")
     # Test with scalar n = 9 (largest supported degree)
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
@@ -72,6 +84,12 @@ def test_special_hermite_polynomial_h_scalar(shape, dtype):
 @pytest.mark.special_hermite_polynomial_h
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_special_hermite_polynomial_h_out_of_range(dtype):
+    if (
+        dtype == torch.float64
+        and flag_gems.vendor_name == "kunlunxin"
+        and not utils.fp64_is_supported
+    ):
+        pytest.skip("kunlunxin does not support float64")
     # Verify that n >= 10 or n < 0 raises ValueError
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")

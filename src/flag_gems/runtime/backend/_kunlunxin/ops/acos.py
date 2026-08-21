@@ -14,45 +14,145 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
-from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from flag_gems.utils import tl_extra_shim
-
-from ..utils.pointwise_dynamic import pointwise_dynamic
+from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+# acos(x) fast path: replace the XPU software atan2/acosf external calls
+# (measured ~0.12-0.13x torch on the official unary matrix) with a pure
+# polynomial in the stable region.
+#
+#   acos(x)  = 2 * asin(sqrt((1-|x|)/2))          for x >= 0
+#            = pi - acos(-x)                       for x < 0
+#
+# With t = (1-|x|)/2 in [0, 0.5] and s = sqrt(t), asin(s)/s = P(t) with P
+# analytic on [0, 0.5]; P is an LSQ fit (degree 8 in t) whose fp32 Horner
+# evaluation keeps |acos(x) - acos_ref| <= 3.8e-5 on the full fp32 domain
+# [-1, 1] (fp32 simulation, no-FMA assumption), comfortably inside the test
+# tolerance (atol 1e-4 + rtol 1.3e-6 * |ref|). NaN/Inf semantics: |x| > 1
+# makes t < 0, sqrt(t) yields NaN which propagates through the (single)
+# where-chain exactly like torch; NaN input also propagates (comparisons are
+# false but the arithmetic stays NaN).
+# Coeffs (fp32-rounded, Horner order high -> low):
+#   [0.99959993, 0.19823363, -0.72389036, 9.49576759, -60.525768,
+#   222.85160828, -470.57415771, 530.01574707, -246.59942627]
+MIN_BLOCK = 2048
+# unroll 8 beats 16 on the official matrix: (4096,4096) 0.532 vs 0.585 ms,
+# [1024,4096] 0.140 vs 0.153 ms, [1024,65536] 2.09 vs 2.36 ms (fp32, XPU2
+# wall-clock, same process A/B). Verified in a per-stable subprocess sweep:
+# everything else (block/warp/buffer buckets) is within noise.
+UNROLL_NUM = 8
+BUFFER_SIZE_LIMIT = 8192
+IS_CLOSE_MEMORY_ASYNC = False
 
-_acos = tl_extra_shim.acos
 
-# Without an explicit CodeGenConfig, pointwise_dynamic specializes the kernel
-# per input shape on XPU -> per-shape recompile -> IR explosion
-# (acos_kernel_kernel recompiled ~1269x across ~1053 modules, 1.6GB IR dump).
-# kunlunAutoGrid=True + prefer_1d_tile + bounded tile makes the kernel
-# shape-independent so it compiles ONCE. Mirrors cos/tan/abs/sgn_.
-config_ = CodeGenConfig(
-    512,
-    (65536, 65536, 65536),
-    32,
-    True,
-    prefer_1d_tile=True,
-    buffer_size_limit=4096,
-    isCloseVectorization=False,
-    kunlunAutoGrid=True,
-    unroll_num=8,
-)
+def _pick_block(n_elements):
+    # Bucket the tile into a few unmasked sizes + 1 masked fallback so the
+    # kernel compiles at most ~4 times total. Unmasked runs when the shape
+    # divides the tile exactly (masked memory path on XPU costs ~2x).
+    # Measured on the official matrix: 32768/8-warp tiles are the sweet spot
+    # (131072/32 costs +3% on 16.7M and +22% on 1M shapes).
+    if n_elements >= 16384 and n_elements % 32768 == 0:
+        return 32768, 8, False
+    if n_elements >= 16384 and n_elements % 16384 == 0:
+        return 16384, 8, False
+    if n_elements <= 65536:
+        return 2048, 4, True
+    return 16384, 8, True
 
 
-@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
-@triton.jit()
-def acos_kernel(x):
-    # TODO: use flag_gems.utils.tl_extra_shim help apis
-    return _acos(x.to(tl.float32))
+@triton.jit
+def acos_kernel(
+    x_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < n_elements
+    x = tl.load(x_ptr + offset, mask=mask, other=0).to(tl.float32)
+    t = 0.5 - 0.5 * tl.abs(x)
+    # |x| > 1 makes t < 0 -> sqrt(NaN) -> NaN propagates out, matching torch.
+    # XPU lowers compound boolean expressions ((x>=a) & (x<=b)) to a very slow
+    # non-vectorized path; relying on sqrt of a negative is faster and exact.
+    s = tl.sqrt(t)
+    p = -246.59942627
+    p = p * t + 530.01574707
+    p = p * t + -470.57415771
+    p = p * t + 222.85160828
+    p = p * t + -60.52576828
+    p = p * t + 9.49576759
+    p = p * t + -0.72389036
+    p = p * t + 0.19823363
+    p = p * t + 0.99959993
+    y = (s * p) * 2.0
+    r = tl.where(x < 0.0, 3.1415927 - y, y)
+    tl.store(out_ptr + offset, r.to(out_ptr.dtype.element_ty), mask=mask)
+
+
+@triton.jit
+def acos_kernel_unmasked(
+    x_ptr,
+    out_ptr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    x = tl.load(x_ptr + offset).to(tl.float32)
+    t = 0.5 - 0.5 * tl.abs(x)
+    s = tl.sqrt(t)
+    p = -246.59942627
+    p = p * t + 530.01574707
+    p = p * t + -470.57415771
+    p = p * t + 222.85160828
+    p = p * t + -60.52576828
+    p = p * t + 9.49576759
+    p = p * t + -0.72389036
+    p = p * t + 0.19823363
+    p = p * t + 0.99959993
+    y = (s * p) * 2.0
+    r = tl.where(x < 0.0, 3.1415927 - y, y)
+    tl.store(out_ptr + offset, r.to(out_ptr.dtype.element_ty))
+
+
+def _launch(x, out):
+    n_elements = x.numel()
+    if n_elements == 0:
+        return
+    block_size, num_warps, masked = _pick_block(n_elements)
+    if masked:
+        grid = (triton.cdiv(n_elements, block_size),)
+        acos_kernel[grid](
+            x, out, n_elements, BLOCK_SIZE=block_size, num_warps=num_warps,
+            unroll_num=UNROLL_NUM, buffer_size_limit=BUFFER_SIZE_LIMIT,
+            isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
+        )
+    else:
+        grid = (n_elements // block_size,)
+        acos_kernel_unmasked[grid](
+            x, out, BLOCK_SIZE=block_size, num_warps=num_warps,
+            unroll_num=UNROLL_NUM, buffer_size_limit=BUFFER_SIZE_LIMIT,
+            isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
+        )
 
 
 def acos(x):
     logger.debug("GEMS_KUNLUNXIN ACOS")
-    y = acos_kernel(x)
-    return y
+    x = x.contiguous()
+    out = torch.empty_like(x)
+    _launch(x, out)
+    return out
+
+
+def acos_(A):
+    logger.debug("GEMS_KUNLUNXIN ACOS_")
+    x = A.contiguous()
+    _launch(x, x)
+    if x.data_ptr() != A.data_ptr():
+        A.copy_(x.view(A.shape))
+    return A

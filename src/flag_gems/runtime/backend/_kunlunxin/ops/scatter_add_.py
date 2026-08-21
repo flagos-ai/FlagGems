@@ -21,7 +21,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import dim_compress
+from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import restride_dim
@@ -305,6 +305,31 @@ class ScatterFunction:
 _scatter_func = ScatterFunction()
 
 
+@libentry()
+@triton.jit(do_not_specialize=["idx_ncols", "src_stride0", "out_ncols"])
+def scatter_add_2d_kernel(
+    idx_ptr,
+    src_ptr,
+    out_ptr,
+    idx_ncols,
+    src_stride0,
+    out_ncols,
+    BLOCK: tl.constexpr,
+):
+    # Lean 2D kernel for the dim == ndim-1 && ndim == 2 case.
+    # pid0 = row, pid1 = col-block -> no per-element div/mod (XPU friendly).
+    pr = tl.program_id(0)
+    pc = tl.program_id(1)
+    offs = pc * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < idx_ncols
+    rowbase = pr.to(tl.int64) * idx_ncols
+    idx = tl.load(idx_ptr + rowbase + offs, mask=mask, other=0).to(tl.int64)
+    srcv = tl.load(src_ptr + pr.to(tl.int64) * src_stride0 + offs, mask=mask, other=0)
+    tl.atomic_add(
+        out_ptr + pr.to(tl.int64) * out_ncols + idx, srcv, mask=mask, sem="relaxed"
+    )
+
+
 def scatter_add_0(inp, dim, index, src):
     logger.debug("GEMS_KUNLUNXIN SCATTER_ADD_0")
     dtype_convert = False
@@ -315,6 +340,21 @@ def scatter_add_0(inp, dim, index, src):
         out = inp
 
     src_strided = src.as_strided(index.shape, src.stride())
+    dim = dim % inp.ndim
+    # Lean 2D fast path for the last-dim scatter (matches benchmark layout).
+    if inp.ndim == 2 and dim == 1 and index.is_contiguous():
+        idx_ncols = index.shape[1]
+        src_stride0 = src_strided.stride(0)
+        out_ncols = out.shape[1]
+        BLOCK = 128
+        grid = (index.shape[0], triton.cdiv(idx_ncols, BLOCK))
+        scatter_add_2d_kernel[grid](
+            index, src_strided, out, idx_ncols, src_stride0, out_ncols, BLOCK=BLOCK
+        )
+        if dtype_convert:
+            return inp.copy_(out.to(src.dtype))
+        return out
+
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
     dim_stride = inp.stride(dim)

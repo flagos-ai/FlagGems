@@ -123,6 +123,14 @@ bmm:
     GROUP_M: 2
   num_warps: 4
   num_stages: 3
+baddbmm:
+- META:
+    TILE_M: 32
+    TILE_N: 32
+    TILE_K: 32
+    GROUP_M: 1
+  num_warps: 4
+  num_stages: 1
 argmax:
 - META:
     BLOCK_M: 8

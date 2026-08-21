@@ -300,39 +300,18 @@ def _reduction_rows(inp, dim, M, N):
 
 def _nanmedian_sort_fallback(inp, dim, M, N, values, indices):
     rows = _reduction_rows(inp, dim, M, N)
-    if torch.is_floating_point(rows):
-        key_bits = 64 if rows.dtype is torch.float64 else 32
-        with torch_device_fn.device(inp.device):
-            nanmedian_float_key_select_kernel[(M,)](
-                rows,
-                values,
-                indices,
-                N,
-                FLOAT_SELECT_BLOCK_N,
-                key_bits,
-                num_warps=4,
-                num_stages=1,
-                buffer_size_limit=2048,
-            )
-        return
-    else:
-        # Kunlunxin native sort cannot return (uint8 values, int64 indices).
-        sort_rows = rows.to(torch.int32) if rows.dtype is torch.uint8 else rows
-        sorted_values, sorted_indices = torch.sort(sort_rows, dim=1)
-        valid_counts = sorted_indices
-        is_float = False
-
+    key_bits = 64 if rows.dtype in (torch.float64, torch.int64) else 32
     with torch_device_fn.device(inp.device):
-        nanmedian_sorted_gather_kernel[(M,)](
-            sorted_values,
-            sorted_indices,
-            valid_counts,
+        nanmedian_float_key_select_kernel[(M,)](
+            rows,
             values,
             indices,
             N,
-            is_float,
-            num_warps=1,
+            FLOAT_SELECT_BLOCK_N,
+            key_bits,
+            num_warps=4,
             num_stages=1,
+            buffer_size_limit=2048,
         )
 
 

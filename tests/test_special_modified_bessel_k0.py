@@ -9,7 +9,9 @@ from . import accuracy_utils as utils
 @pytest.mark.special_modified_bessel_k0
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # Half/BFloat16 not supported by PyTorch reference for modified_bessel_k0
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
+)
 def test_special_modified_bessel_k0(shape, dtype):
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("enflame doesn't support fp64")
@@ -25,7 +27,9 @@ def test_special_modified_bessel_k0(shape, dtype):
 @pytest.mark.special_modified_bessel_k0_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # Half/BFloat16 not supported by PyTorch reference for modified_bessel_k0
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
+)
 def test_special_modified_bessel_k0_out(shape, dtype):
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("enflame doesn't support fp64")

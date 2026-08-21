@@ -47,11 +47,8 @@ def upsample_nearest1d_kernel(
         pid = tl.program_id(axis=0)
     else:
         pid = tl.program_id(axis=0).to(tl.int64)
-    nc_stride = tl.num_programs(axis=1)
-    NC = N * C
-    nc_iter = tl.program_id(axis=1)
-    pid = tl.program_id(axis=0)
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    nc = idx // OL
     ol = idx % OL
     if SAME_L:
         il = ol
@@ -60,17 +57,9 @@ def upsample_nearest1d_kernel(
             tl.math.floor(ol.to(tl.float32) * reciprocal_scale_l).to(tl.int32), IL - 1
         )
 
-    offset_o = nc_iter * OL + ol
-    offset_i = nc_iter * IL + il
-    src_index_stride = nc_stride * IL
-    dst_index_stride = nc_stride * OL
-
-    while nc_iter < NC:
-        data = tl.load(ptr_i + offset_i)
-        tl.store(ptr_o + offset_o, data)
-        ptr_i += src_index_stride
-        ptr_o += dst_index_stride
-        nc_iter += nc_stride
+    mask = idx < N * C * OL
+    data = tl.load(ptr_i + nc * IL + il, mask=mask)
+    tl.store(ptr_o + idx, data, mask=mask)
 
 
 def upsample_nearest1d(
@@ -103,11 +92,8 @@ def upsample_nearest1d(
 
     # allocate output
     output = torch.empty((N, C, OL), device=input.device, dtype=input.dtype)
-    total_threads = OL
-    grid = lambda meta: (
-        triton.cdiv(total_threads, meta["BLOCK_SIZE"]),
-        triton.cdiv(N * C, 4),
-    )
+    total_threads = N * C * OL
+    grid = lambda meta: (triton.cdiv(total_threads, meta["BLOCK_SIZE"]),)
 
     with torch_device_fn.device(input.device):
         upsample_nearest1d_kernel[grid](

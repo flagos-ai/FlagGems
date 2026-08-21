@@ -54,373 +54,111 @@ def heur_n_block_size(args):
     return builtins.min(triton.next_power_of_2(args["OH"]), 8192)
 
 
-# @triton.autotune(
-#     configs=runtime.get_tuned_config("upsample_bicubic2d_aa"),
-#     key=["N", "C", "OH", "OW"],
-# )
-@triton.heuristics(
-    values={
-        "BLOCK_X": heur_m_block_size,
-        "BLOCK_Y": heur_n_block_size,
-    },
-)
+# XPU perf repair 2026-08-17: the upsample fast path (reciprocal scale < 1) was a
+# single 25-tap kernel issuing 25 masked gathers per output pixel (~400-510ms per
+# official-benchmark case). It is replaced by two separable passes: a horizontal
+# bicubic pass over every input row into an (N*C, IH, OW) intermediate, then a
+# vertical pass. Per-pixel gathers drop from 25 to 10 and all load masks are
+# removed via clamped indices (weights are already zero wherever the old mask
+# could clear a load). Fixed bounded dispatch, no @triton.autotune: measured on
+# the official 6-case matrix at ~6-44ms/case (see
+# harness/solution/performance/upsample_bicubic2d_aa_xpu5_20260817.md).
+
+
 @triton.jit
-def upsample_bicubic2d_aa_kernel(
-    ptr_o,
+def bicubic2d_aa_horz_kernel(
+    ptr_t,
     ptr_i,
-    N: tl.constexpr,
-    C: tl.constexpr,
+    OH,
+    OW,
+    IH,
+    IW,
+    reciprocal_scale_w,
+    BLOCK_W: tl.constexpr,
+):
+    pid_w = tl.program_id(axis=0)
+    pid_h = tl.program_id(axis=1)
+    pid_nc = tl.program_id(axis=2)
+    ow = pid_w * BLOCK_W + tl.arange(0, BLOCK_W)
+    center = (ow + 0.5) * reciprocal_scale_w
+    span_start = tl.maximum(center - 2.0 + 0.5, 0).to(tl.int32)
+    span_size = (tl.minimum(center + 2.0 + 0.5, IW) - span_start).to(tl.int32)
+    start_minus_center = span_start - center
+    a = -0.5
+    ix0 = tl.minimum(span_start + 0, IW - 1)
+    ix1 = tl.minimum(span_start + 1, IW - 1)
+    ix2 = tl.minimum(span_start + 2, IW - 1)
+    ix3 = tl.minimum(span_start + 3, IW - 1)
+    ix4 = tl.minimum(span_start + 4, IW - 1)
+    base = (pid_nc * IH + pid_h) * IW
+    d0 = tl.load(ptr_i + base + ix0)
+    d1 = tl.load(ptr_i + base + ix1)
+    d2 = tl.load(ptr_i + base + ix2)
+    d3 = tl.load(ptr_i + base + ix3)
+    d4 = tl.load(ptr_i + base + ix4)
+    y0 = tl.abs((0 + start_minus_center + 0.5) * 1.0)
+    w0 = tl.where(0 < span_size, tl.where(y0 < 1.0, ((a + 2) * y0 - (a + 3)) * y0 * y0 + 1, tl.where(y0 < 2.0, (((y0 - 5) * y0 + 8) * y0 - 4) * a, 0)), 0)
+    y1 = tl.abs((1 + start_minus_center + 0.5) * 1.0)
+    w1 = tl.where(1 < span_size, tl.where(y1 < 1.0, ((a + 2) * y1 - (a + 3)) * y1 * y1 + 1, tl.where(y1 < 2.0, (((y1 - 5) * y1 + 8) * y1 - 4) * a, 0)), 0)
+    y2 = tl.abs((2 + start_minus_center + 0.5) * 1.0)
+    w2 = tl.where(2 < span_size, tl.where(y2 < 1.0, ((a + 2) * y2 - (a + 3)) * y2 * y2 + 1, tl.where(y2 < 2.0, (((y2 - 5) * y2 + 8) * y2 - 4) * a, 0)), 0)
+    y3 = tl.abs((3 + start_minus_center + 0.5) * 1.0)
+    w3 = tl.where(3 < span_size, tl.where(y3 < 1.0, ((a + 2) * y3 - (a + 3)) * y3 * y3 + 1, tl.where(y3 < 2.0, (((y3 - 5) * y3 + 8) * y3 - 4) * a, 0)), 0)
+    y4 = tl.abs((4 + start_minus_center + 0.5) * 1.0)
+    w4 = tl.where(4 < span_size, tl.where(y4 < 1.0, ((a + 2) * y4 - (a + 3)) * y4 * y4 + 1, tl.where(y4 < 2.0, (((y4 - 5) * y4 + 8) * y4 - 4) * a, 0)), 0)
+    wt = w0 + w1 + w2 + w3 + w4
+    wt = tl.where(wt != 0, wt, 1)
+    res = (d0 * w0 + d1 * w1 + d2 * w2 + d3 * w3 + d4 * w4) / wt
+    tl.store(ptr_t + (pid_nc * IH + pid_h) * OW + ow, res, mask=ow < OW)
+
+
+@triton.jit
+def bicubic2d_aa_vert_kernel(
+    ptr_o,
+    ptr_t,
     OH,
     OW,
     IH,
     IW,
     reciprocal_scale_h,
-    reciprocal_scale_w,
     BLOCK_X: tl.constexpr,
     BLOCK_Y: tl.constexpr,
 ):
-    # Grid axis 2 carries the flattened N*C index so every (n,c) tile runs on
-    # its own program instead of being serialized inside a `for n: for c:` loop
-    # (the old layout parallelized only the spatial grid, so each program looped
-    # over all N*C serially). `% OW`/`% OH` wrap tail lanes onto valid columns
-    # so the store needs no mask (the wrapped lane recomputes the same value).
-    pid_x = ext.program_id(axis=0)
-    pid_y = ext.program_id(axis=1)
-    pid_nc = ext.program_id(axis=2)
-    ow = (pid_x * BLOCK_X + tl.arange(0, BLOCK_X)) % OW
-    oh = (pid_y * BLOCK_Y + tl.arange(0, BLOCK_Y)) % OH
-
-    support_w = 2.0
-    support_h = 2.0
-
-    # _compute_weights_span
-    center_w = (ow + 0.5) * reciprocal_scale_w
+    pid_x = tl.program_id(axis=0)
+    pid_y = tl.program_id(axis=1)
+    pid_nc = tl.program_id(axis=2)
+    ow = pid_x * BLOCK_X + tl.arange(0, BLOCK_X)
+    oh = pid_y * BLOCK_Y + tl.arange(0, BLOCK_Y)
+    mask = (ow[None, :] < OW) & (oh[:, None] < OH)
     center_h = (oh + 0.5) * reciprocal_scale_h
-    span_start_w = tl.maximum(center_w - support_w + 0.5, 0).to(tl.int32)
-    span_start_h = tl.maximum(center_h - support_h + 0.5, 0).to(tl.int32)
-    span_size_w = (tl.minimum(center_w + support_w + 0.5, IW) - span_start_w).to(
-        tl.int32
-    )
-    span_size_h = (tl.minimum(center_h + support_h + 0.5, IH) - span_start_h).to(
-        tl.int32
-    )
-    start_minus_center_w = span_start_w - center_w
-    start_minus_center_h = span_start_h - center_h
-    invscale_w = 1.0
-    invscale_h = 1.0
+    span_start = tl.maximum(center_h - 2.0 + 0.5, 0).to(tl.int32)
+    span_size = (tl.minimum(center_h + 2.0 + 0.5, IH) - span_start).to(tl.int32)
+    start_minus_center = span_start - center_h
     a = -0.5
-    wy0 = tl.abs((0 + start_minus_center_h + 0.5) * invscale_h)
-    weight_y0 = tl.where(
-        0 < span_size_h,
-        tl.where(
-            wy0 < 1.0,
-            ((a + 2) * wy0 - (a + 3)) * wy0 * wy0 + 1,
-            tl.where(wy0 < 2.0, (((wy0 - 5) * wy0 + 8) * wy0 - 4) * a, 0),
-        ),
-        0,
-    )
-    wy1 = tl.abs((1 + start_minus_center_h + 0.5) * invscale_h)
-    weight_y1 = tl.where(
-        1 < span_size_h,
-        tl.where(
-            wy1 < 1.0,
-            ((a + 2) * wy1 - (a + 3)) * wy1 * wy1 + 1,
-            tl.where(wy1 < 2.0, (((wy1 - 5) * wy1 + 8) * wy1 - 4) * a, 0),
-        ),
-        0,
-    )
-    wy2 = tl.abs((2 + start_minus_center_h + 0.5) * invscale_h)
-    weight_y2 = tl.where(
-        2 < span_size_h,
-        tl.where(
-            wy2 < 1.0,
-            ((a + 2) * wy2 - (a + 3)) * wy2 * wy2 + 1,
-            tl.where(wy2 < 2.0, (((wy2 - 5) * wy2 + 8) * wy2 - 4) * a, 0),
-        ),
-        0,
-    )
-    wy3 = tl.abs((3 + start_minus_center_h + 0.5) * invscale_h)
-    weight_y3 = tl.where(
-        3 < span_size_h,
-        tl.where(
-            wy3 < 1.0,
-            ((a + 2) * wy3 - (a + 3)) * wy3 * wy3 + 1,
-            tl.where(wy3 < 2.0, (((wy3 - 5) * wy3 + 8) * wy3 - 4) * a, 0),
-        ),
-        0,
-    )
-    wy4 = tl.abs((4 + start_minus_center_h + 0.5) * invscale_h)
-    weight_y4 = tl.where(
-        4 < span_size_h,
-        tl.where(
-            wy4 < 1.0,
-            ((a + 2) * wy4 - (a + 3)) * wy4 * wy4 + 1,
-            tl.where(wy4 < 2.0, (((wy4 - 5) * wy4 + 8) * wy4 - 4) * a, 0),
-        ),
-        0,
-    )
-    weight_y_total = weight_y0 + weight_y1 + weight_y2 + weight_y3 + weight_y4
-    weight_y_total = tl.where(weight_y_total != 0, weight_y_total, 1)
-    weight_y0 /= weight_y_total
-    weight_y1 /= weight_y_total
-    weight_y2 /= weight_y_total
-    weight_y3 /= weight_y_total
-    weight_y4 /= weight_y_total
-
-    wx0 = tl.abs((0 + start_minus_center_w + 0.5) * invscale_w)
-    weight_x0 = tl.where(
-        0 < span_size_w,
-        tl.where(
-            wx0 < 1.0,
-            ((a + 2) * wx0 - (a + 3)) * wx0 * wx0 + 1,
-            tl.where(wx0 < 2.0, (((wx0 - 5) * wx0 + 8) * wx0 - 4) * a, 0),
-        ),
-        0,
-    )
-    wx1 = tl.abs((1 + start_minus_center_w + 0.5) * invscale_w)
-    weight_x1 = tl.where(
-        1 < span_size_w,
-        tl.where(
-            wx1 < 1.0,
-            ((a + 2) * wx1 - (a + 3)) * wx1 * wx1 + 1,
-            tl.where(wx1 < 2.0, (((wx1 - 5) * wx1 + 8) * wx1 - 4) * a, 0),
-        ),
-        0,
-    )
-    wx2 = tl.abs((2 + start_minus_center_w + 0.5) * invscale_w)
-    weight_x2 = tl.where(
-        2 < span_size_w,
-        tl.where(
-            wx2 < 1.0,
-            ((a + 2) * wx2 - (a + 3)) * wx2 * wx2 + 1,
-            tl.where(wx2 < 2.0, (((wx2 - 5) * wx2 + 8) * wx2 - 4) * a, 0),
-        ),
-        0,
-    )
-    wx3 = tl.abs((3 + start_minus_center_w + 0.5) * invscale_w)
-    weight_x3 = tl.where(
-        3 < span_size_w,
-        tl.where(
-            wx3 < 1.0,
-            ((a + 2) * wx3 - (a + 3)) * wx3 * wx3 + 1,
-            tl.where(wx3 < 2.0, (((wx3 - 5) * wx3 + 8) * wx3 - 4) * a, 0),
-        ),
-        0,
-    )
-    wx4 = tl.abs((4 + start_minus_center_w + 0.5) * invscale_w)
-    weight_x4 = tl.where(
-        4 < span_size_w,
-        tl.where(
-            wx4 < 1.0,
-            ((a + 2) * wx4 - (a + 3)) * wx4 * wx4 + 1,
-            tl.where(wx4 < 2.0, (((wx4 - 5) * wx4 + 8) * wx4 - 4) * a, 0),
-        ),
-        0,
-    )
-    weight_x_total = weight_x0 + weight_x1 + weight_x2 + weight_x3 + weight_x4
-    weight_x_total = tl.where(weight_x_total != 0, weight_x_total, 1)
-    weight_x0 /= weight_x_total
-    weight_x1 /= weight_x_total
-    weight_x2 /= weight_x_total
-    weight_x3 /= weight_x_total
-    weight_x4 /= weight_x_total
-
-    mask_y0 = span_start_h[:, None] + 0 < IH
-    mask_y1 = span_start_h[:, None] + 1 < IH
-    mask_y2 = span_start_h[:, None] + 2 < IH
-    mask_y3 = span_start_h[:, None] + 3 < IH
-    mask_y4 = span_start_h[:, None] + 4 < IH
-    mask_x0 = span_start_w[None, :] + 0 < IW
-    mask_x1 = span_start_w[None, :] + 1 < IW
-    mask_x2 = span_start_w[None, :] + 2 < IW
-    mask_x3 = span_start_w[None, :] + 3 < IW
-    mask_x4 = span_start_w[None, :] + 4 < IW
-
-    # pid_nc selects the single (n,c) plane this program owns (grid axis 2), so
-    # the old serial `for n: for c:` collapses to one iteration. Two range(1)
-    # loops keep the body indentation unchanged.
-    nc = pid_nc
-    for _n in range(0, 1):
-        for _c in range(0, 1):
-            offset_base = (nc * IH + span_start_h[:, None]) * IW + span_start_w[None, :]
-
-            data00 = tl.load(
-                ptr_i + (offset_base + 0 * IW + 0),
-                mask=(mask_y0 & mask_x0),
-                other=0,
-            )
-            data01 = tl.load(
-                ptr_i + (offset_base + 0 * IW + 1),
-                mask=(mask_y0 & mask_x1),
-                other=0,
-            )
-            data02 = tl.load(
-                ptr_i + (offset_base + 0 * IW + 2),
-                mask=(mask_y0 & mask_x2),
-                other=0,
-            )
-            data03 = tl.load(
-                ptr_i + (offset_base + 0 * IW + 3),
-                mask=(mask_y0 & mask_x3),
-                other=0,
-            )
-            data04 = tl.load(
-                ptr_i + (offset_base + 0 * IW + 4),
-                mask=(mask_y0 & mask_x4),
-                other=0,
-            )
-
-            data10 = tl.load(
-                ptr_i + (offset_base + 1 * IW + 0),
-                mask=(mask_y1 & mask_x0),
-                other=0,
-            )
-            data11 = tl.load(
-                ptr_i + (offset_base + 1 * IW + 1),
-                mask=(mask_y1 & mask_x1),
-                other=0,
-            )
-            data12 = tl.load(
-                ptr_i + (offset_base + 1 * IW + 2),
-                mask=(mask_y1 & mask_x2),
-                other=0,
-            )
-            data13 = tl.load(
-                ptr_i + (offset_base + 1 * IW + 3),
-                mask=(mask_y1 & mask_x3),
-                other=0,
-            )
-            data14 = tl.load(
-                ptr_i + (offset_base + 1 * IW + 4),
-                mask=(mask_y1 & mask_x4),
-                other=0,
-            )
-
-            data20 = tl.load(
-                ptr_i + (offset_base + 2 * IW + 0),
-                mask=(mask_y2 & mask_x0),
-                other=0,
-            )
-            data21 = tl.load(
-                ptr_i + (offset_base + 2 * IW + 1),
-                mask=(mask_y2 & mask_x1),
-                other=0,
-            )
-            data22 = tl.load(
-                ptr_i + (offset_base + 2 * IW + 2),
-                mask=(mask_y2 & mask_x2),
-                other=0,
-            )
-            data23 = tl.load(
-                ptr_i + (offset_base + 2 * IW + 3),
-                mask=(mask_y2 & mask_x3),
-                other=0,
-            )
-            data24 = tl.load(
-                ptr_i + (offset_base + 2 * IW + 4),
-                mask=(mask_y2 & mask_x4),
-                other=0,
-            )
-
-            data30 = tl.load(
-                ptr_i + (offset_base + 3 * IW + 0),
-                mask=(mask_y3 & mask_x0),
-                other=0,
-            )
-            data31 = tl.load(
-                ptr_i + (offset_base + 3 * IW + 1),
-                mask=(mask_y3 & mask_x1),
-                other=0,
-            )
-            data32 = tl.load(
-                ptr_i + (offset_base + 3 * IW + 2),
-                mask=(mask_y3 & mask_x2),
-                other=0,
-            )
-            data33 = tl.load(
-                ptr_i + (offset_base + 3 * IW + 3),
-                mask=(mask_y3 & mask_x3),
-                other=0,
-            )
-            data34 = tl.load(
-                ptr_i + (offset_base + 3 * IW + 4),
-                mask=(mask_y3 & mask_x4),
-                other=0,
-            )
-
-            data40 = tl.load(
-                ptr_i + (offset_base + 4 * IW + 0),
-                mask=(mask_y4 & mask_x0),
-                other=0,
-            )
-            data41 = tl.load(
-                ptr_i + (offset_base + 4 * IW + 1),
-                mask=(mask_y4 & mask_x1),
-                other=0,
-            )
-            data42 = tl.load(
-                ptr_i + (offset_base + 4 * IW + 2),
-                mask=(mask_y4 & mask_x2),
-                other=0,
-            )
-            data43 = tl.load(
-                ptr_i + (offset_base + 4 * IW + 3),
-                mask=(mask_y4 & mask_x3),
-                other=0,
-            )
-            data44 = tl.load(
-                ptr_i + (offset_base + 4 * IW + 4),
-                mask=(mask_y4 & mask_x4),
-                other=0,
-            )
-
-            data0 = (
-                data00 * weight_x0[None, :]
-                + data01 * weight_x1[None, :]
-                + data02 * weight_x2[None, :]
-                + data03 * weight_x3[None, :]
-                + data04 * weight_x4[None, :]
-            )
-            data1 = (
-                data10 * weight_x0[None, :]
-                + data11 * weight_x1[None, :]
-                + data12 * weight_x2[None, :]
-                + data13 * weight_x3[None, :]
-                + data14 * weight_x4[None, :]
-            )
-            data2 = (
-                data20 * weight_x0[None, :]
-                + data21 * weight_x1[None, :]
-                + data22 * weight_x2[None, :]
-                + data23 * weight_x3[None, :]
-                + data24 * weight_x4[None, :]
-            )
-            data3 = (
-                data30 * weight_x0[None, :]
-                + data31 * weight_x1[None, :]
-                + data32 * weight_x2[None, :]
-                + data33 * weight_x3[None, :]
-                + data34 * weight_x4[None, :]
-            )
-            data4 = (
-                data40 * weight_x0[None, :]
-                + data41 * weight_x1[None, :]
-                + data42 * weight_x2[None, :]
-                + data43 * weight_x3[None, :]
-                + data44 * weight_x4[None, :]
-            )
-            result = (
-                data0 * weight_y0[:, None]
-                + data1 * weight_y1[:, None]
-                + data2 * weight_y2[:, None]
-                + data3 * weight_y3[:, None]
-                + data4 * weight_y4[:, None]
-            )
-
-            offset_o = (nc * OH + oh[:, None]) * OW + ow[None, :]
-            tl.store(ptr_o + offset_o, result)
-
-
+    iy0 = tl.minimum(span_start + 0, IH - 1)
+    iy1 = tl.minimum(span_start + 1, IH - 1)
+    iy2 = tl.minimum(span_start + 2, IH - 1)
+    iy3 = tl.minimum(span_start + 3, IH - 1)
+    iy4 = tl.minimum(span_start + 4, IH - 1)
+    r0 = tl.load(ptr_t + (pid_nc * IH + iy0[:, None]) * OW + ow[None, :])
+    r1 = tl.load(ptr_t + (pid_nc * IH + iy1[:, None]) * OW + ow[None, :])
+    r2 = tl.load(ptr_t + (pid_nc * IH + iy2[:, None]) * OW + ow[None, :])
+    r3 = tl.load(ptr_t + (pid_nc * IH + iy3[:, None]) * OW + ow[None, :])
+    r4 = tl.load(ptr_t + (pid_nc * IH + iy4[:, None]) * OW + ow[None, :])
+    y0v = tl.abs((0 + start_minus_center[:, None] + 0.5) * 1.0)
+    w0 = tl.where(0 < span_size[:, None], tl.where(y0v < 1.0, ((a + 2) * y0v - (a + 3)) * y0v * y0v + 1, tl.where(y0v < 2.0, (((y0v - 5) * y0v + 8) * y0v - 4) * a, 0)), 0)
+    y1v = tl.abs((1 + start_minus_center[:, None] + 0.5) * 1.0)
+    w1 = tl.where(1 < span_size[:, None], tl.where(y1v < 1.0, ((a + 2) * y1v - (a + 3)) * y1v * y1v + 1, tl.where(y1v < 2.0, (((y1v - 5) * y1v + 8) * y1v - 4) * a, 0)), 0)
+    y2v = tl.abs((2 + start_minus_center[:, None] + 0.5) * 1.0)
+    w2 = tl.where(2 < span_size[:, None], tl.where(y2v < 1.0, ((a + 2) * y2v - (a + 3)) * y2v * y2v + 1, tl.where(y2v < 2.0, (((y2v - 5) * y2v + 8) * y2v - 4) * a, 0)), 0)
+    y3v = tl.abs((3 + start_minus_center[:, None] + 0.5) * 1.0)
+    w3 = tl.where(3 < span_size[:, None], tl.where(y3v < 1.0, ((a + 2) * y3v - (a + 3)) * y3v * y3v + 1, tl.where(y3v < 2.0, (((y3v - 5) * y3v + 8) * y3v - 4) * a, 0)), 0)
+    y4v = tl.abs((4 + start_minus_center[:, None] + 0.5) * 1.0)
+    w4 = tl.where(4 < span_size[:, None], tl.where(y4v < 1.0, ((a + 2) * y4v - (a + 3)) * y4v * y4v + 1, tl.where(y4v < 2.0, (((y4v - 5) * y4v + 8) * y4v - 4) * a, 0)), 0)
+    wt = w0 + w1 + w2 + w3 + w4
+    wt = tl.where(wt != 0, wt, 1)
+    res = (r0 * w0 + r1 * w1 + r2 * w2 + r3 * w3 + r4 * w4) / wt
+    tl.store(ptr_o + (pid_nc * OH + oh[:, None]) * OW + ow[None, :], res, mask=mask)
 # upsample and downsample
 # @triton.autotune(
 #     configs=runtime.get_tuned_config("upsample_bicubic2d_aa"),
@@ -570,43 +308,66 @@ def _upsample_bicubic2d_aa(
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
     if (reciprocal_scale_w >= 1.0) or (reciprocal_scale_h >= 1.0):
         # Downsample / general path: unchanged 2D spatial grid (kernel still
-        # loops N*C internally).
+        # loops N*C internally). The masked loads with other=0 require the
+        # TRITONXPU_*_SIM env helpers on the XPU backend.
         kernel = general_interpolate_bicubic2d_aa_kernel
         grid = lambda META: (
             triton.cdiv(OW, META["BLOCK_X"]),
             triton.cdiv(OH, META["BLOCK_Y"]),
         )
+        import os
+
+        os.environ["TRITONXPU_OTHER_SIM"] = "1"
+        os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+        with torch_device_fn.device(input.device):
+            kernel[grid](
+                output,
+                input,
+                N,
+                C,
+                OH,
+                OW,
+                IH,
+                IW,
+                reciprocal_scale_h,
+                reciprocal_scale_w,
+            )
+        if "TRITONXPU_OTHER_SIM" in os.environ:
+            del os.environ["TRITONXPU_OTHER_SIM"]
+        if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+            del os.environ["TRITONXPU_STORE_MASK_SIM"]
     else:
-        # Upsample path: N*C is folded into grid axis 2 so every (n,c) plane is
-        # an independent program instead of a serial inner loop.
-        kernel = upsample_bicubic2d_aa_kernel
-        grid = lambda META: (
-            triton.cdiv(OW, META["BLOCK_X"]),
-            triton.cdiv(OH, META["BLOCK_Y"]),
-            N * C,
-        )
-
-    import os
-
-    os.environ["TRITONXPU_OTHER_SIM"] = "1"
-    os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-    with torch_device_fn.device(input.device):
-        kernel[grid](
-            output,
-            input,
-            N,
-            C,
-            OH,
-            OW,
-            IH,
-            IW,
-            reciprocal_scale_h,
-            reciprocal_scale_w,
-        )
-
-    if "TRITONXPU_OTHER_SIM" in os.environ:
-        del os.environ["TRITONXPU_OTHER_SIM"]
-    if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-        del os.environ["TRITONXPU_STORE_MASK_SIM"]
+        # Upsample path: two-pass separable bicubic. BLOCK_W covers the whole
+        # (pow2-padded) output row so one program handles one input row
+        # (horizontal pass) and the vertical pass reuses the intermediate.
+        # Fixed bounded dispatch, no @triton.autotune.
+        tmp = torch.empty((N, C, IH, OW), device=input.device, dtype=input.dtype)
+        block_w = min(triton.next_power_of_2(OW) if OW <= 2048 else 2048, 2048)
+        with torch_device_fn.device(input.device):
+            bicubic2d_aa_horz_kernel[(triton.cdiv(OW, block_w), IH, N * C)](
+                tmp,
+                input,
+                OH,
+                OW,
+                IH,
+                IW,
+                reciprocal_scale_w,
+                BLOCK_W=block_w,
+                num_warps=8,
+            )
+            bicubic2d_aa_vert_kernel[
+                (triton.cdiv(OW, block_w), triton.cdiv(OH, 2), N * C)
+            ](
+                output,
+                tmp,
+                OH,
+                OW,
+                IH,
+                IW,
+                reciprocal_scale_h,
+                BLOCK_X=block_w,
+                BLOCK_Y=2,
+                num_warps=8,
+            )
 
     return output

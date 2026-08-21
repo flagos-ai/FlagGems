@@ -21,6 +21,7 @@ from flag_gems.runtime import torch_device_fn
 
 from .nonzero import (
     _dense_block_size,
+    _device_int_tensor,
     _is_dense,
     nonzero,
     nonzero_dense_dimmajor_kernel,
@@ -47,7 +48,7 @@ def nonzero_numpy(inp):
     if inp_ndim >= 1 and num_nonzeros == n_elements and n_elements < 2**31:
         out = torch.empty(inp_ndim, num_nonzeros, dtype=torch.int64, device=inp.device)
         if n_elements > 0:
-            shape_t = torch.tensor(inp.shape, dtype=torch.int32, device=inp.device)
+            shape_t = _device_int_tensor(inp.shape, torch.int32, inp.device)
             block = _dense_block_size(n_elements)
             grid = (triton.cdiv(n_elements, block),)
             with torch_device_fn.device(inp.device):

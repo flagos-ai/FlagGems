@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import math
 
 import torch
 import triton
@@ -24,22 +25,10 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
-# masked_fill(inp, mask, value) == where(mask, value, inp): a memory-bound
-# select/copy. The old hand-written kernel launched grid=12 with
-# BLOCK_SIZE=next_power_of_2(cdiv(N, 12)); for the 1G-element benchmark shape
-# that becomes a single 128M-wide tile -> IR explosion (the perf_ir_2 dumps are
-# 1.97-4.0GB and the benchmark stalls). It also paid an extra full-tensor
-# expand_mask.to(torch.int) copy (4x bytes of the bool mask). Route through the
-# tuned pointwise_dynamic path instead (bounded tiles + autoGrid + unroll8 +
-# libentry caching), and feed the bool mask straight into tl.where.
-#
-# isCloseVectorization=True (NOT the neg/view_copy OPEN recipe): unlike a pure
-# unary copy, tl.where mixes an i1/i8 mask with f16/f32 data + a scalar. With
-# vectorization OPEN the compiler cannot cleanly vectorize the mixed-type
-# where and the large-shape path collapses to ~195 GB/s. Closing vectorization
-# lets it emit efficient block DMA -> measured 1.8-2.1x on all large shapes
-# ([4096,4096] fp16 0.415->0.232ms, [10000,65536] 15.6->8.0ms, bf16 256M
-# 7.02->3.40ms) with bit-identical output and no regression on small shapes.
+# ---------------------------------------------------------------------------
+# Generic pointwise path (fallback for non-contiguous inputs, broadcastable
+# masks, tensor values and tiny shapes). Tuned on XPU: isCloseVectorization
+# keeps the mixed i1-mask/dtype tl.where vectorized.
 _config = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -63,6 +52,98 @@ def masked_fill_kernel(inp, expand_mask, value):
     return tl.where(expand_mask, value, inp)
 
 
+@pointwise_dynamic(
+    is_tensor=[True, True, True],
+    promotion_methods=[(0, "NO_OPMATH")],
+    config=_config,
+)
+@triton.jit
+def masked_fill_tensor_value_kernel(inp, expand_mask, value):
+    return tl.where(expand_mask, value, inp)
+
+
+# ---------------------------------------------------------------------------
+# Flat fast path (scalar value, contiguous fp16/bf16/fp32, numel >= gate).
+#
+# XPU 6 probe (2026-08-14, 268435456-elem shapes): the bottleneck is NOT the
+# bool mask read (mask-reduced to bytes reads fine; a no-select kernel reading
+# the mask == plain copy) and NOT the allocation. It is the per-lane `sel`
+# that `tl.where(bool_mask, value, x)` lowers to: measured ~5x the fp32 copy
+# time for the same traffic, and the select-with-splat is even worse. The
+# cheapest exact form found is a select in the integer view of the data,
+#   r = xi + (V - xi) * m                (m = mask byte 0/1 -> int view)
+# which is bit-identical to where(mask, V(pattern), x) with 2-3x less per
+# lane work: measured +1.6x fp16 / +1.3x fp32 over the pointwise path on all
+# mid/large benchmark shapes, no regression on small shapes (gated below
+# _FAST_MIN_NUMEL where the pointwise path stays).
+_FAST_TILE = 131072
+_FAST_MIN_NUMEL = 1 << 20
+_FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
+
+@triton.jit
+def masked_fill_fast_kernel(out_ptr, x_ptr, mask_ptr, V: tl.constexpr, TILE: tl.constexpr):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    xi = tl.load(x_ptr + tid)
+    m = tl.load(mask_ptr + tid).to(xi.dtype)
+    r = xi + (V - xi) * m
+    tl.store(out_ptr + tid, r)
+
+
+@triton.jit
+def masked_fill_fast_masked_kernel(
+    out_ptr, x_ptr, mask_ptr, numel, V: tl.constexpr, TILE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    m0 = tid < numel
+    xi = tl.load(x_ptr + tid, mask=m0)
+    m = tl.load(mask_ptr + tid, mask=m0).to(xi.dtype)
+    r = xi + (V - xi) * m
+    tl.store(out_ptr + tid, r, mask=m0)
+
+
+def _fast_bits(value, dtype):
+    iview = torch.int16 if dtype in (torch.float16, torch.bfloat16) else torch.int32
+    return int(torch.tensor([value], dtype=dtype).view(iview).item())
+
+
+def _masked_fill_fast(inp, mask, value, out):
+    n = inp.numel()
+    bits = _fast_bits(value, inp.dtype)
+    xi = inp.view(torch.int16 if inp.dtype in (torch.float16, torch.bfloat16) else torch.int32)
+    oi = out.view(xi.dtype)
+    mask8 = mask.view(torch.int8)
+    launch = dict(
+        num_warps=4,
+        buffer_size_limit=8192,
+        unroll_num=16,
+        isCloseMemoryAsync=False,
+    )
+    if n % _FAST_TILE == 0:
+        masked_fill_fast_kernel[(n // _FAST_TILE,)](
+            oi, xi, mask8, V=bits, TILE=_FAST_TILE, **launch
+        )
+    else:
+        masked_fill_fast_masked_kernel[(math.ceil(n / _FAST_TILE),)](
+            oi, xi, mask8, n, V=bits, TILE=_FAST_TILE, **launch
+        )
+    return out
+
+
+def _use_fast_path(inp, mask, value):
+    if torch.is_tensor(value):
+        return False
+    if inp.dtype not in _FAST_DTYPES:
+        return False
+    if not (inp.is_contiguous() and mask.is_contiguous()):
+        return False
+    if tuple(mask.shape) != tuple(inp.shape):
+        return False
+    return inp.numel() >= _FAST_MIN_NUMEL
+
+
 def masked_fill(inp, mask, value):
     logger.debug("GEMS_KUNLUNXIN MASKED_FILL")
     assert (
@@ -71,33 +152,36 @@ def masked_fill(inp, mask, value):
         or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
-        # Value can be a tensor or a scalar
-        value = value.item()
+        if value.device != inp.device:
+            raise RuntimeError("masked_fill value must be on the input device")
+        kernel = masked_fill_tensor_value_kernel
+    else:
+        kernel = masked_fill_kernel
     assert broadcastable_to(
         mask.shape, inp.shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
 
     if inp.ndim == 0:
-        # inp is a single-value
-        return (
-            torch.tensor(value, dtype=inp.dtype, device=inp.device)
-            if mask.item()
-            else inp.clone()
-        )
+        out = torch.empty_like(inp)
+        kernel(inp, mask, value, out0=out)
+        return out
 
     out = torch.empty_like(inp, dtype=inp.dtype, device=inp.device)
     if inp.numel() == 0:
         return out
 
+    if _use_fast_path(inp, mask, value):
+        return _masked_fill_fast(inp, mask, value, out)
+
     if inp.is_contiguous() and tuple(mask.shape) == tuple(inp.shape):
-        # Common case (mask already matches inp): one flat stride-1 pass, which
-        # is what the tuned 1D config accelerates.
+        # Common case (mask matches inp): one flat stride-1 pass, which is
+        # what the tuned 1D config accelerates.
         mask = mask.contiguous()
-        masked_fill_kernel(inp.view(-1), mask.view(-1), value, out0=out.view(-1))
+        kernel(inp.view(-1), mask.view(-1), value, out0=out.view(-1))
     else:
         expand_mask = mask.expand(inp.shape)
-        masked_fill_kernel.instantiate(inp.ndim)
-        masked_fill_kernel(inp, expand_mask, value, out0=out)
+        kernel.instantiate(inp.ndim)
+        kernel(inp, expand_mask, value, out0=out)
     return out
 
 
@@ -109,26 +193,30 @@ def masked_fill_(inp, mask, value):
         or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
-        # Value can be a tensor or a scalar
-        value = value.item()
+        if value.device != inp.device:
+            raise RuntimeError("masked_fill value must be on the input device")
+        kernel = masked_fill_tensor_value_kernel
+    else:
+        kernel = masked_fill_kernel
     assert broadcastable_to(
         mask.shape, inp.shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
 
     if inp.ndim == 0:
-        # inp is a single-value
-        if mask.item():
-            inp[()] = value
+        kernel(inp, mask, value, out0=inp)
         return inp
 
     if inp.numel() == 0:
         return inp
 
+    if _use_fast_path(inp, mask, value):
+        return _masked_fill_fast(inp, mask, value, inp)
+
     if inp.is_contiguous() and tuple(mask.shape) == tuple(inp.shape):
         mask = mask.contiguous()
-        masked_fill_kernel(inp.view(-1), mask.view(-1), value, out0=inp.view(-1))
+        kernel(inp.view(-1), mask.view(-1), value, out0=inp.view(-1))
     else:
         expand_mask = mask.expand(inp.shape)
-        masked_fill_kernel.instantiate(inp.ndim)
-        masked_fill_kernel(inp, expand_mask, value, out0=inp)
+        kernel.instantiate(inp.ndim)
+        kernel(inp, expand_mask, value, out0=inp)
     return inp

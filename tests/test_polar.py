@@ -25,7 +25,9 @@ from . import accuracy_utils as utils
 # Issue #2840
 @pytest.mark.polar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
+)
 def test_polar(shape, dtype):
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
