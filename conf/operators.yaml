@@ -9532,6 +9532,20 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
+  - id: rms_norm_w8a16_fp8
+    description: |
+      Applies Root Mean Square Layer Normalization to BF16 activations using
+      group-wise FP8 E4M3 weights and per-group scales.
+    for:
+      - None
+    labels:
+      - NoCPU
+      - Normalization
+      - Quantization
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: rnn_relu
     description: Triton kernel implementation for rnn_relu.
     for:
