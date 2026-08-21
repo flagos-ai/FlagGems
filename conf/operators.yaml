@@ -10354,6 +10354,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: sign_
+    description: |
+      The in-place version of `sign()`, writing the element-wise sign back
+      into the input tensor.
+    for:
+      - sign_
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: signbit
     description: Tests if each element of `input` has its sign bit set or not.
     for:
