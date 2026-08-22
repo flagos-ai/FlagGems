@@ -290,6 +290,24 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+addmm_vector_bias:
+  shapes:
+    - [1, 64, 256, 184]
+    - [1, 128, 512, 512]
+    - [1, 256, 256, 1024]
+    - [1, 512, 1024, 1024]
+    - [1, 1024, 512, 1536]
+  shape_desc: "B, M, N, K"
+
+addmm_out_vector_bias:
+  shapes:
+    - [1, 64, 256, 184]
+    - [1, 128, 512, 512]
+    - [1, 256, 256, 1024]
+    - [1, 512, 1024, 1024]
+    - [1, 1024, 512, 1536]
+  shape_desc: "B, M, N, K"
+
 grouped_mm:
   shapes:
     - [16, 512, 2048]
