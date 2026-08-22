@@ -6798,6 +6798,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_softmax
+    description: |
+      Computes the softmax of `input` along dimension `dim`; alias of
+      `torch.nn.functional.softmax` exposed under `torch.special`.
+    for:
+      - special_softmax
+    labels:
+      - aten
+      - reduction
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: unflatten
     description: Expand a single dimension into multiple dimensions (inverse of flatten).
     for:
