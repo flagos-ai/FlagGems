@@ -28,8 +28,9 @@ logger = logging.getLogger(__name__)
 # Grid axis limits of the MUSA backend (y/z are capped at 65535).
 _GRID_LIMIT = 65535
 
-# These gates are intentionally narrow.  They are derived from the isolated
-# S5000 complex-pad study and keep the frozen #5395 path as the default.
+# The one-pass path is limited to the validated high-rho, short-row FP16/BF16
+# region where removing the FillCopy double-write provides a stable benefit.
+_INT32_MAX = 2**31 - 1
 _RANK3_MIN_RHO = 0.9
 _RANK3_MAX_L_IN = 512
 
@@ -272,6 +273,10 @@ def _row_space_contiguous(ndim, pad_before, pad_after) -> bool:
     return True
 
 
+def _rank3_offsets_fit_int32(out_numel):
+    return 0 < out_numel <= _INT32_MAX
+
+
 def _rank3_onepass_metadata(x, dst_shape, pad_before, pad_after, out_numel):
     L_in = x.shape[-1]
     L_out = dst_shape[-1]
@@ -291,10 +296,10 @@ def _rank3_onepass_metadata(x, dst_shape, pad_before, pad_after, out_numel):
         and not _row_space_contiguous(3, pad_before, pad_after)
         and rho >= _RANK3_MIN_RHO
         and L_in <= _RANK3_MAX_L_IN
-        and out_numel > 0
+        and _rank3_offsets_fit_int32(out_numel)
         and dim_y_out > 0
         and outer_out > 0
-        and row_count <= 2**31 - 1
+        and row_count <= _INT32_MAX
         and grid[1] <= _GRID_LIMIT
         and grid[2] <= _GRID_LIMIT
     )
@@ -566,10 +571,6 @@ def constant_pad_nd(x, pad, value=0):
     # Cropping pads are not covered by the MThreads kernels' copy geometry.
     # Preserve ATen semantics rather than entering a partially valid fast path.
     if any(amount < 0 for amount in pad):
-        return default_constant_pad_nd(x, pad, value)
-
-    # Keep torch's empty/crop semantics for shapes that cannot form a launch.
-    if any(dim <= 0 for dim in dst_shape):
         return default_constant_pad_nd(x, pad, value)
 
     out = None
