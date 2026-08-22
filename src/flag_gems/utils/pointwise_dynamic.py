@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import importlib
+import logging
 import os
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -38,6 +39,8 @@ from flag_gems.utils.shape_utils import (
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
+
+logger = logging.getLogger(__name__)
 
 
 # ------------------ Operation Description ---------------------------
@@ -227,7 +230,7 @@ class FunctionSchema:
         else:
             for _ in range(self.num_outputs()):
                 output_types.append("StridedBuffer")
-        sig = f'Pointwise: {", ".join(input_types)} -> {", ".join(output_types)}'
+        sig = f"Pointwise: {', '.join(input_types)} -> {', '.join(output_types)}"
         return sig
 
     def _compute_input_id(self):
@@ -1099,9 +1102,22 @@ class ModuleGenerator:
 
         Parses the source module where scalar_fn is defined using AST.
         Returns a tuple of:
-          - extra_imports: dict of module_path -> set of names
+          - extra_imports: dict of module_path -> set of (real_name, asname)
+            pairs, rendered as ``from module_path import real_name`` or
+            ``from module_path import real_name as asname``
+          - plain_imports: list of ``import module [as asname]`` source
+            lines, for names bound via a plain ``ast.Import`` (e.g.
+            ``import triton.language as tl``)
+          - alias_sources: list of source strings for module-level alias
+            assignments referencing an imported name (e.g.
+            ``_tanh = tl_extra_shim.tanh``)
           - local_sources: list of source strings for local @triton.jit
             functions (those NOT decorated with @pointwise_dynamic)
+
+        Alias-shaped assignments that this collector cannot safely reproduce
+        in the generated standalone file - chained attribute access,
+        annotated assignments, or assignments nested inside if/try blocks -
+        are logged with a warning instead of being silently dropped.
         """
         import ast
         import inspect
@@ -1109,19 +1125,19 @@ class ModuleGenerator:
         py_fn = getattr(scalar_fn, "fn", scalar_fn)
         module_name = getattr(py_fn, "__module__", None)
         if not module_name:
-            return {}, []
+            return {}, [], [], []
         try:
             mod = importlib.import_module(module_name)
             source_file = inspect.getfile(mod)
         except (ImportError, TypeError, OSError):
-            return {}, []
+            return {}, [], [], []
         try:
             with open(source_file) as f:
                 module_source = f.read()
             source_lines = module_source.splitlines(keepends=True)
             tree = ast.parse(module_source)
         except (OSError, SyntaxError):
-            return {}, []
+            return {}, [], [], []
 
         # Collect non-standard import-from lines
         ALREADY_IMPORTED = {
@@ -1137,13 +1153,224 @@ class ModuleGenerator:
             "flag_gems.runtime",
             "flag_gems.utils.pointwise_dynamic",
         }
+        # For modules in ALREADY_IMPORTED that `generate_imports` binds to a
+        # specific, fixed local name (as opposed to `from X import name`
+        # symbols, tracked separately via `extra_imports`), record that
+        # canonical name here. A plain `ast.Import` of one of these modules
+        # is only a redundant duplicate - and thus safe to skip re-emitting
+        # - if its local binding matches this exact canonical name; a
+        # noncanonical asname (e.g. ``import triton.language as lang``,
+        # ``import torch as t``) still needs its own import line, since the
+        # generated prelude does not define that name.
+        ALREADY_IMPORTED_CANONICAL_BINDING = {
+            "math": "math",
+            "torch": "torch",
+            "triton": "triton",
+            "triton.language": "tl",
+        }
         extra_imports = {}
+        plain_imports = []
+        # Map each local binding name -> (module_or_None, real_name), used
+        # below to resolve module-level aliases that depend on such an
+        # import (e.g. ``shim.tanh`` where ``shim`` is bound by
+        # ``from X import tl_extra_shim as shim``) back to the real exported
+        # name, and to make sure their base names are imported in the
+        # generated file. `module` is None for names bound by a plain
+        # `ast.Import` (there is no "from module" to attach a name import
+        # to; the whole `import ...` statement is re-emitted instead).
+        imported_name_module = {}
+
+        def _decompose_attribute_chain(value):
+            """Walk a (possibly chained) Attribute node down to its root.
+
+            Returns (root_name_or_None, attrs), where attrs is the list of
+            attribute names encountered, in root-to-leaf order (e.g. for
+            ``os.path.join``, attrs == ["path", "join"]). len(attrs) == 1
+            means a simple ``root.attr`` access; len(attrs) > 1 means a
+            chained access like ``root.attr.attr2``.
+            """
+            attrs = []
+            while isinstance(value, ast.Attribute):
+                attrs.append(value.attr)
+                value = value.value
+            attrs.reverse()
+            root_name = value.id if isinstance(value, ast.Name) else None
+            return root_name, attrs
+
+        # For a local name bound by a dotted `ast.Import` without an
+        # asname (e.g. ``import os.path`` binds ``os``), the module's
+        # remaining dotted segments (``["path"]``) are implicitly
+        # accessible as attributes of the bound name, since the whole
+        # dotted path is guaranteed importable/bound by Python's import
+        # machinery. So ``os.path.join`` is really only a depth-1 alias
+        # (a single attribute access on the already-fully-qualified
+        # ``os.path``), not an unsupported chained attribute access. This
+        # is empty for names bound with an asname, since the asname is
+        # already bound directly to the full dotted module (no implicit
+        # extra segments to account for).
+        dotted_import_tail = {}
+
         for node in ast.iter_child_nodes(tree):
             if isinstance(node, ast.ImportFrom) and node.module:
+                for alias in node.names:
+                    local_name = alias.asname or alias.name
+                    imported_name_module[local_name] = (node.module, alias.name)
                 if node.module in ALREADY_IMPORTED:
                     continue
-                names = {alias.name for alias in node.names}
-                extra_imports.setdefault(node.module, set()).update(names)
+                for alias in node.names:
+                    extra_imports.setdefault(node.module, set()).add(
+                        (alias.name, alias.asname)
+                    )
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    local_name = alias.asname or alias.name.split(".")[0]
+                    imported_name_module[local_name] = (None, alias.name)
+                    if not alias.asname:
+                        dotted_segments = alias.name.split(".")[1:]
+                        if dotted_segments:
+                            dotted_import_tail[local_name] = dotted_segments
+                    canonical_binding = ALREADY_IMPORTED_CANONICAL_BINDING.get(
+                        alias.name
+                    )
+                    if canonical_binding is not None and (
+                        local_name == canonical_binding
+                    ):
+                        # Redundant with a name `generate_imports` already
+                        # defines under this exact local name; skip it.
+                        continue
+                    if alias.name in ALREADY_IMPORTED and canonical_binding is None:
+                        # Covered by ALREADY_IMPORTED but with no single
+                        # fixed local binding to compare against (e.g.
+                        # `flag_gems.utils`, `flag_gems.runtime`): keep the
+                        # historical behavior of treating any binding as a
+                        # redundant duplicate.
+                        continue
+                    if alias.asname:
+                        plain_imports.append(f"import {alias.name} as {alias.asname}")
+                    else:
+                        plain_imports.append(f"import {alias.name}")
+
+        # Collect module-level alias assignments whose value is an attribute
+        # access on an imported name, e.g. ``_tanh = tl_extra_shim.tanh``.
+        # The scalar function's inlined source references these aliases, but
+        # they are neither imports nor @triton.jit helpers, so without this
+        # they are undefined when the generated kernel file is compiled in a
+        # fresh namespace (the standalone C++ TritonJIT path). The in-process
+        # Python path happens to survive because triton captures the original
+        # module globals; the generated file must be self-contained.
+        def _effective_depth(root_name, attrs):
+            """Attribute-chain depth, discounting the dotted tail implied by
+            a plain ``import X.Y`` (no asname) binding of `root_name`.
+
+            E.g. for ``os.path.join`` with ``import os.path`` in scope,
+            attrs == ["path", "join"] and the "path" segment is already
+            part of the fully-qualified imported module, so this returns 1
+            (a plain attribute access on the already-bound ``os.path``)
+            rather than 2 (an unsupported chained access).
+            """
+            if not attrs:
+                return 0
+            tail = dotted_import_tail.get(root_name)
+            if tail and len(attrs) > len(tail) and attrs[: len(tail)] == tail:
+                return len(attrs) - len(tail)
+            return len(attrs)
+
+        alias_sources = []
+        top_level_assign_ids = set()
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.AnnAssign):
+                if node.value is not None:
+                    root_name, attrs = _decompose_attribute_chain(node.value)
+                    depth = _effective_depth(root_name, attrs)
+                else:
+                    root_name, depth = None, 0
+                if depth > 0 and root_name in imported_name_module:
+                    logger.warning(
+                        "Skipping annotated assignment at %s:%d, it cannot be "
+                        "reproduced in the generated standalone kernel file: %s",
+                        source_file,
+                        node.lineno,
+                        "".join(
+                            source_lines[node.lineno - 1 : node.end_lineno]
+                        ).strip(),
+                    )
+                continue
+            if not isinstance(node, ast.Assign):
+                continue
+            top_level_assign_ids.add(id(node))
+            if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+                continue
+            root_name, attrs = _decompose_attribute_chain(node.value)
+            depth = _effective_depth(root_name, attrs)
+            if depth == 0 or root_name not in imported_name_module:
+                continue
+            if depth > 1:
+                logger.warning(
+                    "Skipping chained attribute alias at %s:%d, it cannot be "
+                    "reproduced in the generated standalone kernel file: %s",
+                    source_file,
+                    node.lineno,
+                    "".join(source_lines[node.lineno - 1 : node.end_lineno]).strip(),
+                )
+                continue
+            alias_sources.append(
+                "".join(source_lines[node.lineno - 1 : node.end_lineno])
+            )
+            # The alias's base name (e.g. ``tl_extra_shim``) must be
+            # imported in the generated file even if it came from a module
+            # that is normally elided (e.g. ``flag_gems.utils``), and using
+            # its real exported name rather than the local asname.
+            module, real_name = imported_name_module[root_name]
+            if module is not None:
+                asname = root_name if root_name != real_name else None
+                extra_imports.setdefault(module, set()).add((real_name, asname))
+
+        # Warn about alias-shaped assignments nested inside module-scope
+        # control-flow blocks (if/try/while/for/with), i.e. not direct
+        # children of the module body. These are never collected above
+        # since only top-level statements are inspected, but they would
+        # silently produce a NameError in the standalone generated file if
+        # left unreported.
+        #
+        # This deliberately does NOT descend into FunctionDef,
+        # AsyncFunctionDef, or ClassDef bodies: ordinary local assignments
+        # inside a function (e.g. ``pi = math.pi`` inside a @triton.jit
+        # kernel) are plain Python/Triton code, not module-level aliases
+        # that the generated standalone file needs to reproduce, and would
+        # otherwise cause log spam (such assignments are extremely common).
+        def _iter_module_scope_nested_assigns(stmts):
+            for stmt in stmts:
+                if isinstance(
+                    stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                ):
+                    continue
+                if isinstance(stmt, ast.Assign):
+                    yield stmt
+                for field in ("body", "orelse", "finalbody"):
+                    sub = getattr(stmt, field, None)
+                    if isinstance(sub, list):
+                        yield from _iter_module_scope_nested_assigns(sub)
+                for handler in getattr(stmt, "handlers", None) or []:
+                    yield from _iter_module_scope_nested_assigns(handler.body)
+
+        for node in _iter_module_scope_nested_assigns(tree.body):
+            if id(node) in top_level_assign_ids:
+                continue
+            if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+                continue
+            root_name, attrs = _decompose_attribute_chain(node.value)
+            depth = _effective_depth(root_name, attrs)
+            if depth == 0 or root_name not in imported_name_module:
+                continue
+            logger.warning(
+                "Skipping alias assignment at %s:%d, it is nested inside a "
+                "module-level control-flow block (if/try/while/for/with) "
+                "and cannot be reproduced in the generated standalone "
+                "kernel file: %s",
+                source_file,
+                node.lineno,
+                "".join(source_lines[node.lineno - 1 : node.end_lineno]).strip(),
+            )
 
         # Collect local @triton.jit functions (without @pointwise_dynamic)
         def _has_decorator(func_node, name):
@@ -1172,7 +1399,7 @@ class ModuleGenerator:
                 continue
             local_sources.append(_extract_source(node))
 
-        return extra_imports, local_sources
+        return extra_imports, plain_imports, alias_sources, local_sources
 
     def generate_imports(self, code: IndentedBuffer) -> IndentedBuffer:
         code.writeline("import math")
@@ -1192,12 +1419,29 @@ class ModuleGenerator:
         code.writeline("from flag_gems.runtime import torch_device_fn")
 
         # Generate extra imports and local JIT deps of the scalar function
-        jit_dep_imports, local_jit_sources = self._collect_jit_deps(self.scalar_fn)
-        for module_path, names in sorted(jit_dep_imports.items()):
-            sorted_names = ", ".join(sorted(names))
-            code.writeline(f"from {module_path} import {sorted_names}")
+        (
+            jit_dep_imports,
+            jit_dep_plain_imports,
+            alias_sources,
+            local_jit_sources,
+        ) = self._collect_jit_deps(self.scalar_fn)
+        for module_path, name_pairs in sorted(jit_dep_imports.items()):
+            rendered_names = sorted(
+                real_name if asname is None else f"{real_name} as {asname}"
+                for real_name, asname in name_pairs
+            )
+            code.writeline(f"from {module_path} import {', '.join(rendered_names)}")
+        for import_line in jit_dep_plain_imports:
+            code.writeline(import_line)
 
         code.newline()
+
+        # Emit module-level alias assignments (e.g. `_tanh = tl_extra_shim.tanh`)
+        # that the inlined scalar function references.
+        for source in alias_sources:
+            for line in source.splitlines():
+                code.writeline(line)
+
         code.newline()
 
         # Emit local @triton.jit helper functions
