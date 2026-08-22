@@ -90,6 +90,7 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward,
     replication_pad2d_backward_grad_input,
 )
+from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .silu import silu, silu_, silu_backward
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
@@ -182,6 +183,9 @@ __all__ = [
     "repeat",
     "replication_pad2d_backward",
     "replication_pad2d_backward_grad_input",
+    "scatter_reduce",
+    "scatter_reduce_",
+    "scatter_reduce_out",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
