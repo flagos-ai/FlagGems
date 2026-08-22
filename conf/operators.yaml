@@ -6798,6 +6798,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_spherical_bessel_j0
+    description: |
+      Computes the spherical Bessel function of the first kind of order 0,
+      j0(x) = sin(x) / x, for each element of `input`.
+    for:
+      - special_spherical_bessel_j0
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: unflatten
     description: Expand a single dimension into multiple dimensions (inverse of flatten).
     for:

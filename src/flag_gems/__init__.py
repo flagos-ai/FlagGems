@@ -1063,6 +1063,7 @@ _FULL_CONFIG = (
     ("special_shifted_chebyshev_polynomial_v", special_shifted_chebyshev_polynomial_v),
     ("special_shifted_chebyshev_polynomial_w", special_shifted_chebyshev_polynomial_w),
     ("special_sinc", special_sinc),
+    ("special_spherical_bessel_j0", special_spherical_bessel_j0),
     ("special_xlog1py", special_xlog1py),
     ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
