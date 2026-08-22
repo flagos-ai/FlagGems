@@ -868,7 +868,7 @@ from flag_gems.ops.upsample_bilinear2d import upsample_bilinear2d
 from flag_gems.ops.upsample_linear1d import upsample_linear1d
 from flag_gems.ops.upsample_linear1d_backward import upsample_linear1d_backward
 from flag_gems.ops.upsample_nearest1d import upsample_nearest1d
-from flag_gems.ops.upsample_nearest2d import upsample_nearest2d
+from flag_gems.ops.upsample_nearest2d import upsample_nearest2d, upsample_nearest2d_backward
 from flag_gems.ops.upsample_nearest3d import upsample_nearest3d
 from flag_gems.ops.upsample_trilinear3d import upsample_trilinear3d
 from flag_gems.ops.value_selecting_reduction_backward import (
@@ -1861,6 +1861,7 @@ __all__ = [
     "upsample_linear1d_backward",
     "upsample_nearest1d",
     "upsample_nearest2d",
+    "upsample_nearest2d_backward",
     "upsample_nearest3d",
     "upsample_trilinear3d",
     "value_selecting_reduction_backward",
