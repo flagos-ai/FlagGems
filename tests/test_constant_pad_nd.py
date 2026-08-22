@@ -24,6 +24,8 @@ from .accuracy_utils import (
     to_reference,
 )
 
+_MTHREADS = flag_gems.vendor_name == "mthreads"
+
 
 @pytest.mark.constant_pad_nd
 @pytest.mark.parametrize(
@@ -106,3 +108,66 @@ def test_constant_pad_nd_partial_dims(shape, dtype):
         res_out = torch.constant_pad_nd(inp, pad, value)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.constant_pad_nd
+@pytest.mark.skipif(not _MTHREADS, reason="MThreads-specific dispatch coverage")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("last_dim", [511, 512, 513])
+def test_constant_pad_nd_mthreads_rank3_gate_boundaries(last_dim, dtype):
+    inp = torch.randn((10, 9, last_dim), dtype=dtype, device=flag_gems.device)
+    pad = [0, 0, 0, 1, 0, 0]
+    value = 1.25
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.constant_pad_nd(ref_inp, pad, value)
+    with flag_gems.use_gems():
+        res_out = torch.constant_pad_nd(inp, pad, value)
+
+    gems_assert_equal(res_out, ref_out)
+    assert res_out.data_ptr() != inp.data_ptr()
+
+
+@pytest.mark.constant_pad_nd
+@pytest.mark.skipif(not _MTHREADS, reason="MThreads-specific dispatch coverage")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_constant_pad_nd_mthreads_rank6_fallback(dtype):
+    inp = torch.randn(
+        (2, 2, 2, 2, 5, 33),
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    pad = [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+    value = -0.75
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.constant_pad_nd(ref_inp, pad, value)
+    with flag_gems.use_gems():
+        res_out = torch.constant_pad_nd(inp, pad, value)
+
+    gems_assert_equal(res_out, ref_out)
+    assert res_out.data_ptr() != inp.data_ptr()
+
+
+@pytest.mark.constant_pad_nd
+@pytest.mark.skipif(not _MTHREADS, reason="MThreads-specific dispatch coverage")
+def test_constant_pad_nd_mthreads_rank3_negative_crop():
+    inp = torch.randn((10, 9, 511), dtype=torch.float16, device=flag_gems.device)
+    pad = [-1, 0, 0, 1, 0, 0]
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.constant_pad_nd(ref_inp, pad, 1.25)
+    with flag_gems.use_gems():
+        res_out = torch.constant_pad_nd(inp, pad, 1.25)
+
+    gems_assert_equal(res_out, ref_out)
+    assert res_out.data_ptr() != inp.data_ptr()
+
+
+@pytest.mark.constant_pad_nd
+@pytest.mark.skipif(not _MTHREADS, reason="MThreads-specific dispatch coverage")
+def test_constant_pad_nd_mthreads_rank3_int32_gate():
+    from flag_gems.runtime.backend._mthreads.ops.pad import _rank3_offsets_fit_int32
+
+    assert _rank3_offsets_fit_int32(2**31 - 1)
+    assert not _rank3_offsets_fit_int32(2**31)
