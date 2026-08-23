@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 from flag_gems.ops.bmm import bmm_out as triton_bmm_out
-from flag_gems.ops.bmm_w8a8 import bmm_fp8_w8a8_block_scale
+from flag_gems.ops.bmm_w8a8 import bmm_w8a8_fp8
 
 from . import base, consts
 
@@ -171,10 +171,10 @@ def _triton_bmm_bf16_block_scale_baseline(
     return triton_bmm_out(A, B, out)
 
 
-def _gems_bmm_fp8_w8a8_block_scale(
+def _gems_bmm_w8a8_fp8(
     A, B, A_fp8, B_fp8, A_scale, B_scale, out, block_m, block_n, block_k
 ):
-    return bmm_fp8_w8a8_block_scale(
+    return bmm_w8a8_fp8(
         A_fp8,
         B_fp8,
         A_scale,
@@ -184,7 +184,7 @@ def _gems_bmm_fp8_w8a8_block_scale(
     )
 
 
-class BmmFp8W8A8BlockScaleBenchmark(base.Benchmark):
+class BmmW8A8Fp8Benchmark(base.Benchmark):
     DEFAULT_SHAPE_DESC = "B, M, N, K"
 
     def set_shapes(self, shape_file_path=None):
@@ -210,16 +210,16 @@ class BmmFp8W8A8BlockScaleBenchmark(base.Benchmark):
             yield A, B, A_fp8, B_fp8, A_scale, B_scale, out, 128, 128, 128
 
 
-@pytest.mark.bmm
+@pytest.mark.bmm_w8a8_fp8
 @pytest.mark.skipif(
     not _is_fp8e4nv_supported(),
     reason="FP8 BMM W8A8 block-scale requires CUDA fp8e4nv support",
 )
-def test_bmm_fp8_w8a8_block_scale_vs_triton_bf16():
-    bench = BmmFp8W8A8BlockScaleBenchmark(
-        op_name="bmm_fp8_w8a8_block_scale_vs_triton_bf16",
+def test_bmm_w8a8_fp8_vs_triton_bf16():
+    bench = BmmW8A8Fp8Benchmark(
+        op_name="bmm_w8a8_fp8_vs_triton_bf16",
         torch_op=_triton_bmm_bf16_block_scale_baseline,
         dtypes=[torch.bfloat16],
     )
-    bench.set_gems(_gems_bmm_fp8_w8a8_block_scale)
+    bench.set_gems(_gems_bmm_w8a8_fp8)
     bench.run()

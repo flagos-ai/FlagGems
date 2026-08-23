@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.bmm_w8a8 import bmm_fp8_w8a8_block_scale
+from flag_gems.ops.bmm_w8a8 import bmm_w8a8_fp8
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -239,13 +239,13 @@ def _dequant_b_fp8_per_nk_block(B_fp8, B_scale, block_n=128, block_k=128):
     return B_fp8.float() * scale.float()
 
 
-@pytest.mark.bmm
+@pytest.mark.bmm_w8a8_fp8
 @pytest.mark.skipif(
     not _is_fp8e4nv_supported(),
     reason="FP8 BMM W8A8 block-scale requires CUDA fp8e4nv support",
 )
 @pytest.mark.parametrize("batch, M, N, K", FP8_W8A8_BLOCK_SCALE_BMM_SHAPES)
-def test_bmm_fp8_w8a8_block_scale(batch, M, N, K):
+def test_bmm_w8a8_fp8(batch, M, N, K):
     torch.manual_seed(0)
     A = torch.randn((batch, M, K), dtype=torch.bfloat16, device=flag_gems.device)
     B = torch.randn((batch, K, N), dtype=torch.bfloat16, device=flag_gems.device)
@@ -255,6 +255,6 @@ def test_bmm_fp8_w8a8_block_scale(batch, M, N, K):
     B_dequant = _dequant_b_fp8_per_nk_block(B_fp8, B_scale)
 
     ref_out = torch.bmm(A_dequant, B_dequant).to(torch.bfloat16)
-    res_out = bmm_fp8_w8a8_block_scale(A_fp8, B_fp8, A_scale, B_scale)
+    res_out = bmm_w8a8_fp8(A_fp8, B_fp8, A_scale, B_scale)
 
     utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K)

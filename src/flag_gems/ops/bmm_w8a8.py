@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def bmm_fp8_w8a8_block_scale_kernel(
+def bmm_w8a8_fp8_kernel(
     A,
     B,
     A_SCALE,
@@ -116,7 +116,7 @@ def bmm_fp8_w8a8_block_scale_kernel(
     tl.store(o_ptrs, acc, mask=o_mask)
 
 
-def _get_bmm_fp8_w8a8_block_scale_config(M, N, K, block_k):
+def _get_bmm_w8a8_fp8_config(M, N, K, block_k):
     if K <= 64:
         if M <= 64:
             return 64, 32, 64, 1, 8, 3
@@ -136,7 +136,7 @@ def _get_bmm_fp8_w8a8_block_scale_config(M, N, K, block_k):
     return 64, 16, 128, 2, 4, 2
 
 
-def bmm_fp8_w8a8_block_scale(
+def bmm_w8a8_fp8(
     A,
     B,
     A_scale,
@@ -145,7 +145,7 @@ def bmm_fp8_w8a8_block_scale(
     out_dtype=torch.bfloat16,
     out=None,
 ):
-    logger.debug("GEMS BMM FP8 W8A8 BLOCK_SCALE")
+    logger.debug("GEMS BMM W8A8 FP8 BLOCK_SCALE")
     assert A.ndim == 3 and B.ndim == 3 and A_scale.ndim == 3 and B_scale.ndim == 3
     assert A.shape[0] == B.shape[0] == A_scale.shape[0] == B_scale.shape[0]
     assert A.shape[2] == B.shape[1], "K dim mismatch"
@@ -184,13 +184,13 @@ def bmm_fp8_w8a8_block_scale(
         group_m,
         num_warps,
         num_stages,
-    ) = _get_bmm_fp8_w8a8_block_scale_config(M, N, K, launch_block_k)
+    ) = _get_bmm_w8a8_fp8_config(M, N, K, launch_block_k)
     assert launch_block_m % tile_m == 0 or tile_m % launch_block_m == 0
     assert launch_block_k % tile_k == 0, "block_k must be divisible by TILE_K"
     assert launch_block_n % tile_n == 0, "block_n must be divisible by TILE_N"
 
     with torch_device_fn.device(A.device):
-        bmm_fp8_w8a8_block_scale_kernel[grid_fn](
+        bmm_w8a8_fp8_kernel[grid_fn](
             A,
             B,
             A_scale,

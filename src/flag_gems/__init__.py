@@ -248,6 +248,7 @@ _FULL_CONFIG = (
     ("bitwise_xor_.Tensor", bitwise_xor_tensor_),
     ("bmm", bmm),
     ("bmm.out", bmm_out),
+    ("bmm_w8a8_fp8", bmm_w8a8_fp8),
     ("broadcast_to", broadcast_to),
     ("bucketize.Tensor", bucketize),
     ("cat", cat),
