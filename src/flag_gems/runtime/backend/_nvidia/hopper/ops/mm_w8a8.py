@@ -833,18 +833,22 @@ def mm_kernel_general_host_tma_jit(
 
 _MM_HOST_TMA_CONFIGS = matmul_get_configs()
 mm_kernel_general_host_tma = _wrap_mm_host_tma_kernel(
-    runtime.ops_get_configs(
-        "mm_w8a8_general_tma",
-        pre_hook=matmul_tma_set_block_size_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else _MM_HOST_TMA_CONFIGS,
-    runtime.get_expand_config("mm_w8a8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else _MM_TMA_DEFAULT_STRATEGY,
+    (
+        runtime.ops_get_configs(
+            "mm_w8a8_general_tma",
+            pre_hook=matmul_tma_set_block_size_hook,
+            yaml_path=EXPAND_CONFIG_FILENAME,
+        )
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else _MM_HOST_TMA_CONFIGS
+    ),
+    (
+        runtime.get_expand_config(
+            "mm_w8a8_general_tma", yaml_path=EXPAND_CONFIG_FILENAME
+        )["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else _MM_TMA_DEFAULT_STRATEGY
+    ),
 )
 mm_kernel_general_host_tma_default_tune = _wrap_mm_host_tma_kernel(
     _MM_HOST_TMA_CONFIGS,
@@ -989,11 +993,13 @@ def _prune_block_scaled_splitk_tma_configs(configs, named_args, **kwargs):
 @libtuner(
     configs=_block_scaled_tma_configs(matmul_tma_set_block_size_hook),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "mm_w8a8_block_scaled", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=(
+        runtime.get_expand_config(
+            "mm_w8a8_block_scaled", yaml_path=EXPAND_CONFIG_FILENAME
+        )["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32"]
+    ),
     warmup=5,
     rep=10,
     pre_hook=matmul_tma_set_block_size_hook,
@@ -1061,11 +1067,13 @@ def mm_w8a8_block_scaled_kernel_tma_native_v2(
 @libtuner(
     configs=_block_scaled_splitk_tma_configs(_block_scaled_splitk_tma_hook),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "mm_w8a8_block_scaled_splitk", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "align32", "align32"],
+    strategy=(
+        runtime.get_expand_config(
+            "mm_w8a8_block_scaled_splitk", yaml_path=EXPAND_CONFIG_FILENAME
+        )["strategy"]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "align32", "align32"]
+    ),
     warmup=5,
     rep=10,
     pre_hook=_block_scaled_splitk_tma_hook,
@@ -1384,21 +1392,25 @@ def general_mm(a, b, c, M, N, K):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "mm_w8a8_gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
-        triton.Config({"BLOCK_M": 8, "BLOCK_K": 256}, num_warps=1, num_stages=2),
-        triton.Config({"BLOCK_M": 16, "BLOCK_K": 256}, num_warps=2, num_stages=2),
-        triton.Config({"BLOCK_M": 32, "BLOCK_K": 256}, num_warps=4, num_stages=2),
-    ],
+    configs=(
+        runtime.ops_get_configs(
+            "mm_w8a8_gemv", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
+        )
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else [
+            triton.Config({"BLOCK_M": 8, "BLOCK_K": 256}, num_warps=1, num_stages=2),
+            triton.Config({"BLOCK_M": 16, "BLOCK_K": 256}, num_warps=2, num_stages=2),
+            triton.Config({"BLOCK_M": 32, "BLOCK_K": 256}, num_warps=4, num_stages=2),
+        ]
+    ),
     key=["M", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "mm_w8a8_gemv", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32", "default"],
+    strategy=(
+        runtime.get_expand_config("mm_w8a8_gemv", yaml_path=EXPAND_CONFIG_FILENAME)[
+            "strategy"
+        ]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["align32", "align32", "align32", "default"]
+    ),
     warmup=10,
     rep=20,
     prune_configs_by={"early_config_prune": _prune_gemv_autotune_configs},
@@ -1478,17 +1490,21 @@ def gemv_mm(a, b, c, M, K):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "mm_w8a8_skinny", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else matmul_skinny_get_configs(),
+    configs=(
+        runtime.ops_get_configs(
+            "mm_w8a8_skinny", pre_hook=None, yaml_path=EXPAND_CONFIG_FILENAME
+        )
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else matmul_skinny_get_configs()
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk"],
-    strategy=runtime.get_expand_config(
-        "mm_w8a8_skinny", yaml_path=EXPAND_CONFIG_FILENAME
-    )["strategy"]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["mm_w8a8_tma_m", "align32", "align32", "align32", "default"],
+    strategy=(
+        runtime.get_expand_config("mm_w8a8_skinny", yaml_path=EXPAND_CONFIG_FILENAME)[
+            "strategy"
+        ]
+        if os.environ.get("USE_FLAGTUNE") == "1"
+        else ["mm_w8a8_tma_m", "align32", "align32", "align32", "default"]
+    ),
     warmup=10,
     rep=20,
     prune_configs_by={"early_config_prune": _prune_skinny_autotune_configs},
