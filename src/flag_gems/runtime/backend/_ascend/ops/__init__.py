@@ -53,6 +53,7 @@ from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
+from .index_fill import index_fill, index_fill_
 from .index_select import index_select
 from .isin import isin
 from .layernorm import layer_norm, native_layer_norm
@@ -172,6 +173,8 @@ __all__ = [
     "index_add_",
     "index_copy",
     "index_copy_",
+    "index_fill",
+    "index_fill_",
     "index_select",
     "isin",
     "layer_norm",
