@@ -5,7 +5,9 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# Custom shapes for fractional_max_pool2d: (batch, channels, height, width), kernel_size, output_size
+# Custom shapes for fractional_max_pool2d: shape, kernel_size, output_size.
+# 4D shapes are batched (N, C, H, W); 3D shapes are unbatched (C, H, W),
+# both of which torch.nn.functional.fractional_max_pool2d supports.
 FRACTIONAL_MAXPOOL2D_CONFIGS = [
     # Classic case: 2x2 kernel, output size 16x16
     ((4, 3, 32, 32), 2, (16, 16)),
@@ -19,6 +21,9 @@ FRACTIONAL_MAXPOOL2D_CONFIGS = [
     ((2, 8, 16, 16), 2, (8, 8)),
     # Non-square output
     ((2, 8, 16, 20), 2, (8, 10)),
+    # Unbatched (C, H, W) inputs
+    ((3, 32, 32), 2, (16, 16)),
+    ((8, 16, 20), 2, (8, 10)),
 ]
 
 
@@ -35,9 +40,16 @@ def test_fractional_max_pool2d(shape, kernel_size, output_size, dtype):
     # PyTorch C++ requires _random_samples dtype == input dtype.
     # Our implementation converts to double internally, so we pass float32 to ours.
     # Both paths ultimately compute intervals with the same float64 values.
-    N, C = shape[0], shape[1]
-    random_samples = torch.rand(N, C, 2, dtype=torch.float32, device=flag_gems.device)
+    # random_samples is (N, C, 2) for batched input and (C, 2) for unbatched.
+    sample_shape = (*shape[:-2], 2)
+    random_samples = torch.rand(
+        sample_shape, dtype=torch.float32, device=flag_gems.device
+    )
     ref_random_samples = random_samples.to(device=ref_inp.device, dtype=ref_inp.dtype)
+    # PyTorch's reference requires _random_samples to be 3D even for 3D input,
+    # so add a leading batch dim for the unbatched case.
+    if len(shape) == 3:
+        ref_random_samples = ref_random_samples.unsqueeze(0)
 
     ref_out, ref_indices = torch.nn.functional.fractional_max_pool2d(
         ref_inp,
@@ -69,9 +81,16 @@ def test_fractional_max_pool2d_backward(shape, kernel_size, output_size, dtype):
     ref_inp = utils.to_reference(inp, upcast=True)
 
     # Use the same random_samples for both.
-    N, C = shape[0], shape[1]
-    random_samples = torch.rand(N, C, 2, dtype=torch.float32, device=flag_gems.device)
+    # random_samples is (N, C, 2) for batched input and (C, 2) for unbatched.
+    sample_shape = (*shape[:-2], 2)
+    random_samples = torch.rand(
+        sample_shape, dtype=torch.float32, device=flag_gems.device
+    )
     ref_random_samples = random_samples.to(device=ref_inp.device, dtype=ref_inp.dtype)
+    # PyTorch's reference requires _random_samples to be 3D even for 3D input,
+    # so add a leading batch dim for the unbatched case.
+    if len(shape) == 3:
+        ref_random_samples = ref_random_samples.unsqueeze(0)
 
     ref_out, ref_indices = torch.nn.functional.fractional_max_pool2d(
         ref_inp,
