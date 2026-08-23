@@ -192,6 +192,8 @@ def test_topk_w8a16_fp8_row_scale(shape, topk):
     gathered = torch.gather(x_dequant, dim=-1, index=res_index)
     torch.testing.assert_close(res_value.float(), ref_value, rtol=0, atol=2e-2)
     torch.testing.assert_close(gathered, res_value.float(), rtol=0, atol=2e-2)
+
+
 @pytest.mark.topk
 def test_topk_radix_tle_config_uses_large_fp32_shape_heuristic():
     topk_op = import_module("flag_gems.ops.topk")
