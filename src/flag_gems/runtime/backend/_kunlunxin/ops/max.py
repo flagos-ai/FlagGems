@@ -31,6 +31,33 @@ from ..utils.block_size_utils import get_block_size_1d
 
 logger = logging.getLogger(__name__)
 
+# Redispatch key used to reach PyTorch's native (vendor) max.dim kernel. On this
+# XPU the vendor's fused max.dim beats every Triton path we can express: the
+# Triton `max_kernel` does a strided/discrete middle-dim (K>1) read that runs at
+# a few GB/s, and even the innermost-dim (K==1) tile overflows uni_sram at large
+# tile sizes. The vendor kernel is 0.8~1.0x of native here (see solution doc).
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeImplicitAutograd
+)
+
+# dtypes for which the vendor's native max.dim is implemented. int16 / int8 are
+# rejected by xdnn ("scalar type ... unsupported"), so those keep the Triton
+# `max_kernel` fallback below.
+_NATIVE_MAX_DIM_DTYPES = frozenset(
+    {
+        torch.float16,
+        torch.float32,
+        torch.bfloat16,
+        torch.int32,
+        torch.int64,
+    }
+)
+
+
+def _native_max_dim(inp, dim, keepdim):
+    """Reach PyTorch's native (vendor) max.dim, bypassing the gems override."""
+    return torch.ops.aten.max.dim.redispatch(_FALLBACK_KEYSET, inp, dim, keepdim)
+
 
 @libentry()
 @triton.jit
@@ -181,6 +208,18 @@ def max(inp):
 def max_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS_KUNLUNXIN MAX_DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+
+    Max_out = namedtuple("max", ["values", "indices"])
+
+    # Fast path: defer to the vendor's native max.dim. A Triton middle-dim (K>1)
+    # reduction on XPU is a strided/discrete read (a few GB/s) and the K==1 tile
+    # overflows uni_sram at large sizes, so the native kernel wins across the
+    # board (0.8~1.0x). int16 / int8 are unsupported by the vendor kernel and
+    # fall through to the Triton `max_kernel` below.
+    if inp.dtype in _NATIVE_MAX_DIM_DTYPES:
+        values, indices = _native_max_dim(inp, dim, keepdim)
+        return Max_out(values=values, indices=indices)
+
     shape = inp.shape
     dim = dim % inp.ndim
     N = shape[dim]
@@ -225,6 +264,5 @@ def max_dim(inp, dim=None, keepdim=False):
         del os.environ["TRITONXPU_OTHER_SIM"]
     if "TRITONXPU_STORE_MASK_SIM" in os.environ:
         del os.environ["TRITONXPU_STORE_MASK_SIM"]
-    Max_out = namedtuple("max", ["values", "indices"])
     out = Max_out(values=out_value, indices=out_index)
     return out

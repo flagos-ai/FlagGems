@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import math
 
 import torch
 import triton
@@ -74,11 +73,18 @@ def kernel_1(
 @libentry()
 @triton.jit
 def kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mask = offset < mid_size
-    mid_val = tl.load(mid + offset, mask=mask, other=0).to(tl.float32)
-    sum_val = tl.sum(mid_val)
-    tl.store(out, sum_val)
+    # Loop-accumulate into a [BLOCK_MID] fp32 tile, then a SINGLE tl.sum.
+    # BLOCK_MID is capped at 8192 (XPU tl.sum only reduces the first 8192
+    # lanes correctly), so when mid_size > 8192 we must stride over it in
+    # chunks; the element-wise `acc +=` accumulation across iterations is
+    # correct on XPU (verified) and a single final reduce stays within 8192.
+    acc = tl.zeros([BLOCK_MID], dtype=tl.float32)
+    n_iter = tl.cdiv(mid_size, BLOCK_MID)
+    for i in range(n_iter):
+        offset = i * BLOCK_MID + tl.arange(0, BLOCK_MID)
+        mask = offset < mid_size
+        acc += tl.load(mid + offset, mask=mask, other=0).to(tl.float32)
+    tl.store(out, tl.sum(acc))
 
 
 def _normalize_reduction(reduction):
@@ -122,9 +128,18 @@ def soft_margin_loss(input: torch.Tensor, target: torch.Tensor, reduction="mean"
         else:
             return torch.full((), float("nan"), device=input.device, dtype=input.dtype)
 
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
+    # XPU tl.sum only reduces the first 8192 lanes of a 1D tile correctly, so
+    # BLOCK_SIZE MUST stay <= 8192 (the old next_pow2(ceil(sqrt(n))) heuristic
+    # produced 16384/32768 for the huge shapes -> silently wrong result, and
+    # was also slow). Within that cap, wider blocks are uniformly faster on XPU
+    # (fewer programs, smaller `mid`, less kernel_2 work): the sweep showed
+    # block_size=8192 beats every smaller block on all large shapes, e.g.
+    # [10000,256] fp32 speedup 0.34->0.58, [4096,4096] 0.39->0.46. For
+    # n <= 8192 a single block (mid_size==1) skips kernel_2 entirely (single
+    # kernel, best on tiny shapes).
+    block_size = min(triton.next_power_of_2(n_elements), 8192)
     mid_size = triton.cdiv(n_elements, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
+    block_mid = min(triton.next_power_of_2(mid_size), 8192)
 
     mid = torch.empty((mid_size,), dtype=torch.float32, device=input.device)
     out = torch.empty([], dtype=torch.float32, device=input.device)

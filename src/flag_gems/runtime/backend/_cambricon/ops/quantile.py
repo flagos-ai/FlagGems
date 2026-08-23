@@ -165,8 +165,8 @@ def heur_block_n(args):
         return 1
 
 
-@libentry()
 @triton.heuristics(values={"BLOCK_Q": heur_block_q, "BLOCK_N": heur_block_n})
+@libentry()
 @triton.jit
 def quantile_kernel(
     inp,

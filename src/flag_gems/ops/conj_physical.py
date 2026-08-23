@@ -48,6 +48,10 @@ def conj_physical(input: torch.Tensor) -> torch.Tensor:
     if not input.is_complex():
         return input
 
+    # If input has conj bit set, resolve it first so view_as_real won't crash.
+    if input.is_conj():
+        input = input.resolve_conj()
+
     n_elements = input.numel()
     src = input if input.is_contiguous() else input.contiguous()
     output = torch.empty_like(src)

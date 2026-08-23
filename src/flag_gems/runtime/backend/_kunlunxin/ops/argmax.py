@@ -34,6 +34,20 @@ torch_dtype_to_tl_dtype_and_min_value = {
 }
 logger = logging.getLogger(__name__)
 
+# N above this width cannot be reduced (with return_indices) in a single XPU
+# tile: both the single-load kernel and the loop-accumulator kernel fail to
+# compile ("out of resource: uni_sram"). Such N is handled by the two-stage
+# reduction below.
+MAX_TILE_N = 8192
+# Chunk width / row-tile for the two-stage large-N path (measured fastest on XPU).
+STAGE_BLOCK_N = 2048
+STAGE_BLOCK_M = 32
+# For a contiguous inner reduce (K == 1), route N at or above this width to the
+# constexpr two-stage path even when it would fit a single tile: the runtime-N/K
+# single-tile kernel degrades to discrete access and is far slower here. Below
+# this, single-tile launch overhead wins and the discrete penalty is negligible.
+TWO_STAGE_MIN_N = 256
+
 
 @libentry()
 @triton.jit
@@ -72,63 +86,74 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
     tl.store(out, out_val)
 
 
-def heur_m_block_size(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
-
-
-def heur_n_block_size(args):
-    import builtins
-
-    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
-
-
 @libentry()
-# @triton.heuristics(runtime.get_heuristic_config("argmax"))
-@triton.heuristics(
-    values={
-        "BLOCK_M": heur_m_block_size,
-        "BLOCK_N": heur_n_block_size,
-    },
-)
 @triton.jit
-def argmax_kernel(
+def argmax_stage1(
     inp,
-    out_index,
-    M: tl.constexpr,
+    part_val,
+    part_idx,
+    M,
     N: tl.constexpr,
     K: tl.constexpr,
+    NUM_CHUNKS: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # set offset
+    # Stage 1 of the large-N path. Each program reduces one BLOCK_N-wide chunk
+    # of a BLOCK_M row block and emits the chunk-local max value plus its
+    # *global* argmax index. Output is [M, NUM_CHUNKS, K].
+    pid_m = ext.program_id(0)
+    pid_c = ext.program_id(1)
+    pid_k = ext.program_id(2)
+    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    chunk_start = pid_c * BLOCK_N
+    n_offset = chunk_start + tl.arange(0, BLOCK_N)
+    dtype = inp.type.element_ty
+    min_value = get_dtype_min(dtype)
+    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+    mask = m_offset[:, None] < M and n_offset[None, :] < N
+    vals = tl.load(inp + offset, mask=mask, other=min_value)
+    lmax, largmax = tl.max(
+        vals, axis=1, return_indices=True, return_indices_tie_break_left=True
+    )
+    gidx = chunk_start + largmax
+    part_offset = m_offset * NUM_CHUNKS * K + pid_c * K + pid_k
+    pmask = m_offset < M
+    tl.store(part_val + part_offset, lmax, mask=pmask)
+    tl.store(part_idx + part_offset, gidx, mask=pmask)
+
+
+@libentry()
+@triton.jit
+def argmax_stage2(
+    part_val,
+    part_idx,
+    out_index,
+    M,
+    K: tl.constexpr,
+    NUM_CHUNKS: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+):
+    # Stage 2: reduce the NUM_CHUNKS per-row partial maxes, then gather the
+    # global argmax index of the winning chunk. tie_break_left keeps the
+    # earliest chunk on ties, matching torch semantics.
     pid_m = ext.program_id(0)
     pid_k = ext.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-
-    dtype = inp.type.element_ty
-    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
+    c_offset = tl.arange(0, BLOCK_C)
+    dtype = part_val.type.element_ty
     min_value = get_dtype_min(dtype)
-    max_values = tl.full([BLOCK_M], dtype=acc_type, value=min_value)
-    argmax_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
-    for start_n in range(0, N, BLOCK_N):
-        n_offset = start_n + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-        local_max, local_argmax = tl.max(
-            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-        )
-        # if return indices is not supported, call a tl.argmax in addition
-        # local_argmax = tl.argmax(inp_vals, 1)
-        update = local_max > max_values
-        max_values = tl.where(update, local_max, max_values)
-        argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
-
-    offset_index = m_offset * K + pid_k
-    out_index_ptrs = out_index + offset_index
-    mask1 = m_offset < M
-    tl.store(out_index_ptrs, argmax_values, mask=mask1)
+    offset = m_offset[:, None] * NUM_CHUNKS * K + c_offset[None, :] * K + pid_k
+    mask = m_offset[:, None] < M and c_offset[None, :] < NUM_CHUNKS
+    vals = tl.load(part_val + offset, mask=mask, other=min_value)
+    _, best_c = tl.max(
+        vals, axis=1, return_indices=True, return_indices_tie_break_left=True
+    )
+    gather = m_offset * NUM_CHUNKS * K + best_c * K + pid_k
+    pmask = m_offset < M
+    res = tl.load(part_idx + gather, mask=pmask)
+    tl.store(out_index + m_offset * K + pid_k, res, mask=pmask)
 
 
 @libentry()
@@ -145,7 +170,8 @@ def argmax_kernel_small_n(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # set offset
+    # Single-tile path (N <= MAX_TILE_N so a single load covers all of N).
+    # Runtime N/K, matching the proven original form.
     pid_m = ext.program_id(0)
     pid_k = ext.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -155,7 +181,6 @@ def argmax_kernel_small_n(
     n_offset = tl.arange(0, BLOCK_N)
     offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
     offset_index = m_offset * K + pid_k
-    # set mask
     mask1 = m_offset < M
     mask = m_offset[:, None] < M and n_offset[None, :] < N
     inp_ptrs = inp + offset
@@ -219,13 +244,26 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            K,
-        )
 
+        # argmax along a size-1 dim is trivially index 0.
         if N == 1:
-            tl_dtype, dtype_min_value = torch_dtype_to_tl_dtype_and_min_value[inp.dtype]
+            out_index.zero_()
+            return out_index
+
+        tl_dtype, dtype_min_value = torch_dtype_to_tl_dtype_and_min_value[inp.dtype]
+
+        # Routing (see argmin.py for the full rationale):
+        #   * N > MAX_TILE_N : reduce axis cannot fit one XPU tile, two-stage
+        #     is mandatory.
+        #   * K == 1 and N >= TWO_STAGE_MIN_N : contiguous inner reduce. The
+        #     single-tile kernel uses *runtime* N/K -> discrete access that is
+        #     catastrophically slow as N grows. The two-stage kernels take N/K
+        #     as constexpr -> provable stride-1 block DMA (~13x faster).
+        #   * otherwise (small N, or K > 1 with N <= MAX_TILE_N) : the proven
+        #     single-tile kernel.
+        use_two_stage = N > MAX_TILE_N or (K == 1 and N >= TWO_STAGE_MIN_N)
+        if not use_two_stage:
+            grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), K)  # noqa: E731
             with torch_device_fn.device(inp.device):
                 argmax_kernel_small_n[grid](
                     inp,
@@ -238,14 +276,45 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 )
             return out_index
 
+        # Two-stage per-row reduction.
+        block_n = STAGE_BLOCK_N
+        block_m = STAGE_BLOCK_M
+        num_chunks = triton.cdiv(N, block_n)
+        part_val = torch.empty(
+            (M * num_chunks * K,), dtype=inp.dtype, device=inp.device
+        )
+        part_idx = torch.empty(
+            (M * num_chunks * K,), dtype=torch.int64, device=inp.device
+        )
+        grid1 = (triton.cdiv(M, block_m), num_chunks, K)
         with torch_device_fn.device(inp.device):
-            argmax_kernel[grid](
+            argmax_stage1[grid1](
                 inp,
-                out_index,
+                part_val,
+                part_idx,
                 M,
                 N,
                 K,
-                is_use_mask_zero=True,
+                num_chunks,
+                block_m,
+                block_n,
             )
-
+            # A single chunk already holds the whole reduce axis: stage 1 wrote
+            # the final global argmax into part_idx (layout matches out_index),
+            # so skip stage 2 entirely.
+            if num_chunks == 1:
+                out_index.view(-1).copy_(part_idx)
+                return out_index
+            block_c = triton.next_power_of_2(num_chunks)
+            grid2 = (triton.cdiv(M, block_m), K)
+            argmax_stage2[grid2](
+                part_val,
+                part_idx,
+                out_index,
+                M,
+                K,
+                num_chunks,
+                block_m,
+                block_c,
+            )
         return out_index

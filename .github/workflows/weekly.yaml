@@ -14,8 +14,6 @@
 
 # Weekly full-range test workflow
 #
-# Runs every Monday at 04:00 Beijing time (UTC 20:00 Sunday) against all
-# operator stages on all enabled backends in parallel.
 #
 # Main config: .github/configs/weekly/weekly-test.yaml
 # Per-backend config: .github/configs/weekly/<NAME>.yml
@@ -38,8 +36,8 @@ on:
         default: ''
 
   schedule:
-    # Monday 00:10 Beijing time = Sunday 16:10 UTC
-    - cron: '10 16 * * 0'
+    # Wednesday and Saturday 21:30 Beijing time = 13:30 UTC
+    - cron: '30 13 * * 3,6'
 
 defaults:
   run:
@@ -56,7 +54,7 @@ jobs:
       api: ${{ steps.build-matrix.outputs.api }}
       ops: ${{ steps.build-matrix.outputs.ops }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - id: get-date
         run: echo "DATE=$(date -u '+%Y-%m-%d')" >> "$GITHUB_OUTPUT"
@@ -118,6 +116,13 @@ jobs:
       group: weekly-test-${{ matrix.name }}
       cancel-in-progress: true
     runs-on: ${{ matrix.runner_labels }}
+    # Whole-job timeout, evaluated per vendor. This is the ONLY timeout for the
+    # test run: the "Run weekly tests" step has no step-level timeout, so it is
+    # bounded solely by this value (a step-level timeout can never extend a step
+    # beyond its enclosing job, and omitting it avoids configuring the limit
+    # twice). Ascend (910B) runs the full operator suite in ~15h so it gets 24h.
+    # Self-hosted runners have no hard 6h cap, so these values are honoured.
+    timeout-minutes: 1440
     container:
       image: ${{ matrix.container_image }}
       options: ${{ matrix.container_options }}
@@ -127,7 +132,7 @@ jobs:
       OUTPUT_DIR: ${{ matrix.output_base_dir }}/${{ needs.prepare.outputs.date }}/logs_results_${{ needs.prepare.outputs.date }}
     steps:
       - id: checkout-attempt-1
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
@@ -135,7 +140,7 @@ jobs:
 
       - id: checkout-attempt-2
         if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
@@ -143,7 +148,7 @@ jobs:
 
       - id: checkout-attempt-3
         if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Fix git safe directory
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
@@ -226,30 +231,44 @@ jobs:
 
       - name: Check GPU availability
         shell: bash --login -e -o pipefail {0}
-        run: bash ${{ matrix.gpu_check_script }}
+        run: |
+          echo "[GPU check] Running GPU availability check script: ${{ matrix.gpu_check_script }}"
+          GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }})
+          echo "[GPU check] GPU availability check output:"
+          echo "$GPU_OUTPUT"
+          AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
+          echo "[GPU check] Available GPUs: ${AVAILABLE_GPUS}"
+          echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> $GITHUB_ENV
 
       # Run weekly tests.
       # OPS is provided by the prepare job: "all" (scheduled runs or an empty
       # "ops" input) runs every operator stage via --stages all; otherwise it
       # runs only the selected operators via --ops <list>.
       - name: Run weekly tests
-        timeout-minutes: 720
         env: ${{ fromJSON(matrix.test_env) }}
         shell: bash --login -e -o pipefail {0}
         run: |
+          echo "[Run weekly tests] Running on backend: ${{ matrix.name }} (vendor: ${{ matrix.vendor }})"
+          echo "[Run weekly tests] Test output directory: ${OUTPUT_DIR}"
+          echo "[Run weekly tests] Test GPUs: ${AVAILABLE_GPUS}"
+          echo "[Run weekly tests] Test date: ${DATE}"
+          echo "[Run weekly tests] Test ops: ${{ needs.prepare.outputs.ops }}"
+          # remove cache to avoid potential issues with stale files
+          rm -rf ~/.triton/cache && rm -rf ~/.flaggems
           # run tests with specified GPUs and output directory
           # Print env for debugging; drop proxy vars (http(s)_proxy/all_proxy,
           # any case) since they may embed user:password that GitHub Actions
           # does not auto-mask for values from the container/runner env.
-          printenv | grep -viE '^(https?_proxy|all_proxy)=' || true
+          # printenv | grep -viE '^(https?_proxy|all_proxy)=' || true
           OPS="${{ needs.prepare.outputs.ops }}"
           if [ "${OPS}" = "all" ]; then
             OP_ARGS="--stages all"
           else
             OP_ARGS="--ops ${OPS}"
           fi
+          # replace ${{ matrix.test_gpus }} with ${AVAILABLE_GPUS}
           python3 tools/run_tests.py \
-            --gpus "${{ matrix.test_gpus }}" \
+            --gpus "${AVAILABLE_GPUS}" \
             ${OP_ARGS} \
             --dump-output \
             --output "${OUTPUT_DIR}"
@@ -260,7 +279,7 @@ jobs:
 
       - name: Package results
         run: |
-          ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
+          ARCHIVE="${{ matrix.output_base_dir }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
@@ -271,23 +290,27 @@ jobs:
       #     path: ${{ env.ARCHIVE }}
 
       - name: Publish results to op-monitor
-        # Disabled publishing results to op-monitor for 910B/H800 backends due to network restrictions.
-        if: ${{ matrix.name != '910B' && matrix.name != 'H800' }}
         timeout-minutes: 15
         continue-on-error: true
         run: |
-          # Normalize the backend name for special cases (e.g. MTT-S5000 -> "MTT S5000").
+          # get backend name from matrix
           BACKEND_NAME="${{ matrix.name }}"
-          if [ "$BACKEND_NAME" = "MTT-S5000" ]; then
-            BACKEND_NAME="MTT S5000"
+          echo "[Publish results] Uploading results archive to op-monitor server for backend: ${BACKEND_NAME}"
+          echo "[Publish results] Archive path: ${ARCHIVE}"
+          echo "[Publish results] Test date: ${DATE}"
+          # Check if the archive file exists before attempting to upload
+          if [ ! -f "${ARCHIVE}" ]; then
+            echo "[Publish results] ERROR: Archive file not found: ${ARCHIVE}"
+            exit 1
           fi
           # Upload the results archive to the op-monitor server.
-          curl -X POST "${{ needs.prepare.outputs.api }}" \
-            -H "X-API-Key: ${{ secrets.OPMON_UPLOAD_KEY }}" \
+          curl -X POST "${{ secrets.OPMON_URL }}api/upload/archive" \
+            -H "Authorization: Bearer ${{ secrets.OPMON_UPLOAD_KEY }}" \
             -F "file=@${ARCHIVE}" \
             -F "library_name=FlagGems" \
             -F "backend_name=${BACKEND_NAME}" \
-            -F "test_date=${DATE}"
+            -F "test_date=${DATE}" \
+            --compressed -o - -w "\nHTTP %{http_code}\n"
 
       - name: Send Feishu notification
         if: always()
@@ -313,12 +336,15 @@ jobs:
       group: weekly-test-${{ matrix.name }}
       cancel-in-progress: true
     runs-on: ${{ matrix.runner_labels }}
+    # See test-container: single per-vendor, job-level timeout (Ascend 24h,
+    # others 18h); the "Run weekly tests" step has no step-level timeout.
+    timeout-minutes: 1080
     env:
       DATE: ${{ needs.prepare.outputs.date }}
       OUTPUT_DIR: ${{ matrix.output_base_dir }}/${{ needs.prepare.outputs.date }}/logs_results_${{ needs.prepare.outputs.date }}
     steps:
       - id: checkout-attempt-1
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - id: sleep-1
         if: steps.checkout-attempt-1.outcome == 'failure'
@@ -326,7 +352,7 @@ jobs:
 
       - id: checkout-attempt-2
         if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - id: sleep-2
         if: steps.checkout-attempt-2.outcome == 'failure'
@@ -334,7 +360,7 @@ jobs:
 
       - id: checkout-attempt-3
         if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Fix git safe directory
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
@@ -343,16 +369,28 @@ jobs:
         run: pip install .
 
       - name: Check GPU availability
-        run: bash ${{ matrix.gpu_check_script }}
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          echo "[GPU check] Running GPU availability check script: ${{ matrix.gpu_check_script }}"
+          GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }})
+          echo "[GPU check] GPU availability check output:"
+          echo "$GPU_OUTPUT"
+          AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
+          echo "[GPU check] Available GPUs: ${AVAILABLE_GPUS}"
+          echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> $GITHUB_ENV
 
       # Run weekly tests.
       # OPS is provided by the prepare job: "all" (scheduled runs or an empty
       # "ops" input) runs every operator stage via --stages all; otherwise it
       # runs only the selected operators via --ops <list>.
       - name: Run weekly tests
-        timeout-minutes: 720
         env: ${{ fromJSON(matrix.test_env) }}
         run: |
+          echo "[Run weekly tests] Running on backend: ${{ matrix.name }} (vendor: ${{ matrix.vendor }})"
+          echo "[Run weekly tests] Test output directory: ${OUTPUT_DIR}"
+          echo "[Run weekly tests] Test GPUs: ${AVAILABLE_GPUS}"
+          echo "[Run weekly tests] Test date: ${DATE}"
+          echo "[Run weekly tests] Test ops: ${{ needs.prepare.outputs.ops }}"
           # remove cache to avoid potential issues with stale files
           rm -rf ~/.triton/cache && rm -rf ~/.flaggems
           # run tests with specified GPUs and output directory
@@ -362,8 +400,9 @@ jobs:
           else
             OP_ARGS="--ops ${OPS}"
           fi
+          # replace ${{ matrix.test_gpus }} with ${AVAILABLE_GPUS}
           python3 tools/run_tests.py \
-            --gpus "${{ matrix.test_gpus }}" \
+            --gpus "${AVAILABLE_GPUS}" \
             ${OP_ARGS} \
             --dump-output \
             --output "${OUTPUT_DIR}"
@@ -374,27 +413,38 @@ jobs:
 
       - name: Package results
         run: |
-          ARCHIVE="${{ runner.temp }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
+          ARCHIVE="${{ matrix.output_base_dir }}/weekly-${{ matrix.name }}-${DATE}.tar.gz"
           tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-        with:
-          name: weekly-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
-          path: ${{ env.ARCHIVE }}
+      # - name: Upload artifact
+      #   uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      #   with:
+      #     name: weekly-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
+      #     path: ${{ env.ARCHIVE }}
 
-      # Disabled publishing results to op-monitor for native backends
-      # due to potential network restrictions on self-hosted runners.
-      #
-      # - name: Publish results to op-monitor
-      #   run: |
-      #     curl -X POST "${{ needs.prepare.outputs.api }}" \
-      #       -H "X-API-Key: ${{ secrets.OPMON_UPLOAD_KEY }}" \
-      #       -F "file=@${ARCHIVE}" \
-      #       -F "library_name=FlagGems" \
-      #       -F "backend_name=${{ matrix.name }}" \
-      #       -F "test_date=${DATE}"
+      - name: Publish results to op-monitor
+        timeout-minutes: 15
+        continue-on-error: true
+        run: |
+          # get backend name from matrix
+          BACKEND_NAME="${{ matrix.name }}"
+          echo "[Publish results] Uploading results archive to op-monitor server for backend: ${BACKEND_NAME}"
+          echo "[Publish results] Archive path: ${ARCHIVE}"
+          echo "[Publish results] Test date: ${DATE}"
+          # Check if the archive file exists before attempting to upload
+          if [ ! -f "${ARCHIVE}" ]; then
+            echo "[Publish results] ERROR: Archive file not found: ${ARCHIVE}"
+            exit 1
+          fi
+          # Upload the results archive to the op-monitor server.
+          curl -X POST "${{ secrets.OPMON_URL }}api/upload/archive" \
+            -H "Authorization: Bearer ${{ secrets.OPMON_UPLOAD_KEY }}" \
+            -F "file=@${ARCHIVE}" \
+            -F "library_name=FlagGems" \
+            -F "backend_name=${BACKEND_NAME}" \
+            -F "test_date=${DATE}" \
+            --compressed -o - -w "\nHTTP %{http_code}\n"
 
       - name: Send Feishu notification
         if: always()

@@ -62,12 +62,37 @@ def mean(inp, *, dtype=None):
     return out
 
 
-def heur_m_block_size(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+# Persisted-accumulator tile budget. The old heuristics allowed
+# BLOCK_M=next_pow2(cdiv(M,12)) (unbounded) x BLOCK_N=min(next_pow2(N),8192),
+# so the persisted [BLOCK_M, BLOCK_N] accumulator became a giant 2D constexpr
+# tile (IR shows tensor<1024x8192xf32> = 8.4M elements). ConvertTritonXPUToLLVM
+# materializes it per element -> the 1.78GB IR dump. We keep the numerically
+# correct persisted-accumulator + single final reduce (the in-loop
+# tl.sum(a, axis=1) alternative miscompiles on XPU for fp16/bf16 -> wrong
+# results), but bound BLOCK_M x BLOCK_N to a fixed budget so the tile can never
+# explode. Under that fixed budget we RESHAPE the tile by N (the all_dim
+# lesson): large-N reductions want a wide/short tile (few loop trips, wide DMA)
+# while small/medium-N want a tall tile (more rows in flight). The wide path
+# raised fp16 [1024,65536]/[1024,1M] but a blanket-wide tile starved medium-M
+# shapes like [4096,4096] (BLOCK_M collapsed to 16), so we switch on N.
+_TILE_BUDGET = 32768
+_N_WIDE = 8192
+
+
+def _block_n(N):
+    if N > _N_WIDE:
+        return builtins.min(triton.next_power_of_2(N), 2048)  # wide for large N
+    return builtins.min(triton.next_power_of_2(N), 512)  # tall-friendly otherwise
 
 
 def heur_n_block_size(args):
-    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+    return _block_n(args["N"])
+
+
+def heur_m_block_size(args):
+    block_n = _block_n(args["N"])
+    block_m = triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+    return builtins.min(block_m, builtins.max(_TILE_BUDGET // block_n, 1))
 
 
 @libentry()
@@ -96,7 +121,14 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
     Mean = Mean + pid
     row_mask = pid < M
 
-    # Compute mean
+    # Persisted [BLOCK_M, BLOCK_N] accumulator + a SINGLE reduce after the loop.
+    # Slot j accumulates cols j, j+BLOCK_N, j+2*BLOCK_N, ... (strided partials);
+    # tl.sum(_mean, axis=1) then combines them. This is numerically correct for
+    # any BLOCK_N. We deliberately do NOT reduce inside the loop
+    # (acc += tl.sum(a, axis=1)) because that pattern miscompiles on XPU for
+    # fp16/bf16 inputs (converted-tile in-loop axis=1 reduce returns garbage;
+    # verified: 97% mismatch at (200,40999,3)). The tile stays bounded because
+    # heur_m/heur_n cap BLOCK_M*BLOCK_N to _TILE_BUDGET, so no giant-tile IR.
     _mean = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
@@ -105,8 +137,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _mean += a
-    mean = tl.sum(_mean, axis=1) / N
-    mean = mean[:, None]
+    mean = tl.sum(_mean, axis=1)[:, None] / N
     tl.store(Mean, mean, row_mask)
 
 
@@ -123,6 +154,54 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
 
     shape = list(x.shape)
     dim = [d % x.ndim for d in dim]
+
+    # Fast path: reduce a SINGLE non-last dim of a contiguous fp16/bf16 tensor.
+    # Reducing the middle dim of a [M0, N, M1] view is exactly
+    #   bmm(ones[M0, 1, N], x[M0, N, M1]) / N  ->  [M0, M1].
+    # This reads x in its native (contiguous) layout through the matmul unit, so
+    # it AVOIDS the dim_compress .contiguous() transpose copy that dominates the
+    # 3-D middle-axis case (the "transpose wall": ~447ms of the 452ms for
+    # [100,65536,100]). Under use_gems, torch.bmm re-dispatches to the fast gems
+    # matmul kernel. gems fp32 bmm is broken on XPU (wrong results for non-pow2
+    # M1), so this path is fp16/bf16 only; fp32 falls through to the reduce
+    # kernel. We sum with ones=1.0 and divide afterwards (bmm accumulates in
+    # fp32; dividing after keeps the accumulator well-scaled).
+    #
+    # The gems bmm kernel can fail to compile (uni_sram OOM / SDNN combine
+    # failure) for extreme matmul shapes -- a huge output free dim (large M1) or
+    # a tiny free dim paired with a large odd contraction dim (e.g. M1=3,
+    # K=40999). We therefore try the bmm path and, on ANY compile/runtime error,
+    # fall through to the numerically-correct reduce kernel below. This keeps
+    # the speedup for the shapes bmm handles while guaranteeing correctness.
+    if (
+        len(dim) == 1
+        and dim[0] != x.ndim - 1
+        and dtype == x.dtype
+        and x.dtype in (torch.float16, torch.bfloat16)
+        and x.is_contiguous()
+        and shape[dim[0]] > 1
+    ):
+        d = dim[0]
+        N = shape[d]
+        M0 = 1
+        for s in shape[:d]:
+            M0 *= s
+        M1 = 1
+        for s in shape[d + 1 :]:
+            M1 *= s
+        try:
+            x3 = x.reshape(M0, N, M1)
+            ones = torch.ones((M0, 1, N), dtype=x.dtype, device=x.device)
+            out = (torch.bmm(ones, x3).reshape(M0, M1) / N).to(dtype)
+            out_shape = list(shape)
+            out_shape[d] = 1
+            out = out.reshape(out_shape)
+            if not keepdim:
+                out = out.squeeze(d)
+            return out
+        except Exception:
+            logger.debug("GEMS_KUNLUNXIN MEAN_DIM bmm fast path unavailable, fallback")
+
     x = dim_compress(x, dim)
     N = 1
     for i in dim:

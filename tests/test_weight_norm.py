@@ -24,6 +24,7 @@ from . import conftest as cfg
 WEIGHT_NORM_SHAPES = [(1, 2), (4096, 256), (4, 256, 3)]
 
 if cfg.QUICK_MODE:
+    # Quick mode intentionally limits the fused reduction to float32.
     FLOAT_DTYPES = [torch.float32]
     DIM_LIST = [-1]
 else:
@@ -53,8 +54,9 @@ def test_weight_norm(shape, dtype, dim):
 
     ref_v = utils.to_reference(v, True)
     ref_g = utils.to_reference(g, True)
-    ref_w_out = torch._weight_norm(ref_v, ref_g, dim)
-    res_w_out = flag_gems.weight_norm(v, g, dim)
+    ref_w_out = torch.ops.aten._weight_norm(ref_v, ref_g, dim)
+    with flag_gems.use_gems():
+        res_w_out = torch.ops.aten._weight_norm(v, g, dim)
     utils.gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=reduce_size)
 
     res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)

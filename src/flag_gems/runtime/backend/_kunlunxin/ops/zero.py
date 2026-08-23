@@ -17,54 +17,69 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-# Kunlunxin XPU has 12 compute clusters; distribute work evenly across them.
-CLUSTER_NUM = 12
+# zero / zero_ / zero.out are a pure write-only constant memset (fill with 0).
+# The previous kunlunxin kernel launched grid=(CLUSTER_NUM=12,) with
+# BLOCK_SIZE = next_pow2(cdiv(n, 12)), which grows UNBOUNDEDLY with n
+# (4096^2 -> 2M-elem tile, 268M -> 33M-elem tile). Giant tiles trigger
+# compile/execution catastrophes (baseline 250-380ms, speedup 0.000 on many
+# shapes; bf16 10000x65536 measured 333ms). Fix: route through the same tuned
+# pointwise_dynamic memset path as fill.py (bounded 65536 tile, grid scales
+# with n). NOTE: unlike the read+write view_copy, this write-only constant
+# memset must NOT use vec-OPEN+unroll8 -- that config is catastrophic here
+# (fp16 268M -> 222ms, fp32 4096^2 -> 30ms measured). The plain fill config
+# (default vec, isCloseDtypeConvert) tracks torch across all shapes.
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    isCloseDtypeConvert=True,
+)
 
 
-@libentry()
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, "DEFAULT")],
+    num_outputs=1,
+    config=config_,
+)
 @triton.jit
-def zero_kernel(
-    out_ptr,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """Write-only kernel: no dummy load, stores 0 directly with dtype handled by Triton."""
-    pid = ext.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    tl.store(out_ptr + offsets, 0.0, mask=mask)
+def _zero_fill(inp, value_scalar):
+    return tl.full(inp.shape, value_scalar, dtype=inp.dtype)
 
 
 def _launch_zero_kernel(tensor: torch.Tensor) -> torch.Tensor:
-    n_elements = tensor.numel()
-    if n_elements == 0:
+    if tensor.numel() == 0:
         return tensor
-    # BLOCK_SIZE: distribute n_elements evenly across CLUSTER_NUM clusters,
-    # rounded up to the next power of 2 for aligned vectorised stores.
-    block_size = triton.next_power_of_2(triton.cdiv(n_elements, CLUSTER_NUM))
-    grid = (CLUSTER_NUM, 1, 1)
     with torch_device_fn.device(tensor.device):
-        zero_kernel[grid](
-            tensor,
-            n_elements,
-            BLOCK_SIZE=block_size,
-            buffer_size_limit=2048,
-            isCloseDtypeConvert=True,
-        )
+        _zero_fill(tensor, 0, out0=tensor)
     return tensor
 
 
 def zero(self: torch.Tensor) -> torch.Tensor:
     """aten::zero(Tensor self) -> Tensor  — in-place zero-fill, returns self."""
     logger.debug("GEMS_KUNLUNXIN ZERO")
+    return _launch_zero_kernel(self)
+
+
+def zero_(self: torch.Tensor) -> torch.Tensor:
+    """aten::zero_(Tensor(a!) self) -> Tensor(a!)  — in-place zero-fill.
+
+    Without this kunlunxin override, aten::zero_ falls back to the generic
+    ops/zeros.py:zero_ (bare BLOCK_SIZE=1024 @triton.jit, no libentry/config),
+    which on XPU launches a huge serial grid (655M elems -> 640k blocks) with
+    no vectorization -> the 250-380ms catastrophes seen in ir-zero_-dev6.log.
+    """
+    logger.debug("GEMS_KUNLUNXIN ZERO_")
     return _launch_zero_kernel(self)
 
 
