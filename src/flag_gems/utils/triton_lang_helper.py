@@ -342,6 +342,149 @@ def _fallback_j0(x):
     return ans
 
 
+@triton.jit
+def _fallback_y0(x):
+    # Bessel Y0(x) for float32/float64.  Adapted from fdlibm e_y0.c
+    # (public-domain SunPro code, same source as glibc / CUDA libdevice).
+    # x must be > 0 for real results; Y0(0) = -inf, Y0(x<0) = NaN.
+    TWO_OVER_PI = 6.36619772367581382433e-01
+    is_nan = x != x
+    is_inf = x == float("inf")
+    is_neg = x < 0.0
+    is_zero = x == 0.0
+    x_safe = tl.where(is_nan | is_inf | is_neg | is_zero, 1.0, x)
+
+    # ----- small region: 0 < x <= 8 -----
+    # Y0(x) = U(x^2)/V(x^2) + (2/pi)*J0(x)*ln(x)
+    # fdlibm U[0..3], V[0..4] rational coefficients
+    z = x_safe * x_safe
+    u = (
+        -7.38042951086872159024e-02
+        + (
+            1.76666452509181115538e-01
+            + (-1.38185671945596898451e-02 + 3.47453432093683650238e-04 * z) * z
+        )
+        * z
+    )
+    v = (
+        1.0
+        + (
+            1.27304834834123699328e-02
+            + (
+                7.60068627350353253702e-05
+                + (2.59150851840457805467e-07 + 4.41110311332675467403e-10 * z) * z
+            )
+            * z
+        )
+        * z
+    )
+    j0_val = _fallback_j0(x_safe)
+    ans_small = u / v + TWO_OVER_PI * j0_val * tl.log(x_safe)
+
+    # ----- large region: x > 8, asymptotic pzero/qzero (same as J0) -----
+    ax_large = tl.where(x_safe > 8.0, x_safe, 8.0)
+    s = tl.sin(ax_large)
+    c = tl.cos(ax_large)
+    ss = s - c
+    cc = s + c
+    sc = s * c
+    z2 = -tl.cos(2.0 * ax_large)
+    cc_new = z2 / ss
+    ss_new = z2 / cc
+    is_sc_neg = sc < 0.0
+    cc = tl.where(is_sc_neg, cc_new, cc)
+    ss = tl.where(is_sc_neg, ss, ss_new)
+
+    zinv2 = 1.0 / (ax_large * ax_large)
+    pR = (
+        -7.03124999999900357484e-02
+        + (
+            -8.08167041275349795626e00
+            + (
+                -2.57063105679704847262e02
+                + (-2.48521641009428822144e03 + (-5.25304380490729545272e03) * zinv2)
+                * zinv2
+            )
+            * zinv2
+        )
+        * zinv2
+    ) * zinv2
+    pS = (
+        1.0
+        + (
+            1.16534364619668181717e02
+            + (
+                3.83374475364121826715e03
+                + (
+                    4.05978572648472545552e04
+                    + (1.16752972564375915681e05 + 4.76277284146730962675e04 * zinv2)
+                    * zinv2
+                )
+                * zinv2
+            )
+            * zinv2
+        )
+        * zinv2
+    )
+    u_large = 1.0 + pR / pS
+    qR = (
+        7.32421874999935051953e-02
+        + (
+            1.17682064682252693899e01
+            + (
+                5.57673380256401856059e02
+                + (8.85919720756468632317e03 + 3.70146267776887834771e04 * zinv2)
+                * zinv2
+            )
+            * zinv2
+        )
+        * zinv2
+    ) * zinv2
+    qS = (
+        1.0
+        + (
+            1.63776026895689824414e02
+            + (
+                8.09834494656449805916e03
+                + (
+                    1.42538291419120476348e05
+                    + (
+                        8.03309257119514397345e05
+                        + (
+                            8.40501579819060512818e05
+                            - 3.43899293537866615225e05 * zinv2
+                        )
+                        * zinv2
+                    )
+                    * zinv2
+                )
+                * zinv2
+            )
+            * zinv2
+        )
+        * zinv2
+    )
+    v_large = (qR / qS - 0.125) / ax_large
+    ans_large = (
+        5.64189583547756279280e-01 * (u_large * ss + v_large * cc) / tl.sqrt(ax_large)
+    )
+
+    # ----- combine + edge cases -----
+    ans = tl.where(x_safe > 8.0, ans_large, ans_small)
+    ans = tl.where(is_inf, 0.0, ans)
+    ans = tl.where(is_zero, float("-inf"), ans)
+    ans = tl.where(is_neg, float("nan"), ans)
+    ans = tl.where(is_nan, float("nan"), ans)
+    return ans
+
+
+@triton.jit
+def _fallback_erfc(x):
+    # erfc(x) == 1 - erf(x); used when a backend's libdevice lacks a native
+    # erfc (e.g. the Ascend CANN backend, which does provide erf).
+    return 1.0 - tl.math.erf(x)
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "tanh": _fallback_tanh,
@@ -352,6 +495,8 @@ _FALLBACK_SYMBOLS = {
     "log2": _fallback_log2,
     "nextafter": _fallback_nextafter,
     "sinpi": _fallback_sinpi,
+    "y0": _fallback_y0,
+    "erfc": _fallback_erfc,
 }
 
 
@@ -388,6 +533,7 @@ tl_extra_shim = _patch_missing_symbols(
         "div_rn",
         "div_rz",
         "erf",
+        "erfc",
         "erfcx",
         "erfinv",
         "exp",
@@ -416,6 +562,7 @@ tl_extra_shim = _patch_missing_symbols(
         "tanh",
         "trunc",
         "xpu_trunc_div",
+        "y0",
     ),
 )
 
