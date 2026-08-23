@@ -2701,7 +2701,7 @@ def mm_fp8fp8_prequant(
 ) -> torch.Tensor:
     """Pre-quantize A/B once to fp8, then run fp8xfp8 matmul."""
     a_q, b_q = _prequantize_fp8_once(a, b, fp8_dtype=fp8_dtype)
-    return mm_w8a8(a_q, b_q)
+    return mm_w8a8_fp8(a_q, b_q)
 
 
 def mm_out_fp8fp8_prequant(
@@ -2713,7 +2713,7 @@ def mm_out_fp8fp8_prequant(
 ) -> torch.Tensor:
     """Pre-quantize A/B once to fp8, then run fp8xfp8 matmul_out."""
     a_q, b_q = _prequantize_fp8_once(a, b, fp8_dtype=fp8_dtype)
-    return mm_w8a8_out(a_q, b_q, out=out)
+    return mm_w8a8_fp8_out(a_q, b_q, out=out)
 
 
 def _quantize_mm_inputs(
@@ -3127,7 +3127,7 @@ def _dispatch_mm(
     return run()
 
 
-def mm_w8a8(a, b, *, out_dtype: Optional[torch.dtype] = None):
+def mm_w8a8_fp8(a, b, *, out_dtype: Optional[torch.dtype] = None):
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -3154,7 +3154,7 @@ def mm_w8a8(a, b, *, out_dtype: Optional[torch.dtype] = None):
     return _dispatch_mm(a, b, c, M, N, K)
 
 
-def mm_w8a8_out(a, b, *, out):
+def mm_w8a8_fp8_out(a, b, *, out):
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
@@ -3174,3 +3174,8 @@ def mm_w8a8_out(a, b, *, out):
     a, b = _quantize_mm_inputs(a, b)
 
     return _dispatch_mm(a, b, out, M, N, K)
+
+
+# Preserve the pre-registration API used by the existing benchmark and backend loader.
+mm_w8a8 = mm_w8a8_fp8
+mm_w8a8_out = mm_w8a8_fp8_out

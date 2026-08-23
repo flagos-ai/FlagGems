@@ -316,6 +316,7 @@ from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mm import mm, mm_out, router_gemm
+from flag_gems.ops.mm_w8a8 import mm_w8a8_fp8
 from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
@@ -939,6 +940,7 @@ __all__ = [
     "mish_",
     "mm",
     "mm_out",
+    "mm_w8a8_fp8",
     "mode",
     "mse_loss",
     "mse_loss_backward",

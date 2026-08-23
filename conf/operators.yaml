@@ -5175,6 +5175,19 @@ ops:
     stages:
       - stable: '3.0'
     cpp: '4.0'
+  - id: mm_w8a8_fp8
+    description: |
+      Performs matrix multiplication by dynamically quantizing BF16 activations
+      and weights to FP8 E4M3, then applying FP32 scales to FP8 dot products.
+    for:
+      - None
+    labels:
+      - NoCPU
+      - Quantization
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: mode
     description: Returns a namedtuple (values, indices) where values is the mode value of each row of the input tensor in the given dimension dim, i.e. a value which appears most often in that row, and indices is the index location of each mode value found.
     for:
