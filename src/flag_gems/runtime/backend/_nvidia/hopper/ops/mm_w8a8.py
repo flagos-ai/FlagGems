@@ -60,7 +60,7 @@ _FP8_CACHE_B_BY_SHAPE = os.environ.get("FLAGGEMS_FP8_CACHE_B_BY_SHAPE", "0") != 
 
 # When True, hot-path mm() only reuses A fp8 from _FP8_A_PREFETCH_CACHE (via
 # prequantize_and_register_a_fp8). Callers should register A once before the
-# inference / benchmark timed loop so repeated mm_w8a8() avoids a.to(fp8) launches.
+# inference / benchmark timed loop so repeated mm_w8a8_fp8() avoids a.to(fp8) launches.
 _MM_PREQUANTIZE_A = os.environ.get("FLAGGEMS_MM_PREQUANTIZE_FP8", "0") != "0"
 _MM_FP8_OUTPUT_DTYPE = os.environ.get("FLAGGEMS_MM_W8A8_OUTPUT_DTYPE", "bf16").lower()
 _MM_BF16_TRITON_FALLBACK = (
@@ -1640,7 +1640,7 @@ def streamk_scenario(a, b, M, N, K):
     strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=10,
-    flagtune_op_name="mm_w8a8",
+    flagtune_op_name="mm_w8a8_fp8",
     flagtune_expand_op_name="mm_w8a8_splitk",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     flagtune_pre_hook=None,
@@ -1772,7 +1772,7 @@ def _get_block_scaled_fixed_meta(M: int, N: int, K: int, group_n: int, group_k: 
     strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=5,
-    flagtune_op_name="mm_w8a8",
+    flagtune_op_name="mm_w8a8_fp8",
     flagtune_expand_op_name="mm_w8a8_block_scaled",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     flagtune_pre_hook=None,
@@ -1861,7 +1861,7 @@ def mm_w8a8_block_scaled_kernel_general(
     strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,
     rep=5,
-    flagtune_op_name="mm_w8a8",
+    flagtune_op_name="mm_w8a8_fp8",
     flagtune_expand_op_name="mm_w8a8_block_scaled_splitk",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     flagtune_pre_hook=None,
@@ -2066,7 +2066,7 @@ def block_scaled_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
         N,
         K,
     )
-    use_flagtune = runtime.flagtune_enabled("mm_w8a8")
+    use_flagtune = runtime.flagtune_enabled("mm_w8a8_fp8")
 
     if hasattr(
         triton.tools.tensor_descriptor, "TensorDescriptor"
@@ -2078,7 +2078,7 @@ def block_scaled_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k):
                 )
             return _block_scaled_tma_mm(a, b, c, a_s, b_s, M, N, K, group_n, group_k)
 
-    raise RuntimeError("Hopper mm_w8a8 FP8 path requires TMA tensor descriptors")
+    raise RuntimeError("Hopper mm_w8a8_fp8 path requires TMA tensor descriptors")
 
     if M < 2048 and N < 2048 and K >= 4096 and c.dtype not in _FP8_DTYPES:
         if use_flagtune:
@@ -2612,7 +2612,7 @@ def _get_or_cache_a_fp8(a: torch.Tensor, target_dtype: torch.dtype) -> torch.Ten
 
     When FLAGGEMS_MM_PREQUANTIZE_FP8=1, callers should invoke
     `prequantize_and_register_a_fp8(a)` (or `prequantize_mm_inputs_for_inference`)
-    before the timed loop so repeated mm_w8a8() hits the prefetch cache and skips
+    before the timed loop so repeated mm_w8a8_fp8() hits the prefetch cache and skips
     the `_to_copy` kernel.
     """
     if a.dtype == target_dtype:
@@ -3174,8 +3174,3 @@ def mm_w8a8_fp8_out(a, b, *, out):
     a, b = _quantize_mm_inputs(a, b)
 
     return _dispatch_mm(a, b, out, M, N, K)
-
-
-# Preserve the pre-registration API used by the existing benchmark and backend loader.
-mm_w8a8 = mm_w8a8_fp8
-mm_w8a8_out = mm_w8a8_fp8_out

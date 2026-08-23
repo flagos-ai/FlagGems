@@ -46,8 +46,6 @@ UV_MIRROR="https://resource.flagos.net/repository/flagos-filestore/utils"
 
 printf "Checking uv ..."
 export PATH="${HOME}/.local/bin:$PATH"
-# Persist uv for later GitHub Actions steps even when it was already installed.
-[ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 if command -v uv &>/dev/null; then
   printf " $(uv --version)"
   ok
@@ -58,6 +56,8 @@ else
   curl -sSf "${UV_MIRROR}/uv-${ARCH}-${UV_VERSION}-linux-gnu.tar.gz" \
     | tar xz -C "$HOME/.local/bin" 2>/dev/null \
     || { curl -LsSf https://astral.sh/uv/install.sh | sh; }
+  # Persist PATH for subsequent GitHub Actions steps
+  [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
   command -v uv &>/dev/null || { printf "uv installation"; fail; }
   printf "Installed $(uv --version)"
   ok

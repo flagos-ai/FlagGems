@@ -497,7 +497,11 @@ _FULL_CONFIG = (
     ("mish_", mish_),
     ("mm", mm),
     ("mm.out", mm_out),
-    ("mm_w8a8_fp8", mm_w8a8_fp8),
+    *(
+        (("mm_w8a8_fp8", globals()["mm_w8a8_fp8"]),)
+        if "mm_w8a8_fp8" in globals()
+        else ()
+    ),
     ("mode", mode),
     ("mse_loss", mse_loss),
     ("mse_loss_backward", mse_loss_backward),

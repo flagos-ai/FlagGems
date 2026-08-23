@@ -123,7 +123,7 @@ class BlasBenchmark(Benchmark):
         total_flops = 0
         # shape(m,k)(k,n)
         # total_flops mxnx2k
-        if self.op_name in ("mm", "mm_w8a8"):
+        if self.op_name in ("mm", "mm_w8a8_fp8"):
             total_flops = args[0].shape[0] * args[0].shape[1] * args[1].shape[1] * 2
         # shape(m,n)(n,p)
         # total_flops mxpx(2n+1)
@@ -727,7 +727,7 @@ class ParallelBenchmarkMixin:
 
             if self.op_name in {
                 "mm",
-                "mm_w8a8",
+                "mm_w8a8_fp8",
                 "addmm",
                 "bmm",
                 "baddbmm",
@@ -748,7 +748,7 @@ class ParallelBenchmarkMixin:
 
                 if self.op_name in {
                     "mm",
-                    "mm_w8a8",
+                    "mm_w8a8_fp8",
                     "bmm",
                     "w8a8_block_fp8_matmul",
                     "router_gemm",
@@ -997,13 +997,13 @@ class ParallelBlasBenchmark(ParallelBenchmarkMixin, BlasBenchmark):
         return 1
 
 
-_MM_W8A8_OUT_CACHE = {}
-_MM_W8A8_OUT_CACHE_MAX_ENTRIES = int(
+_MM_W8A8_FP8_OUT_CACHE = {}
+_MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES = int(
     os.environ.get("FLAGGEMS_BENCH_MM_W8A8_OUT_CACHE_MAX", "8")
 )
 
 
-def _mm_w8a8_output_dtype(a):
+def _mm_w8a8_fp8_output_dtype(a):
     output_dtype = os.environ.get("FLAGGEMS_MM_W8A8_OUTPUT_DTYPE", "bf16").lower()
     if output_dtype in ("bf16", "bfloat16"):
         return torch.bfloat16
@@ -1017,23 +1017,23 @@ def _mm_w8a8_output_dtype(a):
     return torch.bfloat16
 
 
-def _mm_w8a8_out_cached(a, b):
-    out_dtype = _mm_w8a8_output_dtype(a)
+def _mm_w8a8_fp8_out_cached(a, b):
+    out_dtype = _mm_w8a8_fp8_output_dtype(a)
     device_index = a.device.index if a.device.index is not None else -1
     key = (device_index, a.shape[0], b.shape[1], out_dtype)
-    out = _MM_W8A8_OUT_CACHE.get(key)
+    out = _MM_W8A8_FP8_OUT_CACHE.get(key)
     if out is None or out.device != a.device:
         out = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=out_dtype)
-        _MM_W8A8_OUT_CACHE[key] = out
-        while len(_MM_W8A8_OUT_CACHE) > _MM_W8A8_OUT_CACHE_MAX_ENTRIES:
-            _MM_W8A8_OUT_CACHE.pop(next(iter(_MM_W8A8_OUT_CACHE)))
+        _MM_W8A8_FP8_OUT_CACHE[key] = out
+        while len(_MM_W8A8_FP8_OUT_CACHE) > _MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES:
+            _MM_W8A8_FP8_OUT_CACHE.pop(next(iter(_MM_W8A8_FP8_OUT_CACHE)))
     else:
-        _MM_W8A8_OUT_CACHE.pop(key)
-        _MM_W8A8_OUT_CACHE[key] = out
-    return flag_gems.mm_w8a8_out(a, b, out=out)
+        _MM_W8A8_FP8_OUT_CACHE.pop(key)
+        _MM_W8A8_FP8_OUT_CACHE[key] = out
+    return flag_gems.mm_w8a8_fp8_out(a, b, out=out)
 
 
-class ParallelMmW8A8Benchmark(ParallelBlasBenchmark):
+class ParallelMmW8A8Fp8Benchmark(ParallelBlasBenchmark):
     SHAPE_CONFIG_KEYS = ("mm",)
 
     def get_latency(self, op, *args, **kwargs):
@@ -1476,11 +1476,11 @@ class ParallelSparseAttentionBenchmark(ParallelBenchmarkMixin, Benchmark):
             marks=pytest.mark.mm,
         ),
         pytest.param(
-            "mm_w8a8",
+            "mm_w8a8_fp8",
             torch.Tensor.mm,
             mm_input_fn,
-            ParallelMmW8A8Benchmark,
-            marks=pytest.mark.mm_w8a8,
+            ParallelMmW8A8Fp8Benchmark,
+            marks=pytest.mark.mm_w8a8_fp8,
         ),
         pytest.param(
             "baddbmm",
@@ -1498,10 +1498,10 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
         torch_op=torch_op,
         dtypes=FLOAT_DTYPES,
     )
-    if op_name == "mm_w8a8":
-        if not hasattr(flag_gems, "mm_w8a8_out"):
-            pytest.skip("mm_w8a8 benchmark requires the Hopper W8A8 backend")
-        bench.set_gems(_mm_w8a8_out_cached)
+    if op_name == "mm_w8a8_fp8":
+        if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
+            pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
+        bench.set_gems(_mm_w8a8_fp8_out_cached)
     bench.run()
 
 

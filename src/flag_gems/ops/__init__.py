@@ -539,7 +539,6 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
-from flag_gems.runtime.backend._nvidia.hopper.ops.mm_w8a8 import mm_w8a8_fp8
 
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
@@ -940,7 +939,6 @@ __all__ = [
     "mish_",
     "mm",
     "mm_out",
-    "mm_w8a8_fp8",
     "mode",
     "mse_loss",
     "mse_loss_backward",

@@ -92,7 +92,21 @@ def test_mm(M, N, K, dtype, b_column_major):
 
 
 @pytest.mark.mm_w8a8_fp8
-@pytest.mark.parametrize("M, N, K", [(64, 128, 128), (128, 256, 256)])
+@pytest.mark.parametrize(
+    "M, N, K",
+    [
+        (1, 16, 16),
+        (2, 32, 32),
+        (8, 64, 64),
+        (16, 128, 64),
+        (32, 128, 128),
+        (64, 256, 128),
+        (128, 256, 256),
+        (192, 512, 512),
+        (256, 768, 1024),
+        (512, 1024, 1024),
+    ],
+)
 @pytest.mark.skipif(
     not _cuda_hopper_w8a8_fp8_available(),
     reason="mm_w8a8_fp8 requires CUDA Hopper FP8 and TMA support",
@@ -106,8 +120,11 @@ def test_mm_w8a8_fp8(M, N, K):
     ref_out = utils.to_reference(_mm_w8a8_fp8_reference(mat1, mat2), True)
 
     res_out = flag_gems.mm_w8a8_fp8(mat1, mat2, out_dtype=dtype)
+    out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
+    res_out_reused = flag_gems.mm_w8a8_fp8_out(mat1, mat2, out=out)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    utils.gems_assert_close(res_out_reused, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.mm
