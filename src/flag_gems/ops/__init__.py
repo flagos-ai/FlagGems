@@ -316,7 +316,6 @@ from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mm import mm, mm_out, router_gemm
-from flag_gems.ops.mm_w8a8 import mm_w8a8_fp8
 from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
@@ -540,6 +539,7 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
+from flag_gems.runtime.backend._nvidia.hopper.ops.mm_w8a8 import mm_w8a8_fp8
 
 __all__ = [
     "SUPPORTED_FP8_DTYPE",
