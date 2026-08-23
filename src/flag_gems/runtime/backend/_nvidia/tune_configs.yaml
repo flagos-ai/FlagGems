@@ -12,6 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+_conj_copy:
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+    num_warps: 8
+
 _adaptive_avg_pool3d_backward:
   - META:
       BLOCK_SIZE: 512
@@ -1248,6 +1268,17 @@ upsample_bicubic2d_aa:
     warps: [4, 8]
 
 upsample_bilinear2d_aa:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_X: block_x
+        BLOCK_Y: block_y
+      num_warps: warps
+    block_x: [512, 256, 128, 64]
+    block_y: [2, 1]
+    warps: [4, 8]
+
+upsample_bilinear2d:
   - gen: true
     param_map:
       META:
@@ -2508,6 +2539,29 @@ _adaptive_avg_pool2d_backward:
     num_warps: 2
     num_stages: 5
   - META: {BLOCK_H: 16, BLOCK_W: 8}
+    num_warps: 2
+    num_stages: 5
+
+adaptive_max_pool2d:
+  - META: {BLOCK_H: 16, BLOCK_W: 16}
+    num_warps: 4
+    num_stages: 4
+  - META: {BLOCK_H: 32, BLOCK_W: 16}
+    num_warps: 4
+    num_stages: 3
+  - META: {BLOCK_H: 16, BLOCK_W: 32}
+    num_warps: 4
+    num_stages: 3
+  - META: {BLOCK_H: 32, BLOCK_W: 32}
+    num_warps: 8
+    num_stages: 2
+  - META: {BLOCK_H: 8, BLOCK_W: 8}
+    num_warps: 2
+    num_stages: 5
+  - META: {BLOCK_H: 16, BLOCK_W: 8}
+    num_warps: 2
+    num_stages: 5
+  - META: {BLOCK_H: 8, BLOCK_W: 16}
     num_warps: 2
     num_stages: 5
 

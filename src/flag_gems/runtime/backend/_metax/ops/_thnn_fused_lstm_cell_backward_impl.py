@@ -79,7 +79,7 @@ def _cast_kernel(src_ptr, dst_ptr, N, BLOCK: tl.constexpr):
     tl.store(dst_ptr + off, v.to(dst_ptr.dtype.element_ty), mask=m)
 
 
-def run(grad_hy, grad_cy, cx, cy, workspace, has_bias):
+def _thnn_fused_lstm_cell_backward_impl(grad_hy, grad_cy, cx, cy, workspace, has_bias):
     B, H = cx.shape
     H4 = 4 * H
     dtype = cx.dtype
