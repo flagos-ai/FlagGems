@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from flag_gems.ops.topk_w8a16 import topk_fp8_w8a16
+from flag_gems.ops.topk_w8a16 import topk_w8a16_fp8
 
 from . import base, consts
 
@@ -100,8 +100,8 @@ def _torch_topk_bf16_baseline(x, x_fp8, x_scale, k, dim=-1):
     return torch.topk(x, k, dim=dim)
 
 
-def _gems_topk_fp8_w8a16(x, x_fp8, x_scale, k, dim=-1):
-    return topk_fp8_w8a16(x_fp8, x_scale, k, dim=dim, group_size=x_fp8.shape[-1])
+def _gems_topk_w8a16_fp8(x, x_fp8, x_scale, k, dim=-1):
+    return topk_w8a16_fp8(x_fp8, x_scale, k, dim=dim, group_size=x_fp8.shape[-1])
 
 
 class TopKFp8W8A16Benchmark(base.Benchmark):
@@ -124,16 +124,16 @@ class TopKFp8W8A16Benchmark(base.Benchmark):
             yield x, x_fp8, x_scale, k, -1
 
 
-@pytest.mark.topk
+@pytest.mark.topk_w8a16_fp8
 @pytest.mark.skipif(
     not _is_fp8_topk_supported(),
     reason="FP8 TopK requires CUDA FP8 support on compute capability >= 9.0",
 )
-def test_topk_fp8_w8a16():
+def test_topk_w8a16_fp8():
     bench = TopKFp8W8A16Benchmark(
-        op_name="topk",
+        op_name="topk_w8a16_fp8",
         torch_op=_torch_topk_bf16_baseline,
         dtypes=[torch.bfloat16],
     )
-    bench.set_gems(_gems_topk_fp8_w8a16)
+    bench.set_gems(_gems_topk_w8a16_fp8)
     bench.run()

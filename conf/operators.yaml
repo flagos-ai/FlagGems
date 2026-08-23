@@ -7975,6 +7975,19 @@ ops:
       - MoE
     stages:
       - beta: '5.3'
+  - id: topk_w8a16_fp8
+    description: |
+      Selects the k largest or smallest values from FP8 E4M3 inputs using
+      per-group scales and returns dequantized BF16 values with their indices.
+    for:
+      - None
+    labels:
+      - NoCPU
+      - Quantization
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: trace
     description: Returns the sum of the elements of the diagonal of the input 2-D matrix.
     for:

@@ -6,7 +6,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.topk_w8a16 import topk_fp8_w8a16
+from flag_gems.ops.topk_w8a16 import topk_w8a16_fp8
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -126,14 +126,14 @@ def _quantize_fp8_row(x):
     return q.contiguous(), scale.to(x.dtype).contiguous()
 
 
-@pytest.mark.topk
+@pytest.mark.topk_w8a16_fp8
 @pytest.mark.skipif(
     not _is_fp8_topk_supported(),
     reason="FP8 TopK requires CUDA FP8 support on compute capability >= 9.0",
 )
 @pytest.mark.parametrize("shape, topk", [((4, 128), 5), ((8, 256), 16), ((2, 1024), 8)])
 @pytest.mark.parametrize("largest", [True, False])
-def test_topk_fp8_w8a16(shape, topk, largest):
+def test_topk_w8a16_fp8(shape, topk, largest):
     x = torch.randn(shape, dtype=torch.bfloat16, device=flag_gems.device)
     x_fp8, x_scale = _quantize_fp8_grouped_lastdim(x)
     x_dequant = _dequant_fp8_grouped_lastdim(x_fp8, x_scale)
@@ -141,7 +141,7 @@ def test_topk_fp8_w8a16(shape, topk, largest):
     ref_value, ref_index = torch.topk(
         x_dequant, topk, dim=-1, largest=largest, sorted=True
     )
-    res_value, res_index = topk_fp8_w8a16(
+    res_value, res_index = topk_w8a16_fp8(
         x_fp8, x_scale, topk, dim=-1, largest=largest, sorted=True
     )
 
@@ -150,13 +150,13 @@ def test_topk_fp8_w8a16(shape, topk, largest):
     torch.testing.assert_close(gathered, res_value.float(), rtol=0, atol=2e-2)
 
 
-@pytest.mark.topk
+@pytest.mark.topk_w8a16_fp8
 @pytest.mark.skipif(
     not _is_fp8_topk_supported(),
     reason="FP8 TopK requires CUDA FP8 support on compute capability >= 9.0",
 )
 @pytest.mark.parametrize("shape, topk", [((4, 128), 5), ((8, 256), 16), ((2, 4096), 8)])
-def test_topk_fp8_w8a16_row_scale(shape, topk):
+def test_topk_w8a16_fp8_row_scale(shape, topk):
     x = torch.randn(shape, dtype=torch.bfloat16, device=flag_gems.device)
     x_fp8, x_scale = _quantize_fp8_row(x)
     x_dequant = x_fp8.float() * x_scale.float()
@@ -164,7 +164,7 @@ def test_topk_fp8_w8a16_row_scale(shape, topk):
     ref_value, ref_index = torch.topk(
         x_dequant, topk, dim=-1, largest=True, sorted=True
     )
-    res_value, res_index = topk_fp8_w8a16(
+    res_value, res_index = topk_w8a16_fp8(
         x_fp8,
         x_scale,
         topk,
