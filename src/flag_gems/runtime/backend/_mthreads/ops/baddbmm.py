@@ -20,12 +20,13 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.add import add, add_func
 from flag_gems.ops.mul import mul
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
-from .bmm import bmm
+from .bmm import bmm, bmm_sqmma, is_sqmma_compatible
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +162,7 @@ def _baddbmm_launch(bias, A, B, beta, alpha, out):
     _, _, N = B.shape
     A = A.contiguous()
     B = B.contiguous()
-    bbias = torch.broadcast_to(bias, (batch, M, N)).contiguous()
+    bbias = torch.broadcast_to(bias, (batch, M, N))
     bias_batch_stride = bbias.stride(0)
     bias_M_stride = bbias.stride(1)
     bias_N_stride = bbias.stride(-1)
@@ -188,6 +189,26 @@ def _baddbmm_launch(bias, A, B, beta, alpha, out):
         )
 
 
+def _baddbmm_sqmma(bias, A, B, beta, alpha):
+    batch, M, K = A.shape
+    A, B = A.contiguous(), B.contiguous()
+    product = bmm_sqmma(A, B, A.dtype, batch, M, B.shape[2], K)
+    return add(
+        mul(product, alpha), mul(torch.broadcast_to(bias, (batch, M, B.shape[2])), beta)
+    )
+
+
+# sqmma has a fixed launch/memory floor; measured crossover on MTT S5000 is ~3.2 GFLOPs.
+_SQMMA_MIN_FLOPS = 3.2e9
+
+
+def _use_sqmma(A, B, N, K):
+    return (
+        is_sqmma_compatible(A, B, N, K)
+        and A.shape[0] * A.shape[1] * N * K * 2 >= _SQMMA_MIN_FLOPS
+    )
+
+
 class BaddbmmFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, bias, A, B, beta, alpha):
@@ -199,6 +220,8 @@ class BaddbmmFunction(torch.autograd.Function):
 
         batch, M, K = A.shape
         _, _, N = B.shape
+        if _use_sqmma(A, B, N, K):
+            return _baddbmm_sqmma(bias, A, B, beta, alpha)
         out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
         _baddbmm_launch(bias, A, B, beta, alpha, out)
         return out
@@ -268,6 +291,12 @@ def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
     assert (
         out.shape == (batch, M, N) and out.dtype == A.dtype
     ), "Incompatible output shape or dtype for baddbmm.out"
+    if _use_sqmma(A, B, N, K):
+        A, B = A.contiguous(), B.contiguous()
+        product = bmm_sqmma(A, B, A.dtype, batch, M, N, K)
+        scaled = mul(product, alpha)
+        add_func(scaled, torch.broadcast_to(bias, (batch, M, N)), beta, out0=out)
+        return out
     _baddbmm_launch(
         bias.contiguous(),
         A.contiguous(),
