@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -53,6 +67,7 @@ from .bitwise_xor import (
     bitwise_xor_tensor_,
 )
 from .bmm import bmm, bmm_out
+from .broadcast_to import broadcast_to
 from .cat import cat, cat_out
 from .ceil import ceil, ceil_
 from .celu import celu, celu_
@@ -90,6 +105,10 @@ from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .floor_ import floor_
 from .fmin import fmin, fmin_out
+from .fractional_max_pool2d import (  # noqa: F401
+    fractional_max_pool2d,
+    fractional_max_pool2d_backward,
+)
 from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
@@ -108,6 +127,7 @@ from .hypot import hypot, hypot_out
 from .i0 import i0, i0_, i0_out
 from .index import index
 from .index_add import index_add, index_add_
+from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
@@ -143,6 +163,7 @@ from .mm import mm
 from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
+from .multiply_ import multiply_
 from .nan_to_num import nan_to_num
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
@@ -166,6 +187,7 @@ from .pow import (
 )
 from .prelu import prelu
 from .quantile import quantile
+from .randint import randint
 from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
@@ -298,6 +320,7 @@ __all__ = [
     "lt",
     "mul",
     "mul_",
+    "multiply_",
     "ne_scalar",
     "ne",
     "pow_tensor_tensor",
@@ -557,4 +580,9 @@ __all__ = [
     "linear",
     "cat_out",
     "prelu",
+    "broadcast_to",
+    "randint",
+    "_index_put_impl_",
+    "index_put",
+    "index_put_",
 ]

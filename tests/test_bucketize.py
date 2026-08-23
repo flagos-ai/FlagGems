@@ -1,9 +1,29 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
+
+# Moore Threads (MUSA) has no native torch.bucketize with integer boundaries;
+# the reference call itself raises "Bucketize func unsupported!". Gate that one
+# parametrization for mthreads only (hardware limitation, not a kernel bug) so
+# other backends still exercise the int64-boundary path.
+_MTHREADS = flag_gems.vendor_name == "mthreads"
 
 
 def _reference_bucketize(inp, boundaries, **kwargs):
@@ -62,7 +82,15 @@ def test_bucketize_int32(shape, dtype):
 @pytest.mark.parametrize(
     ("boundary_values", "boundary_dtype"),
     [
-        pytest.param([1, 3, 5, 7, 9], torch.int64, id="integer"),
+        pytest.param(
+            [1, 3, 5, 7, 9],
+            torch.int64,
+            id="integer",
+            marks=pytest.mark.skipif(
+                _MTHREADS,
+                reason="MUSA native torch.bucketize does not support integer boundaries",
+            ),
+        ),
         pytest.param([], torch.float32, id="empty"),
         pytest.param([5.0], torch.float32, id="single"),
         pytest.param([1.0, 3.0], torch.float32, id="two"),

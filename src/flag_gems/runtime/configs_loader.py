@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import copy
 import inspect
 import os
@@ -186,12 +200,18 @@ class TunedConfigLoader(object):
             ]
 
         if op_name in ("mm", "mm_w8a8_skinny"):
+            has_pipeline = "PIPELINE" in ranges
+            has_scenario = "SCENARIO" in ranges
+            pipelines = ranges.get("PIPELINE", [None])
+            scenarios = ranges.get("SCENARIO", [None])
             return [
                 triton.Config(
                     {
                         "BLOCK_M": block_m,
                         "BLOCK_N": block_n,
                         "BLOCK_K": block_k,
+                        **({"pipeline": pipeline} if has_pipeline else {}),
+                        **({"scenario": scenario} if has_scenario else {}),
                     },
                     num_stages=s,
                     num_warps=w,
@@ -200,6 +220,37 @@ class TunedConfigLoader(object):
                 for block_m in ranges["BLOCK_M"]
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
+                for pipeline in pipelines
+                for scenario in scenarios
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name in ("mm_nn", "mm_nt"):
+            # "scenario" is optional so older expand yamls stay loadable, but
+            # once present it must be set on every generated config: the tuner's
+            # SQL config cache builds its schema from the first config it stores
+            # and marks the columns NOT NULL, so a key that appears on only some
+            # configs makes lookups for the others raise KeyError.
+            scenarios = ranges.get("SCENARIO", [""])
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "pipeline": pipeline,
+                        "scenario": scenario,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for pipeline in ranges["PIPELINE"]
+                for scenario in scenarios
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -223,7 +274,7 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name in ("gemv", "mm_w8a8_gemv"):
+        if op_name in ("gemv", "gemv_k_parallel", "mm_w8a8_gemv"):
             return [
                 triton.Config(
                     {"BLOCK_M": block_m, "BLOCK_K": block_k},
@@ -233,6 +284,27 @@ class TunedConfigLoader(object):
                 )
                 for block_m in ranges["BLOCK_M"]
                 for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name == "mm_splitk_two_step":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "pipeline": pipeline,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for pipeline in ranges["PIPELINE"]
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -251,8 +323,10 @@ class TunedConfigLoader(object):
             ]
 
         if op_name in (
-            "fused_marlin_moe_mxfp4",
-            "fused_marlin_moe_mxfp4_gemm_silu",
+            "fused_marlin_moe_w4a16_int4",
+            "fused_marlin_moe_w4a16_int4_gemm_silu",
+            "fused_marlin_moe_w4a16_mxfp4",
+            "fused_marlin_moe_w4a16_mxfp4_gemm_silu",
         ):
             maxnreg_values = ranges.get("maxnreg", [None])
             return [
@@ -304,7 +378,11 @@ class TunedConfigLoader(object):
                 if block * tpp <= 1024
             ]
 
-        if op_name in ("w8a8_block_fp8_general", "mm_w8a8_block_scaled"):
+        if op_name in (
+            "w8a8_block_fp8_general",
+            "w8a8_block_fp8_bmm_general",
+            "mm_w8a8_block_scaled",
+        ):
             return [
                 triton.Config(
                     {
@@ -364,6 +442,7 @@ class TunedConfigLoader(object):
 
         if op_name in (
             "w8a8_block_fp8_general_splitk",
+            "w8a8_block_fp8_bmm_splitk",
             "mm_w8a8_block_scaled_splitk",
         ):
             return [
@@ -387,6 +466,8 @@ class TunedConfigLoader(object):
             ]
 
         if op_name in ("mm_splitk", "mm_w8a8_splitk"):
+            has_pipeline = "PIPELINE" in ranges
+            pipelines = ranges.get("PIPELINE", [None])
             return [
                 triton.Config(
                     {
@@ -394,6 +475,7 @@ class TunedConfigLoader(object):
                         "BLOCK_N": block_n,
                         "BLOCK_K": block_k,
                         "SPLIT_K": split_k,
+                        **({"pipeline": pipeline} if has_pipeline else {}),
                     },
                     num_stages=s,
                     num_warps=w,
@@ -403,6 +485,7 @@ class TunedConfigLoader(object):
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
                 for split_k in ranges["SPLIT_K"]
+                for pipeline in pipelines
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -482,19 +565,41 @@ class TunedConfigLoader(object):
                 "bmm", expand_yaml_path=self._get_expand_config_path("bmm")
             ),
             "bmm_sqmma": self._build_single_expand_spec("bmm_sqmma"),
-            "fused_marlin_moe_mxfp4": self._build_single_expand_spec(
-                "fused_marlin_moe_mxfp4",
-                expand_yaml_path=self._get_expand_config_path("fused_marlin_moe_mxfp4"),
-            ),
-            "fused_marlin_moe_mxfp4_gemm_silu": self._build_single_expand_spec(
-                "fused_marlin_moe_mxfp4_gemm_silu",
+            "fused_marlin_moe_w4a16_int4": self._build_single_expand_spec(
+                "fused_marlin_moe_w4a16_int4",
                 expand_yaml_path=self._get_expand_config_path(
-                    "fused_marlin_moe_mxfp4_gemm_silu"
+                    "fused_marlin_moe_w4a16_int4"
+                ),
+            ),
+            "fused_marlin_moe_w4a16_int4_gemm_silu": self._build_single_expand_spec(
+                "fused_marlin_moe_w4a16_int4_gemm_silu",
+                expand_yaml_path=self._get_expand_config_path(
+                    "fused_marlin_moe_w4a16_int4_gemm_silu"
+                ),
+            ),
+            "fused_marlin_moe_w4a16_mxfp4": self._build_single_expand_spec(
+                "fused_marlin_moe_w4a16_mxfp4",
+                expand_yaml_path=self._get_expand_config_path(
+                    "fused_marlin_moe_w4a16_mxfp4"
+                ),
+            ),
+            "fused_marlin_moe_w4a16_mxfp4_gemm_silu": self._build_single_expand_spec(
+                "fused_marlin_moe_w4a16_mxfp4_gemm_silu",
+                expand_yaml_path=self._get_expand_config_path(
+                    "fused_marlin_moe_w4a16_mxfp4_gemm_silu"
                 ),
             ),
             "gemv": self._build_single_expand_spec("gemv"),
+            "gemv_k_parallel": self._build_single_expand_spec(
+                "gemv", yaml_op_name="gemv_k_parallel"
+            ),
             "mm": self._build_single_expand_spec(
                 "mm", expand_yaml_path=self._get_expand_config_path("mm")
+            ),
+            "mm_nn": self._build_single_expand_spec("mm_nn"),
+            "mm_nt": self._build_single_expand_spec("mm_nt"),
+            "mm_splitk_two_step": self._build_single_expand_spec(
+                "mm", yaml_op_name="mm_splitk_two_step"
             ),
             "mm_sqmma": self._build_single_expand_spec(
                 "mm_sqmma", yaml_op_name="mm_general_tma"
@@ -523,6 +628,18 @@ class TunedConfigLoader(object):
             "w8a8_block_fp8_bmm": self._build_single_expand_spec(
                 "w8a8_block_fp8_bmm",
                 expand_yaml_path=self._get_expand_config_path("w8a8_block_fp8_bmm"),
+            ),
+            "w8a8_block_fp8_bmm_general": self._build_single_expand_spec(
+                "w8a8_block_fp8_bmm_general",
+                expand_yaml_path=self._get_expand_config_path(
+                    "w8a8_block_fp8_bmm_general"
+                ),
+            ),
+            "w8a8_block_fp8_bmm_splitk": self._build_single_expand_spec(
+                "w8a8_block_fp8_bmm_splitk",
+                expand_yaml_path=self._get_expand_config_path(
+                    "w8a8_block_fp8_bmm_splitk"
+                ),
             ),
             "mm_splitk": self._build_single_expand_spec("mm_splitk"),
             "mm_w8a8_general_tma": self._build_single_expand_spec(

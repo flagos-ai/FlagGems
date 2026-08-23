@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import os
@@ -454,11 +468,13 @@ def generate_repeat_kernel(
         # only add this arguments when rank > 0
         if rank > 0:
             # strides for inputs
-            stride_args = ", ".join(f"in0_stride{j}: int" for j in range(rank))
+            stride_args = ", ".join(f"in0_stride{j}: tl.constexpr" for j in range(rank))
             code.writeline(f"{stride_args}, # strides for in0")
 
             # strides for outputs
-            stride_args = ", ".join(f"out0_stride{j}: int" for j in range(rank))
+            stride_args = ", ".join(
+                f"out0_stride{j}: tl.constexpr" for j in range(rank)
+            )
             code.writeline(f"{stride_args}, # strides for out0")
 
             # task space, used to reconstruct multi index
@@ -624,11 +640,13 @@ def gcu_generate_repeat_kernel(
         # only add this arguments when rank > 0
         if rank > 0:
             # strides for inputs
-            stride_args = ", ".join(f"in_stride{j}" for j in range(rank))
+            stride_args = ", ".join(f"in_stride{j}: tl.constexpr" for j in range(rank))
             code.writeline(f"{stride_args}, # strides for in0")
 
             # strides for outputs
-            stride_args = ", ".join(f"out0_stride{j}" for j in range(rank))
+            stride_args = ", ".join(
+                f"out0_stride{j}: tl.constexpr" for j in range(rank)
+            )
             code.writeline(f"{stride_args}, # strides for out0")
 
             # task space, used to reconstruct multi index

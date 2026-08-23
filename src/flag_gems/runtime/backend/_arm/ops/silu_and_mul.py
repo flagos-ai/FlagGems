@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 ARM CPU fused silu_and_mul — TLE NEON SWIGLU for decode, ATen for prefill.
 
@@ -9,7 +23,6 @@ Benchmarks (CIX P1 CD8180, BF16, OMP=8):
   N=6144 decode:  ATen ~76μs → TLE SWIGLU ~33μs (2.3x speedup)
   28 layers × savings = 1.2ms/tok
 """
-
 
 import torch
 import torch.nn.functional as F

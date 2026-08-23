@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import triton
 import triton.language as tl
 
@@ -1197,6 +1211,7 @@ def flash_varlen_fwd_kernel(
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
     # kernel params
+    IS_PAGED: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     num_warps: tl.constexpr,
@@ -1228,7 +1243,7 @@ def flash_varlen_fwd_kernel(
         # k_offset = k_bos * k_row_stride
     else:
         k_len_cache = seqlen_k
-        # k_offset = bid * k_batch_stride
+        k_bos = 0
 
     # v_head_offset = (hid / h_hk_ratio) * k_head_stride
 
@@ -1265,7 +1280,8 @@ def flash_varlen_fwd_kernel(
         philox_offset = tl.load(philox_args + 1).to(tl.uint64)
 
     # start processing kv blocks
-    page_table_ptr += bid * page_table_batch_stride
+    if IS_PAGED:
+        page_table_ptr += bid * page_table_batch_stride
     kv_head = hid // h_hk_ratio
     q_row_offset = hid * q_head_stride
     k_row_offset = kv_head * k_head_stride
@@ -1301,19 +1317,40 @@ def flash_varlen_fwd_kernel(
 
     n_masking_steps = min(n_block_max - n_block_min, n_masking_steps)
     for n_block in tl.range(n_block_min, n_block_max - n_masking_steps):
-        bK, bV = load_paged_kv_block(
-            n_block,
-            page_table_ptr,
-            k_ptr + k_row_offset,
-            v_ptr + v_row_offset,
-            block_size,
-            k_batch_stride,
-            k_row_stride,
-            v_batch_stride,
-            v_row_stride,
-            d,
-            BLOCK_N,
-        )
+        if IS_PAGED:
+            bK, bV = load_paged_kv_block(
+                n_block,
+                page_table_ptr,
+                k_ptr + k_row_offset,
+                v_ptr + v_row_offset,
+                block_size,
+                k_batch_stride,
+                k_row_stride,
+                v_batch_stride,
+                v_row_stride,
+                d,
+                BLOCK_N,
+            )
+        else:
+            start_n = n_block * BLOCK_N
+            gK = tl.make_block_ptr(
+                base=k_ptr + k_bos * k_row_stride + k_row_offset,
+                shape=(k_len_cache, d),
+                strides=(k_row_stride, 1),
+                offsets=(start_n, 0),
+                block_shape=(BLOCK_N, d),
+                order=(0, 1),
+            )
+            gV = tl.make_block_ptr(
+                base=v_ptr + k_bos * v_row_stride + v_row_offset,
+                shape=(k_len_cache, d),
+                strides=(v_row_stride, 1),
+                offsets=(start_n, 0),
+                block_shape=(BLOCK_N, d),
+                order=(0, 1),
+            )
+            bK = tl.trans(tl.load(gK))
+            bV = tl.load(gV)
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
         S *= scale_softmax
@@ -1373,19 +1410,40 @@ def flash_varlen_fwd_kernel(
         acc_ = tl.dot(P, bV, acc_)
 
     for n_block in tl.range(n_block_max - n_masking_steps, n_block_max):
-        bK, bV = load_paged_kv_block(
-            n_block,
-            page_table_ptr,
-            k_ptr + k_row_offset,
-            v_ptr + v_row_offset,
-            block_size,
-            k_batch_stride,
-            k_row_stride,
-            v_batch_stride,
-            v_row_stride,
-            d,
-            BLOCK_N,
-        )
+        if IS_PAGED:
+            bK, bV = load_paged_kv_block(
+                n_block,
+                page_table_ptr,
+                k_ptr + k_row_offset,
+                v_ptr + v_row_offset,
+                block_size,
+                k_batch_stride,
+                k_row_stride,
+                v_batch_stride,
+                v_row_stride,
+                d,
+                BLOCK_N,
+            )
+        else:
+            start_n = n_block * BLOCK_N
+            gK = tl.make_block_ptr(
+                base=k_ptr + k_bos * k_row_stride + k_row_offset,
+                shape=(k_len_cache, d),
+                strides=(k_row_stride, 1),
+                offsets=(start_n, 0),
+                block_shape=(BLOCK_N, d),
+                order=(0, 1),
+            )
+            gV = tl.make_block_ptr(
+                base=v_ptr + k_bos * v_row_stride + v_row_offset,
+                shape=(k_len_cache, d),
+                strides=(v_row_stride, 1),
+                offsets=(start_n, 0),
+                block_shape=(BLOCK_N, d),
+                order=(0, 1),
+            )
+            bK = tl.trans(tl.load(gK, boundary_check=(0,)))
+            bV = tl.load(gV, boundary_check=(0,))
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
         S *= scale_softmax

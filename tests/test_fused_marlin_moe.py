@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Precision tests for fused_marlin_moe (FlagGems Phase 2).
 
@@ -10,6 +24,7 @@ The wrapper sees packed uint8 weights; the reference sees the matching
 fp16/bf16 w_ref returned by quantize_weights so quantization round-off is
 shared by both sides.
 """
+
 import pytest
 import torch
 
@@ -235,7 +250,7 @@ def _quantize_moe_weight_int8(w_fp, group_size):
     return w_q, w_ref, scales
 
 
-def _make_inputs(
+def _make_inputs_w4a16_int4(
     num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
 ):
     """
@@ -298,11 +313,11 @@ def _make_inputs(
     )
 
 
-def _make_inputs_int8(
+def _make_inputs_w8a16_int8(
     num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
 ):
     """
-    Build all tensors for one W8A16 test case. Sister of _make_inputs.
+    Build all tensors for one W8A16 test case. Sister of _make_inputs_w4a16_int4.
 
     Returns:
         hidden_states          (M, K)        fp16/bf16
@@ -409,7 +424,7 @@ def _quantize_moe_weight_mxfp4(w_fp, group_size):
     return w_q, w_ref, scales
 
 
-def _make_inputs_mxfp4(
+def _make_inputs_w4a16_mxfp4(
     num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
 ):
     torch.manual_seed(0)
@@ -493,12 +508,12 @@ def _reference_swiglu_moe(
 @pytest.mark.parametrize("config", FULL_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.parametrize("apply_router_weight_on_input", [False, True])
-def test_fused_marlin_moe_vs_ref(config, dtype, apply_router_weight_on_input):
+def test_fused_marlin_moe_w4a16_int4(config, dtype, apply_router_weight_on_input):
     """Compare fused_marlin_moe (packed INT4) against PyTorch reference (dequant)."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
     device = flag_gems.device
 
-    (hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s) = _make_inputs(
+    hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s = _make_inputs_w4a16_int4(
         num_tokens,
         num_experts,
         hidden_size,
@@ -537,12 +552,12 @@ def test_fused_marlin_moe_vs_ref(config, dtype, apply_router_weight_on_input):
 
 @pytest.mark.parametrize("config", QUICK_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
-def test_fused_marlin_moe_vs_ref_int8(config, dtype):
+def test_fused_marlin_moe_w8a16_int8(config, dtype):
     """Compare fused_marlin_moe (unpacked INT8) against PyTorch reference (dequant)."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
     device = flag_gems.device
 
-    (hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s) = _make_inputs_int8(
+    hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s = _make_inputs_w8a16_int8(
         num_tokens,
         num_experts,
         hidden_size,
@@ -576,12 +591,12 @@ def test_fused_marlin_moe_vs_ref_int8(config, dtype):
 )
 @pytest.mark.parametrize("config", FULL_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
-def test_fused_marlin_moe_mxfp4_vs_ref(config, dtype):
+def test_fused_marlin_moe_w4a16_mxfp4(config, dtype):
     """Compare fused_marlin_moe (MXFP4) against PyTorch reference (dequant)."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
     device = flag_gems.device
 
-    (hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s) = _make_inputs_mxfp4(
+    hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s = _make_inputs_w4a16_mxfp4(
         num_tokens,
         num_experts,
         hidden_size,
@@ -618,7 +633,7 @@ def test_fused_marlin_moe_mxfp4_vs_ref(config, dtype):
 def _minimal_args(device=flag_gems.device, dtype=torch.bfloat16):
     """Smallest valid arg bundle, used to probe rejection paths."""
     M, K, N, E, topk = 4, 128, 256, 4, 2
-    return _make_inputs(M, E, K, N, topk, dtype, device)
+    return _make_inputs_w4a16_int4(M, E, K, N, topk, dtype, device)
 
 
 def test_rejects_unsupported_quant_type():
