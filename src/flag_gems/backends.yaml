@@ -99,6 +99,7 @@ backends:
 
   cambricon-neuware443:
     python: "3.10"
+    cmake_backend: MLU
     triton: triton==3.2.0+mlu1.7.2
     env:
       NEUWARE_HOME: /usr/local/neuware
@@ -113,6 +114,7 @@ backends:
 
   cambricon-neuware472:
     python: "3.12"
+    cmake_backend: MLU
     triton: triton==3.4.0+mlu2.1.1
     env:
       NEUWARE_HOME: /usr/local/neuware
@@ -148,7 +150,7 @@ backends:
     python: "3.12"
     cmake_backend: GCU
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0+enflame3.6
+    flagtree: flagtree==0.6.1+enflame3.6
     triton_post_install:
       - triton-gcu==3.6.0+1.0.20260722
     # This version of flagtree doesn't work yet
@@ -189,6 +191,7 @@ backends:
       COREX_ROOT: /usr/local/corex
       PATH: $COREX_ROOT/bin:$PATH
       LD_LIBRARY_PATH: $COREX_ROOT/lib:$LD_LIBRARY_PATH
+      CPATH: /usr/local/cuda-10.2/include
     deps:
       - torch==2.7.1+corex.4.4.0
       - torchaudio==2.7.1+corex.4.4.0
