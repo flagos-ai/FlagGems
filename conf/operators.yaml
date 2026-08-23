@@ -1919,7 +1919,7 @@ ops:
     kind:
       - BLAS
     stages:
-      - alpha: '5.4'    
+      - alpha: '5.4'
   - id: broadcast_tensors
     description: >-
       Broadcasts the given tensors to a common shape according to
