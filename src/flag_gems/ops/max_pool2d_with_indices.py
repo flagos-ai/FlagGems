@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -394,3 +408,20 @@ def max_pool2d_backward(
     )
 
     return grad_input.to(grad_output.dtype)
+
+
+def max_pool2d_with_indices_backward(
+    grad_output: torch.Tensor,
+    self: torch.Tensor,
+    kernel_size,
+    stride,
+    padding,
+    dilation,
+    ceil_mode: bool,
+    indices: torch.Tensor,
+):
+    """Wrapper matching the aten::max_pool2d_with_indices_backward schema."""
+    logger.debug("GEMS MAX_POOL2D_WITH_INDICES_BACKWARD")
+    return max_pool2d_backward(
+        grad_output, self, indices, kernel_size, stride, padding, dilation, ceil_mode
+    )

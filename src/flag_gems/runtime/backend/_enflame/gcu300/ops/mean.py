@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -39,6 +53,8 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def mean(inp, *, dtype=None):
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -102,7 +118,7 @@ def mean_kernel_dim_low(
         n_offset_0 = tl.arange(0, BLOCK_N)
         offset_0 = m_offset[:, None] * N + n_offset_0[None, :]
         # set mask
-        mask_0 = m_offset[:, None] < M and n_offset_0[None, :] < N
+        mask_0 = (m_offset[:, None] < M) & (n_offset_0[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         _mean = tl.load(inp_ptrs_0, mask_0, other=0.0).to(tl.float32)
         if N > BLOCK_N:
@@ -110,7 +126,7 @@ def mean_kernel_dim_low(
                 n_offset = i + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 a = tl.load(inp_ptrs, mask, other=0.0).to(tl.float32)
                 _mean = a + _mean
@@ -144,7 +160,7 @@ def mean_kernel_dim_high(
         n_offset = tile_id_n * BLOCK_N + tl.arange(0, BLOCK_N)
         m_offset_0 = tl.arange(0, BLOCK_M)
         offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
-        mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
+        mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         _mean = tl.load(inp_ptrs_0, mask_0, other=0.0).to(tl.float32)
         if M > BLOCK_M:
@@ -152,7 +168,7 @@ def mean_kernel_dim_high(
                 m_offset = i + tl.arange(0, BLOCK_M)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 a = tl.load(inp_ptrs, mask, other=0.0).to(tl.float32)
                 _mean += a
@@ -190,7 +206,7 @@ def mean_kernel_dim_mid(
         n_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
         m_offset_0 = tl.arange(0, BLOCK_M)
         offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
-        mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
+        mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         _mean = tl.load(inp_ptrs_0, mask_0, other=0.0).to(tl.float32)
         if M > BLOCK_M:
@@ -198,7 +214,7 @@ def mean_kernel_dim_mid(
                 m_offset = i + tl.arange(0, BLOCK_M)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 a = tl.load(inp_ptrs, mask, other=0.0).to(tl.float32)
                 _mean += a
@@ -210,6 +226,8 @@ def mean_kernel_dim_mid(
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
+    if not x.is_contiguous():
+        x = x.contiguous()
     return_dtype = x.dtype
     if x.dtype == torch.int64:
         x.dtype = torch.int32
@@ -228,7 +246,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     # print("dim:", dim)
     if len(dim) == 1:
         inp = x
-        mean_dim = dim[0]
+        mean_dim = dim[0] % inp.ndim
         shape = list(x.shape)
         if shape[mean_dim] == 1:
             if not keepdim:

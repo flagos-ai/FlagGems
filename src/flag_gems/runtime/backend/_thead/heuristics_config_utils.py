@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 T-Head Zhenwu (真武) PPU Heuristics Configuration Utilities
 
@@ -248,6 +262,11 @@ def upsample_nearest2d_SAME_W(args):
     return args["OW"] == args["IW"]
 
 
+def upsample_nearest2d_USE_INT32_IDX(args):
+    """Use INT32 indexing when the total element count fits in INT32"""
+    return args["N"] * args["C"] * args["OH"] * args["OW"] <= (2**31 - 1)
+
+
 def mm_heur_even_k(args):
     """Check if K dimension is even for mm operation"""
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
@@ -330,6 +349,7 @@ HEURISTICS_CONFIGS = {
     "upsample_nearest2d": {
         "SAME_H": upsample_nearest2d_SAME_H,
         "SAME_W": upsample_nearest2d_SAME_W,
+        "USE_INT32_IDX": upsample_nearest2d_USE_INT32_IDX,
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,

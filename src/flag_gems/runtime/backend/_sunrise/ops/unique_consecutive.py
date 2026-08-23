@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -7,6 +21,8 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
+
+from .cumsum import scan_then_fan_col
 
 logger = logging.getLogger(__name__)
 
@@ -400,7 +416,20 @@ def large_unique_consecutive_flat(
 
         inverse_indices = None
         if return_inverse:
-            inverse_indices = torch.cumsum(ne_result.to(torch.int64), dim=0) - 1
+            # The regular long-row cumsum uses 4096-element scan tiles on
+            # Sunrise and can lose or duplicate increments after a fresh
+            # compile.  Keep this path on device, but use the conservative
+            # 512-element hierarchical scan that is stable on PTPU.
+            inverse_indices = torch.empty(
+                num_tasks, dtype=torch.int64, device=data.device
+            )
+            scan_then_fan_col(
+                ne_result,
+                inverse_indices,
+                num_tasks,
+                inverse_indices.dtype,
+            )
+            inverse_indices.sub_(1)
 
         counts = None
         if return_counts:

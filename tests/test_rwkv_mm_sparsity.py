@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -36,4 +50,8 @@ def test_rwkv_mmsparsity(dtype):
     ref_V_ = utils.to_reference(V_, True)
     ref_res = ref_k @ ref_V_
 
-    utils.gems_assert_close(res, ref_res, dtype, equal_nan=True)
+    # Cambricon accumulates a length-n dot product, so scale tolerance by the reduction size.
+    if flag_gems.vendor_name == "cambricon":
+        utils.gems_assert_close(res, ref_res, dtype, equal_nan=True, reduce_dim=n)
+    else:
+        utils.gems_assert_close(res, ref_res, dtype, equal_nan=True)

@@ -1,14 +1,89 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils.shape_utils import broadcast_shapes
 from flag_gems.utils.triton_lang_extension import div_rn, div_rz, fmod, trunc
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+
+def _to_kernel_contiguous(x: torch.Tensor, task_shape):
+    if tuple(x.shape) != tuple(task_shape):
+        x = x.expand(task_shape)
+    if not x.is_contiguous():
+        return x.contiguous()
+    return x
+
+
+def _prepare_out_of_place_operands(A, B):
+    if not (isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor)):
+        return A, B
+    task_shape = broadcast_shapes([A.shape, B.shape])
+    return _to_kernel_contiguous(A, task_shape), _to_kernel_contiguous(B, task_shape)
+
+
+def _run_pointwise_inplace(kernel_fn, A, B):
+    task_shape = broadcast_shapes([A.shape, B.shape])
+    B = _to_kernel_contiguous(B, task_shape)
+    if A.is_contiguous():
+        return kernel_fn(A, B, out0=A)
+    A_work = A.contiguous()
+    kernel_fn(A_work, B, out0=A_work)
+    A.copy_(A_work)
+    return A
+
+
+def _is_float64(*args):
+    return any(isinstance(a, torch.Tensor) and a.dtype == torch.float64 for a in args)
+
+
+def _cpu_div(A, B, rounding_mode=None):
+    device = A.device if isinstance(A, torch.Tensor) else B.device
+    A_cpu = A.cpu() if isinstance(A, torch.Tensor) else A
+    B_cpu = B.cpu() if isinstance(B, torch.Tensor) else B
+    return torch.div(A_cpu, B_cpu, rounding_mode=rounding_mode).to(device)
+
+
+def _cpu_div_inplace(A, B, rounding_mode=None):
+    A_cpu = A.cpu()
+    B_cpu = B.cpu() if isinstance(B, torch.Tensor) else B
+    result = torch.div(A_cpu, B_cpu, rounding_mode=rounding_mode)
+    A.copy_(result)
+    return A
+
+
+def _cpu_remainder(A, B):
+    device = A.device if isinstance(A, torch.Tensor) else B.device
+    A_cpu = A.cpu() if isinstance(A, torch.Tensor) else A
+    B_cpu = B.cpu() if isinstance(B, torch.Tensor) else B
+    return torch.remainder(A_cpu, B_cpu).to(device)
+
+
+def _cpu_remainder_inplace(A, B):
+    A_cpu = A.cpu()
+    B_cpu = B.cpu() if isinstance(B, torch.Tensor) else B
+    result = torch.remainder(A_cpu, B_cpu)
+    A.copy_(result)
+    return A
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
@@ -31,11 +106,14 @@ def true_div_func_scalar_tensor(x, y):
 
 def true_divide(A, B):
     logger.debug("GEMS_ENFLAME TRUE_DIVIDE")
+    if _is_float64(A, B):
+        return _cpu_div(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         if A.dtype == torch.int64:
             A = A.to(torch.int32)
         if B.dtype == torch.int64:
             B = B.to(torch.int32)
+        A, B = _prepare_out_of_place_operands(A, B)
         return true_div_func(A, B)
     elif isinstance(A, torch.Tensor):
         if A.dtype == torch.int64:
@@ -52,10 +130,12 @@ def true_divide(A, B):
 
 def true_divide_(A, B):
     logger.debug("GEMS_ENFLAME TRUE_DIVIDE_")
+    if _is_float64(A, B):
+        return _cpu_div_inplace(A, B)
     if isinstance(B, torch.Tensor):
         if B.dtype == torch.int64:
             B = B.to(torch.int32)
-        return true_div_func(A, B, out0=A)
+        return _run_pointwise_inplace(true_div_func, A, B)
     else:
         if A.dtype == torch.int64:
             A = A.to(torch.int32)
@@ -82,11 +162,14 @@ def trunc_div_func_scalar_tensor(x, y):
 
 def trunc_divide(A, B):
     logger.debug("GEMS_ENFLAME TRUNC_DIVIDE")
+    if _is_float64(A, B):
+        return _cpu_div(A, B, rounding_mode="trunc")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         if A.dtype == torch.int64:
             A = A.to(torch.int32)
         if B.dtype == torch.int64:
             B = B.to(torch.int32)
+        A, B = _prepare_out_of_place_operands(A, B)
         return trunc_div_func(A, B)
     elif isinstance(A, torch.Tensor):
         if A.dtype == torch.int64:
@@ -103,10 +186,12 @@ def trunc_divide(A, B):
 
 def trunc_divide_(A, B):
     logger.debug("GEMS_ENFLAME TRUNC_DIVIDE_")
+    if _is_float64(A, B):
+        return _cpu_div_inplace(A, B, rounding_mode="trunc")
     if isinstance(B, torch.Tensor):
         if B.dtype == torch.int64:
             B = B.to(torch.int32)
-        return trunc_div_func(A, B, out0=A)
+        return _run_pointwise_inplace(trunc_div_func, A, B)
     else:
         if A.dtype == torch.int64:
             A = A.to(torch.int32)
@@ -198,11 +283,14 @@ def floor_div_func_scalar_tensor(x, y):
 
 def floor_divide(A, B):
     logger.debug("GEMS_ENFLAME FLOOR_DIVIDE")
+    if _is_float64(A, B):
+        return _cpu_div(A, B, rounding_mode="floor")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         if A.dtype == torch.int64:
             A = A.to(torch.int32)
         if B.dtype == torch.int64:
             B = B.to(torch.int32)
+        A, B = _prepare_out_of_place_operands(A, B)
         return floor_div_func(A, B)
     elif isinstance(A, torch.Tensor):
         if A.dtype == torch.int64:
@@ -219,10 +307,12 @@ def floor_divide(A, B):
 
 def floor_divide_(A, B):
     logger.debug("GEMS_ENFLAME FLOOR_DIVIDE_")
+    if _is_float64(A, B):
+        return _cpu_div_inplace(A, B, rounding_mode="floor")
     if isinstance(B, torch.Tensor):
         if B.dtype == torch.int64:
             B = B.to(torch.int32)
-        return floor_div_func(A, B, out0=A)
+        return _run_pointwise_inplace(floor_div_func, A, B)
     else:
         if A.dtype == torch.int64:
             A = A.to(torch.int32)
@@ -281,11 +371,14 @@ def rem_st(x, y):
 
 def remainder(A, B):
     logger.debug("GEMS_ENFLAME FLOOR_DIVIDE")
+    if _is_float64(A, B):
+        return _cpu_remainder(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         if A.dtype == torch.int64:
             A = A.to(torch.int32)
         if B.dtype == torch.int64:
             B = B.to(torch.int32)
+        A, B = _prepare_out_of_place_operands(A, B)
         return rem_tt(A, B)
     elif isinstance(A, torch.Tensor):
         if A.dtype == torch.int64:
@@ -302,10 +395,12 @@ def remainder(A, B):
 
 def remainder_(A, B):
     logger.debug("GEMS_ENFLAME REMAINDER_")
+    if _is_float64(A, B):
+        return _cpu_remainder_inplace(A, B)
     if isinstance(B, torch.Tensor):
         if B.dtype == torch.int64:
             B = B.to(torch.int32)
-        return rem_tt(A, B, out0=A)
+        return _run_pointwise_inplace(rem_tt, A, B)
     else:
         if A.dtype == torch.int64:
             A = A.to(torch.int32)

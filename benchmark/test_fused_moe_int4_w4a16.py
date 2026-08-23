@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -73,20 +87,37 @@ class FusedMoEINT4W4A16Benchmark(base.Benchmark):
             dtype=torch.int8,
         )
         for e in range(num_experts):
-            w1_int4[e] = torch.randint(
-                -8,
-                8,
-                (intermediate_size * 2, hidden_size),
-                device=device,
-                dtype=torch.int8,
-            )
-            w2_int4[e] = torch.randint(
-                -8,
-                8,
-                (hidden_size, intermediate_size),
-                device=device,
-                dtype=torch.int8,
-            )
+            if flag_gems.vendor_name == "cambricon":
+                # Cambricon torch.randint currently does not support int8/int16 generation.
+                w1_int4[e] = torch.randint(
+                    -8,
+                    8,
+                    (intermediate_size * 2, hidden_size),
+                    device="cpu",
+                    dtype=torch.int8,
+                ).to(device)
+                w2_int4[e] = torch.randint(
+                    -8,
+                    8,
+                    (hidden_size, intermediate_size),
+                    device="cpu",
+                    dtype=torch.int8,
+                ).to(device)
+            else:
+                w1_int4[e] = torch.randint(
+                    -8,
+                    8,
+                    (intermediate_size * 2, hidden_size),
+                    device=device,
+                    dtype=torch.int8,
+                )
+                w2_int4[e] = torch.randint(
+                    -8,
+                    8,
+                    (hidden_size, intermediate_size),
+                    device=device,
+                    dtype=torch.int8,
+                )
 
         # Per-channel scales [E, output_dim]
         w1_scale = (
