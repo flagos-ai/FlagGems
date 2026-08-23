@@ -24,6 +24,13 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+
+@pytest.fixture(autouse=True)
+def _disable_flagtune_for_mm_unit_tests(monkeypatch):
+    """Keep operator correctness tests independent of remote tuning models."""
+    monkeypatch.setenv("USE_FLAGTUNE", "0")
+
+
 if QUICK_MODE:
     MNK_SHAPES = [
         (1, 1, 32),
