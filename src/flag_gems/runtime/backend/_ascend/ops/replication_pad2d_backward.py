@@ -1,11 +1,9 @@
 import logging
-import os
 from contextlib import nullcontext
 
 import torch
 import triton
 import triton.language as tl
-from torch_npu._C import _npu_getCurrentRawStream
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
@@ -54,30 +52,38 @@ def _backward_gather_kernel(
 
     # boundary row fix-ups: rows 0 and H-1 also sum the pad rows
     if ih0 == 0:
-        row = tl.load(gop + c_out + PT * OW + (PL + iw), mask=col_mask, other=0.0).to(
-            tl.float32
+        rs = tl.arange(0, PT + 1)
+        row = tl.sum(
+            tl.load(
+                gop + c_out + rs[:, None] * OW + (PL + iw)[None, :],
+                mask=col_mask[None, :],
+                other=0.0,
+            ).to(tl.float32),
+            axis=0,
         )
-        for r in range(PT):
-            row += tl.load(gop + c_out + r * OW + (PL + iw), mask=col_mask, other=0.0)
-        if H == 1:
-            for r in range(PB):
-                row += tl.load(
-                    gop + c_out + (OH - PB + r) * OW + (PL + iw),
-                    mask=col_mask,
-                    other=0.0,
+        if PB > 0:
+            if H == 1:
+                rs2 = OH - PB + tl.arange(0, PB)
+                row += tl.sum(
+                    tl.load(
+                        gop + c_out + rs2[:, None] * OW + (PL + iw)[None, :],
+                        mask=col_mask[None, :],
+                        other=0.0,
+                    ).to(tl.float32),
+                    axis=0,
                 )
         tl.store(gip + c_in + iw, row, mask=col_mask)
     if (ih0 + R > H - 1) and (H > 1):
         ih_last = H - 1
-        row = tl.load(
-            gop + c_out + (ih_last + PT) * OW + (PL + iw), mask=col_mask, other=0.0
-        ).to(tl.float32)
-        for r in range(PB):
-            row += tl.load(
-                gop + c_out + (OH - PB + r) * OW + (PL + iw),
-                mask=col_mask,
+        rs = ih_last + PT + tl.arange(0, PB + 1)
+        row = tl.sum(
+            tl.load(
+                gop + c_out + rs[:, None] * OW + (PL + iw)[None, :],
+                mask=col_mask[None, :],
                 other=0.0,
-            )
+            ).to(tl.float32),
+            axis=0,
+        )
         tl.store(gip + c_in + ih_last * W + iw, row, mask=col_mask)
 
     # boundary column fix-ups: main col + pad cols; rows covered by the row
@@ -93,58 +99,47 @@ def _backward_gather_kernel(
         else:
             col_row_mask = (rr > 0) & (rr < (H - 1))
     if PL > 0:
-        col_sum = tl.load(
-            gop + c_out + (rr + PT)[:, None] * OW + PL,
-            mask=(rr < H)[:, None],
-            other=0.0,
-        ).to(tl.float32)
-        for c in range(PL):
-            col_sum += tl.load(
-                gop + c_out + (rr + PT)[:, None] * OW + c,
+        cs = tl.arange(0, PL + 1)
+        col_sum = tl.sum(
+            tl.load(
+                gop + c_out + (rr + PT)[:, None] * OW + cs[None, :],
                 mask=(rr < H)[:, None],
                 other=0.0,
-            ).to(tl.float32)
-        if W == 1:
-            # both edges collapse onto column 0: fold the right pad cols in
-            for c in range(PR):
-                col_sum += tl.load(
-                    gop + c_out + (rr + PT)[:, None] * OW + (W + PL + c),
-                    mask=(rr < H)[:, None],
-                    other=0.0,
-                ).to(tl.float32)
+            ).to(tl.float32),
+            axis=1,
+            keep_dims=True,
+        )
+        if PR > 0:
+            if W == 1:
+                # both edges collapse onto column 0: fold the right pad cols in
+                cs2 = W + PL + tl.arange(0, PR)
+                col_sum += tl.sum(
+                    tl.load(
+                        gop + c_out + (rr + PT)[:, None] * OW + cs2[None, :],
+                        mask=(rr < H)[:, None],
+                        other=0.0,
+                    ).to(tl.float32),
+                    axis=1,
+                    keep_dims=True,
+                )
         tl.store(gip + c_in + rr[:, None] * W, col_sum, mask=col_row_mask[:, None])
     if PR > 0:
-        if W > 1:
-            col_sum = tl.load(
-                gop + c_out + (rr + PT)[:, None] * OW + (W - 1 + PL),
-                mask=(rr < H)[:, None],
-                other=0.0,
-            ).to(tl.float32)
-            for c in range(PR):
-                col_sum += tl.load(
-                    gop + c_out + (rr + PT)[:, None] * OW + (W + PL + c),
+        if W > 1 or PL == 0:
+            cs_r = W - 1 + PL + tl.arange(0, PR + 1)
+            col_sum = tl.sum(
+                tl.load(
+                    gop + c_out + (rr + PT)[:, None] * OW + cs_r[None, :],
                     mask=(rr < H)[:, None],
                     other=0.0,
-                ).to(tl.float32)
+                ).to(tl.float32),
+                axis=1,
+                keep_dims=True,
+            )
             tl.store(
                 gip + c_in + rr[:, None] * W + (W - 1),
                 col_sum,
                 mask=col_row_mask[:, None],
             )
-        elif PL == 0:
-            # W == 1 with no left pad: column 0 is the right edge
-            col_sum = tl.load(
-                gop + c_out + (rr + PT)[:, None] * OW + (W - 1 + PL),
-                mask=(rr < H)[:, None],
-                other=0.0,
-            ).to(tl.float32)
-            for c in range(PR):
-                col_sum += tl.load(
-                    gop + c_out + (rr + PT)[:, None] * OW + (W + PL + c),
-                    mask=(rr < H)[:, None],
-                    other=0.0,
-                ).to(tl.float32)
-            tl.store(gip + c_in + rr[:, None] * W, col_sum, mask=col_row_mask[:, None])
 
 
 @triton.jit
@@ -239,66 +234,7 @@ def _has_edges(pl, pr, pt, pb):
     return pl > 0 or pr > 0 or pt > 0 or pb > 0
 
 
-_fast_launch_cache = {}
 _plan_cache = {}
-_BINDER_MEMO_SIZE = 4
-_binder_memo = {}
-
-
-def _arg_sig(runtime_args):
-    sig = []
-    for a in runtime_args:
-        if isinstance(a, torch.Tensor):
-            sig.append((a.dtype, a.data_ptr()))
-        else:
-            sig.append((type(a).__name__, a))
-    return tuple(sig)
-
-
-def _fast_launch(jit_fn, grid, constexpr_args, runtime_args, device=None):
-    if device is None:
-        device = torch_device_fn.current_device()
-    all_args = runtime_args + tuple(constexpr_args)
-    # The fast path relies on triton-fork internals (binder, compiled-kernel
-    # cache); fall back to the plain python launch where they differ.
-    if not hasattr(jit_fn, "binder"):
-        jit_fn[grid](*all_args)
-        return
-    try:
-        debug_val = os.environ.get("TRITON_DEBUG", "0") == "1"
-        if jit_fn.binder is None:
-            jit_fn[grid](*all_args)
-        memo_key = (debug_val, constexpr_args, _arg_sig(runtime_args))
-        slot = _binder_memo.get(id(jit_fn))
-        if slot is None:
-            slot = {}
-            _binder_memo[id(jit_fn)] = slot
-        jit_key = slot.get(memo_key)
-        if jit_key is None:
-            (
-                _,
-                sig_and_spec,
-                constexpr_vals,
-                _,
-                excess_kwargs,
-            ) = jit_fn.binder(*all_args, debug=debug_val)
-            jit_key = "".join(sig_and_spec) + str((constexpr_vals, excess_kwargs))
-            if len(slot) >= _BINDER_MEMO_SIZE:
-                slot.pop(next(iter(slot)))  # evict the oldest entry
-            slot[memo_key] = jit_key
-        entry = _fast_launch_cache.get(jit_key)
-        if entry is None:
-            # one normal launch populates the jit's compiled-kernel cache
-            jit_fn[grid](*all_args)
-            compiled = jit_fn.cache[device][jit_key]
-            run = compiled.run  # triggers _init_handles: loads the binary once
-            entry = (run, compiled.function, compiled.packed_metadata)
-            _fast_launch_cache[jit_key] = entry
-        run, fn, pm = entry
-        stream = _npu_getCurrentRawStream(device)
-        run(grid[0], 1, 1, stream, fn, pm, None, None, None, *runtime_args)
-    except Exception:
-        jit_fn[grid](*all_args)
 
 
 def _replication_pad2d_backward_impl(
@@ -380,20 +316,33 @@ def _replication_pad2d_backward_impl(
     else:
         ctx = nullcontext()  # skip the guard on the single-device path
     with ctx:
-        _fast_launch(
-            _backward_gather_kernel,
-            grid,
-            (pad_left, pad_right, pad_top, pad_bottom, rows_per_block, w_next_pow2),
-            (grad_output_4d, out, 0, OH, OW, H, W),
-            device=dev_idx,
+        _backward_gather_kernel[grid](
+            grad_output_4d,
+            out,
+            0,
+            OH,
+            OW,
+            H,
+            W,
+            pad_left,
+            pad_right,
+            pad_top,
+            pad_bottom,
+            rows_per_block,
+            w_next_pow2,
         )
         if (pad_top > 0 or pad_bottom > 0) and (pad_left > 0 or pad_right > 0):
-            _fast_launch(
-                _corner_kernel,
-                (N * C,),
-                (pad_left, pad_right, pad_top, pad_bottom),
-                (grad_output_4d, out, OH, OW, H, W),
-                device=dev_idx,
+            _corner_kernel[(N * C,)](
+                grad_output_4d,
+                out,
+                OH,
+                OW,
+                H,
+                W,
+                pad_left,
+                pad_right,
+                pad_top,
+                pad_bottom,
             )
 
     if is_3d:
