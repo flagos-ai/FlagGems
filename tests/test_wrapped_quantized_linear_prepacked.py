@@ -105,6 +105,51 @@ def test_wrapped_quantized_linear_prepacked(leading_shape, N, K, noncontiguous):
 
 @pytest.mark.wrapped_linear_prepack
 @pytest.mark.wrapped_quantized_linear_prepacked
+def test_wrapped_quantized_linear_prepacked_halfway_rounding():
+    # float32 division and reciprocal multiplication differ for this half-way
+    # value. ATen quantize_per_tensor uses reciprocal multiplication.
+    input = torch.tensor([[0.775]], device=flag_gems.device)
+    weight = torch.tensor([[3.96875]], device=flag_gems.device)
+    bias = torch.zeros(1, device=flag_gems.device)
+    input_scale = torch.tensor(0.05, device=flag_gems.device)
+    input_zp = torch.tensor(127, device=flag_gems.device)
+    weight_scale = torch.tensor(0.03125, device=flag_gems.device)
+    weight_zp = torch.tensor(0, device=flag_gems.device)
+    output_scale = torch.tensor(0.1, device=flag_gems.device)
+    output_zp = torch.tensor(0, device=flag_gems.device)
+
+    ref_packed = torch.ops.aten._wrapped_linear_prepack(
+        weight.cpu(), weight_scale.cpu(), weight_zp.cpu(), bias.cpu()
+    )
+    reference = torch.ops.aten._wrapped_quantized_linear_prepacked(
+        input.cpu(),
+        input_scale.cpu(),
+        input_zp.cpu(),
+        ref_packed,
+        output_scale.cpu(),
+        output_zp.cpu(),
+        1,
+    )
+
+    with flag_gems.use_gems():
+        packed = torch.ops.aten._wrapped_linear_prepack(
+            weight, weight_scale, weight_zp, bias
+        )
+        actual = torch.ops.aten._wrapped_quantized_linear_prepacked(
+            input,
+            input_scale,
+            input_zp,
+            packed,
+            output_scale,
+            output_zp,
+            1,
+        )
+
+    torch.testing.assert_close(actual.cpu(), reference, rtol=0.0, atol=0.0)
+
+
+@pytest.mark.wrapped_linear_prepack
+@pytest.mark.wrapped_quantized_linear_prepacked
 def test_wrapped_quantized_linear_prepacked_empty_batch():
     N, K = 5, 7
     input = torch.empty((2, 0, K), device=flag_gems.device)
