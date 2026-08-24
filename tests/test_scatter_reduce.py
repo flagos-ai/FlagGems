@@ -616,7 +616,8 @@ def test_scatter_reduce_prod_nan():
 
     utils.gems_assert_close(result, ref_out, dtype, equal_nan=True)
     assert (
-        torch.signbit(result[0, 1].cpu()).item() == torch.signbit(ref_out[0, 1]).item()
+        torch.signbit(result[0, 1].cpu()).item()
+        == torch.signbit(ref_out[0, 1].cpu()).item()
     )
 
 
