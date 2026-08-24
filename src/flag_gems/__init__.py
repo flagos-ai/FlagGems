@@ -1053,6 +1053,7 @@ _FULL_CONFIG = (
     ("special_legendre_polynomial_p", special_legendre_polynomial_p),
     ("special_log1p", special_log1p),
     ("special_log1p.out", special_log1p_out),
+    ("special_log_ndtr", special_log_ndtr),
     ("special_logit", special_logit),
     ("special_logit.out", special_logit_out),
     ("special_logsumexp", special_logsumexp),
