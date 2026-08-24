@@ -13,6 +13,17 @@
 # limitations under the License.
 
 ops:
+  - id: batch_norm_with_update_functional
+    description: Functional variant of _batch_norm_with_update that applies training-mode Batch Normalization and updates running statistics.
+    for:
+      - _batch_norm_with_update_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_impl_index
     description: Applies Batch Normalization and returns the normalized output along with saved statistics, a reserve tensor, and the backend implementation index.
     for:
@@ -1196,6 +1207,20 @@ ops:
       - Tensor
     stages:
       - stable: '5.3'
+  - id: chalf
+    description: |
+      Returns a copy of the tensor cast to the ``complex32`` dtype. Real inputs are
+      down-cast to a complex tensor with zero imaginary part, and complex inputs have
+      both their real and imaginary components cast to half precision.
+    for:
+      - chalf
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: blackman_window
     description: Computes the Blackman window function.
     for:
@@ -1211,6 +1236,20 @@ ops:
     description: A variant of blackman_window() that takes an explicit periodic flag.
     for:
       - blackman_window.periodic
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: choose_qparams_optimized
+    description: |
+      Chooses optimized quantization parameters (scale and zero-point) for a tensor
+      by searching candidate value ranges and selecting the pair that minimizes the
+      quantization error.
+    for:
+      - choose_qparams_optimized
     labels:
       - aten
       - KernelGen
@@ -2363,6 +2402,31 @@ ops:
       For non-complex tensors, returns the input unchanged.
     for:
       - _conj
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: conj_copy
+    description: |
+      Computes the element-wise conjugate of a complex `input` tensor and
+      returns it as a new (copied) tensor. For non-complex tensors this op
+      is not supported.
+    for:
+      - _conj_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: conj_copy_out
+    description: A variant of `_conj_copy()` that writes the result into the `out` tensor.
+    for:
+      - _conj_copy.out
     labels:
       - aten
       - KernelGen
@@ -7042,6 +7106,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: logit_backward
+    description: Triton kernel implementation for logit_backward.
+    for:
+      - logit_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: logit_out
     description: |
       A variant of `logit` that allows the output to be assigned to another tensor.
