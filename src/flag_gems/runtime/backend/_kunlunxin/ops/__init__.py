@@ -291,6 +291,7 @@ from .sort import sort, sort_stable
 from .special_log_softmax import special_log_softmax
 from .special_logsumexp import special_logsumexp
 from .sqrt import sqrt, sqrt_
+from .square import square, square_, square_out
 from .stack import stack
 from .std import std
 from .sub import sub, sub_, subtract_
@@ -719,6 +720,9 @@ __all__ = [
     "sort_stable",
     "sqrt",
     "sqrt_",
+    "square",
+    "square_",
+    "square_out",
     "stack",
     "std",
     "sub",
