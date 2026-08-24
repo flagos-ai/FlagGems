@@ -139,6 +139,10 @@ from flag_gems.ops._upsample_bilinear2d_aa_backward import (
     _upsample_bilinear2d_aa_backward,
 )
 from flag_gems.ops._upsample_nearest_exact1d import _upsample_nearest_exact1d
+from flag_gems.ops._upsample_nearest_exact1d_backward import (
+    _upsample_nearest_exact1d_backward,
+    _upsample_nearest_exact1d_backward_grad_input,
+)
 from flag_gems.ops._upsample_nearest_exact2d import _upsample_nearest_exact2d
 from flag_gems.ops._upsample_nearest_exact2d_backward import (
     _upsample_nearest_exact2d_backward,
@@ -303,6 +307,7 @@ from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
+from flag_gems.ops.cudnn_rnn_backward import cudnn_rnn_backward
 from flag_gems.ops.cummax import cummax, cummaxmin_backward
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_
@@ -376,6 +381,7 @@ from flag_gems.ops.flash_attention_backward import (
 )
 from flag_gems.ops.flatten import flatten
 from flag_gems.ops.flip import flip
+from flag_gems.ops.fliplr import fliplr
 from flag_gems.ops.float_power_ import (
     float_power_scalar_tensor,
     float_power_scalar_tensor_out,
@@ -578,6 +584,7 @@ from flag_gems.ops.minimum import minimum
 from flag_gems.ops.miopen_batch_norm_backward import miopen_batch_norm_backward
 from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mish_backward import mish_backward
+from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
@@ -766,6 +773,7 @@ from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
 from flag_gems.ops.special_bessel_j0 import special_bessel_j0
 from flag_gems.ops.special_bessel_j1 import special_bessel_j1
 from flag_gems.ops.special_bessel_y0 import special_bessel_y0
+from flag_gems.ops.special_bessel_y1 import special_bessel_y1
 from flag_gems.ops.special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_chebyshev_polynomial_w import (
@@ -792,6 +800,7 @@ from flag_gems.ops.special_i1e import special_i1e
 from flag_gems.ops.special_legendre_polynomial_p import special_legendre_polynomial_p
 from flag_gems.ops.special_log1p import special_log1p, special_log1p_out
 from flag_gems.ops.special_log_softmax import special_log_softmax
+from flag_gems.ops.special_logit import special_logit, special_logit_out
 from flag_gems.ops.special_logsumexp import special_logsumexp
 from flag_gems.ops.special_modified_bessel_k0 import (
     special_modified_bessel_k0,
@@ -802,6 +811,7 @@ from flag_gems.ops.special_modified_bessel_k1 import (
     special_modified_bessel_k1_out,
 )
 from flag_gems.ops.special_multigammaln import special_multigammaln
+from flag_gems.ops.special_ndtr import special_ndtr
 from flag_gems.ops.special_round import special_round, special_round_out
 from flag_gems.ops.special_scaled_modified_bessel_k1 import (
     special_scaled_modified_bessel_k1,
@@ -832,6 +842,7 @@ from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.svd import svd
+from flag_gems.ops.sym_constrain_range import sym_constrain_range
 from flag_gems.ops.sym_storage_offset import sym_storage_offset
 from flag_gems.ops.sym_stride import sym_stride
 from flag_gems.ops.t_copy import t_copy, t_copy_out
@@ -997,6 +1008,8 @@ __all__ = [
     "_upsample_bilinear2d_aa",
     "_upsample_bilinear2d_aa_backward",
     "_upsample_nearest_exact1d",
+    "_upsample_nearest_exact1d_backward",
+    "_upsample_nearest_exact1d_backward_grad_input",
     "_upsample_nearest_exact2d",
     "_upsample_nearest_exact2d_backward",
     "_upsample_nearest_exact3d",
@@ -1193,6 +1206,7 @@ __all__ = [
     "cudnn_attention_forward",
     "cudnn_batch_norm_backward",
     "cudnn_convolution",
+    "cudnn_rnn_backward",
     "cummax",
     "cummaxmin_backward",
     "cummin",
@@ -1276,6 +1290,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",
+    "fliplr",
     "float_power_scalar_tensor",
     "float_power_scalar_tensor_out",
     "float_power_tensor_scalar",
@@ -1536,6 +1551,7 @@ __all__ = [
     "mish",
     "mish_",
     "mish_backward",
+    "mkldnn_rnn_layer",
     "mm",
     "mm_out",
     "mode",
@@ -1758,6 +1774,7 @@ __all__ = [
     "special_bessel_j0",
     "special_bessel_j1",
     "special_bessel_y0",
+    "special_bessel_y1",
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
@@ -1784,12 +1801,15 @@ __all__ = [
     "special_log_softmax",
     "special_log1p",
     "special_log1p_out",
+    "special_logit",
+    "special_logit_out",
     "special_logsumexp",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_modified_bessel_k1",
     "special_modified_bessel_k1_out",
     "special_multigammaln",
+    "special_ndtr",
     "special_round",
     "special_round_out",
     "special_scaled_modified_bessel_k1",
@@ -1819,6 +1839,7 @@ __all__ = [
     "sum_dim_out",
     "sum_out",
     "svd",
+    "sym_constrain_range",
     "sym_storage_offset",
     "sym_stride",
     "t_copy",
