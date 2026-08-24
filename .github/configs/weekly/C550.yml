@@ -25,7 +25,7 @@ runner_labels: c550-flaggems-weekly
 use_container: true
 
 # Container image for this backends
-container_image: harbor.baai.ac.cn/flaggems/metax-flaggems-test-c550-flagtree0.6.1a2_metax3.6:202607071028
+container_image: harbor.baai.ac.cn/flaggems/metax-flaggems-test-c550-flagtree0.6.1_metax3.6-pujiang:202608191108
 
 # Container volumes to mount for this backends
 container_volumes:
