@@ -765,6 +765,7 @@ _FULL_CONFIG = (
     ("linalg_det.out", linalg_det_out),
     ("linalg_eig", linalg_eig),
     ("linalg_householder_product", linalg_householder_product),
+    ("linalg_inv_ex", linalg_inv_ex),
     ("linalg_ldl_factor", ldl_factor),
     ("linalg_ldl_factor_ex", ldl_factor_ex),
     ("linalg_ldl_solve", linalg_ldl_solve),
