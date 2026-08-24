@@ -50,6 +50,16 @@ requires_flagtree_flagtune = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def assume_flagtune_platform_package_is_available(monkeypatch):
+    """Keep mode-routing unit tests independent of model I/O and GPU probing."""
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        lambda: True,
+    )
+
+
 # not_raises is copied from https://gist.github.com/oisinmulvihill/45c14271fad7794a4a52516ecb784e69
 @contextmanager
 def not_raises(ExpectedException):
@@ -142,6 +152,132 @@ def test_tuning_mode_environment_matrix(
     assert mode.value == expected
 
 
+@pytest.mark.parametrize(
+    ("use_flagtune", "use_cost_model", "expected"),
+    [
+        (None, None, "default"),
+        (None, "0", "default"),
+        (None, "1", "default"),
+        ("0", None, "default"),
+        ("0", "0", "default"),
+        ("0", "1", "default"),
+        ("1", None, "expanded"),
+        ("1", "0", "expanded"),
+        ("1", "1", "expanded"),
+    ],
+)
+def test_missing_platform_package_uses_unadapted_tuning_routes(
+    monkeypatch,
+    use_flagtune,
+    use_cost_model,
+    expected,
+):
+    """Ignore the Cost Model switch when the active platform has no package."""
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
+    monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        lambda: False,
+    )
+    if use_flagtune is None:
+        monkeypatch.delenv("USE_FLAGTUNE", raising=False)
+    else:
+        monkeypatch.setenv("USE_FLAGTUNE", use_flagtune)
+    if use_cost_model is None:
+        monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL", raising=False)
+    else:
+        monkeypatch.setenv("USE_FLAGTUNE_COST_MODEL", use_cost_model)
+
+    mode = flagtune_runtime_mod.resolve_tuning_mode("mm", supports_cost_model=True)
+
+    assert mode.value == expected
+
+
+def test_missing_platform_package_honors_operator_include(monkeypatch):
+    """Select Expanded for an explicitly included op after Cost Model fallback."""
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
+    monkeypatch.delenv("USE_FLAGTUNE", raising=False)
+    monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL", raising=False)
+    monkeypatch.setenv("FLAGTUNE_INCLUDE", "mm")
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        lambda: False,
+    )
+
+    assert (
+        flagtune_runtime_mod.resolve_tuning_mode("mm", supports_cost_model=True)
+        is flagtune_runtime_mod.TuningMode.EXPANDED
+    )
+
+
+def test_expanded_request_does_not_probe_platform_package(monkeypatch):
+    """An explicit Expanded route must not require model discovery."""
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
+    monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.setenv("USE_FLAGTUNE", "1")
+    monkeypatch.setenv("USE_FLAGTUNE_COST_MODEL", "0")
+
+    def fail_if_called():
+        raise AssertionError("Expanded mode must not resolve a model package")
+
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        fail_if_called,
+    )
+
+    assert (
+        flagtune_runtime_mod.resolve_tuning_mode("mm", supports_cost_model=True)
+        is flagtune_runtime_mod.TuningMode.EXPANDED
+    )
+
+
+def test_missing_platform_package_ignores_invalid_cost_model_setting(monkeypatch):
+    """An unadapted platform follows normal routing without parsing Cost Model."""
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
+    monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.delenv("USE_FLAGTUNE", raising=False)
+    monkeypatch.setenv("USE_FLAGTUNE_COST_MODEL", "true")
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        lambda: False,
+    )
+
+    assert (
+        flagtune_runtime_mod.resolve_tuning_mode("mm", supports_cost_model=True)
+        is flagtune_runtime_mod.TuningMode.DEFAULT
+    )
+
+    monkeypatch.setenv("USE_FLAGTUNE", "1")
+    assert (
+        flagtune_runtime_mod.resolve_tuning_mode("mm", supports_cost_model=True)
+        is flagtune_runtime_mod.TuningMode.EXPANDED
+    )
+
+
+def test_disabled_flagtune_does_not_probe_platform_package(monkeypatch):
+    """Keep explicit Default mode free of device, model, and network access."""
+    monkeypatch.setenv("USE_FLAGTUNE", "0")
+    monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL", raising=False)
+
+    def fail_if_called():
+        raise AssertionError("disabled FlagTune must not resolve a model package")
+
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        fail_if_called,
+    )
+
+    assert (
+        flagtune_runtime_mod.resolve_tuning_mode("mm", supports_cost_model=True)
+        is flagtune_runtime_mod.TuningMode.DEFAULT
+    )
+
+
 def test_adapted_tuning_mode_prefers_cost_model_when_both_enabled(monkeypatch):
     """Treat both enabled switches as an explicit Cost Model request."""
     monkeypatch.setenv("USE_FLAGTUNE", "1")
@@ -222,6 +358,61 @@ def test_adapted_libtuner_switches_default_expanded_and_cost_model(monkeypatch):
     assert LibTuner.apply_flagtune(tuner) is True
     assert tuner._flagtune_mode is flagtune_runtime_mod.TuningMode.DEFAULT
     assert tuner.configs is default_configs
+
+
+def test_libtuner_falls_back_when_platform_package_is_missing(monkeypatch):
+    """Route an adapted tuner through unadapted configs without a package."""
+    default_configs = [object()]
+    expanded_configs = [object(), object()]
+
+    class FakeTuner:
+        __name__ = "mm"
+        _flagtune_op_name = "mm"
+        _flagtune_expand_op_name = "mm_general_tma"
+        _flagtune_op_id = "flaggems/mm"
+        _flagtune_variant = "general_tma"
+        _flagtune_yaml_path = None
+        _flagtune_pre_hook = None
+        _flagtune_default_configs = default_configs
+        _flagtune_default_strategy = "default_strategy"
+        _flagtune_mode = flagtune_runtime_mod.TuningMode.COST_MODEL
+        _flagtune_warned = False
+
+        def _set_configs_and_strategy(self, configs, strategy, *, mode=None):
+            self.configs = configs
+            self.strategy = strategy
+            self._flagtune_mode = flagtune_runtime_mod.TuningMode(mode)
+
+    monkeypatch.setattr(libentry_mod, "_HAS_FLAGTREE_FLAGTUNE", True)
+    monkeypatch.setattr(
+        flagtune_runtime_mod,
+        "_platform_cost_model_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
+    monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.delenv("USE_FLAGTUNE", raising=False)
+    monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL", raising=False)
+    monkeypatch.setattr(
+        libentry_mod.runtime,
+        "get_expand_config",
+        lambda *_args, **_kwargs: {"strategy": "expanded_strategy"},
+    )
+    monkeypatch.setattr(
+        libentry_mod.runtime,
+        "ops_get_configs",
+        lambda *_args, **_kwargs: expanded_configs,
+    )
+    tuner = FakeTuner()
+
+    assert LibTuner.apply_flagtune(tuner) is True
+    assert tuner._flagtune_mode is flagtune_runtime_mod.TuningMode.DEFAULT
+    assert tuner.configs is default_configs
+
+    monkeypatch.setenv("USE_FLAGTUNE", "1")
+    assert LibTuner.apply_flagtune(tuner) is True
+    assert tuner._flagtune_mode is flagtune_runtime_mod.TuningMode.EXPANDED
+    assert tuner.configs is expanded_configs
 
 
 @pytest.mark.parametrize(
