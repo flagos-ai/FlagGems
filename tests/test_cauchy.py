@@ -52,6 +52,8 @@ def test_cauchy_accuracy(shape, dtype, median, sigma):
     """
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("gcu doesn't support fp64")
     torch.manual_seed(42)
     x = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
@@ -126,6 +128,8 @@ def test_cauchy_out_accuracy(shape, dtype, median, sigma):
     """
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("gcu doesn't support fp64")
     torch.manual_seed(42)
     x = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
@@ -185,6 +189,8 @@ def test_cauchy_reproducibility(shape, dtype):
     """
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("gcu doesn't support fp64")
     torch.manual_seed(12345)
     x1 = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 
