@@ -37,6 +37,9 @@ from flag_gems.ops._batch_norm_impl_index_backward import (
     _batch_norm_impl_index_backward,
 )
 from flag_gems.ops._batch_norm_no_update import _batch_norm_no_update
+from flag_gems.ops._batch_norm_with_update_functional import (
+    _batch_norm_with_update_functional,
+)
 from flag_gems.ops._cholesky_solve_helper import _cholesky_solve_helper
 from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
 from flag_gems.ops._compute_linear_combination import (
@@ -44,6 +47,7 @@ from flag_gems.ops._compute_linear_combination import (
     _compute_linear_combination_out,
 )
 from flag_gems.ops._conj import _conj
+from flag_gems.ops._conj_copy import _conj_copy, _conj_copy_out
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
 from flag_gems.ops._convolution_double_backward import _convolution_double_backward
 from flag_gems.ops._convolution_mode import _convolution_mode
@@ -261,9 +265,11 @@ from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.cdist import _cdist_backward, _cdist_forward, cdist
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
+from flag_gems.ops.chalf import chalf
 from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.cholesky_inverse import cholesky_inverse
 from flag_gems.ops.cholesky_solve import cholesky_solve, cholesky_solve_out
+from flag_gems.ops.choose_qparams_optimized import choose_qparams_optimized
 from flag_gems.ops.chunk import chunk
 from flag_gems.ops.clamp import (
     clamp,
@@ -296,7 +302,7 @@ from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
-from flag_gems.ops.cummax import cummax
+from flag_gems.ops.cummax import cummax, cummaxmin_backward
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
@@ -336,6 +342,7 @@ from flag_gems.ops.expand import expand, expand_
 from flag_gems.ops.expand_as import expand_as
 from flag_gems.ops.expand_copy import expand_copy
 from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
+from flag_gems.ops.exponential import exponential
 from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
@@ -534,6 +541,7 @@ from flag_gems.ops.logical_xor import logical_xor
 from flag_gems.ops.logical_xor_ import logical_xor_
 from flag_gems.ops.logit import logit, logit_out
 from flag_gems.ops.logit_ import logit_
+from flag_gems.ops.logit_backward import logit_backward
 from flag_gems.ops.logspace import logspace
 from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lstm import lstm
@@ -568,6 +576,7 @@ from flag_gems.ops.minimum import minimum
 from flag_gems.ops.miopen_batch_norm_backward import miopen_batch_norm_backward
 from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mish_backward import mish_backward
+from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
@@ -756,6 +765,7 @@ from flag_gems.ops.special_airy_ai import special_airy_ai, special_airy_ai_out
 from flag_gems.ops.special_bessel_j0 import special_bessel_j0
 from flag_gems.ops.special_bessel_j1 import special_bessel_j1
 from flag_gems.ops.special_bessel_y0 import special_bessel_y0
+from flag_gems.ops.special_bessel_y1 import special_bessel_y1
 from flag_gems.ops.special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from flag_gems.ops.special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from flag_gems.ops.special_chebyshev_polynomial_w import (
@@ -782,6 +792,7 @@ from flag_gems.ops.special_i1e import special_i1e
 from flag_gems.ops.special_legendre_polynomial_p import special_legendre_polynomial_p
 from flag_gems.ops.special_log1p import special_log1p, special_log1p_out
 from flag_gems.ops.special_log_softmax import special_log_softmax
+from flag_gems.ops.special_logit import special_logit, special_logit_out
 from flag_gems.ops.special_logsumexp import special_logsumexp
 from flag_gems.ops.special_modified_bessel_k0 import (
     special_modified_bessel_k0,
@@ -792,6 +803,7 @@ from flag_gems.ops.special_modified_bessel_k1 import (
     special_modified_bessel_k1_out,
 )
 from flag_gems.ops.special_multigammaln import special_multigammaln
+from flag_gems.ops.special_ndtr import special_ndtr
 from flag_gems.ops.special_round import special_round, special_round_out
 from flag_gems.ops.special_scaled_modified_bessel_k1 import (
     special_scaled_modified_bessel_k1,
@@ -915,6 +927,7 @@ __all__ = [
     "_batch_norm_impl_index",
     "_batch_norm_impl_index_backward",
     "_batch_norm_no_update",
+    "_batch_norm_with_update_functional",
     "_cummin_helper",
     "_fake_quantize_learnable_per_tensor_affine",
     "_functional_assert_async",
@@ -925,6 +938,8 @@ __all__ = [
     "_compute_linear_combination",
     "_compute_linear_combination_out",
     "_conj",
+    "_conj_copy",
+    "_conj_copy_out",
     "_conv_depthwise2d",
     "_convert_weight_to_int4pack",
     "_convolution_double_backward",
@@ -1135,10 +1150,12 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "chalf",
     "channel_shuffle",
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
+    "choose_qparams_optimized",
     "chunk",
     "clamp",
     "clamp_",
@@ -1177,6 +1194,7 @@ __all__ = [
     "cudnn_batch_norm_backward",
     "cudnn_convolution",
     "cummax",
+    "cummaxmin_backward",
     "cummin",
     "cumprod",
     "cumprod_",
@@ -1233,6 +1251,7 @@ __all__ = [
     "expm1",
     "expm1_",
     "expm1_out",
+    "exponential",
     "exponential_",
     "eye",
     "eye_m",
@@ -1474,6 +1493,7 @@ __all__ = [
     "logical_xor_",
     "logit",
     "logit_",
+    "logit_backward",
     "logit_out",
     "logspace",
     "logsumexp",
@@ -1515,6 +1535,7 @@ __all__ = [
     "mish",
     "mish_",
     "mish_backward",
+    "mkldnn_rnn_layer",
     "mm",
     "mm_out",
     "mode",
@@ -1737,6 +1758,7 @@ __all__ = [
     "special_bessel_j0",
     "special_bessel_j1",
     "special_bessel_y0",
+    "special_bessel_y1",
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
@@ -1763,12 +1785,15 @@ __all__ = [
     "special_log_softmax",
     "special_log1p",
     "special_log1p_out",
+    "special_logit",
+    "special_logit_out",
     "special_logsumexp",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_modified_bessel_k1",
     "special_modified_bessel_k1_out",
     "special_multigammaln",
+    "special_ndtr",
     "special_round",
     "special_round_out",
     "special_scaled_modified_bessel_k1",

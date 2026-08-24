@@ -12,6 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+_conj_copy:
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+    num_warps: 8
+
 _adaptive_avg_pool3d_backward:
   - META:
       BLOCK_SIZE: 512
