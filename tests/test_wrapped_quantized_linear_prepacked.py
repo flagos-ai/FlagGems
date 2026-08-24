@@ -47,18 +47,36 @@ def _make_qparams(device):
 @pytest.mark.parametrize("leading_shape,N,K", SHAPES)
 @pytest.mark.parametrize("noncontiguous", [False, True])
 def test_wrapped_quantized_linear_prepacked(leading_shape, N, K, noncontiguous):
-    if noncontiguous:
-        input = torch.randn((*leading_shape, K * 2), device=flag_gems.device)[..., ::2]
-        weight = torch.randn((N, K * 2), device=flag_gems.device)[..., ::2]
-        bias = torch.randn((N * 2,), device=flag_gems.device)[::2]
-    else:
-        input = torch.randn((*leading_shape, K), device=flag_gems.device)
-        weight = torch.randn((N, K), device=flag_gems.device)
-        bias = torch.randn((N,), device=flag_gems.device)
-
     input_scale, input_zp, weight_scale, weight_zp, output_scale, output_zp = (
         _make_qparams(flag_gems.device)
     )
+    # Keep values on the quantization grid. Arbitrary random floats can land on
+    # CPU/GPU-specific rounding boundaries and make this exact quantized-output
+    # comparison flaky without exercising a different kernel path.
+    if noncontiguous:
+        input = (
+            torch.randint(-8, 9, (*leading_shape, K * 2), device=flag_gems.device).to(
+                torch.float32
+            )
+            * input_scale
+        )[..., ::2]
+        weight = (
+            torch.randint(-8, 9, (N, K * 2), device=flag_gems.device).to(torch.float32)
+            * weight_scale
+        )[..., ::2]
+        bias = torch.zeros((N * 2,), device=flag_gems.device)[::2]
+    else:
+        input = (
+            torch.randint(-8, 9, (*leading_shape, K), device=flag_gems.device).to(
+                torch.float32
+            )
+            * input_scale
+        )
+        weight = (
+            torch.randint(-8, 9, (N, K), device=flag_gems.device).to(torch.float32)
+            * weight_scale
+        )
+        bias = torch.zeros((N,), device=flag_gems.device)
     # The native packed object is an opaque CPU pointer and its consumer has no
     # usable CUDA path, so this operator always needs a CPU native reference.
     ref_input = input.cpu()
