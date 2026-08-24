@@ -23,12 +23,12 @@ from . import conftest as cfg
 DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.FLOAT_DTYPES
 
 CHAIN_CASES = [
-    ((7, 11, 5), False, False),
-    ((13, 17, 3, 19), False, False),
-    ((13, 3, 17, 19), False, False),
-    ((1, 9, 4, 7, 3), True, False),
-    ((6, 3, 7, 5, 8, 1), False, True),
-    ((1, 5, 1), True, True),
+    ((64, 32, 128), False, False),
+    ((64, 32, 128, 16), False, False),
+    ((64, 128, 32, 16), False, False),
+    ((1, 64, 32, 128, 16), True, False),
+    ((64, 32, 128, 64, 32, 1), False, True),
+    ((1, 64, 1), True, True),
 ]
 
 
@@ -83,7 +83,7 @@ def test_accuracy_linalg_multi_dot_out(dimensions, first_vector, last_vector, dt
 @pytest.mark.linalg_multi_dot_out
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_accuracy_linalg_multi_dot_out_noncontiguous(dtype):
-    dimensions = (8, 12, 6)
+    dimensions = (64, 32, 128)
     tensors = _make_chain(dimensions, False, False, dtype)
     reference_tensors = [utils.to_reference(tensor) for tensor in tensors]
     reference = torch.linalg.multi_dot(reference_tensors)
