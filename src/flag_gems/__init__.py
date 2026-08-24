@@ -167,6 +167,7 @@ _FULL_CONFIG = (
     ),
     ("binary_cross_entropy_backward", binary_cross_entropy_backward),
     ("choose_qparams_optimized", choose_qparams_optimized),
+    ("conv_tbc_backward", conv_tbc_backward),
     ("grid_sampler_3d_backward", grid_sampler_3d_backward),
     ("linalg_svdvals", linalg_svdvals),
     ("_log_softmax", log_softmax),

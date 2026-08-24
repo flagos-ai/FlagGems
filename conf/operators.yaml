@@ -1257,6 +1257,16 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: conv_tbc_backward
+    description: Triton kernel implementation for conv_tbc_backward.
+    for:
+      - conv_tbc_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
   - id: functional_assert_async
     description: |
       Functional version of _assert_async that takes a dependency token and returns a new token.
