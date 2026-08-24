@@ -15,7 +15,7 @@
 import pytest
 import torch
 
-from flag_gems.ops.topk_w8a16 import topk_w8a16_fp8
+from flag_gems.ops.topk_w8a16_fp8 import topk_w8a16_fp8
 
 from . import base, consts
 
