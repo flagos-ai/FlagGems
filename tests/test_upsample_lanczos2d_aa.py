@@ -18,11 +18,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.upsample_lanczos2d_aa import (
-    _upsample_lanczos2d_aa,
-    _upsample_lanczos2d_aa_out,
-    _upsample_lanczos2d_aa_vec,
-)
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
@@ -129,7 +124,7 @@ def test_upsample_lanczos2d_aa(dtype, shape, scale, align_corners):
     reference_input = utils.to_reference(input)
     output_size = tuple(int(shape[i + 2] * scale[i]) for i in range(2))
     reference = _reference(reference_input, output_size, align_corners)
-    result = _upsample_lanczos2d_aa(input, output_size, align_corners)
+    result = flag_gems._upsample_lanczos2d_aa(input, output_size, align_corners)
     _assert_close(result, reference, dtype)
 
 
@@ -139,7 +134,7 @@ def test_upsample_lanczos2d_aa_uint8_and_layout():
         0, 256, (1, 3, 11, 13), dtype=torch.uint8, device=flag_gems.device
     ).contiguous(memory_format=torch.channels_last)
     reference = _reference(utils.to_reference(input), (7, 19))
-    result = _upsample_lanczos2d_aa(input, (7, 19))
+    result = flag_gems._upsample_lanczos2d_aa(input, (7, 19))
     _assert_close(result, reference, torch.uint8)
     assert result.is_contiguous(memory_format=torch.channels_last)
 
@@ -148,7 +143,7 @@ def test_upsample_lanczos2d_aa_uint8_and_layout():
 def test_upsample_lanczos2d_aa_transposed_input():
     input = torch.randn((1, 2, 9, 7), device=flag_gems.device).transpose(-1, -2)
     reference = _reference(utils.to_reference(input), (13, 11))
-    result = _upsample_lanczos2d_aa(input, (13, 11))
+    result = flag_gems._upsample_lanczos2d_aa(input, (13, 11))
     _assert_close(result, reference, torch.float32)
     assert result.is_contiguous()
 
@@ -162,7 +157,7 @@ def test_upsample_lanczos2d_aa_out(noncontiguous):
         out = torch.empty((1, 2, 13, 11), device=flag_gems.device).transpose(-1, -2)
     else:
         out = torch.empty(0, device=flag_gems.device)
-    result = _upsample_lanczos2d_aa_out(input, (11, 13), out=out)
+    result = flag_gems._upsample_lanczos2d_aa_out(input, (11, 13), out=out)
     assert result is out
     _assert_close(result, reference, torch.float32)
 
@@ -182,7 +177,7 @@ def test_upsample_lanczos2d_aa_vec(use_scale_factors):
     reference = _reference(
         utils.to_reference(input), output_size, False, scales[0], scales[1]
     )
-    result = _upsample_lanczos2d_aa_vec(input, *args)
+    result = flag_gems._upsample_lanczos2d_aa_vec(input, *args)
     _assert_close(result, reference, torch.float32)
 
 
@@ -193,7 +188,7 @@ def test_upsample_lanczos2d_aa_vec(use_scale_factors):
 def test_upsample_lanczos2d_aa_vec_requires_one_size(output_size, scale_factors):
     input = torch.randn((1, 2, 8, 10), device=flag_gems.device)
     with pytest.raises(RuntimeError):
-        _upsample_lanczos2d_aa_vec(input, output_size, False, scale_factors)
+        flag_gems._upsample_lanczos2d_aa_vec(input, output_size, False, scale_factors)
 
 
 @pytest.mark.upsample_lanczos2d_aa
