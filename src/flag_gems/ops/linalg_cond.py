@@ -410,9 +410,10 @@ def _compute_norm_cond(A, batch_size, n, norm_mode):
         norm_mode=norm_mode,
     )
 
-    # Compute inverse of A via aten directly (bypass FlagGems dispatch to avoid
-    # Triton LU kernel which may have reduced accuracy for small matrices)
-    Inv_A = torch.ops.aten.linalg_inv_ex.default(A_flat)[0]
+    # Compute inverse of A on CPU to avoid FlagGems Triton LU kernel dispatch
+    # which may have reduced accuracy for small matrices. The inverse is then
+    # moved back to the original device for the Triton norm kernel.
+    Inv_A = torch.linalg.inv(A_flat.cpu()).to(device=device)
 
     # Compute norm of inv(A)
     norm_inv = torch.zeros(batch_size, dtype=torch.float32, device=device)
@@ -480,8 +481,8 @@ def _compute_nuc_cond(A, batch_size, n):
         MAX_ITER=max_iter,
     )
 
-    # Compute inverse using aten directly to bypass FlagGems dispatch
-    Inv_A = torch.ops.aten.linalg_inv_ex.default(A_flat)[0]
+    # Compute inverse on CPU to avoid FlagGems Triton LU kernel dispatch
+    Inv_A = torch.linalg.inv(A_flat.cpu()).to(device=device)
 
     # Compute Gram matrix of inv(A): G_inv = inv(A)^T inv(A)
     G_inv = torch.zeros(batch_size, n, n, dtype=torch.float32, device=device)
