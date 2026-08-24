@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.bmm_w8a8 import bmm_w8a8_fp8
+from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 
 from . import accuracy_utils as utils
 from . import conftest as cfg

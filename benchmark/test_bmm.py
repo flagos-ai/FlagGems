@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 from flag_gems.ops.bmm import bmm_out as triton_bmm_out
-from flag_gems.ops.bmm_w8a8 import bmm_w8a8_fp8
+from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 
 from . import base, consts
 
