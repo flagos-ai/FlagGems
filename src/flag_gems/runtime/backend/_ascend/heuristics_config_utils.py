@@ -92,6 +92,22 @@ def index_select_heur_block_n(args):
     return max(m, 16)
 
 
+def log_normal_heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    else:
+        return 1024
+
+
+def log_normal_heur_num_warps(args):
+    if args["N"] <= 512:
+        return 4
+    elif args["N"] <= 1024:
+        return 8
+    else:
+        return 16
+
+
 def rand_heur_block(args):
     if args["N"] <= 512:
         return 2048
@@ -273,6 +289,10 @@ HEURISTICS_CONFIGS = {
     "index_select": {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
+    },
+    "log_normal": {
+        "BLOCK": log_normal_heur_block,
+        "num_warps": log_normal_heur_num_warps,
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
