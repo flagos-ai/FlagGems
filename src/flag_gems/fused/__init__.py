@@ -39,8 +39,8 @@ from flag_gems.fused.DSA.bin_topk import bucket_sort_topk
 from flag_gems.fused.FLA import (
     chunk_gated_delta_rule_fwd,
     dequantize_gdn_state_fp8,
-    fused_recurrent_gated_delta_rule_fp8_w8a16_decode,
     fused_recurrent_gated_delta_rule_fwd,
+    fused_recurrent_gated_delta_rule_w8a16_fp8,
     quantize_gdn_state_fp8,
 )
 from flag_gems.fused.flash_mla import flash_mla
@@ -155,7 +155,7 @@ __all__ = [
     "fused_inv_rope_fp8_quant",
     "fused_q_kv_rmsnorm",
     "fused_recurrent_gated_delta_rule_fwd",
-    "fused_recurrent_gated_delta_rule_fp8_w8a16_decode",
+    "fused_recurrent_gated_delta_rule_w8a16_fp8",
     "geglu",
     "gelu_and_mul",
     "grouped_topk",

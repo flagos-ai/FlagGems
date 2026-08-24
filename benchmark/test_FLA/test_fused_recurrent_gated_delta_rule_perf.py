@@ -16,10 +16,10 @@ import math
 
 import pytest
 import torch
-
-import flag_gems
 from benchmark.base import Benchmark
 from benchmark.conftest import Config
+
+import flag_gems
 
 try:
     from vllm.model_executor.layers.fla.ops import (
@@ -188,7 +188,7 @@ def test_perf_fused_recurrent_gated_delta_rule(qkv_contiguous):
     bench.run()
 
 
-class FusedRecurrentGatedDeltaRuleFP8Benchmark(Benchmark):
+class FusedRecurrentGatedDeltaRuleW8A16FP8Benchmark(Benchmark):
     DEFAULT_DTYPES = [torch.bfloat16]
     DEFAULT_SHAPES = [
         (1,),
@@ -299,7 +299,7 @@ def _bf16_decode_wrapper(
     )
 
 
-def _fp8_w8a16_decode_wrapper(
+def _w8a16_fp8_wrapper(
     q,
     k,
     v,
@@ -311,7 +311,7 @@ def _fp8_w8a16_decode_wrapper(
     cu_seqlens,
     state_indices,
 ):
-    return flag_gems.fused_recurrent_gated_delta_rule_fp8_w8a16_decode(
+    return flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
         q,
         k,
         v,
@@ -325,7 +325,7 @@ def _fp8_w8a16_decode_wrapper(
     )
 
 
-def _fp8_decode_available():
+def _w8a16_fp8_available():
     return (
         flag_gems.device == "cuda"
         and torch.cuda.is_available()
@@ -335,14 +335,14 @@ def _fp8_decode_available():
 
 
 @pytest.mark.skipif(
-    not _fp8_decode_available(), reason="FP8 GDN decode requires SM90 or newer"
+    not _w8a16_fp8_available(), reason="FP8 GDN decode requires SM90 or newer"
 )
 @pytest.mark.fused_recurrent_gated_delta_rule
-def test_perf_fused_recurrent_gated_delta_rule_fp8_w8a16():
+def test_perf_fused_recurrent_gated_delta_rule_w8a16_fp8():
     torch.manual_seed(0)
-    bench = FusedRecurrentGatedDeltaRuleFP8Benchmark(
+    bench = FusedRecurrentGatedDeltaRuleW8A16FP8Benchmark(
         op_name="fused_recurrent_gated_delta_rule",
         torch_op=_bf16_decode_wrapper,
     )
-    bench.set_gems(_fp8_w8a16_decode_wrapper)
+    bench.set_gems(_w8a16_fp8_wrapper)
     bench.run()

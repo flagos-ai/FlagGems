@@ -372,7 +372,7 @@ _FP8_K = 128
 _FP8_V = 128
 
 
-def _fp8_decode_available() -> bool:
+def _w8a16_fp8_available() -> bool:
     return (
         flag_gems.device == "cuda"
         and torch.cuda.is_available()
@@ -381,12 +381,12 @@ def _fp8_decode_available() -> bool:
     )
 
 
-requires_fp8_gdn = pytest.mark.skipif(
-    not _fp8_decode_available(), reason="FP8 GDN decode requires SM90 or newer"
+requires_w8a16_fp8_gdn = pytest.mark.skipif(
+    not _w8a16_fp8_available(), reason="FP8 GDN decode requires SM90 or newer"
 )
 
 
-def _make_fp8_packed_inputs(num_sequences: int):
+def _make_w8a16_fp8_packed_inputs(num_sequences: int):
     mixed = torch.randn(
         num_sequences,
         2 * _FP8_H * _FP8_K + _FP8_HV * _FP8_V,
@@ -428,7 +428,7 @@ def _make_fp8_packed_inputs(num_sequences: int):
     return q, k, v, g, beta, cu_seqlens, state_indices
 
 
-def _run_fp8_bf16(q, k, v, g, beta, state, cu_seqlens, state_indices):
+def _run_w8a16_fp8_bf16(q, k, v, g, beta, state, cu_seqlens, state_indices):
     return flag_gems.fused_recurrent_gated_delta_rule_fwd(
         q=q,
         k=k,
@@ -445,7 +445,7 @@ def _run_fp8_bf16(q, k, v, g, beta, state, cu_seqlens, state_indices):
     )
 
 
-def _run_fp8_reference(q, k, v, g, beta, state):
+def _run_w8a16_fp8_reference(q, k, v, g, beta, state):
     packed = q.shape[0] == 1
     q_float = q.float()
     k_float = k.float()
@@ -472,7 +472,7 @@ def _run_fp8_reference(q, k, v, g, beta, state):
     return output.to(q.dtype), state
 
 
-@requires_fp8_gdn
+@requires_w8a16_fp8_gdn
 @pytest.mark.fused_recurrent_gated_delta_rule
 def test_gdn_state_fp8_round_trip():
     torch.manual_seed(0)
@@ -491,14 +491,16 @@ def test_gdn_state_fp8_round_trip():
     assert error.mean().item() < 0.004
 
 
-@requires_fp8_gdn
+@requires_w8a16_fp8_gdn
 @pytest.mark.fused_recurrent_gated_delta_rule
 @pytest.mark.parametrize("num_sequences", [4, 64, 128])
-def test_fused_recurrent_gated_delta_rule_fp8_w8a16_decode_accuracy(
+def test_fused_recurrent_gated_delta_rule_w8a16_fp8_accuracy(
     num_sequences,
 ):
     torch.manual_seed(1)
-    q, k, v, g, beta, cu_seqlens, state_indices = _make_fp8_packed_inputs(num_sequences)
+    q, k, v, g, beta, cu_seqlens, state_indices = _make_w8a16_fp8_packed_inputs(
+        num_sequences
+    )
     initial_state = 0.02 * torch.randn(
         num_sequences,
         _FP8_HV,
@@ -512,8 +514,8 @@ def test_fused_recurrent_gated_delta_rule_fp8_w8a16_decode_accuracy(
         state_fp8, output_dtype=torch.bfloat16
     )
 
-    expected, state_ref = _run_fp8_reference(q, k, v, g, beta, state_ref)
-    actual, state_fp8 = flag_gems.fused_recurrent_gated_delta_rule_fp8_w8a16_decode(
+    expected, state_ref = _run_w8a16_fp8_reference(q, k, v, g, beta, state_ref)
+    actual, state_fp8 = flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
         q,
         k,
         v,
@@ -531,9 +533,9 @@ def test_fused_recurrent_gated_delta_rule_fp8_w8a16_decode_accuracy(
     torch.testing.assert_close(actual_state, state_ref.float(), atol=2e-2, rtol=2.5e-1)
 
 
-@requires_fp8_gdn
+@requires_w8a16_fp8_gdn
 @pytest.mark.fused_recurrent_gated_delta_rule
-def test_fused_recurrent_gated_delta_rule_fp8_w8a16_decode_repeated_updates():
+def test_fused_recurrent_gated_delta_rule_w8a16_fp8_repeated_updates():
     torch.manual_seed(2)
     num_sequences = 2
     state_ref = torch.zeros(
@@ -549,13 +551,13 @@ def test_fused_recurrent_gated_delta_rule_fp8_w8a16_decode_repeated_updates():
     mean_output_error = 0.0
 
     for _ in range(64):
-        q, k, v, g, beta, cu_seqlens, state_indices = _make_fp8_packed_inputs(
+        q, k, v, g, beta, cu_seqlens, state_indices = _make_w8a16_fp8_packed_inputs(
             num_sequences
         )
-        expected, state_ref = _run_fp8_bf16(
+        expected, state_ref = _run_w8a16_fp8_bf16(
             q, k, v, g, beta, state_ref, cu_seqlens, state_indices
         )
-        actual, state_fp8 = flag_gems.fused_recurrent_gated_delta_rule_fp8_w8a16_decode(
+        actual, state_fp8 = flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
             q,
             k,
             v,
@@ -578,11 +580,11 @@ def test_fused_recurrent_gated_delta_rule_fp8_w8a16_decode_repeated_updates():
     assert state_error.mean().item() < 0.02
 
 
-@requires_fp8_gdn
+@requires_w8a16_fp8_gdn
 @pytest.mark.fused_recurrent_gated_delta_rule
-def test_fused_recurrent_gated_delta_rule_fp8_w8a16_nonpacked_accuracy():
+def test_fused_recurrent_gated_delta_rule_w8a16_fp8_nonpacked_accuracy():
     torch.manual_seed(3)
-    q, k, v, g, beta, _, _ = _make_fp8_packed_inputs(64)
+    q, k, v, g, beta, _, _ = _make_w8a16_fp8_packed_inputs(64)
     q = q.transpose(0, 1).contiguous()
     k = k.transpose(0, 1).contiguous()
     v = v.transpose(0, 1).contiguous()
@@ -599,8 +601,8 @@ def test_fused_recurrent_gated_delta_rule_fp8_w8a16_nonpacked_accuracy():
     state_fp8 = flag_gems.quantize_gdn_state_fp8(initial_state.contiguous())
     state_ref = flag_gems.dequantize_gdn_state_fp8(state_fp8)
 
-    expected, state_ref = _run_fp8_reference(q, k, v, g, beta, state_ref)
-    actual, state_fp8 = flag_gems.fused_recurrent_gated_delta_rule_fp8_w8a16_decode(
+    expected, state_ref = _run_w8a16_fp8_reference(q, k, v, g, beta, state_ref)
+    actual, state_fp8 = flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
         q,
         k,
         v,

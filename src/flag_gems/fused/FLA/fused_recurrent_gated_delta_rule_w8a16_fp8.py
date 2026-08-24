@@ -74,7 +74,7 @@ def _dequantize_gdn_state_fp8_kernel(
 
 @libentry()
 @triton.jit
-def _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_kernel(
+def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
     q,
     k,
     v,
@@ -196,7 +196,7 @@ def _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_kernel(
 
 @libentry()
 @triton.jit
-def _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_grouped_kernel(
+def _fused_recurrent_gated_delta_rule_grouped_w8a16_fp8_kernel(
     q,
     k,
     v,
@@ -278,7 +278,7 @@ def _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_grouped_kernel(
 
 @libentry()
 @triton.jit
-def _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_persistent_kernel(
+def _fused_recurrent_gated_delta_rule_persistent_w8a16_fp8_kernel(
     q,
     k,
     v,
@@ -471,7 +471,7 @@ def dequantize_gdn_state_fp8(
     return state
 
 
-def fused_recurrent_gated_delta_rule_fp8_w8a16_decode(
+def fused_recurrent_gated_delta_rule_w8a16_fp8(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -583,7 +583,7 @@ def fused_recurrent_gated_delta_rule_fp8_w8a16_decode(
     # Group value heads without serializing V tiles when enough CTAs are available.
     if use_grouped_kernel:
         block_v = 32 if N < 64 else 64
-        _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_grouped_kernel[
+        _fused_recurrent_gated_delta_rule_grouped_w8a16_fp8_kernel[
             (triton.cdiv(V, block_v), N * H)
         ](
             q,
@@ -622,7 +622,7 @@ def fused_recurrent_gated_delta_rule_fp8_w8a16_decode(
     # BV64 reuses normalized q/k; skip the short second-wave range on H20.
     elif optimized_shape and (48 <= N < 80 or N >= 96):
         group_hv = 2 if 96 <= N < 160 and HV // H == 2 else 1
-        _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_persistent_kernel[
+        _fused_recurrent_gated_delta_rule_persistent_w8a16_fp8_kernel[
             (N * (HV // group_hv),)
         ](
             **kernel_args,
@@ -641,7 +641,7 @@ def fused_recurrent_gated_delta_rule_fp8_w8a16_decode(
             elif N == 2:
                 block_v = 16
         NV = triton.cdiv(V, block_v)
-        _fused_recurrent_gated_delta_rule_fp8_w8a16_decode_kernel[(NV, N * HV)](
+        _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel[(NV, N * HV)](
             **kernel_args,
             BV=block_v,
             num_warps=1,
