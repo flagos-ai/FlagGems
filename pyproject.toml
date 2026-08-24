@@ -77,6 +77,7 @@ dependencies = [
 ascend-cann850 = [
     "torch==2.9.0+cpu",
     "torch-npu==2.9.0",
+    "decorator==5.1.1",
 ]
 
 ascend-cann900 = [
