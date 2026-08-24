@@ -17,6 +17,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+import triton.language.extra.libdevice as libdevice
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -65,7 +66,7 @@ def _wrapped_linear_prepack_kernel(
     cols = offsets % K
 
     scale = tl.load(weight_scale).to(tl.float32)
-    inverse_scale = 1.0 / scale
+    inverse_scale = libdevice.rcp_rn(scale)
     zero_point = tl.load(weight_zero_point).to(tl.float32)
     values = tl.load(
         weight + rows * stride_wn + cols * stride_wk,

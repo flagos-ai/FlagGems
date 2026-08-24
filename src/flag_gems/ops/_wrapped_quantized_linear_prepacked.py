@@ -17,6 +17,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+import triton.language.extra.libdevice as libdevice
 
 from flag_gems.ops._wrapped_linear_prepack import (
     _round_half_to_even,
@@ -71,7 +72,7 @@ def _wrapped_quantized_linear_prepacked_kernel(
     offsets_k = tl.arange(0, BLOCK_K)
 
     input_scale_value = tl.load(input_scale).to(tl.float32)
-    input_inverse_scale = 1.0 / input_scale_value
+    input_inverse_scale = libdevice.rcp_rn(input_scale_value)
     input_zero_point_value = tl.load(input_zero_point).to(tl.int32)
     weight_scale_value = tl.load(weight_metadata).to(tl.float32)
     weight_zero_point_value = tl.load(weight_metadata + 1).to(tl.int32)
