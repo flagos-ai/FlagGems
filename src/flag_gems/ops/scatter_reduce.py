@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 _CANONICALIZE_5D_MIN_ELEMENTS = 1 << 23
 _MAX_ROWWISE_GRID_X = 65535
-_ROWWISE_TARGET_VENDORS = frozenset(("hygon", "metax", "mthreads"))
+_ROWWISE_TARGET_VENDORS = frozenset(("hygon", "metax", "mthreads", "nvidia"))
 _ROWWISE_REDUCE_IDS = {"sum": 0, "prod": 1, "mean": 2, "amax": 3, "amin": 4}
 # At this size, reducing 5D extrema through the 3D decoder amortizes the view
 # setup and avoids the fixed-width coordinate overhead. Cross-backend probes on
@@ -1710,6 +1710,12 @@ def _select_rowwise_strategy(inp, dim, index, src, reduce, include_self, result)
         return None
 
     row_extent = max(inp.shape[1], index.shape[1])
+    if flag_gems.vendor_name == "nvidia":
+        if reduce == "prod" and row_extent <= 64:
+            return "gather"
+        if row_extent <= 1024:
+            return "atomic"
+        return None
     if row_extent <= 64:
         return "gather"
     if reduce == "prod":
@@ -1772,12 +1778,12 @@ def _scatter_reduce_rowwise(
             if result is None:
                 result = torch.empty_like(inp)
             needs_count = reduce == "mean" or not include_self
-            direct_hygon_accumulator = (
-                flag_gems.vendor_name == "hygon"
+            direct_fp32_accumulator = (
+                flag_gems.vendor_name in ("hygon", "nvidia")
                 and inp.dtype == torch.float32
                 and (include_self or result.data_ptr() != inp.data_ptr())
             )
-            if direct_hygon_accumulator:
+            if direct_fp32_accumulator:
                 accumulator = result
                 count = (
                     torch.empty(
@@ -1820,6 +1826,9 @@ def _scatter_reduce_rowwise(
                 block = 64 if reduce == "prod" else 256
             elif flag_gems.vendor_name == "mthreads":
                 block = 64
+            elif flag_gems.vendor_name == "nvidia":
+                row_extent = max(out_ncols, index_ncols)
+                block = 128 if reduce == "prod" or row_extent <= 64 else 256
             else:
                 block = 256
             scatter_reduce_row_atomic_kernel[_rowwise_grid(out_nrows)](
