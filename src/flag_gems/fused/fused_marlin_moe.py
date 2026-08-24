@@ -6506,12 +6506,12 @@ def moe_bsm_route_count_kernel(
     stride_tk,
     counts,
     num_dispatch,
-    top_k_ptr,
+    top_k: tl.constexpr,
 ):
     pid = tl.program_id(0)
     if pid >= num_dispatch:
         return
-    tk = tl.load(top_k_ptr).to(tl.int32)
+    tk = top_k
     t = pid // tk
     rk = pid - t * tk
     eid = tl.load(topk_ids + t * stride_tid + rk * stride_tk).to(tl.int32)
@@ -6532,12 +6532,12 @@ def moe_bsm_route_scatter_kernel(
     out_w,
     num_dispatch,
     num_tokens,
-    top_k_ptr,
+    top_k: tl.constexpr,
 ):
     pid = tl.program_id(0)
     if pid >= num_dispatch:
         return
-    tk = tl.load(top_k_ptr).to(tl.int32)
+    tk = top_k
     t = pid // tk
     rk = pid - t * tk
     eid = tl.load(topk_ids + t * stride_tid + rk * stride_tk).to(tl.int32)
@@ -6565,8 +6565,6 @@ def _prepare_bsm_routing_triton(
     topk_weights = topk_weights.contiguous()
 
     counts = torch.zeros(num_experts, dtype=torch.int32, device=device)
-    top_k_ptr = torch.tensor([top_k], dtype=torch.int32, device=device)
-
     grid = (num_dispatch,)
     moe_bsm_route_count_kernel[grid](
         topk_ids,
@@ -6574,12 +6572,20 @@ def _prepare_bsm_routing_triton(
         topk_ids.stride(1),
         counts,
         num_dispatch,
-        top_k_ptr,
+        top_k,
     )
 
     counts_i64 = counts.to(torch.int64)
     padded_counts = ((counts_i64 + block_size_m - 1) // block_size_m) * block_size_m
-    num_post_padded = int(padded_counts.sum().item())
+    if torch.cuda.is_current_stream_capturing():
+        # Capture cannot synchronize a device-side padded count back to Python.
+        # Reserve the tight worst-case number of BSM blocks instead; unused rows
+        # retain the token sentinel and therefore perform no output writes.
+        max_nonempty_experts = min(num_dispatch, num_experts)
+        max_extra_blocks = max(num_dispatch - num_experts, 0) // block_size_m
+        num_post_padded = (max_nonempty_experts + max_extra_blocks) * block_size_m
+    else:
+        num_post_padded = int(padded_counts.sum().item())
 
     new_offsets = torch.zeros(num_experts + 1, dtype=torch.int64, device=device)
     new_offsets[1:] = padded_counts.cumsum(0)
@@ -6605,13 +6611,14 @@ def _prepare_bsm_routing_triton(
         sorted_weights_out,
         num_dispatch,
         num_tokens,
-        top_k_ptr,
+        top_k,
     )
 
     block_starts = torch.arange(
         0, num_post_padded, block_size_m, dtype=torch.int64, device=device
     )
     expert_ids_per_block = torch.searchsorted(new_offsets, block_starts, right=True) - 1
+    expert_ids_per_block.clamp_(max=num_experts - 1)
 
     return (
         sorted_token_ids_out,

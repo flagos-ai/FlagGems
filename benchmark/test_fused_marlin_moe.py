@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest import mock
+
 import pytest
 import torch
 
@@ -38,7 +40,8 @@ import flag_gems
 from flag_gems.fused.fused_marlin_moe import QUANT_TYPE_FLOAT8_E4M3FN
 from flag_gems.fused.fused_marlin_moe import fused_marlin_moe as gems_fused_marlin_moe
 
-from . import base
+from . import base, consts
+from .conftest import Config
 
 
 def is_cuda_available():
@@ -211,7 +214,7 @@ class FusedMarlinMoEW8A16FP8Benchmark(base.Benchmark):
         topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
 
-        yield (
+        inputs = (
             hidden_states,
             w1_q_marlin,
             w2_q_marlin,
@@ -224,6 +227,17 @@ class FusedMarlinMoEW8A16FP8Benchmark(base.Benchmark):
             topk_weights,
             topk_ids,
         )
+        if Config.mode == consts.BenchMode.CUDAGRAPH:
+            _vllm_baseline_fp8(*inputs)
+            # Compile/autotune the same fixed-capacity routing path that is
+            # selected during capture. PyTorch's device ops still execute
+            # normally because this warmup itself is outside the graph.
+            with mock.patch.object(
+                torch.cuda, "is_current_stream_capturing", return_value=True
+            ):
+                _gems_call_fp8(*inputs)
+            torch.cuda.synchronize()
+        yield inputs
 
 
 def _vllm_baseline_fp8(
