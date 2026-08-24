@@ -623,6 +623,7 @@ _FULL_CONFIG = (
     ("hardsigmoid_backward", hardsigmoid_backward),
     ("hardswish", hardswish),
     ("hardswish_", hardswish_),
+    ("hardswish_backward", hardswish_backward),
     ("hardswish_out", hardswish_out),
     ("heaviside_", heaviside_),
     ("hardtanh_", hardtanh_),
