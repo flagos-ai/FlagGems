@@ -17,7 +17,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.rmsnorm_w8a16 import rms_norm_w8a16_fp8
+from flag_gems.ops.rms_norm_w8a16_fp8.py import rms_norm_w8a16_fp8
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
