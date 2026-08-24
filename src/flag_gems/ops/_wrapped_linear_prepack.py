@@ -17,7 +17,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-import triton.language.extra.libdevice as libdevice
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -66,16 +65,13 @@ def _wrapped_linear_prepack_kernel(
     cols = offsets % K
 
     scale = tl.load(weight_scale).to(tl.float32)
-    inverse_scale = libdevice.rcp_rn(scale)
     zero_point = tl.load(weight_zero_point).to(tl.float32)
     values = tl.load(
         weight + rows * stride_wn + cols * stride_wk,
         mask=weight_mask,
         other=0.0,
     ).to(tl.float32)
-    # Match ATen quantize_per_tensor, which multiplies by the reciprocal
-    # scale. Division can round differently at FP32 half-way boundaries.
-    quantized = _round_half_to_even(values * inverse_scale) + zero_point
+    quantized = _round_half_to_even(values / scale) + zero_point
     quantized = tl.minimum(tl.maximum(quantized, -128.0), 127.0)
     tl.store(packed_weight + offsets, quantized.to(tl.int8), mask=weight_mask)
 
