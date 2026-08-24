@@ -83,6 +83,9 @@ backends:
     deps:
       - torch==2.9.0+cpu
       - torch-npu==2.9.0
+      - decorator==5.1.1
+      - attrs==24.2.0
+      - psutil==6.0.0
 
   ascend-cann900:
     python: "3.11"
@@ -150,7 +153,7 @@ backends:
     python: "3.12"
     cmake_backend: GCU
     triton: triton==3.6.0
-    flagtree: flagtree==0.6.0+enflame3.6
+    flagtree: flagtree==0.6.1+enflame3.6
     triton_post_install:
       - triton-gcu==3.6.0+1.0.20260722
     # This version of flagtree doesn't work yet
