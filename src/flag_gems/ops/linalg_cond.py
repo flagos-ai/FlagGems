@@ -480,8 +480,8 @@ def _compute_nuc_cond(A, batch_size, n):
         MAX_ITER=max_iter,
     )
 
-    # Compute inverse using torch (LU-based, numerically stable)
-    Inv_A = torch.linalg.inv(A_flat)
+    # Compute inverse using aten directly to bypass FlagGems dispatch
+    Inv_A = torch.ops.aten.linalg_inv_ex.default(A_flat)[0]
 
     # Compute Gram matrix of inv(A): G_inv = inv(A)^T inv(A)
     G_inv = torch.zeros(batch_size, n, n, dtype=torch.float32, device=device)
@@ -585,3 +585,8 @@ def linalg_cond(A, p=None):
         out = out.squeeze()
 
     return out
+
+
+def linalg_cond_p_str(A, p: str):
+    """Dispatch wrapper for aten::linalg_cond.p_str (string p values like 'fro', 'nuc')."""
+    return linalg_cond(A, p)
