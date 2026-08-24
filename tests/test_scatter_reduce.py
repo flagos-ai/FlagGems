@@ -433,50 +433,62 @@ def test_scatter_reduce_5d_canonical_gate(monkeypatch, reduce):
     _assert_scatter_reduce_close(result, ref_out, dtype, dim, src, reduce)
 
 
-def _make_empty_test_data(dtype=torch.float32):
+EMPTY_CASES = (
+    pytest.param((8,), 0, id="empty_index"),
+    pytest.param((0, 512), -1, id="empty_rows"),
+)
+
+
+def _make_empty_test_data(shape, dtype=torch.float32):
     """Create the empty index/source special case for all three overloads."""
-    inp = torch.randn(8, dtype=dtype, device=flag_gems.device)
-    index = torch.empty(0, dtype=torch.long, device=flag_gems.device)
-    src = torch.empty(0, dtype=dtype, device=flag_gems.device)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    index = torch.empty(
+        shape if len(shape) > 1 else 0, dtype=torch.long, device=flag_gems.device
+    )
+    src = torch.empty_like(index, dtype=dtype)
     return inp, index, src
 
 
 @pytest.mark.scatter_reduce_two
+@pytest.mark.parametrize("shape,dim", EMPTY_CASES)
 @pytest.mark.parametrize("include_self", (True, False))
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
-def test_scatter_reduce_empty(include_self, reduce):
+def test_scatter_reduce_empty(shape, dim, include_self, reduce):
     """Validate aten::scatter_reduce.two for an empty index and source."""
     dtype = torch.float32
-    inp, index, src = _make_empty_test_data(dtype)
+    inp, index, src = _make_empty_test_data(shape, dtype)
     ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
     ref_out = torch.ops.aten.scatter_reduce.two(
-        ref_inp, 0, ref_index, ref_src, reduce, include_self=include_self
+        ref_inp, dim, ref_index, ref_src, reduce, include_self=include_self
     )
 
     with flag_gems.use_gems():
         result = torch.ops.aten.scatter_reduce.two(
-            inp, 0, index, src, reduce, include_self=include_self
+            inp, dim, index, src, reduce, include_self=include_self
         )
 
-    assert result.data_ptr() != inp.data_ptr()
+    assert result is not inp
+    if inp.numel() != 0:
+        assert result.data_ptr() != inp.data_ptr()
     utils.gems_assert_close(result, ref_out, dtype)
 
 
 @pytest.mark.scatter_reduce_two_
+@pytest.mark.parametrize("shape,dim", EMPTY_CASES)
 @pytest.mark.parametrize("include_self", (True, False))
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
-def test_scatter_reduce__empty(include_self, reduce):
+def test_scatter_reduce__empty(shape, dim, include_self, reduce):
     """Validate aten::scatter_reduce_.two for an empty index and source."""
     dtype = torch.float32
-    inp, index, src = _make_empty_test_data(dtype)
+    inp, index, src = _make_empty_test_data(shape, dtype)
     ref_inp, ref_index, ref_src = _reference_inputs(inp.clone(), index, src)
     ref_out = torch.ops.aten.scatter_reduce_.two(
-        ref_inp, 0, ref_index, ref_src, reduce, include_self=include_self
+        ref_inp, dim, ref_index, ref_src, reduce, include_self=include_self
     )
 
     with flag_gems.use_gems():
         result = torch.ops.aten.scatter_reduce_.two(
-            inp, 0, index, src, reduce, include_self=include_self
+            inp, dim, index, src, reduce, include_self=include_self
         )
 
     assert result.data_ptr() == inp.data_ptr()
@@ -484,18 +496,19 @@ def test_scatter_reduce__empty(include_self, reduce):
 
 
 @pytest.mark.scatter_reduce_two_out
+@pytest.mark.parametrize("shape,dim", EMPTY_CASES)
 @pytest.mark.parametrize("include_self", (True, False))
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
-def test_scatter_reduce_out_empty(include_self, reduce):
+def test_scatter_reduce_out_empty(shape, dim, include_self, reduce):
     """Validate aten::scatter_reduce.two_out for an empty index and source."""
     dtype = torch.float32
-    inp, index, src = _make_empty_test_data(dtype)
+    inp, index, src = _make_empty_test_data(shape, dtype)
     ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
     result_out = torch.empty_like(inp)
     ref_out = torch.empty_like(ref_inp)
     ref_result = torch.ops.aten.scatter_reduce.two_out(
         ref_inp,
-        0,
+        dim,
         ref_index,
         ref_src,
         reduce,
@@ -506,7 +519,7 @@ def test_scatter_reduce_out_empty(include_self, reduce):
     with flag_gems.use_gems():
         result = torch.ops.aten.scatter_reduce.two_out(
             inp,
-            0,
+            dim,
             index,
             src,
             reduce,
@@ -577,18 +590,34 @@ def test_scatter_reduce_nan():
 
 @pytest.mark.scatter_reduce_two
 def test_scatter_reduce_prod_nan():
-    """Validate NaN propagation when product reduction multiplies Inf by zero."""
+    """Validate special values on the optimized two-dimensional product path."""
     dtype = torch.float32
-    inp = torch.ones(1, dtype=dtype, device=flag_gems.device)
-    src = torch.tensor([float("inf"), 0.0], dtype=dtype, device=flag_gems.device)
-    index = torch.zeros(2, dtype=torch.long, device=flag_gems.device)
+    inp = torch.ones((1, 512), dtype=dtype, device=flag_gems.device)
+    src = torch.ones_like(inp)
+    index = torch.arange(512, dtype=torch.long, device=flag_gems.device).view(1, -1)
+    src[0, 0] = float("inf")
+    src[0, 1] = 0.0
+    index[0, 1] = 0
+    src[0, 2] = -0.0
+    index[0, 2] = 1
+    src[0, 3] = float("nan")
+    index[0, 3] = 2
     ref_inp, ref_index, ref_src = _reference_inputs(inp, index, src)
-    ref_out = torch.ops.aten.scatter_reduce.two(ref_inp, 0, ref_index, ref_src, "prod")
+    ref_out = torch.ops.aten.scatter_reduce.two(
+        ref_inp,
+        -1,
+        ref_index,
+        ref_src,
+        "prod",
+    )
 
     with flag_gems.use_gems():
-        result = torch.ops.aten.scatter_reduce.two(inp, 0, index, src, "prod")
+        result = torch.ops.aten.scatter_reduce.two(inp, -1, index, src, "prod")
 
     utils.gems_assert_close(result, ref_out, dtype, equal_nan=True)
+    assert (
+        torch.signbit(result[0, 1].cpu()).item() == torch.signbit(ref_out[0, 1]).item()
+    )
 
 
 @pytest.mark.scatter_reduce_two

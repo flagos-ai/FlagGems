@@ -47,6 +47,9 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 _CANONICALIZE_5D_MIN_ELEMENTS = 1 << 23
+_MAX_ROWWISE_GRID_X = 65535
+_ROWWISE_TARGET_VENDORS = frozenset(("hygon", "metax", "mthreads"))
+_ROWWISE_REDUCE_IDS = {"sum": 0, "prod": 1, "mean": 2, "amax": 3, "amin": 4}
 # At this size, reducing 5D extrema through the 3D decoder amortizes the view
 # setup and avoids the fixed-width coordinate overhead. Cross-backend probes on
 # all supported floating dtypes showed a win or parity at 2**23 elements; keep
@@ -60,7 +63,7 @@ def heur_block(args):
     occupancy. NVIDIA GPUs default to 128 which balances occupancy and
     register pressure.
     """
-    if flag_gems.vendor_name in ["metax", "iluvatar"]:
+    if flag_gems.vendor_name in ["hygon", "metax", "iluvatar"]:
         return 256
     return 128
 
@@ -79,6 +82,10 @@ def heur_prod_block(args):
     # serialized by the device-wide atomic unit rather than by vector lanes.
     if args["USE_LOCK"]:
         return 1
+    # HCU product CAS is accurate within one wavefront, while BLOCK=128 spans
+    # two wavefronts and can lose updates under contention.
+    if flag_gems.vendor_name == "hygon":
+        return 64
     return heur_block(args)
 
 
@@ -167,6 +174,237 @@ def _locked_multiply(
         )
         pending &= ~acquired
         block_pending = tl.sum(pending.to(tl.int32)) > 0
+
+
+@triton.jit
+def scatter_reduce_row_gather_kernel(
+    inp_ptr,
+    index_ptr,
+    src_ptr,
+    result_ptr,
+    out_nrows,
+    index_nrows,
+    OUT_NCOLS: tl.constexpr,
+    INDEX_NCOLS: tl.constexpr,
+    SRC_NCOLS: tl.constexpr,
+    OUT_TILES: tl.constexpr,
+    REDUCE: tl.constexpr,
+    INCLUDE_SELF: tl.constexpr,
+    OUT_BLOCK: tl.constexpr,
+    SRC_BLOCK: tl.constexpr,
+):
+    """Reduce a short row without atomics by gathering each output tile."""
+    pid = tl.program_id(0).to(tl.int64) + tl.program_id(1).to(
+        tl.int64
+    ) * tl.num_programs(0)
+    row = pid // OUT_TILES
+    out_tile = pid % OUT_TILES
+    out_cols = out_tile * OUT_BLOCK + tl.arange(0, OUT_BLOCK)
+    out_mask = (row < out_nrows) & (out_cols < OUT_NCOLS)
+
+    if REDUCE == 0 or REDUCE == 2:
+        accumulator = tl.zeros((OUT_BLOCK,), tl.float32)
+    elif REDUCE == 1:
+        accumulator = tl.full((OUT_BLOCK,), 1.0, tl.float32)
+    elif REDUCE == 3:
+        accumulator = tl.full((OUT_BLOCK,), float("-inf"), tl.float32)
+    else:
+        accumulator = tl.full((OUT_BLOCK,), float("inf"), tl.float32)
+    count = tl.zeros((OUT_BLOCK,), tl.int32)
+    source_lanes = tl.arange(0, SRC_BLOCK)
+
+    for start in tl.range(0, INDEX_NCOLS, SRC_BLOCK):
+        source_cols = start + source_lanes
+        source_mask = (row < index_nrows) & (source_cols < INDEX_NCOLS)
+        index = tl.load(
+            index_ptr + row * INDEX_NCOLS + source_cols,
+            mask=source_mask,
+            other=OUT_NCOLS,
+        ).to(tl.int32)
+        source = tl.load(
+            src_ptr + row * SRC_NCOLS + source_cols,
+            mask=source_mask,
+            other=0.0,
+        ).to(tl.float32)
+        selected = (
+            (out_cols[:, None] == index[None, :])
+            & out_mask[:, None]
+            & source_mask[None, :]
+        )
+        count += tl.sum(selected.to(tl.int32), axis=1)
+        if REDUCE == 0 or REDUCE == 2:
+            partial = tl.sum(tl.where(selected, source[None, :], 0.0), axis=1)
+            accumulator += partial
+        elif REDUCE == 1:
+            partial = tl.reduce(
+                tl.where(selected, source[None, :], 1.0),
+                axis=1,
+                combine_fn=_multiply,
+            )
+            accumulator *= partial
+        elif REDUCE == 3:
+            partial = tl.max(tl.where(selected, source[None, :], float("-inf")), axis=1)
+            accumulator = tl.maximum(accumulator, partial)
+        else:
+            partial = tl.min(tl.where(selected, source[None, :], float("inf")), axis=1)
+            accumulator = tl.minimum(accumulator, partial)
+
+    inp = tl.load(
+        inp_ptr + row * OUT_NCOLS + out_cols,
+        mask=out_mask,
+        other=0.0,
+    ).to(tl.float32)
+    if REDUCE == 0:
+        reduced = accumulator + inp if INCLUDE_SELF else accumulator
+    elif REDUCE == 1:
+        reduced = accumulator * inp if INCLUDE_SELF else accumulator
+    elif REDUCE == 2:
+        numerator = accumulator + inp if INCLUDE_SELF else accumulator
+        denominator = count + 1 if INCLUDE_SELF else count
+        reduced = numerator / tl.maximum(denominator.to(tl.float32), 1.0)
+    elif REDUCE == 3:
+        reduced = tl.maximum(accumulator, inp) if INCLUDE_SELF else accumulator
+    else:
+        reduced = tl.minimum(accumulator, inp) if INCLUDE_SELF else accumulator
+    if not INCLUDE_SELF:
+        reduced = tl.where(count != 0, reduced, inp)
+    tl.store(
+        result_ptr + row * OUT_NCOLS + out_cols,
+        reduced,
+        mask=out_mask,
+    )
+
+
+@triton.jit
+def scatter_reduce_row_atomic_kernel(
+    inp_ptr,
+    index_ptr,
+    src_ptr,
+    accumulator_ptr,
+    count_ptr,
+    result_ptr,
+    out_nrows,
+    index_nrows,
+    OUT_NCOLS: tl.constexpr,
+    INDEX_NCOLS: tl.constexpr,
+    SRC_NCOLS: tl.constexpr,
+    REDUCE: tl.constexpr,
+    INCLUDE_SELF: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Own one row per program so initialization and finalization stay fused."""
+    row = tl.program_id(0).to(tl.int64) + tl.program_id(1).to(
+        tl.int64
+    ) * tl.num_programs(0)
+    lanes = tl.arange(0, BLOCK)
+
+    for start in tl.range(0, OUT_NCOLS, BLOCK):
+        out_cols = start + lanes
+        mask = (row < out_nrows) & (out_cols < OUT_NCOLS)
+        inp = tl.load(
+            inp_ptr + row * OUT_NCOLS + out_cols,
+            mask=mask,
+            other=0.0,
+        ).to(tl.float32)
+        if INCLUDE_SELF:
+            initial = inp
+        elif REDUCE == 0 or REDUCE == 2:
+            initial = 0.0
+        elif REDUCE == 1:
+            initial = 1.0
+        elif REDUCE == 3:
+            initial = float("-inf")
+        else:
+            initial = float("inf")
+        offsets = row * OUT_NCOLS + out_cols
+        tl.store(accumulator_ptr + offsets, initial, mask=mask)
+        if REDUCE == 2:
+            initial_count = 1 if INCLUDE_SELF else 0
+            tl.store(count_ptr + offsets, initial_count, mask=mask)
+        elif not INCLUDE_SELF:
+            tl.store(count_ptr + offsets, 0, mask=mask)
+
+    tl.debug_barrier()
+
+    for start in tl.range(0, INDEX_NCOLS, BLOCK):
+        source_cols = start + lanes
+        mask = (row < index_nrows) & (source_cols < INDEX_NCOLS)
+        index = tl.load(
+            index_ptr + row * INDEX_NCOLS + source_cols,
+            mask=mask,
+            other=0,
+        ).to(tl.int64)
+        source = tl.load(
+            src_ptr + row * SRC_NCOLS + source_cols,
+            mask=mask,
+            other=0.0,
+        ).to(tl.float32)
+        out_offsets = row * OUT_NCOLS + index
+        if REDUCE == 0 or REDUCE == 2:
+            tl.atomic_add(
+                accumulator_ptr + out_offsets,
+                source,
+                mask=mask,
+                sem="relaxed",
+            )
+        elif REDUCE == 1:
+            stop = tl.where(mask, 0, 1).to(tl.int1)
+            block_stop = False
+            out_ptr_i32 = (accumulator_ptr + out_offsets).to(
+                tl.pointer_type(tl.int32, 1), bitcast=True
+            )
+            while not block_stop:
+                current_bits = tl.load(out_ptr_i32, mask=mask, other=0)
+                current = current_bits.to(tl.float32, bitcast=True)
+                updated = tl.where(stop, current, current * source)
+                updated_bits = updated.to(tl.int32, bitcast=True)
+                previous_bits = tl.atomic_cas(
+                    out_ptr_i32,
+                    current_bits,
+                    updated_bits,
+                    sem="acq_rel",
+                )
+                stop |= current_bits == previous_bits
+                block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
+        elif REDUCE == 3:
+            tl.atomic_max(
+                accumulator_ptr + out_offsets,
+                source,
+                mask=mask,
+                sem="relaxed",
+            )
+        else:
+            tl.atomic_min(
+                accumulator_ptr + out_offsets,
+                source,
+                mask=mask,
+                sem="relaxed",
+            )
+        if REDUCE == 2 or not INCLUDE_SELF:
+            tl.atomic_add(
+                count_ptr + out_offsets,
+                1,
+                mask=mask,
+                sem="relaxed",
+            )
+
+    tl.debug_barrier()
+
+    for start in tl.range(0, OUT_NCOLS, BLOCK):
+        out_cols = start + lanes
+        mask = (row < out_nrows) & (out_cols < OUT_NCOLS)
+        offsets = row * OUT_NCOLS + out_cols
+        value = tl.load(accumulator_ptr + offsets, mask=mask, other=0.0)
+        if REDUCE == 2:
+            count = tl.load(count_ptr + offsets, mask=mask, other=0)
+            inp = tl.load(inp_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+            mean = value / tl.maximum(count.to(tl.float32), 1.0)
+            value = mean if INCLUDE_SELF else tl.where(count != 0, mean, inp)
+        elif not INCLUDE_SELF:
+            count = tl.load(count_ptr + offsets, mask=mask, other=0)
+            inp = tl.load(inp_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+            value = tl.where(count != 0, value, inp)
+        tl.store(result_ptr + offsets, value, mask=mask)
 
 
 @libentry()
@@ -615,7 +853,7 @@ def scatter_reduce_sum_2d_kernel(
 
         if USE_MASK:
             ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(mask_ptr + out_offsets, ones, mask=mask, sem="relaxed")
+            tl.store(mask_ptr + out_offsets, ones, mask=mask)
 
 
 @libentry()
@@ -701,7 +939,7 @@ def scatter_reduce_prod_2d_kernel(
 
         if USE_MASK:
             ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(mask_ptr + out_offsets, ones, mask=mask, sem="relaxed")
+            tl.store(mask_ptr + out_offsets, ones, mask=mask)
 
 
 @libentry()
@@ -762,7 +1000,7 @@ def scatter_reduce_mean_2d_kernel(
 
         if USE_MASK:
             ones_i = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(mask_ptr + out_offsets, ones_i, mask=mask, sem="relaxed")
+            tl.store(mask_ptr + out_offsets, ones_i, mask=mask)
 
 
 @libentry()
@@ -829,7 +1067,7 @@ def scatter_reduce_amax_2d_kernel(
 
         if USE_MASK:
             ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(mask_ptr + out_offsets, ones, mask=mask, sem="relaxed")
+            tl.store(mask_ptr + out_offsets, ones, mask=mask)
 
 
 # ---------------------------------------------------------------------------
@@ -967,7 +1205,7 @@ def scatter_reduce_sum_kernel(
 
         if USE_MASK:
             ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(mask_ptr + out_offsets, ones, mask=mask, sem="relaxed")
+            tl.store(mask_ptr + out_offsets, ones, mask=mask)
 
 
 @libentry()
@@ -1128,7 +1366,7 @@ def scatter_reduce_prod_kernel(
 
         if USE_MASK:
             ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(mask_ptr + out_offsets, ones, mask=mask, sem="relaxed")
+            tl.store(mask_ptr + out_offsets, ones, mask=mask)
 
 
 @libentry()
@@ -1264,7 +1502,7 @@ def scatter_reduce_mean_kernel(
 
         if USE_MASK:
             ones_i = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(mask_ptr + out_offsets, ones_i, mask=mask, sem="relaxed")
+            tl.store(mask_ptr + out_offsets, ones_i, mask=mask)
 
 
 @libentry()
@@ -1406,12 +1644,201 @@ def scatter_reduce_amax_kernel(
 
         if USE_MASK:
             ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.atomic_add(mask_ptr + out_offsets, ones, mask=mask, sem="relaxed")
+            tl.store(mask_ptr + out_offsets, ones, mask=mask)
 
 
 # ---------------------------------------------------------------------------
 # Python entry points
 # ---------------------------------------------------------------------------
+
+
+def _same_tensor_mapping(lhs, rhs):
+    return (
+        lhs.data_ptr() == rhs.data_ptr()
+        and lhs.shape == rhs.shape
+        and lhs.stride() == rhs.stride()
+    )
+
+
+def _rowwise_result_is_safe(inp, index, src, result):
+    """Reject storage overlap that can race a direct-output rowwise kernel."""
+    if result is None:
+        return True
+    if torch._C._overlaps(result, index):
+        return False
+    if _same_tensor_mapping(result, inp):
+        return not torch._C._overlaps(result, src)
+    return not torch._C._overlaps(result, inp) and not torch._C._overlaps(result, src)
+
+
+def _rowwise_grid(programs):
+    return (
+        min(programs, _MAX_ROWWISE_GRID_X),
+        triton.cdiv(programs, _MAX_ROWWISE_GRID_X),
+    )
+
+
+def _select_rowwise_strategy(inp, dim, index, src, reduce, include_self, result):
+    """Select an import-stable, benchmarked short-row strategy."""
+    if (
+        flag_gems.vendor_name not in _ROWWISE_TARGET_VENDORS
+        or reduce not in _ROWWISE_REDUCE_IDS
+        or inp.ndim != 2
+        or dim not in (-1, 1)
+        or inp.dtype not in (torch.float16, torch.float32, torch.bfloat16)
+        or src.dtype != inp.dtype
+        or index.dtype != torch.int64
+        or not inp.is_contiguous()
+        or not index.is_contiguous()
+        or not src.is_contiguous()
+        or inp.numel() == 0
+        or index.numel() == 0
+        or index.shape[0] > inp.shape[0]
+        or index.shape[0] > src.shape[0]
+        or index.shape[1] > src.shape[1]
+        or inp.shape[1] == 0
+        or index.shape[1] == 0
+    ):
+        return None
+    if result is not None and (
+        result.shape != inp.shape
+        or result.dtype != inp.dtype
+        or result.device != inp.device
+        or not result.is_contiguous()
+        or not _rowwise_result_is_safe(inp, index, src, result)
+    ):
+        return None
+
+    row_extent = max(inp.shape[1], index.shape[1])
+    if row_extent <= 64:
+        return "gather"
+    if reduce == "prod":
+        if row_extent <= 256 and flag_gems.vendor_name in ("hygon", "mthreads"):
+            return "gather"
+        if flag_gems.vendor_name == "metax" and row_extent <= 1024 and include_self:
+            return "atomic"
+        if flag_gems.vendor_name == "metax" and row_extent <= 256:
+            return "atomic"
+        return None
+    if flag_gems.vendor_name in ("hygon", "mthreads") and row_extent <= 1024:
+        return "atomic"
+    if flag_gems.vendor_name == "metax":
+        if row_extent <= 256:
+            return "atomic"
+        if row_extent <= 1024 and include_self and reduce != "mean":
+            return "atomic"
+    return None
+
+
+def _scatter_reduce_rowwise(
+    inp,
+    index,
+    src,
+    reduce,
+    include_self,
+    strategy,
+    result=None,
+):
+    """Execute the selected one-launch rowwise path directly into ``result``."""
+    reduce_id = _ROWWISE_REDUCE_IDS[reduce]
+    out_nrows, out_ncols = inp.shape
+    index_nrows, index_ncols = index.shape
+    src_ncols = src.shape[1]
+
+    with torch_device_fn.device(inp.device):
+        if strategy == "gather":
+            if result is None:
+                result = torch.empty_like(inp)
+            out_block = 16
+            src_block = triton.next_power_of_2(index_ncols)
+            out_tiles = triton.cdiv(out_ncols, out_block)
+            scatter_reduce_row_gather_kernel[_rowwise_grid(out_nrows * out_tiles)](
+                inp,
+                index,
+                src,
+                result,
+                out_nrows,
+                index_nrows,
+                out_ncols,
+                index_ncols,
+                src_ncols,
+                out_tiles,
+                reduce_id,
+                include_self,
+                OUT_BLOCK=out_block,
+                SRC_BLOCK=src_block,
+            )
+        else:
+            if result is None:
+                result = torch.empty_like(inp)
+            needs_count = reduce == "mean" or not include_self
+            direct_hygon_accumulator = (
+                flag_gems.vendor_name == "hygon"
+                and inp.dtype == torch.float32
+                and (include_self or result.data_ptr() != inp.data_ptr())
+            )
+            if direct_hygon_accumulator:
+                accumulator = result
+                count = (
+                    torch.empty(
+                        inp.shape,
+                        dtype=torch.int32,
+                        device=inp.device,
+                    )
+                    if needs_count
+                    else result
+                )
+            elif flag_gems.vendor_name == "hygon":
+                scratch_planes = 2 if needs_count else 1
+                scratch = torch.empty(
+                    (scratch_planes, *inp.shape),
+                    dtype=torch.float32,
+                    device=inp.device,
+                )
+                accumulator = scratch[0]
+                count = (
+                    scratch[1].view(torch.int32)
+                    if needs_count
+                    else scratch[0].view(torch.int32)
+                )
+            else:
+                accumulator = torch.empty(
+                    inp.shape,
+                    dtype=torch.float32,
+                    device=inp.device,
+                )
+                count = (
+                    torch.empty(
+                        inp.shape,
+                        dtype=torch.int32,
+                        device=inp.device,
+                    )
+                    if needs_count
+                    else torch.empty(1, dtype=torch.int32, device=inp.device)
+                )
+            if flag_gems.vendor_name == "hygon":
+                block = 64 if reduce == "prod" else 256
+            elif flag_gems.vendor_name == "mthreads":
+                block = 64
+            else:
+                block = 256
+            scatter_reduce_row_atomic_kernel[_rowwise_grid(out_nrows)](
+                inp,
+                index,
+                src,
+                accumulator,
+                count,
+                result,
+                out_nrows,
+                index_nrows,
+                out_ncols,
+                index_ncols,
+                src_ncols,
+                reduce_id,
+                include_self,
+                BLOCK=block,
+            )
+    return result
 
 
 def scatter_reduce(
@@ -1458,6 +1885,25 @@ def scatter_reduce(
         )
     dim %= inp.ndim
 
+    rowwise_strategy = _select_rowwise_strategy(
+        inp,
+        dim,
+        index,
+        src,
+        reduce,
+        include_self,
+        None,
+    )
+    if rowwise_strategy is not None:
+        return _scatter_reduce_rowwise(
+            inp,
+            index,
+            src,
+            reduce,
+            include_self,
+            rowwise_strategy,
+        )
+
     if inp.ndim > 5 or _should_canonicalize_5d(inp, dim, index, src, reduce):
         return _scatter_reduce_high_rank(
             inp,
@@ -1482,6 +1928,9 @@ def scatter_reduce(
     # Avoid double clone: merge contiguous + float32 cast
     inp_f32 = inp.to(torch.float32).contiguous()
 
+    if N == 0:
+        return inp_f32.to(inp.dtype).clone()
+
     if include_self:
         out = inp_f32.clone()
     else:
@@ -1503,9 +1952,6 @@ def scatter_reduce(
                 dtype=inp_f32.dtype,
                 device=inp_f32.device,
             )
-
-    if N == 0:
-        return inp_f32.to(inp.dtype).clone()
 
     use_mask = not include_self
     if use_mask:
@@ -1796,6 +2242,26 @@ def scatter_reduce_(inp, dim, index, src, reduce, *, include_self=True):
     """In-place variant of scatter_reduce. Modifies inp in-place."""
     logger.debug("GEMS SCATTER_REDUCE_TWO_")
 
+    rowwise_strategy = _select_rowwise_strategy(
+        inp,
+        dim,
+        index,
+        src,
+        reduce,
+        include_self,
+        inp,
+    )
+    if rowwise_strategy is not None:
+        return _scatter_reduce_rowwise(
+            inp,
+            index,
+            src,
+            reduce,
+            include_self,
+            rowwise_strategy,
+            result=inp,
+        )
+
     result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     inp.copy_(result)
     return inp
@@ -1809,6 +2275,27 @@ def scatter_reduce_out(inp, dim, index, src, reduce, *, include_self=True, out=N
         raise RuntimeError(
             f"Expected out tensor to have dtype {inp.dtype}, but got {out.dtype} instead"
         )
+    if out is not None:
+        rowwise_strategy = _select_rowwise_strategy(
+            inp,
+            dim,
+            index,
+            src,
+            reduce,
+            include_self,
+            out,
+        )
+        if rowwise_strategy is not None:
+            return _scatter_reduce_rowwise(
+                inp,
+                index,
+                src,
+                reduce,
+                include_self,
+                rowwise_strategy,
+                result=out,
+            )
+
     result = scatter_reduce(inp, dim, index, src, reduce, include_self=include_self)
     if out is not None:
         out.copy_(result)
