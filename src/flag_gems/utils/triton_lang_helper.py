@@ -343,6 +343,761 @@ def _fallback_j0(x):
 
 
 @triton.jit
+def _fallback_j1_for_y1(x):
+    # Bessel J1(x), dtype-neutral, used internally by _fallback_y1 for the
+    # small-|x| formula  Y1(x) = x*U/V + (2/pi)*(j1(x)*ln(x) - 1/x).  Adapted
+    # verbatim from fdlibm e_j1.c (public-domain SunPro), same source as
+    # glibc / CUDA libdevice:
+    #   |x| <  2  -> rational  x/2 + x*z*R0/S0,  z = x*x
+    #   |x| >= 2  -> asymptotic  invsqrtpi*(pone*cc - qone*ss)/sqrt(|x|)
+    # Only core Triton primitives are used.  Unlike the public _fallback_j1
+    # (which is float32-only, Cephes coefficients), this version uses fdlibm
+    # double-precision coefficients so it stays accurate for float64 input,
+    # which y1's float64 path requires (rtol=1e-7).
+    # Edge cases match fdlibm: J1(NaN)=NaN, J1(+-inf)=0, J1(0)=0, J1(-x)=-J1(x).
+    ax = tl.abs(x)
+    is_nan = ax != ax
+    is_inf = ax == float("inf")
+    ax_safe = tl.where(is_nan | is_inf, 1.0, ax)
+
+    # ----- large region: |x| >= 2, fdlibm pone/qone asymptotic -----
+    # Coefficients are band-selected by |x|: pr8/ps8 (|x|>=8), pr5/ps5
+    # (|x|>=4.5454 ~ 0x40122E8B), pr3/ps3 (|x|>=2.8570 ~ 0x4006DB6D),
+    # pr2/ps2 (2<=|x|<2.8570).  Verbatim from fdlibm e_j1.c.
+    ax_large = tl.where(ax >= 2.0, ax_safe, 2.0)
+    s = tl.sin(ax_large)
+    c = tl.cos(ax_large)
+    ss = -s - c
+    cc = s - c
+    # Cancellation-avoidance: recompute the worse of (ss, cc) from cos(2x).
+    # For j1's phase convention (ss=-s-c, cc=s-c) we have cos(2x) = +ss*cc
+    # (note: NO negation, unlike _fallback_j0 where cos(2x) = -ss*cc).
+    # ss cancels when s,c have opposite sign (s*c<0); cc cancels when s,c
+    # have same sign (s*c>0).  Match fdlibm e_j1.c: s*c>0 -> cc=z/ss,
+    # else -> ss=z/cc.
+    z2 = tl.cos(2.0 * ax_large)
+    cc_new = z2 / ss
+    ss_new = z2 / cc
+    is_sc_pos = (s * c) > 0.0
+    cc = tl.where(is_sc_pos, cc_new, cc)
+    ss = tl.where(is_sc_pos, ss, ss_new)
+
+    z = 1.0 / (ax_large * ax_large)
+    # Band 8 (|x| >= 8): pr8[0..5], ps8[0..4]
+    pR8 = (
+        0.0
+        + (
+            1.17187499999988647970e-01
+            + (
+                1.32394806593073575129e01
+                + (
+                    4.12051854307378562225e02
+                    + (3.87474538913960532227e03 + 7.91447954031891731574e03 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    pS8 = (
+        1.0
+        + (
+            1.14207370375678408436e02
+            + (
+                3.65093083420853463394e03
+                + (
+                    3.69562060269033463555e04
+                    + (9.76027935934950801311e04 + 3.08042720627888811578e04 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qR8 = (
+        0.0
+        + (
+            -1.02539062499992714161e-01
+            + (
+                -1.62717534544589987888e01
+                + (
+                    -7.59601722513950107896e02
+                    + (-1.18498066702429587167e04 + -4.84385124285750353010e04 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qS8 = (
+        1.0
+        + (
+            1.61395369700722909556e02
+            + (
+                7.82538599923348465381e03
+                + (
+                    1.33875336287249578163e05
+                    + (
+                        7.19657723683240939863e05
+                        + (6.66601232617776375264e05 - 2.94490264303834643215e05 * z)
+                        * z
+                    )
+                    * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    # Band 5 (4.5454 <= |x| < 8): pr5[0..5], ps5[0..4]
+    pR5 = (
+        1.31990519556243522749e-11
+        + (
+            1.17187493190614097638e-01
+            + (
+                6.80275127868432871736e00
+                + (
+                    1.08308182990189109773e02
+                    + (5.17636139533199752805e02 + 5.28715201363337541807e02 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    pS5 = (
+        1.0
+        + (
+            5.92805987221131331921e01
+            + (
+                9.91401418733614377743e02
+                + (
+                    5.35326695291487976647e03
+                    + (7.84469031749551231769e03 + 1.50404688810361062679e03 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qR5 = (
+        -2.08979931141764104297e-11
+        + (
+            -1.02539050241375426231e-01
+            + (
+                -8.05644828123936029840e00
+                + (
+                    -1.83669607474888380239e02
+                    + (-1.37319376065508163265e03 - 2.61244440453215656817e03 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qS5 = (
+        1.0
+        + (
+            8.12765501384335777857e01
+            + (
+                1.99179873460485964642e03
+                + (
+                    1.74684851924908907677e04
+                    + (
+                        4.98514270910352279316e04
+                        + (2.79480751638918118260e04 - 4.71918354795128470869e03 * z)
+                        * z
+                    )
+                    * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    # Band 3 (2.8570 <= |x| < 4.5454): pr3[0..5], ps3[0..4]
+    pR3 = (
+        3.02503916137373618024e-09
+        + (
+            1.17186865567253592491e-01
+            + (
+                3.93297750033315640650e00
+                + (
+                    3.51194035591636932736e01
+                    + (9.10550110750781271918e01 + 4.85590685197364919645e01 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    pS3 = (
+        1.0
+        + (
+            3.47913095001251519989e01
+            + (
+                3.36762458747825746741e02
+                + (
+                    1.04687139975775130551e03
+                    + (8.90811346398256432622e02 + 1.03787932439639277504e02 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qR3 = (
+        -5.07831226461766561369e-09
+        + (
+            -1.02537829820837089745e-01
+            + (
+                -4.61011581139473403113e00
+                + (
+                    -5.78472216562783643212e01
+                    + (-2.28244540737631695038e02 - 2.19210128478909325622e02 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qS3 = (
+        1.0
+        + (
+            4.76651550323729509273e01
+            + (
+                6.73865112676699709482e02
+                + (
+                    3.38015286679526343505e03
+                    + (
+                        5.54772909720722782367e03
+                        + (1.90311919338810798763e03 - 1.35201191444307340817e02 * z)
+                        * z
+                    )
+                    * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    # Band 2 (2 <= |x| < 2.8570): pr2[0..5], ps2[0..4]
+    pR2 = (
+        1.07710830106873743082e-07
+        + (
+            1.17176219462683348094e-01
+            + (
+                2.36851496667608785174e00
+                + (
+                    1.22426109148261232917e01
+                    + (1.76939711271687727390e01 + 5.07352312588818499250e00 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    pS2 = (
+        1.0
+        + (
+            2.14364859363821409488e01
+            + (
+                1.25290227168402751090e02
+                + (
+                    2.32276469057162813669e02
+                    + (1.17679373287147100768e02 + 8.36463893371618283368e00 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qR2 = (
+        -1.78381727510958865572e-07
+        + (
+            -1.02517042607985553460e-01
+            + (
+                -2.75220568278187460720e00
+                + (
+                    -1.96636162643703720221e01
+                    + (-4.23253133372830490089e01 - 2.13719211703704061733e01 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qS2 = (
+        1.0
+        + (
+            2.95333629060523854548e01
+            + (
+                2.52981549982190529136e02
+                + (
+                    7.57502834868645436472e02
+                    + (
+                        7.39393205320467245656e02
+                        + (1.55949003336666123687e02 - 4.95949898822628210127e00 * z)
+                        * z
+                    )
+                    * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+
+    # Band-select: 8 -> 5 -> 3 -> 2.  fdlibm picks by IEEE bit ranges
+    # (0x40200000 / 0x40122E8B / 0x4006DB6D); we use the equivalent float
+    # thresholds (8.0 / 4.5454 / 2.8570).  Avoid Python's ~ on triton bool
+    # tensors; use explicit < comparisons.
+    pR = tl.where(
+        ax >= 8.0, pR8, tl.where(ax >= 4.5454, pR5, tl.where(ax >= 2.8570, pR3, pR2))
+    )
+    pS = tl.where(
+        ax >= 8.0, pS8, tl.where(ax >= 4.5454, pS5, tl.where(ax >= 2.8570, pS3, pS2))
+    )
+    qR = tl.where(
+        ax >= 8.0, qR8, tl.where(ax >= 4.5454, qR5, tl.where(ax >= 2.8570, qR3, qR2))
+    )
+    qS = tl.where(
+        ax >= 8.0, qS8, tl.where(ax >= 4.5454, qS5, tl.where(ax >= 2.8570, qS3, qS2))
+    )
+    pone = 1.0 + pR / pS
+    qone = (qR / qS + 0.375) / ax_large  # fdlibm: (.375 + r/s)/x
+    large_val = 5.64189583547756279280e-01 * (pone * cc - qone * ss) / tl.sqrt(ax_large)
+    large_val = tl.where(x < 0.0, -large_val, large_val)
+
+    # ----- small region: |x| < 2, fdlibm rational -----
+    # j1(x) = x/2 + x*z*R0/S0,  z = x*x.
+    # R0 = r00 + r01*z + r02*z^2 + r03*z^3;  S0 = 1 + s01*z + ... + s05*z^5.
+    sx = ax_safe
+    z = sx * sx
+    r = z * (
+        -6.25000000000000000000e-02
+        + z
+        * (
+            1.40705666955189706048e-03
+            + z * (-1.59955631084035597520e-05 + z * 4.96727999609584448412e-08)
+        )
+    )
+    s = 1.0 + z * (
+        1.91537599538363460805e-02
+        + z
+        * (
+            1.85946785588630915560e-04
+            + z
+            * (
+                1.17718464042623683263e-06
+                + z * (5.04636257076217042715e-09 + z * 1.23542274426137913908e-11)
+            )
+        )
+    )
+    small_val = sx * 0.5 + r / s * sx
+
+    ans = tl.where(ax >= 2.0, large_val, small_val)
+    ans = tl.where(is_inf, 0.0, ans)
+    ans = tl.where(is_nan, float("nan"), ans)
+    return ans
+
+
+@triton.jit
+def _fallback_y1(x):
+    # Bessel Y1(x) for float32/float64, used when a backend's libdevice lacks a
+    # native y1 (e.g. the ascend cann fork, which does provide j1).  Adapted
+    # verbatim from fdlibm e_j1.c (public-domain SunPro), same source as
+    # glibc / CUDA libdevice:
+    #   |x| <  2  -> x*U0(z)/V0(z) + (2/pi)*(j1(x)*ln(x) - 1/x),  z = x*x
+    #   |x| >= 2  -> asymptotic  invsqrtpi*(pone*ss + qone*cc)/sqrt(x)
+    # j1(x) is supplied by the dtype-neutral _fallback_j1_for_y1 helper above
+    # (the public _fallback_j1 is float32-only and would break float64).
+    # Uses only core Triton primitives (sin/cos/sqrt/log/abs/where), so it
+    # lowers on every backend.  Edge cases match PyTorch/fdlibm:
+    #   Y1(NaN)=NaN, Y1(+-inf)=0, Y1(+-0)=-inf, Y1(x<0)=NaN.
+    ax = tl.abs(x)
+    is_nan = ax != ax
+    is_inf = ax == float("inf")
+    is_zero = ax == 0.0
+    is_neg = x < 0.0
+    # Safe finite positive value for non-finite / negative / zero lanes;
+    # overwritten by the edge-case results at the end.
+    ax_safe = tl.where(is_nan | is_inf | is_zero | is_neg, 1.0, ax)
+
+    # ----- large region: |x| >= 2, fdlibm pone/qone asymptotic -----
+    # Same band-8..2 coefficients and phase convention as _fallback_j1_for_y1,
+    # but Y1 uses  invsqrtpi*(pone*ss + qone*cc)/sqrt(x)  (j1 uses cc - q*ss).
+    ax_large = tl.where(ax >= 2.0, ax_safe, 2.0)
+    s = tl.sin(ax_large)
+    c = tl.cos(ax_large)
+    ss = -s - c
+    cc = s - c
+    # Same phase convention as _fallback_j1_for_y1 (cos(2x) = +ss*cc, no
+    # negation; ss cancels when s*c<0, cc when s*c>0).  fdlibm e_j1.c:
+    # s*c>0 -> cc=z/ss, else -> ss=z/cc.
+    z2 = tl.cos(2.0 * ax_large)
+    cc_new = z2 / ss
+    ss_new = z2 / cc
+    is_sc_pos = (s * c) > 0.0
+    cc = tl.where(is_sc_pos, cc_new, cc)
+    ss = tl.where(is_sc_pos, ss, ss_new)
+
+    z = 1.0 / (ax_large * ax_large)
+    # Band 8 (|x| >= 8)
+    pR8 = (
+        0.0
+        + (
+            1.17187499999988647970e-01
+            + (
+                1.32394806593073575129e01
+                + (
+                    4.12051854307378562225e02
+                    + (3.87474538913960532227e03 + 7.91447954031891731574e03 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    pS8 = (
+        1.0
+        + (
+            1.14207370375678408436e02
+            + (
+                3.65093083420853463394e03
+                + (
+                    3.69562060269033463555e04
+                    + (9.76027935934950801311e04 + 3.08042720627888811578e04 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qR8 = (
+        0.0
+        + (
+            -1.02539062499992714161e-01
+            + (
+                -1.62717534544589987888e01
+                + (
+                    -7.59601722513950107896e02
+                    + (-1.18498066702429587167e04 + -4.84385124285750353010e04 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qS8 = (
+        1.0
+        + (
+            1.61395369700722909556e02
+            + (
+                7.82538599923348465381e03
+                + (
+                    1.33875336287249578163e05
+                    + (
+                        7.19657723683240939863e05
+                        + (6.66601232617776375264e05 - 2.94490264303834643215e05 * z)
+                        * z
+                    )
+                    * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    # Band 5 (4.5454 <= |x| < 8)
+    pR5 = (
+        1.31990519556243522749e-11
+        + (
+            1.17187493190614097638e-01
+            + (
+                6.80275127868432871736e00
+                + (
+                    1.08308182990189109773e02
+                    + (5.17636139533199752805e02 + 5.28715201363337541807e02 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    pS5 = (
+        1.0
+        + (
+            5.92805987221131331921e01
+            + (
+                9.91401418733614377743e02
+                + (
+                    5.35326695291487976647e03
+                    + (7.84469031749551231769e03 + 1.50404688810361062679e03 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qR5 = (
+        -2.08979931141764104297e-11
+        + (
+            -1.02539050241375426231e-01
+            + (
+                -8.05644828123936029840e00
+                + (
+                    -1.83669607474888380239e02
+                    + (-1.37319376065508163265e03 - 2.61244440453215656817e03 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qS5 = (
+        1.0
+        + (
+            8.12765501384335777857e01
+            + (
+                1.99179873460485964642e03
+                + (
+                    1.74684851924908907677e04
+                    + (
+                        4.98514270910352279316e04
+                        + (2.79480751638918118260e04 - 4.71918354795128470869e03 * z)
+                        * z
+                    )
+                    * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    # Band 3 (2.8570 <= |x| < 4.5454)
+    pR3 = (
+        3.02503916137373618024e-09
+        + (
+            1.17186865567253592491e-01
+            + (
+                3.93297750033315640650e00
+                + (
+                    3.51194035591636932736e01
+                    + (9.10550110750781271918e01 + 4.85590685197364919645e01 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    pS3 = (
+        1.0
+        + (
+            3.47913095001251519989e01
+            + (
+                3.36762458747825746741e02
+                + (
+                    1.04687139975775130551e03
+                    + (8.90811346398256432622e02 + 1.03787932439639277504e02 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qR3 = (
+        -5.07831226461766561369e-09
+        + (
+            -1.02537829820837089745e-01
+            + (
+                -4.61011581139473403113e00
+                + (
+                    -5.78472216562783643212e01
+                    + (-2.28244540737631695038e02 - 2.19210128478909325622e02 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qS3 = (
+        1.0
+        + (
+            4.76651550323729509273e01
+            + (
+                6.73865112676699709482e02
+                + (
+                    3.38015286679526343505e03
+                    + (5.54772909720722782367e03 + 1.90311919338810798763e03 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    # Band 2 (2 <= |x| < 2.8570)
+    pR2 = (
+        1.07710830106873743082e-07
+        + (
+            1.17176219462683348094e-01
+            + (
+                2.36851496667608785174e00
+                + (
+                    1.22426109148261232917e01
+                    + (1.76939711271687727390e01 + 5.07352312588818499250e00 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    pS2 = (
+        1.0
+        + (
+            2.14364859363821409488e01
+            + (
+                1.25290227168402751090e02
+                + (
+                    2.32276469057162813669e02
+                    + (1.17679373287147100768e02 + 8.36463893371618283368e00 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qR2 = (
+        -1.78381727510958865572e-07
+        + (
+            -1.02517042607985553460e-01
+            + (
+                -2.75220568278187460720e00
+                + (
+                    -1.96636162643703720221e01
+                    + (-4.23253133372830490089e01 - 2.13719211703704061733e01 * z) * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    qS2 = (
+        1.0
+        + (
+            2.95333629060523854548e01
+            + (
+                2.52981549982190529136e02
+                + (
+                    7.57502834868645436472e02
+                    + (
+                        7.39393205320467245656e02
+                        + (1.55949003336666123687e02 - 4.95949898822628210127e00 * z)
+                        * z
+                    )
+                    * z
+                )
+                * z
+            )
+            * z
+        )
+        * z
+    )
+    pR = tl.where(
+        ax >= 8.0, pR8, tl.where(ax >= 4.5454, pR5, tl.where(ax >= 2.8570, pR3, pR2))
+    )
+    pS = tl.where(
+        ax >= 8.0, pS8, tl.where(ax >= 4.5454, pS5, tl.where(ax >= 2.8570, pS3, pS2))
+    )
+    qR = tl.where(
+        ax >= 8.0, qR8, tl.where(ax >= 4.5454, qR5, tl.where(ax >= 2.8570, qR3, qR2))
+    )
+    qS = tl.where(
+        ax >= 8.0, qS8, tl.where(ax >= 4.5454, qS5, tl.where(ax >= 2.8570, qS3, qS2))
+    )
+    pone = 1.0 + pR / pS
+    qone = (qR / qS + 0.375) / ax_large
+    large_val = 5.64189583547756279280e-01 * (pone * ss + qone * cc) / tl.sqrt(ax_large)
+
+    # ----- small region: |x| < 2, fdlibm rational -----
+    # Y1(x) = x*U0(z)/V0(z) + tpi*(j1(x)*ln(x) - 1/x),  z = x*x,  tpi = 2/pi.
+    # For tiny x (|x| < 2^-54), Y1(x) ~ -tpi/x  dominates; we route those lanes
+    # through the -tpi/x branch to avoid 1/x precision loss in the full formula.
+    sx = ax_safe
+    z = sx * sx
+    u0 = -1.96057090646238940668e-01 + z * (
+        5.04438716639811282616e-02
+        + z
+        * (
+            -1.91256895875763547298e-03
+            + z * (2.35252600561610495928e-05 + z * -9.19099158039878874504e-08)
+        )
+    )
+    v0 = 1.0 + z * (
+        1.99167318236649903973e-02
+        + z
+        * (
+            2.02552581025135171496e-04
+            + z
+            * (
+                1.35608801097516229404e-06
+                + z * (6.22741452364621501295e-09 + z * 1.66559246207992079114e-11)
+            )
+        )
+    )
+    j1x = _fallback_j1_for_y1(x)
+    # fdlibm uses log(x); x is positive here (negative lanes routed to ax_safe=1).
+    log_term = tl.log(sx)
+    small_val = sx * (u0 / v0) + 6.36619772367581382433e-01 * (
+        j1x * log_term - 1.0 / sx
+    )
+    tiny = ax <= 2.91e-17  # 2**-55 ~ 2.77e-17; use 2**-54 ~ 5.55e-17 region
+    small_val = tl.where(tiny, -6.36619772367581382433e-01 / sx, small_val)
+
+    ans = tl.where(ax >= 2.0, large_val, small_val)
+    # Edge cases.  PyTorch's torch.special.bessel_y1 returns NaN for +-inf
+    # (unlike fdlibm which returns 0); match PyTorch since that is what
+    # special_bessel_y1.py's tests compare against.
+    #   Y1(+-inf)=NaN, Y1(NaN)=NaN, Y1(+-0)=-inf, Y1(x<0)=NaN.
+    ans = tl.where(is_inf, float("nan"), ans)
+    ans = tl.where(is_nan, float("nan"), ans)
+    ans = tl.where(is_zero, float("-inf"), ans)
+    ans = tl.where(is_neg, float("nan"), ans)
+    return ans
+
+
+@triton.jit
 def _fallback_y0(x):
     # Bessel Y0(x) for float32/float64.  Adapted from fdlibm e_y0.c
     # (public-domain SunPro code, same source as glibc / CUDA libdevice).
@@ -478,9 +1233,17 @@ def _fallback_y0(x):
     return ans
 
 
+@triton.jit
+def _fallback_erfc(x):
+    # erfc(x) == 1 - erf(x); used when a backend's libdevice lacks a native
+    # erfc (e.g. the Ascend CANN backend, which does provide erf).
+    return 1.0 - tl.math.erf(x)
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "tanh": _fallback_tanh,
+    "erfc": _fallback_erfc,
     "erfinv": _fallback_erfinv,
     "floor": _fallback_floor,
     "j0": _fallback_j0,
@@ -489,6 +1252,7 @@ _FALLBACK_SYMBOLS = {
     "nextafter": _fallback_nextafter,
     "sinpi": _fallback_sinpi,
     "y0": _fallback_y0,
+    "y1": _fallback_y1,
 }
 
 
@@ -525,6 +1289,7 @@ tl_extra_shim = _patch_missing_symbols(
         "div_rn",
         "div_rz",
         "erf",
+        "erfc",
         "erfcx",
         "erfinv",
         "exp",
@@ -554,6 +1319,7 @@ tl_extra_shim = _patch_missing_symbols(
         "trunc",
         "xpu_trunc_div",
         "y0",
+        "y1",
     ),
 )
 

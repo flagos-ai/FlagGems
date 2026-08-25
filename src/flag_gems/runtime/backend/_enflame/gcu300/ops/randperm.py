@@ -153,7 +153,7 @@ def digit_hist_kernel(
         blk_bin_start = bin_segid * bins_segment
         for s in range(bins_segment):
             bin_id = s + blk_bin_start
-            digit_mask = tl.where(key_digit == bin_id and key_mask, 1, 0)
+            digit_mask = tl.where((key_digit == bin_id) & key_mask, 1, 0)
             digit_sum = tl.sum(digit_mask)
             # +1 for exclusive
             bin_offset = p * (bins + 1) * grid0 + (bin_id + 1) * grid0 + pid0
@@ -251,7 +251,7 @@ def radix_sortbykey_scatter_kernel(
             cache_modifier=".cg",
         )
         inc_bucket_offset = prefix_offsets + inc_sum
-        if last_block and portion_id < num_portions - 1:
+        if last_block & (portion_id < num_portions - 1):
             tl.store(
                 digit_hist + bin_offset + (portion_id + 1) * passes * (bins + 1),
                 inc_bucket_offset,
