@@ -210,6 +210,7 @@ def test_h20_qwen_m1_bf16_exact_configs(monkeypatch):
         "num_stages": 2,
     }
     assert gemm1["BLOCK_SIZE_M"] == gemm2["BLOCK_SIZE_M"]
+
     assert (
         fused_moe._get_h20_exact_config(w1_shape, w2_shape, 1, 256, 8, "fp16", "gemm1")
         is None
@@ -244,6 +245,7 @@ def test_h20_qwen_flash_next_m64_bf16_exact_configs(monkeypatch):
         "GROUP_SIZE_M": 1,
         "num_warps": 4,
         "num_stages": 2,
+        "PERSISTENT_GRID_SIZE": 546,
     }
     assert gemm1["BLOCK_SIZE_M"] == gemm2["BLOCK_SIZE_M"]
 
@@ -264,6 +266,168 @@ def test_h20_qwen_flash_next_m64_bf16_exact_configs(monkeypatch):
             )
             is None
         )
+
+
+def test_hopper_ep_decode_configs_are_narrow(monkeypatch):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    monkeypatch.setattr(fused_moe, "_is_nvidia_sm90", lambda *_: True)
+    expert_map = torch.full((288,), -1, dtype=torch.int32)
+    expert_map[:18] = torch.arange(18, dtype=torch.int32)
+
+    gemm1 = fused_moe._get_ep_decode_config(
+        96, 18, 288, 8, 4096, 2048, 10.0, "bf16", expert_map, "gemm1"
+    )
+    gemm2 = fused_moe._get_ep_decode_config(
+        96, 18, 288, 8, 4096, 2048, 10.0, "bf16", expert_map, "gemm2"
+    )
+    assert gemm1 == {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 64,
+        "BLOCK_SIZE_K": 128,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 3,
+    }
+    assert gemm2 == {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 128,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 4,
+    }
+    assert gemm1["BLOCK_SIZE_M"] == gemm2["BLOCK_SIZE_M"]
+
+    m1_gemm1 = fused_moe._get_ep_decode_config(
+        1, 18, 288, 8, 4096, 2048, 10.0, "bf16", expert_map, "gemm1"
+    )
+    m1_gemm2 = fused_moe._get_ep_decode_config(
+        1, 18, 288, 8, 4096, 2048, 10.0, "bf16", expert_map, "gemm2"
+    )
+    assert m1_gemm1 == gemm1
+    assert m1_gemm2 == gemm2
+    assert (
+        fused_moe._get_ep_decode_config(
+            1, 18, 288, 8, 4096, 1280, 10.0, "bf16", expert_map, "gemm1"
+        )
+        == gemm1
+    )
+    assert (
+        fused_moe._get_ep_decode_config(
+            2, 18, 288, 8, 4096, 2048, 10.0, "bf16", expert_map, "gemm2"
+        )
+        == gemm2
+    )
+
+    for M, local_e, global_e, topk, hidden, intermediate, clamp, dtype, mapping in (
+        (129, 18, 288, 8, 4096, 2048, 10.0, "bf16", expert_map),
+        (96, 16, 288, 8, 4096, 2048, 10.0, "bf16", expert_map),
+        (96, 18, 256, 8, 4096, 2048, 10.0, "bf16", expert_map),
+        (96, 18, 288, 4, 4096, 2048, 10.0, "bf16", expert_map),
+        (96, 18, 288, 8, 6144, 2048, 10.0, "bf16", expert_map),
+        (96, 18, 288, 8, 4096, 4096, 10.0, "bf16", expert_map),
+        (96, 18, 288, 8, 4096, 2048, None, "bf16", expert_map),
+        (96, 18, 288, 8, 4096, 2048, 7.0, "bf16", expert_map),
+        (96, 18, 288, 8, 4096, 2048, 10.0, "fp16", expert_map),
+        (96, 18, 288, 8, 4096, 2048, 10.0, "bf16", None),
+    ):
+        assert (
+            fused_moe._get_ep_decode_config(
+                M,
+                local_e,
+                global_e,
+                topk,
+                hidden,
+                intermediate,
+                clamp,
+                dtype,
+                mapping,
+                "gemm1",
+            )
+            is None
+        )
+
+
+def test_fused_clamped_swiglu_gate_is_narrow():
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    ep_plan = {"BLOCK_SIZE_M": 16, "BLOCK_SIZE_N": 64}
+    compatible = {
+        "w1_bias": None,
+        "apply_router_weight_on_input": False,
+        "use_fp8_w8a8": False,
+        "use_int8_w8a8": False,
+        "use_int8_w8a16": False,
+        "use_int4_w4a16": False,
+        "ocp_mx_scheme": None,
+        "block_shape": None,
+    }
+    assert fused_moe._should_use_fused_clamped_swiglu(ep_plan, **compatible)
+
+    incompatible_cases = (
+        ("missing_ep_plan", None, {}),
+        ("w1_bias", ep_plan, {"w1_bias": torch.empty(0)}),
+        (
+            "router_weight_on_input",
+            ep_plan,
+            {"apply_router_weight_on_input": True},
+        ),
+        ("fp8_w8a8", ep_plan, {"use_fp8_w8a8": True}),
+        ("int8_w8a8", ep_plan, {"use_int8_w8a8": True}),
+        ("int8_w8a16", ep_plan, {"use_int8_w8a16": True}),
+        ("int4_w4a16", ep_plan, {"use_int4_w4a16": True}),
+        ("ocp_mx", ep_plan, {"ocp_mx_scheme": "mxfp4"}),
+        ("block_quant", ep_plan, {"block_shape": [128, 128]}),
+    )
+    for name, candidate_plan, overrides in incompatible_cases:
+        candidate = {**compatible, **overrides}
+        assert not fused_moe._should_use_fused_clamped_swiglu(
+            candidate_plan, **candidate
+        ), name
+
+
+def test_ep_single_token_route_policy_is_intermediate_size_specific(
+    monkeypatch,
+):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    ep_plan = {"BLOCK_SIZE_M": 16, "BLOCK_SIZE_N": 64}
+    expert_map = torch.arange(18, dtype=torch.int32)
+
+    assert fused_moe._should_use_ep_naive_route(ep_plan, expert_map, 1, 1280, True)
+    assert not fused_moe._should_use_ep_m1_i2048_local_rank(
+        ep_plan, expert_map, 1, 1280, True
+    )
+    assert not fused_moe._should_use_ep_route_block(ep_plan, expert_map, 1, 2048, True)
+    assert fused_moe._should_use_ep_naive_route(ep_plan, expert_map, 1, 2048, True)
+    assert fused_moe._should_use_ep_m1_i2048_local_rank(
+        ep_plan, expert_map, 1, 2048, True
+    )
+    assert not fused_moe._should_use_ep_route_block(ep_plan, expert_map, 1, 1280, True)
+    for intermediate_size in (1279, 1281, 2047, 2049):
+        assert not fused_moe._should_use_ep_naive_route(
+            ep_plan, expert_map, 1, intermediate_size, True
+        )
+        assert not fused_moe._should_use_ep_m1_i2048_local_rank(
+            ep_plan, expert_map, 1, intermediate_size, True
+        )
+        assert not fused_moe._should_use_ep_route_block(
+            ep_plan, expert_map, 1, intermediate_size, True
+        )
+    monkeypatch.setattr(fused_moe, "_ENABLE_EXPERIMENTAL_EP_ROUTE_BLOCK", True)
+    assert not fused_moe._should_use_ep_m1_i2048_local_rank(
+        ep_plan, expert_map, 1, 2048, True
+    )
+    assert not fused_moe._should_use_ep_naive_route(ep_plan, expert_map, 1, 2048, True)
+    assert fused_moe._should_use_ep_route_block(ep_plan, expert_map, 1, 2048, True)
+
+    for helper, intermediate_size in (
+        (fused_moe._should_use_ep_naive_route, 1280),
+        (fused_moe._should_use_ep_m1_i2048_local_rank, 2048),
+        (fused_moe._should_use_ep_route_block, 2048),
+    ):
+        assert not helper(ep_plan, expert_map, 2, intermediate_size, True)
+        assert not helper(ep_plan, expert_map, 1, intermediate_size, False)
+        assert not helper(None, expert_map, 1, intermediate_size, True)
+        assert not helper(ep_plan, None, 1, intermediate_size, True)
 
 
 def test_moe_block_size_m_validation():
@@ -412,6 +576,175 @@ def test_dispatch_fused_moe_kernel_matches_ref(config, dtype):
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
+@pytest.mark.dispatch_fused_moe_kernel
+@pytest.mark.parametrize(
+    ("use_expert_map", "skip_invalid_experts"),
+    [(True, False), (False, True)],
+)
+def test_dispatch_wna16_rejects_ep_naive_arguments(
+    use_expert_map,
+    skip_invalid_experts,
+):
+    A = torch.empty((1, 16), dtype=torch.bfloat16)
+    B = torch.empty((1, 16, 16), dtype=torch.int8)
+    C = torch.empty((1, 1, 16), dtype=torch.bfloat16)
+    topk_weights = torch.ones((1, 1), dtype=torch.bfloat16)
+    sorted_token_ids = torch.zeros(16, dtype=torch.int32)
+    expert_ids = torch.zeros(1, dtype=torch.int32)
+    num_tokens_post_padded = torch.ones(1, dtype=torch.int32)
+    expert_map = torch.zeros(1, dtype=torch.int32) if use_expert_map else None
+    config = {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 16,
+        "BLOCK_SIZE_K": 16,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 1,
+        "num_stages": 2,
+    }
+
+    with pytest.raises(ValueError, match="WNA16.*does not support"):
+        flag_gems.dispatch_fused_moe_kernel(
+            A,
+            B,
+            C,
+            None,
+            None,
+            None,
+            topk_weights,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            True,
+            1,
+            config,
+            compute_type=tl.bfloat16,
+            use_fp8_w8a8=False,
+            use_int8_w8a8=False,
+            use_int8_w8a16=True,
+            use_int4_w4a16=False,
+            per_channel_quant=False,
+            block_shape=[0, 16],
+            expert_map=expert_map,
+            skip_invalid_experts=skip_invalid_experts,
+        )
+
+
+@pytest.mark.dispatch_fused_moe_kernel
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="The persistent H20 configuration is NVIDIA-specific",
+)
+def test_dispatch_persistent_fused_moe_matches_regular(monkeypatch):
+    """Persistent scheduling must preserve the plain-BF16 GEMM2 result."""
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    persistent_launch = fused_moe.invoke_fused_moe_persistent_triton_kernel
+    persistent_launches = 0
+
+    def counted_persistent_launch(*args, **kwargs):
+        nonlocal persistent_launches
+        persistent_launches += 1
+        return persistent_launch(*args, **kwargs)
+
+    monkeypatch.setattr(
+        fused_moe,
+        "invoke_fused_moe_persistent_triton_kernel",
+        counted_persistent_launch,
+    )
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    num_tokens, num_experts, hidden_size, output_size, topk = (16, 32, 70, 130, 4)
+    torch.manual_seed(20260824)
+
+    route_inputs = torch.randn(
+        num_tokens * topk,
+        hidden_size,
+        device=device,
+        dtype=dtype,
+    )
+    weights = torch.randn(
+        num_experts,
+        output_size,
+        hidden_size,
+        device=device,
+        dtype=dtype,
+    )
+    gating = torch.randn(num_tokens, num_experts, device=device)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = (topk_weights / topk_weights.sum(dim=-1, keepdim=True)).to(dtype)
+    topk_ids = topk_ids.to(torch.int32)
+
+    config = {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 64,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 2,
+    }
+    sorted_ids, expert_ids, total = flag_gems.moe_align_block_size(
+        topk_ids,
+        config["BLOCK_SIZE_M"],
+        num_experts,
+    )
+    expert_ids = expert_ids.clone()
+    expert_ids[0] = -1
+    regular = torch.full(
+        (num_tokens, topk, output_size),
+        1.0,
+        device=device,
+        dtype=dtype,
+    )
+    persistent = torch.full_like(regular, 1.0)
+
+    dispatch_args = (
+        route_inputs,
+        weights,
+        None,
+        None,
+        None,
+        topk_weights,
+        sorted_ids,
+        expert_ids,
+        total,
+        True,
+        1,
+    )
+    flag_gems.dispatch_fused_moe_kernel(
+        dispatch_args[0],
+        dispatch_args[1],
+        regular,
+        *dispatch_args[2:],
+        config,
+        compute_type=tl.bfloat16,
+        use_fp8_w8a8=False,
+        use_int8_w8a8=False,
+        use_int8_w8a16=False,
+        use_int4_w4a16=False,
+        per_channel_quant=False,
+    )
+    # Keep the grid much smaller than the logical tile count so every CTA
+    # exercises the persistent stride loop. The odd K/N sizes also cover both
+    # reduction and output tails.
+    persistent_config = {**config, "PERSISTENT_GRID_SIZE": 7}
+    flag_gems.dispatch_fused_moe_kernel(
+        dispatch_args[0],
+        dispatch_args[1],
+        persistent,
+        *dispatch_args[2:],
+        persistent_config,
+        compute_type=tl.bfloat16,
+        use_fp8_w8a8=False,
+        use_int8_w8a8=False,
+        use_int8_w8a16=False,
+        use_int4_w4a16=False,
+        per_channel_quant=False,
+    )
+    torch_device_fn.synchronize()
+
+    assert persistent_launches == 1
+    assert torch.equal(persistent, regular)
+
+
 def torch_fused_moe_reference(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,
@@ -463,6 +796,999 @@ def torch_fused_moe_reference(
                 output[m] += (weight.to(torch.float32) * r).to(output.dtype)
 
     return output
+
+
+def torch_fused_moe_ep_reference(
+    hidden_states,
+    w1,
+    w2,
+    topk_weights,
+    topk_ids,
+    expert_map,
+    clamp_limit=None,
+):
+    """Reference one EP rank, skipping routes assigned to remote experts."""
+    # moe_sum accumulates all routed outputs in FP32 and casts once. Keep that
+    # boundary here so the reference cannot hide route errors behind repeated
+    # BF16 accumulation rounding.
+    output = torch.zeros_like(hidden_states, dtype=torch.float32)
+    for token_idx in range(hidden_states.shape[0]):
+        hidden = hidden_states[token_idx].float()
+        for route_idx in range(topk_ids.shape[1]):
+            global_expert = int(topk_ids[token_idx, route_idx].item())
+            if global_expert < 0 or global_expert >= expert_map.numel():
+                continue
+            local_expert = int(expert_map[global_expert].item())
+            if local_expert < 0 or local_expert >= w1.shape[0]:
+                continue
+            # Match GEMM1's BF16 cache boundary before applying SwiGLU.
+            gate_up = (hidden @ w1[local_expert].T.float()).to(w1.dtype).float()
+            gate, up = gate_up.chunk(2)
+            if clamp_limit is not None:
+                gate = gate.clamp(max=clamp_limit)
+                up = up.clamp(min=-clamp_limit, max=clamp_limit)
+            # Activation and GEMM2 each materialize into BF16 workspaces.
+            activated = (gate * torch.sigmoid(gate) * up).to(w1.dtype).float()
+            routed = activated @ w2[local_expert].T.float()
+            weighted_routed = (routed * topk_weights[token_idx, route_idx].float()).to(
+                w2.dtype
+            )
+            output[token_idx] += weighted_routed.float()
+    return output.to(hidden_states.dtype)
+
+
+@pytest.mark.fused_experts_impl
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability() != (9, 0),
+    reason="optimized fused-MoE EP path is enabled only on NVIDIA SM90",
+)
+def test_fused_moe_ep_m1_naive_route_matches_compact_and_graph(monkeypatch):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    plans = {
+        stage: config.copy()
+        for stage, config in fused_moe._HOPPER_EP_DECODE_PLAN.items()
+    }
+    monkeypatch.setattr(
+        fused_moe,
+        "_get_ep_decode_config",
+        lambda *args: plans[args[-1]].copy(),
+    )
+
+    def force_naive_route(*_args, **_kwargs):
+        return True
+
+    monkeypatch.setattr(fused_moe, "_should_use_ep_naive_route", force_naive_route)
+    monkeypatch.setattr(
+        fused_moe,
+        "_should_use_ep_route_block",
+        lambda *_args, **_kwargs: False,
+    )
+
+    align_calls = 0
+    original_align = fused_moe.moe_align_block_size
+
+    def align_spy(*args, **kwargs):
+        nonlocal align_calls
+        align_calls += 1
+        return original_align(*args, **kwargs)
+
+    dispatches = []
+    original_dispatch = fused_moe.dispatch_fused_moe_kernel
+
+    def dispatch_spy(*args, **kwargs):
+        dispatches.append(
+            {
+                "expert_map": kwargs.get("expert_map"),
+                "skip_invalid_experts": kwargs.get("skip_invalid_experts", False),
+                "sorted_token_ids": args[7],
+                "direct_sum": kwargs.get("direct_sum", False),
+                "config": dict(args[12]),
+            }
+        )
+        return original_dispatch(*args, **kwargs)
+
+    monkeypatch.setattr(fused_moe, "moe_align_block_size", align_spy)
+    monkeypatch.setattr(fused_moe, "dispatch_fused_moe_kernel", dispatch_spy)
+
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    m, global_e, local_e, hidden_size, intermediate, topk = (1, 288, 18, 64, 32, 8)
+    torch.manual_seed(20260824)
+    hidden = 4 * torch.randn((m, hidden_size), device=device, dtype=dtype)
+    w1 = 0.5 * torch.randn(
+        (local_e, 2 * intermediate, hidden_size), device=device, dtype=dtype
+    )
+    w2 = torch.randn(
+        (local_e, hidden_size, intermediate), device=device, dtype=dtype
+    ) * (intermediate**-0.5)
+    shard_begin = 7 * local_e
+    expert_map = torch.full((global_e,), -1, device=device, dtype=torch.int32)
+    expert_map[shard_begin : shard_begin + local_e] = torch.arange(
+        local_e, device=device, dtype=torch.int32
+    )
+    topk_ids = torch.tensor(
+        [[shard_begin + 3, -1, global_e, 2**40, -(2**40), 50, 240, 287]],
+        device=device,
+        dtype=torch.int64,
+    )
+    topk_weights = torch.rand((m, topk), device=device, dtype=torch.float32)
+    topk_weights = (topk_weights / topk_weights.sum(dim=-1, keepdim=True)).to(dtype)
+
+    def run(**workspace_kwargs):
+        return flag_gems.fused_experts_impl(
+            hidden,
+            w1,
+            w2,
+            topk_weights,
+            topk_ids,
+            global_num_experts=global_e,
+            expert_map=expert_map,
+            gemm1_clamp_limit=10.0,
+            **workspace_kwargs,
+        )
+
+    naive_result = run()
+    assert align_calls == 0
+    assert len(dispatches) == 2
+    for dispatch in dispatches:
+        assert dispatch["expert_map"] is expert_map
+        assert dispatch["skip_invalid_experts"]
+        assert dispatch["sorted_token_ids"] is None
+
+    monkeypatch.setattr(
+        fused_moe,
+        "_should_use_ep_naive_route",
+        lambda *_args, **_kwargs: False,
+    )
+    compact_result = run()
+    assert align_calls == 1
+    assert torch.equal(naive_result, compact_result)
+
+    reference = torch_fused_moe_ep_reference(
+        hidden, w1, w2, topk_weights, topk_ids, expert_map, clamp_limit=10.0
+    )
+    torch.testing.assert_close(naive_result, reference, rtol=1e-1, atol=1e-2)
+
+    monkeypatch.setattr(fused_moe, "_should_use_ep_naive_route", force_naive_route)
+    cache13 = torch.empty(
+        m * topk * max(2 * intermediate, hidden_size), device=device, dtype=dtype
+    )
+    cache2 = torch.empty(m * topk * intermediate, device=device, dtype=dtype)
+    # Exercise the modular vLLM layout where final output aliases the beginning
+    # of cache2.  GEMM2 consumes the one local activation before moe_sum_ep
+    # overwrites that storage; untouched remote rows must never be observed.
+    output = cache2[: m * hidden_size].view(m, hidden_size)
+
+    def graph_op():
+        return run(
+            output=output,
+            intermediate_cache13=cache13,
+            intermediate_cache2=cache2,
+        )
+
+    eager = graph_op().clone()
+    torch_device_fn.synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        graph_result = graph_op()
+    graph.replay()
+    torch_device_fn.synchronize()
+    assert graph_result is output
+    assert torch.equal(eager, graph_result)
+    assert torch.equal(naive_result, graph_result)
+
+
+@pytest.mark.fused_experts_impl
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability() != (9, 0),
+    reason="fused-MoE EP local-rank path is enabled only on NVIDIA SM90",
+)
+def test_fused_moe_ep_m1_i2048_local_rank_alias_dynamic_graph(monkeypatch):
+    """Exercise the strict production kernel, including dynamic route safety."""
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    torch.manual_seed(20260824)
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    m, global_e, local_e, hidden_size, intermediate, topk = (
+        1,
+        288,
+        18,
+        4096,
+        2048,
+        8,
+    )
+    shard_begin = 7 * local_e
+    hidden = torch.randn((m, hidden_size), device=device, dtype=dtype)
+    w1 = torch.empty(
+        (local_e, 2 * intermediate, hidden_size), device=device, dtype=dtype
+    ).normal_(std=hidden_size**-0.5)
+    w2 = torch.empty(
+        (local_e, hidden_size, intermediate), device=device, dtype=dtype
+    ).normal_(std=intermediate**-0.5)
+    topk_weights = torch.rand((m, topk), device=device, dtype=torch.float32)
+    topk_weights = topk_weights / topk_weights.sum(-1, keepdim=True)
+
+    original_local_rank_gate = fused_moe._should_use_ep_m1_i2048_local_rank
+    original_launcher = fused_moe.fused_moe_ep_m1_i2048_local_rank
+    launcher_calls = 0
+
+    def launcher_spy(*args, **kwargs):
+        nonlocal launcher_calls
+        launcher_calls += 1
+        return original_launcher(*args, **kwargs)
+
+    monkeypatch.setattr(
+        fused_moe,
+        "fused_moe_ep_m1_i2048_local_rank",
+        launcher_spy,
+    )
+
+    def make_workspaces():
+        cache13 = torch.empty(
+            m * topk * max(2 * intermediate, hidden_size),
+            device=device,
+            dtype=dtype,
+        )
+        cache2 = torch.empty(
+            m * topk * intermediate,
+            device=device,
+            dtype=dtype,
+        )
+        # Match modular vLLM: final output aliases the beginning of cache2.
+        output = cache2[: m * hidden_size].view(m, hidden_size)
+        return cache13, cache2, output
+
+    def run(ids, expert_map, workspaces, weights=topk_weights, **kwargs):
+        cache13, cache2, output = workspaces
+        return fused_moe.fused_experts_impl(
+            hidden,
+            w1,
+            w2,
+            weights,
+            ids,
+            global_num_experts=global_e,
+            expert_map=expert_map,
+            gemm1_clamp_limit=10.0,
+            output=output,
+            intermediate_cache13=cache13,
+            intermediate_cache2=cache2,
+            **kwargs,
+        )
+
+    remote_values = (0, 20, 50, 80, 100, 180, 240, 287)
+    dtype_pairs = (
+        (torch.int32, torch.int32),
+        (torch.int32, torch.int64),
+        (torch.int64, torch.int32),
+        (torch.int64, torch.int64),
+    )
+    for ids_dtype, map_dtype in dtype_pairs:
+        expert_map = torch.full((global_e,), -1, device=device, dtype=map_dtype)
+        expert_map[shard_begin : shard_begin + local_e] = torch.arange(
+            local_e, device=device, dtype=map_dtype
+        )
+        remote = torch.tensor([remote_values], device=device, dtype=ids_dtype)
+        early_local = remote.clone()
+        early_local[0, 0] = shard_begin
+        late_local = remote.clone()
+        late_local[0, 7] = shard_begin
+        extreme = 2**40 if ids_dtype == torch.int64 else torch.iinfo(torch.int32).max
+        route_inputs = (
+            remote,
+            early_local,
+            late_local,
+            torch.tensor(
+                [
+                    [
+                        shard_begin,
+                        20,
+                        shard_begin + 1,
+                        80,
+                        shard_begin + 2,
+                        180,
+                        shard_begin + 3,
+                        287,
+                    ]
+                ],
+                device=device,
+                dtype=ids_dtype,
+            ),
+            torch.full((m, topk), shard_begin + 3, device=device, dtype=ids_dtype),
+            torch.tensor(
+                [[-1, global_e, extreme, -extreme, shard_begin, 143, 144, 287]],
+                device=device,
+                dtype=ids_dtype,
+            ),
+        )
+        for route_ids in route_inputs:
+            reference_workspaces = make_workspaces()
+            candidate_workspaces = make_workspaces()
+            with monkeypatch.context() as direct_context:
+                direct_context.setattr(
+                    fused_moe,
+                    "_should_use_ep_m1_i2048_local_rank",
+                    lambda *_args, **_kwargs: False,
+                )
+                reference = run(route_ids, expert_map, reference_workspaces).clone()
+            candidate = run(route_ids, expert_map, candidate_workspaces).clone()
+            assert torch.equal(reference, candidate), (ids_dtype, map_dtype)
+
+    # Capture both policies once with int64 routing, then mutate IDs, map and
+    # weights in place. One graph must remain correct for every replay.
+    ids = torch.tensor(
+        [[shard_begin, 20, 50, 80, 100, 180, 240, 287]],
+        device=device,
+        dtype=torch.int64,
+    )
+    expert_map = torch.full((global_e,), -1, device=device, dtype=torch.int64)
+    expert_map[shard_begin : shard_begin + local_e] = torch.arange(
+        local_e, device=device, dtype=torch.int64
+    )
+    reference_workspaces = make_workspaces()
+    candidate_workspaces = make_workspaces()
+
+    def capture(fn):
+        side = torch.cuda.Stream()
+        side.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(side):
+            for _ in range(3):
+                fn()
+        torch.cuda.current_stream().wait_stream(side)
+        torch_device_fn.synchronize()
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            output = fn()
+        return graph, output
+
+    with monkeypatch.context() as direct_context:
+        direct_context.setattr(
+            fused_moe,
+            "_should_use_ep_m1_i2048_local_rank",
+            lambda *_args, **_kwargs: False,
+        )
+        reference_graph, reference_output = capture(
+            lambda: run(ids, expert_map, reference_workspaces)
+        )
+    candidate_graph, candidate_output = capture(
+        lambda: run(ids, expert_map, candidate_workspaces)
+    )
+
+    dynamic_routes = (
+        torch.tensor([remote_values], device=device, dtype=torch.int64),
+        torch.tensor(
+            [[0, 20, 50, 80, 100, 180, 240, shard_begin + 7]],
+            device=device,
+            dtype=torch.int64,
+        ),
+        torch.arange(
+            shard_begin, shard_begin + topk, device=device, dtype=torch.int64
+        ).view(m, topk),
+        torch.full((m, topk), shard_begin + 3, device=device, dtype=torch.int64),
+        torch.tensor(
+            [[-1, global_e, 2**40, -(2**40), shard_begin, 143, 144, 287]],
+            device=device,
+            dtype=torch.int64,
+        ),
+    )
+    for route_update in dynamic_routes:
+        ids.copy_(route_update)
+        reference_graph.replay()
+        candidate_graph.replay()
+        torch_device_fn.synchronize()
+        assert torch.equal(reference_output, candidate_output)
+
+    ids.copy_(dynamic_routes[1])
+    expert_map[shard_begin + 7] = local_e  # invalid mapped local expert
+    topk_weights.copy_(torch.flip(topk_weights, dims=(1,)))
+    reference_graph.replay()
+    candidate_graph.replay()
+    torch_device_fn.synchronize()
+    assert torch.equal(reference_output, candidate_output)
+
+    # Both FP32 and BF16 router weights are supported. Other weight/bias
+    # contracts must not enter the specialization.
+    bf16_reference_workspaces = make_workspaces()
+    bf16_candidate_workspaces = make_workspaces()
+    with monkeypatch.context() as direct_context:
+        direct_context.setattr(
+            fused_moe,
+            "_should_use_ep_m1_i2048_local_rank",
+            lambda *_args, **_kwargs: False,
+        )
+        bf16_reference = run(
+            ids,
+            expert_map,
+            bf16_reference_workspaces,
+            weights=topk_weights.to(dtype),
+        ).clone()
+    calls_before_bf16 = launcher_calls
+    bf16_candidate = run(
+        ids,
+        expert_map,
+        bf16_candidate_workspaces,
+        weights=topk_weights.to(dtype),
+    ).clone()
+    assert launcher_calls == calls_before_bf16 + 1
+    assert torch.equal(bf16_reference, bf16_candidate)
+
+    calls_before_fallback = launcher_calls
+    fallback_workspaces = make_workspaces()
+    run(
+        ids,
+        expert_map,
+        fallback_workspaces,
+        w2_bias=torch.zeros((local_e, hidden_size), device=device, dtype=dtype),
+    )
+    assert launcher_calls == calls_before_fallback
+    run(
+        ids,
+        expert_map,
+        make_workspaces(),
+        weights=topk_weights.half(),
+    )
+    assert launcher_calls == calls_before_fallback
+    assert original_local_rank_gate({"BLOCK_SIZE_M": 16}, expert_map, 1, 2048, True)
+
+
+@pytest.mark.fused_experts_impl
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability() != (9, 0),
+    reason="optimized fused-MoE EP path is enabled only on NVIDIA SM90",
+)
+def test_fused_moe_ep_m1_route_block_matches_compact_alias_graph(monkeypatch):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    plans = {
+        stage: config.copy()
+        for stage, config in fused_moe._HOPPER_EP_DECODE_PLAN.items()
+    }
+    monkeypatch.setattr(
+        fused_moe,
+        "_get_ep_decode_config",
+        lambda *args: plans[args[-1]].copy(),
+    )
+    monkeypatch.setattr(
+        fused_moe,
+        "_should_use_ep_naive_route",
+        lambda *_args, **_kwargs: False,
+    )
+
+    def force_route_block(*_args, **_kwargs):
+        return bool(_args[4])
+
+    monkeypatch.setattr(fused_moe, "_should_use_ep_route_block", force_route_block)
+
+    route_block_calls = 0
+    compact_calls = 0
+    original_route_block = fused_moe.moe_align_block_size_ep_route_block
+    original_align = fused_moe.moe_align_block_size
+
+    def route_block_spy(*args, **kwargs):
+        nonlocal route_block_calls
+        route_block_calls += 1
+        return original_route_block(*args, **kwargs)
+
+    def align_spy(*args, **kwargs):
+        nonlocal compact_calls
+        compact_calls += 1
+        return original_align(*args, **kwargs)
+
+    dispatches = []
+    original_dispatch = fused_moe.dispatch_fused_moe_kernel
+
+    def dispatch_spy(*args, **kwargs):
+        dispatches.append(
+            {
+                "expert_map": kwargs.get("expert_map"),
+                "skip_invalid_experts": kwargs.get("skip_invalid_experts", False),
+                "sorted_token_ids": args[7],
+                "direct_sum": kwargs.get("direct_sum", False),
+                "config": dict(args[12]),
+            }
+        )
+        return original_dispatch(*args, **kwargs)
+
+    monkeypatch.setattr(
+        fused_moe, "moe_align_block_size_ep_route_block", route_block_spy
+    )
+    monkeypatch.setattr(fused_moe, "moe_align_block_size", align_spy)
+    monkeypatch.setattr(fused_moe, "dispatch_fused_moe_kernel", dispatch_spy)
+
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    m, global_e, local_e, hidden_size, intermediate, topk = (1, 288, 18, 64, 32, 8)
+    torch.manual_seed(20260824)
+    hidden = 4 * torch.randn((m, hidden_size), device=device, dtype=dtype)
+    w1 = 0.5 * torch.randn(
+        (local_e, 2 * intermediate, hidden_size), device=device, dtype=dtype
+    )
+    w2 = torch.randn(
+        (local_e, hidden_size, intermediate), device=device, dtype=dtype
+    ) * (intermediate**-0.5)
+    shard_begin = 7 * local_e
+    expert_map = torch.full((global_e,), -1, device=device, dtype=torch.int32)
+    expert_map[shard_begin : shard_begin + local_e] = torch.arange(
+        local_e, device=device, dtype=torch.int32
+    )
+    late_route_ids = torch.tensor(
+        [[-1, global_e, 2**40, -(2**40), 50, 240, 287, shard_begin + 3]],
+        device=device,
+        dtype=torch.int64,
+    )
+    early_route_ids = late_route_ids.roll(1, dims=1)
+    topk_ids = late_route_ids.clone()
+    topk_weights = torch.rand((m, topk), device=device, dtype=torch.float32)
+    topk_weights = (topk_weights / topk_weights.sum(dim=-1, keepdim=True)).to(dtype)
+
+    def run(**workspace_kwargs):
+        return flag_gems.fused_experts_impl(
+            hidden,
+            w1,
+            w2,
+            topk_weights,
+            topk_ids,
+            global_num_experts=global_e,
+            expert_map=expert_map,
+            gemm1_clamp_limit=10.0,
+            **workspace_kwargs,
+        )
+
+    route_block_result = run()
+    assert route_block_calls == 1
+    assert compact_calls == 0
+    assert len(dispatches) == 2
+    for dispatch in dispatches:
+        assert dispatch["expert_map"] is None
+        assert not dispatch["skip_invalid_experts"]
+        assert dispatch["sorted_token_ids"] is not None
+        assert not dispatch["direct_sum"]
+    assert dispatches[0]["config"]["BLOCK_SIZE_N"] == 16
+    assert dispatches[0]["config"]["num_warps"] == 2
+    assert dispatches[1]["config"]["BLOCK_SIZE_N"] == 64
+    assert dispatches[1]["config"]["num_stages"] == 4
+
+    monkeypatch.setattr(
+        fused_moe,
+        "_should_use_ep_route_block",
+        lambda *_args, **_kwargs: False,
+    )
+    compact_result = run()
+    assert compact_calls == 1
+    assert torch.equal(route_block_result, compact_result)
+
+    reference = torch_fused_moe_ep_reference(
+        hidden, w1, w2, topk_weights, topk_ids, expert_map, clamp_limit=10.0
+    )
+    torch.testing.assert_close(route_block_result, reference, rtol=1e-1, atol=1e-2)
+
+    monkeypatch.setattr(fused_moe, "_should_use_ep_route_block", force_route_block)
+    fallback_dispatch_start = len(dispatches)
+    with monkeypatch.context() as fallback_context:
+        fallback_context.setattr(
+            fused_moe,
+            "_should_use_fused_clamped_swiglu",
+            lambda *_args, **_kwargs: False,
+        )
+        separate_activation_result = run()
+    assert torch.equal(route_block_result, separate_activation_result)
+    fallback_dispatches = dispatches[fallback_dispatch_start:]
+    assert len(fallback_dispatches) == 2
+    assert fallback_dispatches[0]["config"]["BLOCK_SIZE_N"] == 64
+    assert fallback_dispatches[0]["config"]["num_warps"] == 4
+    assert fallback_dispatches[1]["config"]["BLOCK_SIZE_N"] == 128
+
+    # GEMM2 bias does not invalidate the fused GEMM1 activation, but this
+    # unmeasured variant must retain compact alignment and the shared tiles.
+    route_block_calls_before_bias = route_block_calls
+    compact_calls_before_bias = compact_calls
+    bias_dispatch_start = len(dispatches)
+    w2_bias = torch.zeros((local_e, hidden_size), device=device, dtype=dtype)
+    bias_result = run(w2_bias=w2_bias)
+    assert torch.equal(route_block_result, bias_result)
+    assert route_block_calls == route_block_calls_before_bias
+    assert compact_calls == compact_calls_before_bias + 1
+    bias_dispatches = dispatches[bias_dispatch_start:]
+    assert len(bias_dispatches) == 2
+    assert bias_dispatches[0]["config"]["BLOCK_SIZE_N"] == 32
+    assert bias_dispatches[0]["config"]["num_warps"] == 4
+    assert bias_dispatches[1]["config"]["BLOCK_SIZE_N"] == 128
+
+    monkeypatch.setattr(fused_moe, "_should_use_ep_route_block", force_route_block)
+    cache13 = torch.empty(
+        m * topk * max(2 * intermediate, hidden_size), device=device, dtype=dtype
+    )
+    cache2 = torch.empty(m * topk * intermediate, device=device, dtype=dtype)
+    output = cache2[: m * hidden_size].view(m, hidden_size)
+
+    def graph_op():
+        return run(
+            output=output,
+            intermediate_cache13=cache13,
+            intermediate_cache2=cache2,
+        )
+
+    eager_late = graph_op().clone()
+    torch_device_fn.synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        graph_result = graph_op()
+    graph.replay()
+    torch_device_fn.synchronize()
+    assert graph_result is output
+    assert torch.equal(eager_late, graph_result)
+
+    route_updates = (
+        torch.tensor(
+            [[0, 20, 50, 80, 100, 180, 240, 287]],
+            device=device,
+            dtype=torch.int64,
+        ),
+        torch.arange(
+            shard_begin, shard_begin + topk, device=device, dtype=torch.int64
+        ).view(1, topk),
+        torch.full((1, topk), shard_begin + 3, device=device, dtype=torch.int64),
+        early_route_ids,
+        torch.tensor(
+            [[0, 20, 50, 80, 100, 180, 240, 287]],
+            device=device,
+            dtype=torch.int64,
+        ),
+    )
+    for route_update in route_updates:
+        topk_ids.copy_(route_update)
+        monkeypatch.setattr(
+            fused_moe,
+            "_should_use_ep_route_block",
+            lambda *_args, **_kwargs: False,
+        )
+        compact_expected = run().clone()
+        monkeypatch.setattr(fused_moe, "_should_use_ep_route_block", force_route_block)
+        graph.replay()
+        torch_device_fn.synchronize()
+        assert torch.equal(compact_expected, graph_result)
+
+
+@pytest.mark.fused_experts_impl
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability() != (9, 0),
+    reason="optimized fused-MoE EP path is enabled only on NVIDIA SM90",
+)
+def test_fused_moe_ep_m1_policy_does_not_match_only_a_tail_chunk(monkeypatch):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    plans = {
+        stage: config.copy()
+        for stage, config in fused_moe._HOPPER_EP_DECODE_PLAN.items()
+    }
+    monkeypatch.setattr(fused_moe, "FUSED_MOE_CHUNK_SIZE", 2)
+    monkeypatch.setattr(
+        fused_moe,
+        "_get_ep_decode_config",
+        lambda *args: plans[args[-1]].copy(),
+    )
+
+    observed_call_sizes = {"local_rank": [], "direct": [], "route_block": []}
+    original_local_rank_gate = fused_moe._should_use_ep_m1_i2048_local_rank
+    original_direct_gate = fused_moe._should_use_ep_naive_route
+    original_route_block_gate = fused_moe._should_use_ep_route_block
+
+    def local_rank_gate_spy(*args, **kwargs):
+        observed_call_sizes["local_rank"].append(args[2])
+        return original_local_rank_gate(*args, **kwargs)
+
+    def direct_gate_spy(*args, **kwargs):
+        observed_call_sizes["direct"].append(args[2])
+        return original_direct_gate(*args, **kwargs)
+
+    def route_block_gate_spy(*args, **kwargs):
+        observed_call_sizes["route_block"].append(args[2])
+        return original_route_block_gate(*args, **kwargs)
+
+    align_calls = 0
+    original_align = fused_moe.moe_align_block_size
+
+    def align_spy(*args, **kwargs):
+        nonlocal align_calls
+        align_calls += 1
+        return original_align(*args, **kwargs)
+
+    monkeypatch.setattr(
+        fused_moe,
+        "_should_use_ep_m1_i2048_local_rank",
+        local_rank_gate_spy,
+    )
+    monkeypatch.setattr(fused_moe, "_should_use_ep_naive_route", direct_gate_spy)
+    monkeypatch.setattr(fused_moe, "_should_use_ep_route_block", route_block_gate_spy)
+    monkeypatch.setattr(fused_moe, "moe_align_block_size", align_spy)
+
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    m, global_e, local_e, hidden_size, intermediate, topk = (3, 288, 18, 64, 32, 8)
+    torch.manual_seed(20260824)
+    hidden = torch.randn((m, hidden_size), device=device, dtype=dtype)
+    w1 = torch.randn(
+        (local_e, 2 * intermediate, hidden_size), device=device, dtype=dtype
+    )
+    w2 = torch.randn((local_e, hidden_size, intermediate), device=device, dtype=dtype)
+    topk_ids = torch.arange(m * topk, device=device, dtype=torch.int32).view(m, topk)
+    topk_weights = torch.full((m, topk), 1 / topk, device=device, dtype=dtype)
+    expert_map = torch.full((global_e,), -1, device=device, dtype=torch.int32)
+    expert_map[:local_e] = torch.arange(local_e, device=device, dtype=torch.int32)
+
+    result = flag_gems.fused_experts_impl(
+        hidden,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=global_e,
+        expert_map=expert_map,
+        gemm1_clamp_limit=10.0,
+    )
+    assert result.shape == hidden.shape
+    assert align_calls == 2
+    assert observed_call_sizes == {
+        "local_rank": [m, m],
+        "direct": [m, m],
+        "route_block": [m, m],
+    }
+
+
+@pytest.mark.fused_experts_impl
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability() != (9, 0),
+    reason="optimized fused-MoE EP path is enabled only on NVIDIA SM90",
+)
+def test_fused_moe_ep_matches_reference(monkeypatch):
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    align = importlib.import_module("flag_gems.fused.moe_align_block_size")
+
+    # Exercise the integrated optimized path with a small test tensor: the
+    # production selector is deliberately shape-strict and would otherwise
+    # reject H=64/I=32 before reaching compact EP alignment.
+    plans = {
+        stage: config.copy()
+        for stage, config in fused_moe._HOPPER_EP_DECODE_PLAN.items()
+    }
+    monkeypatch.setattr(
+        fused_moe,
+        "_get_ep_decode_config",
+        lambda *args: plans[args[-1]].copy(),
+    )
+    compact_dispatches = 0
+    original_compact = align.moe_align_block_size_ep_compact
+
+    def compact_spy(*args, **kwargs):
+        nonlocal compact_dispatches
+        compact_dispatches += 1
+        return original_compact(*args, **kwargs)
+
+    monkeypatch.setattr(align, "moe_align_block_size_ep_compact", compact_spy)
+
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    m, global_e, local_e, hidden_size, intermediate, topk = (4, 288, 18, 64, 32, 8)
+    torch.manual_seed(20260824)
+    hidden = 4 * torch.randn((m, hidden_size), device=device, dtype=dtype)
+    w1 = (
+        torch.randn(
+            (local_e, 2 * intermediate, hidden_size), device=device, dtype=dtype
+        )
+        * 0.5
+    )
+    w2 = torch.randn(
+        (local_e, hidden_size, intermediate), device=device, dtype=dtype
+    ) * (intermediate**-0.5)
+
+    gemm1_dispatches = []
+    original_dispatch = fused_moe.dispatch_fused_moe_kernel
+
+    def dispatch_spy(*args, **kwargs):
+        if args[1].data_ptr() == w1.data_ptr():
+            gemm1_dispatches.append(
+                {
+                    "config": dict(args[12]),
+                    "fuse_silu": kwargs.get("FUSE_SILU", False),
+                    "output_shape": tuple(args[2].shape),
+                    "weights_is_none": args[6] is None,
+                }
+            )
+        return original_dispatch(*args, **kwargs)
+
+    activation_calls = 0
+    original_activation = fused_moe.apply_moe_activation
+
+    def activation_spy(*args, **kwargs):
+        nonlocal activation_calls
+        activation_calls += 1
+        return original_activation(*args, **kwargs)
+
+    monkeypatch.setattr(fused_moe, "dispatch_fused_moe_kernel", dispatch_spy)
+    monkeypatch.setattr(fused_moe, "apply_moe_activation", activation_spy)
+
+    shard_begin = 7 * local_e
+    expert_map = torch.full((global_e,), -1, device=device, dtype=torch.int32)
+    expert_map[shard_begin : shard_begin + local_e] = torch.arange(
+        local_e, device=device, dtype=torch.int32
+    )
+    topk_ids = torch.tensor(
+        [
+            [shard_begin, 0, shard_begin + 1, 50, 80, 200, 250, 287],
+            [1, 2, shard_begin + 3, shard_begin + 4, 90, 190, 270, 280],
+            [shard_begin + 17, 3, 30, 60, 100, 180, 240, 286],
+            [4, shard_begin + 8, 40, shard_begin + 9, 110, 170, 230, 285],
+        ],
+        device=device,
+        dtype=torch.int32,
+    )
+    topk_weights = torch.rand((m, topk), device=device, dtype=torch.float32)
+    topk_weights /= topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype)
+
+    result = flag_gems.fused_experts_impl(
+        hidden,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=global_e,
+        expert_map=expert_map,
+        gemm1_clamp_limit=10.0,
+    )
+    cache13 = torch.empty(
+        m * topk * max(2 * intermediate, hidden_size), device=device, dtype=dtype
+    )
+    cache2 = torch.empty(m * topk * intermediate, device=device, dtype=dtype)
+    aliased_output = cache2[: m * hidden_size].view(m, hidden_size)
+    aliased_result = flag_gems.fused_experts_impl(
+        hidden,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=global_e,
+        expert_map=expert_map,
+        gemm1_clamp_limit=10.0,
+        output=aliased_output,
+        intermediate_cache13=cache13,
+        intermediate_cache2=cache2,
+    )
+    assert activation_calls == 0
+    assert len(gemm1_dispatches) == 2
+    for dispatch in gemm1_dispatches:
+        config = dispatch["config"]
+        assert dispatch["fuse_silu"]
+        assert dispatch["weights_is_none"]
+        assert dispatch["output_shape"] == (m, topk, intermediate)
+        assert config["BLOCK_SIZE_N"] == 32
+        assert config["PAIR_GATE_UP_DOT"] is True
+        assert config["CLAMPED_BF16_BOUNDARY"] is True
+        assert config["CLAMP_LIMIT"] == 10.0
+
+    # The public entry currently asserts activation="silu". Override only the
+    # parsed enum so this test can still exercise the defensive caller-side
+    # activation gate and prove that GELU never receives the fused epilogue.
+    with monkeypatch.context() as activation_context:
+        activation_context.setattr(
+            fused_moe.MoEActivation,
+            "from_str",
+            classmethod(lambda cls, _value: cls.GELU),
+        )
+        flag_gems.fused_experts_impl(
+            hidden,
+            w1,
+            w2,
+            topk_weights,
+            topk_ids,
+            global_num_experts=global_e,
+            expert_map=expert_map,
+            gemm1_clamp_limit=10.0,
+        )
+    assert activation_calls == 1
+    assert len(gemm1_dispatches) == 3
+    gelu_dispatch = gemm1_dispatches[-1]
+    assert not gelu_dispatch["fuse_silu"]
+    assert not gelu_dispatch["weights_is_none"]
+    assert gelu_dispatch["output_shape"] == (m, topk, 2 * intermediate)
+    assert gelu_dispatch["config"]["BLOCK_SIZE_N"] == 64
+    assert "PAIR_GATE_UP_DOT" not in gelu_dispatch["config"]
+    assert "CLAMPED_BF16_BOUNDARY" not in gelu_dispatch["config"]
+
+    monkeypatch.setattr(
+        fused_moe,
+        "_should_use_fused_clamped_swiglu",
+        lambda *args, **kwargs: False,
+    )
+    unfused_result = flag_gems.fused_experts_impl(
+        hidden,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        global_num_experts=global_e,
+        expert_map=expert_map,
+        gemm1_clamp_limit=10.0,
+    )
+    reference = torch_fused_moe_ep_reference(
+        hidden, w1, w2, topk_weights, topk_ids, expert_map, clamp_limit=10.0
+    )
+    unclamped_reference = torch_fused_moe_ep_reference(
+        hidden, w1, w2, topk_weights, topk_ids, expert_map
+    )
+    torch_device_fn.synchronize()
+    assert compact_dispatches == 4
+    assert activation_calls == 2
+    assert len(gemm1_dispatches) == 4
+    unfused_dispatch = gemm1_dispatches[-1]
+    assert not unfused_dispatch["fuse_silu"]
+    assert not unfused_dispatch["weights_is_none"]
+    assert unfused_dispatch["output_shape"] == (m, topk, 2 * intermediate)
+    assert unfused_dispatch["config"]["BLOCK_SIZE_N"] == 64
+    assert "PAIR_GATE_UP_DOT" not in unfused_dispatch["config"]
+    assert "CLAMPED_BF16_BOUNDARY" not in unfused_dispatch["config"]
+    assert aliased_result is aliased_output
+    assert torch.equal(result, unfused_result)
+    assert torch.equal(aliased_result, unfused_result)
+    assert not torch.allclose(reference, unclamped_reference, rtol=1e-2, atol=1e-2)
+    torch.testing.assert_close(result, reference, rtol=1e-1, atol=1e-2)
+    torch.testing.assert_close(aliased_result, reference, rtol=1e-1, atol=1e-2)
+
+
+@pytest.mark.fused_experts_impl
+def test_fused_moe_rejects_mismatched_routing_batch():
+    device = flag_gems.device
+    hidden = torch.randn(4, 16, device=device, dtype=torch.bfloat16)
+    w1 = torch.randn(2, 16, 16, device=device, dtype=torch.bfloat16)
+    w2 = torch.randn(2, 16, 8, device=device, dtype=torch.bfloat16)
+    topk_ids = torch.zeros(1, 1, device=device, dtype=torch.int32)
+    topk_weights = torch.ones(1, 1, device=device, dtype=torch.bfloat16)
+
+    with pytest.raises(ValueError, match="one row per input token"):
+        flag_gems.fused_experts_impl(
+            hidden,
+            w1,
+            w2,
+            topk_weights,
+            topk_ids,
+        )
+
+
+@pytest.mark.fused_experts_impl
+def test_pad_aware_clamped_swiglu_zeros_remote_routes():
+    fused_moe = importlib.import_module("flag_gems.fused.fused_moe")
+    device = flag_gems.device
+    dtype = torch.bfloat16
+    gate_up = 20 * torch.randn(4, 16, device=device, dtype=dtype)
+    output = torch.full((4, 8), torch.nan, device=device, dtype=dtype)
+    topk_ids = torch.tensor([[0, 2], [-1, 1]], device=device, dtype=torch.int32)
+    expert_map = torch.tensor([0, 1, -1, -1], device=device, dtype=torch.int32)
+
+    fused_moe.apply_moe_activation(
+        fused_moe.MoEActivation.SILU,
+        output,
+        gate_up,
+        clamp_limit=10.0,
+        topk_ids=topk_ids,
+        expert_map=expert_map,
+        num_local_experts=2,
+    )
+    torch_device_fn.synchronize()
+
+    gate, up = gate_up.float().chunk(2, dim=-1)
+    expected = torch.nn.functional.silu(gate.clamp(max=10.0)) * up.clamp(
+        min=-10.0, max=10.0
+    )
+    torch.testing.assert_close(output[0], expected[0].to(dtype))
+    torch.testing.assert_close(output[3], expected[3].to(dtype))
+    assert torch.count_nonzero(output[1:3]).item() == 0
 
 
 @pytest.mark.fused_experts_impl

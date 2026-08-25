@@ -24,8 +24,14 @@ import triton
 import triton.language as tl
 import yaml
 
-from flag_gems.fused.moe_align_block_size import moe_align_block_size
-from flag_gems.fused.moe_sum import moe_sum
+from flag_gems.fused.fused_moe_ep_m1 import (
+    fused_moe_ep_m1_i2048_local_rank,
+)
+from flag_gems.fused.moe_align_block_size import (
+    moe_align_block_size,
+    moe_align_block_size_ep_route_block,
+)
+from flag_gems.fused.moe_sum import moe_sum, moe_sum_ep
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import pointwise_dynamic
 
@@ -89,6 +95,10 @@ _H20_QWEN_FLASH_NEXT_M64_BF16_PLAN = {
         "GROUP_SIZE_M": 1,
         "num_warps": 4,
         "num_stages": 2,
+        # Seven resident CTAs per SM on the measured 78-SM H20. A persistent
+        # grid avoids scheduling the full padded upper-bound grid when decode
+        # routing activates only a subset of the 512 experts.
+        "PERSISTENT_GRID_SIZE": 546,
     },
 }
 _H20_MIXTRAL_M512_PLAN = {
@@ -111,6 +121,57 @@ _H20_MIXTRAL_M512_PLAN = {
         "num_warps": 4,
         "num_stages": 3,
     },
+}
+_HOPPER_EP_DECODE_PLAN = {
+    # This EP shape routes top-8 over 288 global experts, while each EP16 rank
+    # stores only 18 experts. The generic heuristic sees E=18 and consequently
+    # overestimates tokens/expert by 16x, selecting BM64 for the M=96 decode
+    # point. After local-route pruning, BM16 matches the measured 2--9 routes
+    # per local expert and avoids computing padded rows.
+    "gemm1": {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 64,
+        "BLOCK_SIZE_K": 128,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 3,
+    },
+    "gemm2": {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 128,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 4,
+    },
+}
+_HOPPER_EP_M1_I2048_PLAN = {
+    # Experimental route-block plan. The final direct-vs-route-block matrix
+    # regresses no-local and several valid route positions, so production keeps
+    # the shared direct plan until a real route trace can justify adaptation.
+    "gemm1": {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 32,
+        "BLOCK_SIZE_K": 128,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 2,
+        "num_stages": 3,
+    },
+    "gemm2": {
+        "BLOCK_SIZE_M": 16,
+        "BLOCK_SIZE_N": 64,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 1,
+        "num_warps": 4,
+        "num_stages": 4,
+    },
+}
+_ENABLE_EXPERIMENTAL_EP_ROUTE_BLOCK = False
+_ENABLE_EP_M1_I2048_LOCAL_RANK = True
+_HOPPER_EP_SUM_FIXED_CONFIGS = {
+    64: (256, 2),
+    96: (512, 2),
+    128: (1024, 4),
 }
 _H20_EXACT_CONFIGS: dict[
     tuple[str, int, int, int, int, int], dict[str, dict[str, Any]]
@@ -238,6 +299,140 @@ def _get_device_name() -> str:
 def _is_h20() -> bool:
     """Whether the current tuning profile is for a full NVIDIA H20."""
     return "H20" in _get_device_name().split("_")
+
+
+@functools.lru_cache(maxsize=None)
+def _is_nvidia_sm90(device_index: int | None = None) -> bool:
+    """Whether the selected device is a Hopper-class NVIDIA GPU."""
+    if device.vendor_name != "nvidia" or not torch.cuda.is_available():
+        return False
+    return torch.cuda.get_device_capability(device_index) == (9, 0)
+
+
+def _get_ep_decode_config(
+    M: int,
+    local_num_experts: int,
+    global_num_experts: int,
+    top_k: int,
+    hidden_size: int,
+    intermediate_size: int,
+    gemm1_clamp_limit: float | None,
+    dtype: str | None,
+    expert_map: torch.Tensor | None,
+    gemm_stage: str,
+) -> dict[str, Any] | None:
+    """Return the measured EP16 decode plan on Hopper."""
+    if (
+        dtype != "bf16"
+        or expert_map is None
+        or local_num_experts != 18
+        or global_num_experts != 288
+        or top_k != 8
+        or hidden_size != 4096
+        or intermediate_size not in (1280, 2048)
+        or gemm1_clamp_limit != 10.0
+        or not 0 < M <= 128
+        or not _is_nvidia_sm90(expert_map.device.index)
+    ):
+        return None
+    return _HOPPER_EP_DECODE_PLAN[gemm_stage].copy()
+
+
+def _should_use_ep_sum(
+    ep_gemm1_config: dict[str, Any] | None,
+    expert_map: torch.Tensor | None,
+) -> bool:
+    """Whether remote routed rows can be skipped by the EP-aware combine."""
+    return ep_gemm1_config is not None and expert_map is not None
+
+
+def _get_ep_sum_fixed_config(
+    ep_gemm1_config: dict[str, Any] | None,
+    expert_map: torch.Tensor | None,
+    num_tokens: int,
+) -> tuple[int, int] | None:
+    """Return a measured deterministic EP combine config for exact batches."""
+    if not _should_use_ep_sum(ep_gemm1_config, expert_map):
+        return None
+    return _HOPPER_EP_SUM_FIXED_CONFIGS.get(num_tokens)
+
+
+def _should_use_ep_naive_route(
+    ep_gemm1_config: dict[str, Any] | None,
+    expert_map: torch.Tensor | None,
+    num_tokens: int,
+    intermediate_size: int,
+    fused_clamped_swiglu: bool,
+) -> bool:
+    """Skip alignment for the production single-token EP path."""
+    return (
+        num_tokens == 1
+        and intermediate_size in (1280, 2048)
+        and not (_ENABLE_EXPERIMENTAL_EP_ROUTE_BLOCK and intermediate_size == 2048)
+        and fused_clamped_swiglu
+        and _should_use_ep_sum(ep_gemm1_config, expert_map)
+    )
+
+
+def _should_use_ep_m1_i2048_local_rank(
+    ep_gemm1_config: dict[str, Any] | None,
+    expert_map: torch.Tensor | None,
+    num_tokens: int,
+    intermediate_size: int,
+    fused_clamped_swiglu: bool,
+) -> bool:
+    """Gate the launch-free four-lane local-route-rank specialization."""
+    return (
+        _ENABLE_EP_M1_I2048_LOCAL_RANK
+        and not _ENABLE_EXPERIMENTAL_EP_ROUTE_BLOCK
+        and num_tokens == 1
+        and intermediate_size == 2048
+        and fused_clamped_swiglu
+        and _should_use_ep_sum(ep_gemm1_config, expert_map)
+    )
+
+
+def _should_use_ep_route_block(
+    ep_gemm1_config: dict[str, Any] | None,
+    expert_map: torch.Tensor | None,
+    num_tokens: int,
+    intermediate_size: int,
+    fused_clamped_swiglu: bool,
+) -> bool:
+    """Gate the trace-dependent experimental EP I=2048 route-block path."""
+    return (
+        _ENABLE_EXPERIMENTAL_EP_ROUTE_BLOCK
+        and num_tokens == 1
+        and intermediate_size == 2048
+        and fused_clamped_swiglu
+        and _should_use_ep_sum(ep_gemm1_config, expert_map)
+    )
+
+
+def _should_use_fused_clamped_swiglu(
+    ep_gemm1_config: dict[str, Any] | None,
+    *,
+    w1_bias: torch.Tensor | None,
+    apply_router_weight_on_input: bool,
+    use_fp8_w8a8: bool,
+    use_int8_w8a8: bool,
+    use_int8_w8a16: bool,
+    use_int4_w4a16: bool,
+    ocp_mx_scheme: str | None,
+    block_shape: list[int] | None,
+) -> bool:
+    """Whether GEMM1 can preserve its BF16 boundary and fuse clamp+SwiGLU."""
+    return (
+        ep_gemm1_config is not None
+        and w1_bias is None
+        and not apply_router_weight_on_input
+        and not use_fp8_w8a8
+        and not use_int8_w8a8
+        and not use_int8_w8a16
+        and not use_int4_w4a16
+        and ocp_mx_scheme is None
+        and block_shape is None
+    )
 
 
 def _get_h20_exact_config(
@@ -737,6 +932,11 @@ def apply_moe_activation(
     activation: MoEActivation,
     output: torch.Tensor,
     input: torch.Tensor,
+    *,
+    clamp_limit: float | None = None,
+    topk_ids: torch.Tensor | None = None,
+    expert_map: torch.Tensor | None = None,
+    num_local_experts: int | None = None,
 ) -> torch.Tensor:
     """Apply MoE activation (pure PyTorch / FlagGems Triton)."""
     assert input.dim() == 2, "Input must be 2D"
@@ -755,7 +955,21 @@ def apply_moe_activation(
     if activation in (MoEActivation.SILU, MoEActivation.SWIGLUOAI):
         N = output.size(-1)
         x, y = input[:, :N], input[:, N:]
-        _silu_and_mul_kernel(x, y, out0=output)
+        if clamp_limit is not None or expert_map is not None:
+            if topk_ids is None or num_local_experts is None:
+                raise ValueError(
+                    "topk_ids and num_local_experts are required for pad-aware SwiGLU"
+                )
+            _silu_and_mul_pad_aware(
+                output,
+                input,
+                topk_ids,
+                expert_map,
+                num_local_experts,
+                clamp_limit,
+            )
+        else:
+            _silu_and_mul_kernel(x, y, out0=output)
     elif activation == MoEActivation.GELU:
         N = output.size(-1)
         gate, up = input[:, :N], input[:, N:]
@@ -954,6 +1168,110 @@ def _silu_and_mul_kernel(x, y):
     x_fp32 = x.to(tl.float32)
     x_silu = tl.fdiv(x_fp32, (1.0 + tl.exp(-x_fp32)))
     return x_silu * y
+
+
+@triton.jit
+def _silu_and_mul_pad_aware_kernel(
+    input_ptr,
+    output_ptr,
+    topk_ids_ptr,
+    expert_map_ptr,
+    input_row_stride: tl.constexpr,
+    hidden_size: tl.constexpr,
+    num_routes: tl.constexpr,
+    num_global_experts: tl.constexpr,
+    num_local_experts: tl.constexpr,
+    clamp_limit,
+    HAS_CLAMP: tl.constexpr,
+    HAS_EXPERT_MAP: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Apply (clamped) SwiGLU only to valid routes on this EP rank."""
+    row = tl.program_id(0)
+    row_stride = tl.num_programs(0)
+    columns = tl.program_id(1) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    column_mask = columns < hidden_size
+
+    for route in tl.range(row, num_routes, row_stride):
+        global_expert_raw = tl.load(topk_ids_ptr + route)
+        valid_global_expert = (global_expert_raw >= 0) & (
+            global_expert_raw < num_global_experts
+        )
+        should_compute = valid_global_expert
+        if HAS_EXPERT_MAP:
+            safe_global_expert = tl.where(valid_global_expert, global_expert_raw, 0).to(
+                tl.int64
+            )
+            local_expert_raw = tl.load(
+                expert_map_ptr + safe_global_expert,
+                mask=valid_global_expert,
+                other=-1,
+            )
+            should_compute = (
+                valid_global_expert
+                & (local_expert_raw >= 0)
+                & (local_expert_raw < num_local_experts)
+            )
+
+        if should_compute:
+            gate_offsets = route.to(tl.int64) * input_row_stride + columns
+            up_offsets = gate_offsets + hidden_size
+            gate = tl.load(input_ptr + gate_offsets, mask=column_mask, other=0.0).to(
+                tl.float32
+            )
+            up = tl.load(input_ptr + up_offsets, mask=column_mask, other=0.0).to(
+                tl.float32
+            )
+            if HAS_CLAMP:
+                gate = tl.minimum(gate, clamp_limit)
+                up = tl.minimum(tl.maximum(up, -clamp_limit), clamp_limit)
+            silu_gate = tl.fdiv(gate, 1.0 + tl.exp(-gate))
+            tl.store(
+                output_ptr + route.to(tl.int64) * hidden_size + columns,
+                silu_gate * up,
+                mask=column_mask,
+            )
+        else:
+            # Quantized paths may reduce over the complete activation buffer;
+            # initialize skipped/remote rows instead of exposing stale data.
+            tl.store(
+                output_ptr + route.to(tl.int64) * hidden_size + columns,
+                0.0,
+                mask=column_mask,
+            )
+
+
+def _silu_and_mul_pad_aware(
+    output: torch.Tensor,
+    input: torch.Tensor,
+    topk_ids: torch.Tensor,
+    expert_map: torch.Tensor | None,
+    num_local_experts: int,
+    clamp_limit: float | None,
+) -> None:
+    num_routes, gate_up_size = input.shape
+    hidden_size = gate_up_size // 2
+    block_size = 1024
+    grid = (
+        min(num_routes, 256),
+        triton.cdiv(hidden_size, block_size),
+    )
+    _silu_and_mul_pad_aware_kernel[grid](
+        input,
+        output,
+        topk_ids,
+        expert_map,
+        input.stride(0),
+        hidden_size,
+        num_routes,
+        expert_map.numel() if expert_map is not None else num_local_experts,
+        num_local_experts,
+        0.0 if clamp_limit is None else clamp_limit,
+        HAS_CLAMP=clamp_limit is not None and clamp_limit > 0,
+        HAS_EXPERT_MAP=expert_map is not None,
+        BLOCK_SIZE=block_size,
+        num_warps=4,
+    )
 
 
 @triton.jit
@@ -1169,6 +1487,108 @@ def fused_moe_kernel_gptq_awq(
 
 
 @triton.jit
+def fused_moe_persistent_kernel(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    topk_weights_ptr,
+    sorted_token_ids_ptr,
+    expert_ids_ptr,
+    num_tokens_post_padded_ptr,
+    stride_am: tl.constexpr,
+    stride_ak: tl.constexpr,
+    stride_be: tl.constexpr,
+    stride_bk: tl.constexpr,
+    stride_bn: tl.constexpr,
+    stride_cm: tl.constexpr,
+    stride_cn: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    num_experts: tl.constexpr,
+    num_valid_tokens: tl.constexpr,
+    compute_type: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+):
+    """Persistent plain-half routed GEMM for sparse decode assignments.
+
+    The regular launch uses the allocation upper bound for its grid because
+    ``num_tokens_post_padded`` is a device scalar. Decode routing can leave a
+    large fraction of those CTAs empty. This kernel launches a measured
+    resident grid and lets each CTA consume several valid logical tiles.
+    """
+    pid = tl.program_id(0)
+    num_tokens_post_padded = tl.load(num_tokens_post_padded_ptr)
+    num_pid_m = tl.cdiv(num_tokens_post_padded, BLOCK_SIZE_M)
+    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    total_tiles = num_pid_m * num_pid_n
+
+    offs_m = tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
+    offs_n_base = tl.arange(0, BLOCK_SIZE_N).to(tl.int64)
+    offs_k = tl.arange(0, BLOCK_SIZE_K)
+
+    for tile_id in range(pid, total_tiles, GRID_SIZE):
+        pid_m = tile_id // num_pid_n
+        pid_n = tile_id - pid_m * num_pid_n
+        offs_token = tl.load(sorted_token_ids_ptr + pid_m * BLOCK_SIZE_M + offs_m).to(
+            tl.int64
+        )
+        token_mask = (offs_token >= 0) & (offs_token < num_valid_tokens)
+        safe_token = tl.where(token_mask, offs_token, 0)
+
+        off_expert = tl.load(expert_ids_ptr + pid_m).to(tl.int64)
+        valid_expert = (off_expert >= 0) & (off_expert < num_experts)
+        safe_expert = tl.where(valid_expert, off_expert, 0)
+        compute_mask = token_mask & valid_expert
+        offs_n = pid_n * BLOCK_SIZE_N + offs_n_base
+
+        accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+        a_ptrs = a_ptr + safe_token[:, None] * stride_am + offs_k[None, :] * stride_ak
+        b_ptrs = (
+            b_ptr
+            + safe_expert * stride_be
+            + offs_k[:, None] * stride_bk
+            + offs_n[None, :] * stride_bn
+        )
+
+        for k_idx in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+            k_remaining = K - k_idx * BLOCK_SIZE_K
+            a = tl.load(
+                a_ptrs,
+                mask=compute_mask[:, None] & (offs_k[None, :] < k_remaining),
+                other=0.0,
+            )
+            b = tl.load(
+                b_ptrs,
+                mask=(offs_k[:, None] < k_remaining)
+                & (offs_n[None, :] < N)
+                & valid_expert,
+                other=0.0,
+            )
+            accumulator += tl.dot(a, b)
+            a_ptrs += BLOCK_SIZE_K * stride_ak
+            b_ptrs += BLOCK_SIZE_K * stride_bk
+
+        moe_weight = tl.load(
+            topk_weights_ptr + safe_token,
+            mask=token_mask,
+            other=0.0,
+        ).to(tl.float32)
+        accumulator *= moe_weight[:, None]
+        c_ptrs = c_ptr + safe_token[:, None] * stride_cm + offs_n[None, :] * stride_cn
+        tl.store(
+            c_ptrs,
+            accumulator.to(compute_type),
+            # A negative expert id denotes a valid route that is not local
+            # under expert parallelism. Match the regular kernel by writing a
+            # zero row instead of retaining the caller's previous contents.
+            mask=token_mask[:, None] & (offs_n[None, :] < N),
+        )
+
+
+@triton.jit
 def fused_moe_kernel(
     # Pointers to matrices
     a_ptr,
@@ -1180,6 +1600,7 @@ def fused_moe_kernel(
     topk_weights_ptr,
     sorted_token_ids_ptr,
     expert_ids_ptr,
+    expert_map_ptr,
     num_tokens_post_padded_ptr,
     # Matrix dimensions
     N,
@@ -1225,6 +1646,12 @@ def fused_moe_kernel(
     DIRECT_SUM: tl.constexpr,
     OUT_TOP_K: tl.constexpr,
     FUSE_SILU: tl.constexpr,
+    CLAMPED_BF16_BOUNDARY: tl.constexpr,
+    CLAMP_LIMIT: tl.constexpr,
+    MAP_EXPERT_IDS: tl.constexpr,
+    NUM_GLOBAL_EXPERTS: tl.constexpr,
+    NUM_LOCAL_EXPERTS: tl.constexpr,
+    SKIP_INVALID_EXPERTS: tl.constexpr,
 ):
     """Fused MoE kernel: token × expert GEMM with quantization support and optional SiLU fusion."""
     # Map pid to C block (grouped ordering for L2 reuse)
@@ -1259,7 +1686,34 @@ def fused_moe_kernel(
 
     token_mask = offs_token < num_valid_tokens
 
-    off_experts = tl.load(expert_ids_ptr + pid_m).to(tl.int64)
+    off_experts_raw = tl.load(expert_ids_ptr + pid_m)
+    if MAP_EXPERT_IDS:
+        valid_global_expert = (off_experts_raw >= 0) & (
+            off_experts_raw < NUM_GLOBAL_EXPERTS
+        )
+        safe_global_expert = tl.where(valid_global_expert, off_experts_raw, 0).to(
+            tl.int64
+        )
+        local_expert_raw = tl.load(
+            expert_map_ptr + safe_global_expert,
+            mask=valid_global_expert,
+            other=-1,
+        )
+        valid_local_expert = (
+            valid_global_expert
+            & (local_expert_raw >= 0)
+            & (local_expert_raw < NUM_LOCAL_EXPERTS)
+        )
+        off_experts = tl.where(valid_local_expert, local_expert_raw, -1).to(tl.int64)
+    else:
+        off_experts = off_experts_raw.to(tl.int64)
+
+    # The strict single-token EP path finishes with moe_sum_ep, which never
+    # reads remote route rows.  Returning here avoids both alignment and the
+    # otherwise unnecessary cache zero stores for those routes.
+    if SKIP_INVALID_EXPERTS:
+        if off_experts == -1:
+            return
 
     offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)
     if not N_DIVISIBLE_BY_BLOCK_N:
@@ -1333,12 +1787,24 @@ def fused_moe_kernel(
             (0, 2, 1),
         )
         gate_acc, up_acc = tl.split(gate_up)
-        gate_sig = tl.sigmoid(gate_acc)
-        accumulator = (
-            gate_acc.to(compute_type)
-            * gate_sig.to(compute_type)
-            * up_acc.to(compute_type)
-        )
+        if CLAMPED_BF16_BOUNDARY:
+            # Match the existing two-kernel numerical contract exactly:
+            # GEMM1 first materializes BF16, then the activation promotes that
+            # rounded value to FP32 before clamp and SiLU. Keeping this explicit
+            # removes the intermediate write/read without changing the route
+            # output or CUDA Graph replay result.
+            gate = gate_acc.to(compute_type).to(tl.float32)
+            up = up_acc.to(compute_type).to(tl.float32)
+            gate = tl.minimum(gate, CLAMP_LIMIT)
+            up = tl.minimum(tl.maximum(up, -CLAMP_LIMIT), CLAMP_LIMIT)
+            accumulator = tl.fdiv(gate, 1.0 + tl.exp(-gate)) * up
+        else:
+            gate_sig = tl.sigmoid(gate_acc)
+            accumulator = (
+                gate_acc.to(compute_type)
+                * gate_sig.to(compute_type)
+                * up_acc.to(compute_type)
+            )
 
     elif FUSE_SILU:
         offs_bn_gate = offs_bn
@@ -1756,6 +2222,50 @@ def invoke_fused_moe_wna16_triton_kernel(
     )
 
 
+def invoke_fused_moe_persistent_triton_kernel(
+    A: torch.Tensor,
+    B: torch.Tensor,
+    C: torch.Tensor,
+    topk_weights: torch.Tensor,
+    sorted_token_ids: torch.Tensor,
+    expert_ids: torch.Tensor,
+    num_tokens_post_padded: torch.Tensor,
+    top_k: int,
+    config: dict[str, Any],
+    compute_type: tl.dtype,
+) -> None:
+    """Launch the persistent plain-half routed GEMM."""
+    launch_config = config.copy()
+    grid_size = launch_config.pop("PERSISTENT_GRID_SIZE")
+    block_size_k = launch_config.pop("BLOCK_SIZE_K")
+    launch_config.pop("GROUP_SIZE_M", None)
+
+    fused_moe_persistent_kernel[(grid_size,)](
+        A,
+        B,
+        C,
+        topk_weights,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        A.stride(0),
+        A.stride(1),
+        B.stride(0),
+        B.stride(2),
+        B.stride(1),
+        C.stride(1),
+        C.stride(2),
+        N=B.size(1),
+        K=B.size(2),
+        num_experts=B.size(0),
+        num_valid_tokens=A.size(0) * top_k,
+        compute_type=compute_type,
+        BLOCK_SIZE_K=block_size_k,
+        GRID_SIZE=grid_size,
+        **launch_config,
+    )
+
+
 def invoke_fused_moe_triton_kernel(
     A: torch.Tensor,
     B: torch.Tensor,
@@ -1780,11 +2290,18 @@ def invoke_fused_moe_triton_kernel(
     FUSE_SILU: bool = False,
     direct_sum: bool = False,
     out_top_k: int = 1,
+    expert_map: torch.Tensor | None = None,
+    skip_invalid_experts: bool = False,
 ) -> None:
     """Launch the fused_moe_kernel Triton kernel."""
     assert topk_weights is not None or not mul_routed_weight
     assert topk_weights is None or topk_weights.stride(1) == 1
     assert sorted_token_ids is None or sorted_token_ids.stride(0) == 1
+    if expert_map is not None:
+        assert sorted_token_ids is None
+        assert expert_map.ndim == 1
+    if skip_invalid_experts:
+        assert expert_map is not None
 
     if use_fp8_w8a8 or use_int8_w8a8:
         assert B_scale is not None
@@ -1800,6 +2317,32 @@ def invoke_fused_moe_triton_kernel(
     else:
         assert A_scale is None
         assert B_scale is None
+
+    use_persistent_kernel = (
+        "PERSISTENT_GRID_SIZE" in config
+        and not (use_fp8_w8a8 or use_int8_w8a8 or use_int8_w8a16 or use_int4_w4a16)
+        and B_bias is None
+        and not FUSE_SILU
+        and not direct_sum
+        and mul_routed_weight
+        and top_k == 1
+        and sorted_token_ids is not None
+        and block_shape is None
+    )
+    if use_persistent_kernel:
+        invoke_fused_moe_persistent_triton_kernel(
+            A,
+            B,
+            C,
+            topk_weights,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            top_k,
+            config,
+            compute_type,
+        )
+        return
 
     M = A.size(0)
     num_tokens = M * top_k
@@ -1821,6 +2364,9 @@ def invoke_fused_moe_triton_kernel(
     HAS_BIAS = B_bias is not None
 
     config = config.copy()
+    # A persistent hint is stage-specific. Unsupported semantic variants use
+    # the regular kernel with the same measured tile configuration.
+    config.pop("PERSISTENT_GRID_SIZE", None)
     config["SPLIT_K"] = 1
     BLOCK_SIZE_K = config.pop("BLOCK_SIZE_K")
     if block_shape is not None:
@@ -1828,6 +2374,12 @@ def invoke_fused_moe_triton_kernel(
 
     swap_AB = config.pop("SWAP_AB", False)
     pair_gate_up_dot = config.pop("PAIR_GATE_UP_DOT", False)
+    clamped_bf16_boundary = config.pop("CLAMPED_BF16_BOUNDARY", False)
+    clamp_limit = config.pop("CLAMP_LIMIT", 0.0)
+    if clamped_bf16_boundary and (not FUSE_SILU or not pair_gate_up_dot):
+        raise ValueError(
+            "CLAMPED_BF16_BOUNDARY requires fused paired gate/up projection"
+        )
     # Force disable SWAP_AB in fusion mode
     if FUSE_SILU:
         swap_AB = False
@@ -1842,6 +2394,7 @@ def invoke_fused_moe_triton_kernel(
         topk_weights,
         sorted_token_ids,
         expert_ids,
+        expert_map if expert_map is not None else expert_ids,
         num_tokens_post_padded,
         B.size(1),  # N
         B.size(2),  # K
@@ -1880,6 +2433,12 @@ def invoke_fused_moe_triton_kernel(
         DIRECT_SUM=direct_sum,
         OUT_TOP_K=out_top_k,
         FUSE_SILU=FUSE_SILU,
+        CLAMPED_BF16_BOUNDARY=clamped_bf16_boundary,
+        CLAMP_LIMIT=clamp_limit,
+        MAP_EXPERT_IDS=expert_map is not None,
+        NUM_GLOBAL_EXPERTS=expert_map.numel() if expert_map is not None else 0,
+        NUM_LOCAL_EXPERTS=B.size(0),
+        SKIP_INVALID_EXPERTS=skip_invalid_experts,
         **config,
     )
 
@@ -1909,6 +2468,8 @@ def dispatch_fused_moe_kernel(
     FUSE_SILU: bool = False,
     direct_sum: bool = False,
     out_top_k: int = 1,
+    expert_map: torch.Tensor | None = None,
+    skip_invalid_experts: bool = False,
 ) -> None:
     """Dispatch to the appropriate fused MoE kernel based on quantization flags."""
     assert topk_weights is not None or not mul_routed_weight
@@ -1928,6 +2489,10 @@ def dispatch_fused_moe_kernel(
     if (use_int8_w8a16 or use_int4_w4a16) and (
         block_shape is not None and block_shape[1] > 0
     ):
+        if expert_map is not None or skip_invalid_experts:
+            raise ValueError(
+                "WNA16 does not support expert_map or skip_invalid_experts"
+            )
         assert B_bias is None
         invoke_fused_moe_wna16_triton_kernel(
             A,
@@ -1972,6 +2537,8 @@ def dispatch_fused_moe_kernel(
             FUSE_SILU=FUSE_SILU,
             direct_sum=direct_sum,
             out_top_k=out_top_k,
+            expert_map=expert_map,
+            skip_invalid_experts=skip_invalid_experts,
         )
 
 
@@ -2044,6 +2611,7 @@ def fused_experts_impl(
     block_shape: Optional[list[int]] = None,
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
+    gemm1_clamp_limit: float | None = None,
     *,
     output: Optional[torch.Tensor] = None,
     intermediate_cache13: Optional[torch.Tensor] = None,
@@ -2091,6 +2659,20 @@ def fused_experts_impl(
         ), f"Hidden size mismatch {hidden_states.size(1)} != {w1.size(2)}"
 
     assert topk_weights.size() == topk_ids.size(), "topk shape mismatch"
+    if topk_ids.ndim != 2 or topk_ids.size(0) != hidden_states.size(0):
+        raise ValueError(
+            "topk_ids must be 2D with one row per input token: "
+            f"got {tuple(topk_ids.shape)} for {hidden_states.size(0)} tokens"
+        )
+    if not topk_ids.is_contiguous() or not topk_weights.is_contiguous():
+        raise ValueError("topk_ids and topk_weights must be contiguous")
+    if (
+        topk_ids.device != hidden_states.device
+        or topk_weights.device != hidden_states.device
+    ):
+        raise ValueError("routing tensors and hidden_states must be on the same device")
+    if topk_ids.dtype not in (torch.int32, torch.int64):
+        raise ValueError("topk_ids must have int32 or int64 dtype")
     assert hidden_states.is_contiguous(), "Hidden_states must be contiguous"
     assert w1.stride(-1) == 1, "Stride of last dimension must be 1"
     assert w2.stride(-1) == 1, "Stride of last dimension must be 1"
@@ -2101,6 +2683,18 @@ def fused_experts_impl(
     K = w2.size(1)
     if global_num_experts == -1:
         global_num_experts = E
+    if expert_map is not None:
+        if expert_map.ndim != 1 or expert_map.numel() != global_num_experts:
+            raise ValueError(
+                f"expert_map must have shape ({global_num_experts},), "
+                f"got {tuple(expert_map.shape)}"
+            )
+        if not expert_map.is_contiguous():
+            raise ValueError("expert_map must be contiguous")
+        if expert_map.device != hidden_states.device:
+            raise ValueError("expert_map and hidden_states must be on the same device")
+        if expert_map.dtype not in (torch.int32, torch.int64):
+            raise ValueError("expert_map must have int32 or int64 dtype")
     top_k_num = topk_ids.size(1)
 
     CHUNK_SIZE = FUSED_MOE_CHUNK_SIZE
@@ -2257,6 +2851,7 @@ def fused_experts_impl(
         and w1_bias is None
         and expert_map is None  # Fused kernel doesn't handle EP -1 experts
         and not apply_router_weight_on_input
+        and gemm1_clamp_limit is None
     )
 
     for chunk in range((num_tokens // CHUNK_SIZE) + 1):
@@ -2323,14 +2918,169 @@ def fused_experts_impl(
                 enable_gemm_fast_path=True,
             )
 
-        if not naive_block_assignment:
+        ep_gemm1_config = _get_ep_decode_config(
+            tokens_in_chunk,
+            E,
+            global_num_experts,
+            top_k_num,
+            K,
+            w2.size(2),
+            gemm1_clamp_limit,
+            config_dtype,
+            expert_map,
+            "gemm1",
+        )
+        use_fused_clamped_swiglu = False
+        if ep_gemm1_config is not None:
+            gemm1_config = ep_gemm1_config
+            gemm2_config = _get_ep_decode_config(
+                tokens_in_chunk,
+                E,
+                global_num_experts,
+                top_k_num,
+                K,
+                w2.size(2),
+                gemm1_clamp_limit,
+                config_dtype,
+                expert_map,
+                "gemm2",
+            )
+            use_fused_clamped_swiglu = activation_enum in (
+                MoEActivation.SILU,
+                MoEActivation.SWIGLUOAI,
+            ) and _should_use_fused_clamped_swiglu(
+                ep_gemm1_config,
+                w1_bias=w1_bias,
+                apply_router_weight_on_input=apply_router_weight_on_input,
+                use_fp8_w8a8=use_fp8_w8a8,
+                use_int8_w8a8=use_int8_w8a8,
+                use_int8_w8a16=use_int8_w8a16,
+                use_int4_w4a16=use_int4_w4a16,
+                ocp_mx_scheme=ocp_mx_scheme,
+                block_shape=block_shape,
+            )
+            if use_fused_clamped_swiglu:
+                # Pair BN32 gate/up projections in one CTA. The combined
+                # accumulator remains the same width as the measured plain
+                # BN64 GEMM, while the epilogue removes the BF16 cache1
+                # write/read and separate activation launch.
+                gemm1_config = {
+                    **gemm1_config,
+                    "BLOCK_SIZE_N": gemm1_config["BLOCK_SIZE_N"] // 2,
+                    "PAIR_GATE_UP_DOT": True,
+                    "CLAMPED_BF16_BOUNDARY": True,
+                    "CLAMP_LIMIT": float(gemm1_clamp_limit),
+                }
+                do_fuse_silu = True
+            # Alignment consumes base_config's BLOCK_SIZE_M. Both measured
+            # stages deliberately share BM16, so use the stage-1 plan here.
+            base_config = gemm1_config
+
+        use_ep_sum = _should_use_ep_sum(ep_gemm1_config, expert_map)
+        # The single-token routing/tile measurements cover the bias-free fused
+        # MoE path. A GEMM2 bias does not prevent the GEMM1 activation fusion, but
+        # it must still keep all specialized routing policies on the compact,
+        # shared-tile fallback until that variant is measured independently.
+        use_ep_single_token_route = use_fused_clamped_swiglu and w2_bias is None
+        use_ep_local_rank = curr_topk_weights.dtype in (
+            torch.bfloat16,
+            torch.float32,
+        ) and _should_use_ep_m1_i2048_local_rank(
+            ep_gemm1_config,
+            expert_map,
+            num_tokens,
+            w2.size(2),
+            use_ep_single_token_route,
+        )
+        use_ep_naive_route = not use_ep_local_rank and (
+            _should_use_ep_naive_route(
+                ep_gemm1_config,
+                expert_map,
+                num_tokens,
+                w2.size(2),
+                use_ep_single_token_route,
+            )
+        )
+        use_ep_route_block = not use_ep_local_rank and (
+            _should_use_ep_route_block(
+                ep_gemm1_config,
+                expert_map,
+                num_tokens,
+                w2.size(2),
+                use_ep_single_token_route,
+            )
+        )
+        assert (
+            sum((use_ep_local_rank, use_ep_naive_route, use_ep_route_block)) <= 1
+        ), "EP single-token routing policies must be mutually exclusive"
+
+        if use_ep_local_rank:
+            # Four CTA lanes consume local-route ranks 0..3 (and r+4) rather
+            # than the original top-k positions.  This removes the p6/p7 wave
+            # tail without a separate alignment launch and keeps up to four
+            # local routes parallel. GEMM2 writes cache3 before the existing
+            # EP sum touches output, so the caller's output/cache2 alias is
+            # safe. The strict selector excludes every unmeasured semantic
+            # variant, including GEMM biases and quantized inputs.
+            fused_moe_ep_m1_i2048_local_rank(
+                curr_hidden_states,
+                w1,
+                w2,
+                curr_topk_weights,
+                curr_topk_ids,
+                expert_map,
+                intermediate_cache2.view(top_k_num, activation_out_dim),
+                intermediate_cache3.view(top_k_num, K),
+                out_hidden_states[begin_chunk_idx:end_chunk_idx],
+            )
+            continue
+
+        if use_ep_route_block:
+            # The narrow tiles were measured only with the fused, position-
+            # stable M=1/I=2048 route-block pipeline. Keep them out of bias,
+            # quantized, separate-activation, I1280, and M>=2 fallbacks.
+            m1_gemm1_config = _HOPPER_EP_M1_I2048_PLAN["gemm1"]
+            gemm1_config = {
+                **m1_gemm1_config,
+                "BLOCK_SIZE_N": m1_gemm1_config["BLOCK_SIZE_N"] // 2,
+                "PAIR_GATE_UP_DOT": True,
+                "CLAMPED_BF16_BOUNDARY": True,
+                "CLAMP_LIMIT": float(gemm1_clamp_limit),
+            }
+            gemm2_config = _HOPPER_EP_M1_I2048_PLAN["gemm2"].copy()
+            base_config = gemm1_config
+
+        if use_ep_route_block:
+            # A single kernel maps the eight global routes and emits one BM16
+            # block for each local route. Unlike the raw-route launch below,
+            # useful CTAs no longer move to the end of the grid when the local
+            # expert occupies a late top-k position.
+            _validate_moe_block_size_m(base_config, gemm1_config, gemm2_config)
+            sorted_token_ids, expert_ids, num_tokens_post_padded = (
+                moe_align_block_size_ep_route_block(
+                    curr_topk_ids,
+                    expert_map,
+                    base_config["BLOCK_SIZE_M"],
+                    E,
+                )
+            )
+        elif use_ep_naive_route:
+            # For I=1280/M=1, alignment costs more than the useful local GEMM
+            # work. Let the GEMM kernels map the eight global route IDs and
+            # return immediately for remote experts. moe_sum_ep subsequently
+            # ignores the untouched remote cache rows.
+            expert_ids = curr_topk_ids.view(-1)
+            num_tokens_post_padded = curr_topk_ids
+            sorted_token_ids = None
+        elif not naive_block_assignment:
             _validate_moe_block_size_m(base_config, gemm1_config, gemm2_config)
             sorted_token_ids, expert_ids, num_tokens_post_padded = moe_align_block_size(
                 curr_topk_ids,
                 base_config["BLOCK_SIZE_M"],
                 global_num_experts,
                 expert_map,
-                # ignore_invalid_experts=True,
+                ignore_invalid_experts=ep_gemm1_config is not None,
+                local_num_experts=E,
             )
         else:
             expert_ids = curr_topk_ids.view(-1)
@@ -2377,12 +3127,20 @@ def fused_experts_impl(
             block_shape=block_shape,
             B_bias=w1_bias,
             FUSE_SILU=do_fuse_silu,  # Master switch for the kernel
+            expert_map=expert_map if use_ep_naive_route else None,
+            skip_invalid_experts=use_ep_naive_route,
         )
 
         # 3. Apply activation separately if the fused path was not taken
         if not do_fuse_silu:
             apply_moe_activation(
-                activation_enum, intermediate_cache2, intermediate_cache1.view(-1, N)
+                activation_enum,
+                intermediate_cache2,
+                intermediate_cache1.view(-1, N),
+                clamp_limit=gemm1_clamp_limit,
+                topk_ids=curr_topk_ids,
+                expert_map=expert_map,
+                num_local_experts=E,
             )
 
         # 4. Quantize activated intermediate for GEMM2
@@ -2395,7 +3153,12 @@ def fused_experts_impl(
             ocp_mx_scheme=ocp_mx_scheme,
         )
 
-        if expert_map is not None:
+        ep_sum_fixed_config = _get_ep_sum_fixed_config(
+            ep_gemm1_config,
+            expert_map,
+            tokens_in_chunk,
+        )
+        if expert_map is not None and not use_ep_sum:
             intermediate_cache3.zero_()
 
         # 5. Select the GEMM2 output buffer/reduction path
@@ -2444,14 +3207,32 @@ def fused_experts_impl(
             FUSE_SILU=False,
             direct_sum=use_direct_sum,
             out_top_k=top_k_num,
+            expert_map=expert_map if use_ep_naive_route else None,
+            skip_invalid_experts=use_ep_naive_route,
         )
 
         # 7. Reduce GEMM2 top-k outputs unless direct_sum wrote final output directly
         if not use_direct_sum:
-            moe_sum(
-                intermediate_cache3.view(*intermediate_cache3.size()),
-                out_hidden_states[begin_chunk_idx:end_chunk_idx],
-            )
+            if use_ep_sum:
+                fixed_block_size, fixed_num_warps = (
+                    ep_sum_fixed_config
+                    if ep_sum_fixed_config is not None
+                    else (None, None)
+                )
+                moe_sum_ep(
+                    intermediate_cache3.view(*intermediate_cache3.size()),
+                    out_hidden_states[begin_chunk_idx:end_chunk_idx],
+                    curr_topk_ids,
+                    expert_map,
+                    E,
+                    fixed_block_size=fixed_block_size,
+                    fixed_num_warps=fixed_num_warps,
+                )
+            else:
+                moe_sum(
+                    intermediate_cache3.view(*intermediate_cache3.size()),
+                    out_hidden_states[begin_chunk_idx:end_chunk_idx],
+                )
 
     return out_hidden_states
 
@@ -2477,6 +3258,7 @@ def inplace_fused_experts(
     block_shape: Optional[list[int]] = None,
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
+    gemm1_clamp_limit: float | None = None,
 ) -> None:
     """
     In-place fused MoE: writes output directly into ``hidden_states``.
@@ -2506,6 +3288,7 @@ def inplace_fused_experts(
         block_shape=block_shape,
         w1_bias=w1_bias,
         w2_bias=w2_bias,
+        gemm1_clamp_limit=gemm1_clamp_limit,
     )
 
 
@@ -2530,6 +3313,7 @@ def outplace_fused_experts(
     block_shape: Optional[list[int]] = None,
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
+    gemm1_clamp_limit: float | None = None,
 ) -> torch.Tensor:
     """
     Out-of-place fused MoE: allocates and returns a new output tensor.
@@ -2558,4 +3342,5 @@ def outplace_fused_experts(
         block_shape=block_shape,
         w1_bias=w1_bias,
         w2_bias=w2_bias,
+        gemm1_clamp_limit=gemm1_clamp_limit,
     )
