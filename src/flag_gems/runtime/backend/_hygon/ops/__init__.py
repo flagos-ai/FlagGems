@@ -41,6 +41,7 @@ from .div import (
     trunc_divide,
     trunc_divide_,
 )
+from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import (
     fill_scalar,
@@ -125,6 +126,7 @@ __all__ = [
     "diff",
     "div_mode",
     "div_mode_",
+    "exponential",
     "exponential_",
     "fill_scalar",
     "fill_scalar_",
