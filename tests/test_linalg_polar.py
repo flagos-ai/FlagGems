@@ -34,6 +34,13 @@ else:
 ATOL = 1e-2
 
 
+def _reference_linalg_polar(inp):
+    svd_U, singular_values, Vh = torch.linalg.svd(inp, full_matrices=False)
+    polar_U = svd_U @ Vh
+    polar_H = Vh.mH @ (singular_values.unsqueeze(-1) * Vh)
+    return polar_U, 0.5 * (polar_H + polar_H.mH)
+
+
 def _assert_polar_properties(inp, U, H):
     reconstructed = U @ H
     utils.gems_assert_close(reconstructed, inp, torch.float32, atol=ATOL)
@@ -52,10 +59,9 @@ def _assert_polar_properties(inp, U, H):
 def test_linalg_polar(shape):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
-    _, ref_H = torch.ops.aten.linalg_polar.default(ref_inp)
+    _, ref_H = _reference_linalg_polar(ref_inp)
 
-    with flag_gems.use_gems():
-        result_U, result_H = torch.ops.aten.linalg_polar.default(inp)
+    result_U, result_H = flag_gems.linalg_polar(inp)
 
     assert result_U.shape == inp.shape
     assert result_H.shape == (*inp.shape[:-2], inp.shape[-1], inp.shape[-1])
@@ -76,13 +82,25 @@ def test_linalg_polar_public_api():
 
 
 @pytest.mark.linalg_polar
+def test_linalg_polar_dispatcher():
+    if not hasattr(torch.ops.aten, "linalg_polar"):
+        pytest.skip("aten.linalg_polar is unavailable in this PyTorch version")
+
+    inp = torch.randn((8, 4), dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, False)
+    with flag_gems.use_gems():
+        result_U, result_H = torch.ops.aten.linalg_polar.default(inp)
+
+    _assert_polar_properties(ref_inp, result_U, result_H)
+
+
+@pytest.mark.linalg_polar
 def test_linalg_polar_noncontiguous():
     inp = torch.randn((4, 16), device=flag_gems.device).mT
     assert not inp.is_contiguous()
     ref_inp = utils.to_reference(inp, False)
 
-    with flag_gems.use_gems():
-        result_U, result_H = torch.ops.aten.linalg_polar.default(inp)
+    result_U, result_H = flag_gems.linalg_polar(inp)
 
     _assert_polar_properties(ref_inp, result_U, result_H)
 
@@ -92,10 +110,8 @@ def test_linalg_polar_noncontiguous():
 def test_linalg_polar_empty(shape):
     inp = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
-    ref_U, ref_H = torch.ops.aten.linalg_polar.default(ref_inp)
-
-    with flag_gems.use_gems():
-        result_U, result_H = torch.ops.aten.linalg_polar.default(inp)
+    ref_U, ref_H = _reference_linalg_polar(ref_inp)
+    result_U, result_H = flag_gems.linalg_polar(inp)
 
     assert result_U.shape == ref_U.shape
     assert result_H.shape == ref_H.shape
@@ -108,8 +124,7 @@ def test_linalg_polar_rank_deficient():
     inp = torch.zeros((8, 4), dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
 
-    with flag_gems.use_gems():
-        result_U, result_H = torch.ops.aten.linalg_polar.default(inp)
+    result_U, result_H = flag_gems.linalg_polar(inp)
 
     utils.gems_assert_equal(result_H, torch.zeros_like(ref_inp[:4]))
     utils.gems_assert_equal(result_U @ result_H, ref_inp)
@@ -126,8 +141,8 @@ def test_linalg_polar_rank_deficient():
 )
 def test_linalg_polar_invalid_input(shape, dtype):
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises((RuntimeError, TypeError)):
-        torch.ops.aten.linalg_polar.default(inp)
+    with pytest.raises((RuntimeError, TypeError)):
+        flag_gems.linalg_polar(inp)
 
 
 @pytest.mark.linalg_polar_out
@@ -136,14 +151,11 @@ def test_linalg_polar_out(shape):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
 
-    ref_U = torch.empty(0, dtype=torch.float32, device=ref_inp.device)
-    ref_H = torch.empty(0, dtype=torch.float32, device=ref_inp.device)
-    torch.ops.aten.linalg_polar.out(ref_inp, U=ref_U, H=ref_H)
+    _, ref_H = _reference_linalg_polar(ref_inp)
 
     out_U = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     out_H = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
-    with flag_gems.use_gems():
-        result_U, result_H = torch.ops.aten.linalg_polar.out(inp, U=out_U, H=out_H)
+    result_U, result_H = flag_gems.linalg_polar_out(inp, U=out_U, H=out_H)
 
     assert result_U is out_U
     assert result_H is out_H
@@ -160,8 +172,7 @@ def test_linalg_polar_out_noncontiguous_buffers():
     U_stride = out_U.stride()
     H_stride = out_H.stride()
 
-    with flag_gems.use_gems():
-        result_U, result_H = torch.ops.aten.linalg_polar.out(inp, U=out_U, H=out_H)
+    result_U, result_H = flag_gems.linalg_polar_out(inp, U=out_U, H=out_H)
 
     assert result_U is out_U
     assert result_H is out_H

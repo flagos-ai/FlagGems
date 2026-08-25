@@ -15,7 +15,31 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
+
+
+def _reference_linalg_polar(inp):
+    svd_U, singular_values, Vh = torch.linalg.svd(inp, full_matrices=False)
+    polar_U = svd_U @ Vh
+    polar_H = Vh.mH @ (singular_values.unsqueeze(-1) * Vh)
+    return polar_U, 0.5 * (polar_H + polar_H.mH)
+
+
+def _reference_linalg_polar_out(inp, *, U, H):
+    result_U, result_H = _reference_linalg_polar(inp)
+    U.resize_as_(result_U).copy_(result_U)
+    H.resize_as_(result_H).copy_(result_H)
+    return U, H
+
+
+if hasattr(torch.ops.aten, "linalg_polar"):
+    TORCH_LINALG_POLAR = torch.ops.aten.linalg_polar.default
+    TORCH_LINALG_POLAR_OUT = torch.ops.aten.linalg_polar.out
+else:
+    TORCH_LINALG_POLAR = _reference_linalg_polar
+    TORCH_LINALG_POLAR_OUT = _reference_linalg_polar_out
 
 
 class LinalgPolarBenchmark(base.Benchmark):
@@ -48,7 +72,8 @@ class LinalgPolarOutBenchmark(LinalgPolarBenchmark):
 def test_linalg_polar():
     bench = LinalgPolarBenchmark(
         op_name="linalg_polar",
-        torch_op=torch.ops.aten.linalg_polar.default,
+        torch_op=TORCH_LINALG_POLAR,
+        gems_op=flag_gems.linalg_polar,
         dtypes=[torch.float32],
     )
     bench.run()
@@ -58,7 +83,8 @@ def test_linalg_polar():
 def test_linalg_polar_out():
     bench = LinalgPolarOutBenchmark(
         op_name="linalg_polar_out",
-        torch_op=torch.ops.aten.linalg_polar.out,
+        torch_op=TORCH_LINALG_POLAR_OUT,
+        gems_op=flag_gems.linalg_polar_out,
         dtypes=[torch.float32],
     )
     bench.run()
