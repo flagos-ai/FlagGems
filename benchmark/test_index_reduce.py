@@ -16,8 +16,9 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.utils import shape_utils
 
-from . import base, consts, utils
+from . import base, consts
 
 
 class IndexReduceBenchmark(base.Benchmark):
@@ -39,7 +40,9 @@ class IndexReduceBenchmark(base.Benchmark):
         inp = args[0]
         index = args[2]
         source = args[3]
-        io_amount = sum(utils.size_in_bytes(item) for item in [inp, index, source, inp])
+        io_amount = sum(
+            shape_utils.size_in_bytes(item) for item in [inp, index, source, inp]
+        )
         return io_amount * 1e-9 / (latency * 1e-3)
 
     def get_input_iter(self, dtype):
