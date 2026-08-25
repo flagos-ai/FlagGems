@@ -7,6 +7,7 @@ from .alpha_dropout import alpha_dropout
 from .amax import amax
 from .arange import arange, arange_start
 from .avg_pool3d import avg_pool3d_backward
+from .baddbmm import baddbmm, baddbmm_out
 from .bmm import bmm
 from .broadcast_to import broadcast_to
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
@@ -86,6 +87,8 @@ __all__ = [
     "arange",
     "arange_start",
     "avg_pool3d_backward",
+    "baddbmm",
+    "baddbmm_out",
     "bmm",
     "broadcast_to",
     "cholesky_solve",
