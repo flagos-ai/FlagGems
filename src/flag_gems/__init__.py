@@ -909,6 +909,12 @@ _FULL_CONFIG = (
     ("randn_like", randn_like),
     ("randperm", randperm),
     ("range", range_op),
+    (
+        "real",
+        real,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, CONJUGATE_DISPATCH_KEY),
+    ),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
     ("reflection_pad1d", reflection_pad1d),
