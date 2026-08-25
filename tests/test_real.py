@@ -174,6 +174,10 @@ def test_real_float8_returns_input(dtype):
     assert result.storage_offset() == input.storage_offset()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend" and not utils.TO_CPU,
+    reason="Ascend native torch.isclose does not support complex64; run with --ref cpu.",
+)
 @pytest.mark.real
 @pytest.mark.parametrize("is_conj", [False, True])
 def test_real_autograd_view_relation(is_conj):
@@ -229,6 +233,10 @@ def test_real_conjugate_view_version_tracking():
         loss.backward()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend" and not utils.TO_CPU,
+    reason="Ascend native torch.isclose does not support complex64; run with --ref cpu.",
+)
 @pytest.mark.real
 def test_real_conjugate_nonleaf_inplace_view_replay():
     leaf = _make_complex_base(
