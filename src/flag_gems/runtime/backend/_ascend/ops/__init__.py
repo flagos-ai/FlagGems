@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .addmm import addmm
+from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .angle import angle
@@ -125,6 +125,9 @@ __all__ = [
     "_unique2",
     "_upsample_bicubic2d_aa",
     "addmm",
+    "addmm_dtype",
+    "addmm_dtype_out",
+    "addmm_out",
     "all",
     "all_dim",
     "all_dims",
