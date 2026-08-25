@@ -25,6 +25,7 @@ if QUICK_MODE:
     MNK_SHAPES = [
         (1, 1, 32),
     ]
+    VECTOR_BIAS_MNK_SHAPES = [(64, 256, 184)]
     FLOAT_DTYPES = [torch.float32]
 else:
     MNK_SHAPES = [
@@ -32,7 +33,23 @@ else:
         (15, 160, 1024),
         (495, 5333, 71),
     ]
+    VECTOR_BIAS_MNK_SHAPES = [
+        (64, 256, 184),
+        (128, 512, 512),
+        (256, 256, 1024),
+        (512, 1024, 1024),
+        (1024, 512, 1536),
+    ]
     FLOAT_DTYPES = utils.FLOAT_DTYPES
+
+
+_ADDMM_LAYOUT_BIAS_VENDORS = ("ascend", "nvidia", "hygon", "thead", "mthreads")
+
+# Extend this set as vendor implementations gain equivalent layout and bias support.
+_addmm_layout_bias_only = pytest.mark.skipif(
+    flag_gems.vendor_name not in _ADDMM_LAYOUT_BIAS_VENDORS,
+    reason="Issue #5385: AddMM layout and bias coverage is pending on this backend",
+)
 
 
 @pytest.mark.addmm
@@ -73,16 +90,17 @@ def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
 
 
 @pytest.mark.addmm
+@_addmm_layout_bias_only
+@pytest.mark.parametrize("M, N, K", VECTOR_BIAS_MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("bias_shape", [(), (1, 128), (128, 1)])
-def test_addmm_broadcast_bias(dtype, bias_shape):
-    if bias_shape == () and flag_gems.vendor_name != "ascend":
-        pytest.skip("Issue #5385: scalar-bias support is landing per backend")
-
-    M, N, K = 128, 128, 128
+@pytest.mark.parametrize("b_column_major", [True, False])
+def test_addmm_vector_bias_shapes(M, N, K, dtype, b_column_major):
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
-    bias = torch.randn(bias_shape, dtype=dtype, device=flag_gems.device)
+    if b_column_major:
+        mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    else:
+        mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
 
     ref_out = torch.addmm(
         utils.to_reference(bias, True),
@@ -96,9 +114,34 @@ def test_addmm_broadcast_bias(dtype, bias_shape):
 
 
 @pytest.mark.addmm
+@_addmm_layout_bias_only
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
-def test_addmm_padded_strides(dtype, b_column_major):
+def test_addmm_scalar_bias(dtype, b_column_major):
+    M, N, K = 17, 29, 31
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    if b_column_major:
+        mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    else:
+        mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((1, 1), dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.addmm(
+        utils.to_reference(bias, True),
+        utils.to_reference(mat1, True),
+        utils.to_reference(mat2, True),
+    )
+    with flag_gems.use_gems():
+        result = torch.addmm(bias, mat1, mat2)
+
+    utils.gems_assert_close(result, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.addmm
+@_addmm_layout_bias_only
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("b_column_major", [True, False])
+def test_addmm_padded_vector_bias(dtype, b_column_major):
     M, N, K, padding = 64, 128, 64, 7
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     if b_column_major:
@@ -156,6 +199,32 @@ def test_addmm_out(M, N, K, scalar, dtype):
 
 
 @pytest.mark.addmm_out
+@_addmm_layout_bias_only
+@pytest.mark.parametrize("M, N, K", VECTOR_BIAS_MNK_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("b_column_major", [True, False])
+def test_addmm_out_vector_bias_shapes(M, N, K, dtype, b_column_major):
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    if b_column_major:
+        mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    else:
+        mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.addmm(
+        utils.to_reference(bias, True),
+        utils.to_reference(mat1, True),
+        utils.to_reference(mat2, True),
+    )
+    with flag_gems.use_gems():
+        torch.addmm(bias, mat1, mat2, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.addmm_out
+@_addmm_layout_bias_only
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm_out_noncontiguous(dtype, b_column_major):
@@ -167,16 +236,35 @@ def test_addmm_out_noncontiguous(dtype, b_column_major):
         mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
     bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
     out = torch.empty((N, M), dtype=dtype, device=flag_gems.device).t()
+
+    ref_mat1 = utils.to_reference(mat1, True)
+    ref_mat2 = utils.to_reference(mat2, True)
+    ref_bias = utils.to_reference(bias, True)
     ref_out = utils.to_reference(out, True)
 
-    torch.addmm(
-        utils.to_reference(bias, True),
-        utils.to_reference(mat1, True),
-        utils.to_reference(mat2, True),
-        out=ref_out,
-    )
+    torch.addmm(ref_bias, ref_mat1, ref_mat2, out=ref_out)
     with flag_gems.use_gems():
         torch.addmm(bias, mat1, mat2, out=out)
+
+    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+
+
+@pytest.mark.addmm
+@_addmm_layout_bias_only
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("bias_shape", [(), (1, 128), (128, 1)])
+def test_addmm_broadcast_bias(dtype, bias_shape):
+    M, N, K = 128, 128, 128
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    bias = torch.randn(bias_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_mat1 = utils.to_reference(mat1, True)
+    ref_mat2 = utils.to_reference(mat2, True)
+    ref_bias = utils.to_reference(bias, True)
+    ref_out = torch.addmm(ref_bias, ref_mat1, ref_mat2)
+    with flag_gems.use_gems():
+        out = torch.addmm(bias, mat1, mat2)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
