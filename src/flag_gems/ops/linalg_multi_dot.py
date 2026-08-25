@@ -15,9 +15,24 @@
 import logging
 import warnings
 
-from flag_gems.ops.mm import mm, mm_out
+import torch
+
+from flag_gems import runtime
 
 logger = logging.getLogger(__name__)
+
+_CPU_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.CPU)
+_DEVICE_KEYSET = torch._C.DispatchKeySet(
+    getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
+)
+
+
+def _native_mm(left, right, out=None):
+    """Run the backend GEMM without re-entering FlagGems' ``mm`` override."""
+    keyset = _CPU_KEYSET if left.device.type == "cpu" else _DEVICE_KEYSET
+    if out is not None:
+        return torch.ops.aten.mm.out.redispatch(keyset, left, right, out=out)
+    return torch.ops.aten.mm.default.redispatch(keyset, left, right)
 
 
 def _validate_and_prepare(tensors):
@@ -111,8 +126,8 @@ def _multiply_chain(arrays, splits, start, end, out=None):
     left = _multiply_chain(arrays, splits, start, split)
     right = _multiply_chain(arrays, splits, split + 1, end)
     if out is not None:
-        return mm_out(left, right, out=out)
-    return mm(left, right)
+        return _native_mm(left, right, out=out)
+    return _native_mm(left, right)
 
 
 def _multiply_three(arrays, out=None):
@@ -123,19 +138,17 @@ def _multiply_three(arrays, out=None):
     right_cost = inner_ab * columns * (rows + inner_bc)
 
     if left_cost > right_cost:
-        right = mm(b, c)
-        return mm_out(a, right, out=out) if out is not None else mm(a, right)
+        right = _native_mm(b, c)
+        return _native_mm(a, right, out=out)
 
-    left = mm(a, b)
-    return mm_out(left, c, out=out) if out is not None else mm(left, c)
+    left = _native_mm(a, b)
+    return _native_mm(left, c, out=out)
 
 
 def _multi_dot_impl(arrays, out=None):
     num_tensors = len(arrays)
     if num_tensors == 2:
-        if out is not None:
-            return mm_out(arrays[0], arrays[1], out=out)
-        return mm(arrays[0], arrays[1])
+        return _native_mm(arrays[0], arrays[1], out=out)
     if num_tensors == 3:
         return _multiply_three(arrays, out=out)
 
