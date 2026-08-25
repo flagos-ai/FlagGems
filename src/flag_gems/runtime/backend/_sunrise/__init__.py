@@ -225,16 +225,7 @@ def _install_autograd_dispatch_patch():
     def register_impl(self, key, fn, extra_dispatch_keys=()):
         if self.device.vendor_name == vendor_info.vendor_name and key in autograd_ops:
             all_dispatch_keys = list(extra_dispatch_keys)
-            has_autograd_impl = any(
-                dispatch_spec == autograd_key
-                or (
-                    isinstance(dispatch_spec, tuple)
-                    and len(dispatch_spec) == 2
-                    and dispatch_spec[0] == autograd_key
-                )
-                for dispatch_spec in all_dispatch_keys
-            )
-            if not has_autograd_impl:
+            if autograd_key not in all_dispatch_keys:
                 all_dispatch_keys.append(autograd_key)
             extra_dispatch_keys = tuple(all_dispatch_keys)
 
