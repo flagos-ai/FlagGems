@@ -613,6 +613,7 @@ from flag_gems.ops.narrow import narrow
 from flag_gems.ops.narrow_copy import narrow_copy
 from flag_gems.ops.native_batch_norm import native_batch_norm
 from flag_gems.ops.native_dropout_backward import native_dropout_backward
+from flag_gems.ops.native_group_norm import native_group_norm
 from flag_gems.ops.native_layer_norm import native_layer_norm
 from flag_gems.ops.ne import ne, ne_scalar
 from flag_gems.ops.ne_ import ne_, ne_scalar_
@@ -1588,6 +1589,7 @@ __all__ = [
     "narrow_copy",
     "native_batch_norm",
     "native_dropout_backward",
+    "native_group_norm",
     "native_layer_norm",
     "ne",
     "ne_scalar",
