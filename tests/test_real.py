@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import math
 import warnings
 
@@ -71,6 +72,36 @@ def _assert_real_view(result, input, expected):
     assert torch._C._is_alias_of(result, input)
     assert result._is_view()
     assert not result.is_conj()
+
+
+@pytest.mark.real
+@pytest.mark.parametrize("is_conj", [False, True])
+def test_real_uses_flag_gems_view_path(monkeypatch, is_conj):
+    real_module = importlib.import_module("flag_gems.ops.real")
+    view_as_real = real_module._VIEW_AS_REAL
+    seen_sources = []
+
+    def track_view_as_real(source):
+        seen_sources.append(source)
+        return view_as_real(source)
+
+    monkeypatch.setattr(real_module, "_VIEW_AS_REAL", track_view_as_real)
+
+    base = _make_complex_base(
+        (3, 5), torch.complex64, flag_gems.device, requires_grad=True
+    )
+    input = base.conj() if is_conj else base
+    expected = torch.real(utils.to_reference(input))
+
+    with flag_gems.use_gems(include=["real"]):
+        assert flag_gems.all_registered_ops() == ["real"]
+        assert flag_gems.all_registered_keys() == ["real"]
+        result = torch.real(input)
+
+    assert len(seen_sources) == 1
+    assert torch._C._is_alias_of(seen_sources[0], input)
+    assert not seen_sources[0].is_conj()
+    _assert_real_view(result, input, expected)
 
 
 @pytest.mark.real

@@ -26,7 +26,6 @@ from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
-from flag_gems.ops import range as range_op
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
 from flag_gems.runtime import flagtune
@@ -908,12 +907,16 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randperm", randperm),
-    ("range", range_op),
+    ("range", range),
     (
         "real",
         real,
         None,
-        (AUTOGRAD_DISPATCH_KEY, CONJUGATE_DISPATCH_KEY),
+        (
+            (backend_info.dispatch_key, real_device),
+            (CONJUGATE_DISPATCH_KEY, real_conjugate),
+            (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ),
     ),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),

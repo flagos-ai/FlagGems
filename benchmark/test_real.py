@@ -21,20 +21,29 @@ REAL_SHAPES = [(1,), (1024, 1024), (4096, 4096)]
 
 
 class RealBenchmark(base.Benchmark):
+    is_conj = False
+
     def set_shapes(self, shape_file_path=None):
         self.shapes = REAL_SHAPES
 
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
-            yield (torch.empty(shape, dtype=cur_dtype, device=self.device),)
+            input = torch.empty(shape, dtype=cur_dtype, device=self.device)
+            yield (input.conj() if self.is_conj else input,)
 
 
 @pytest.mark.real
-def test_real():
+@pytest.mark.parametrize(
+    ("op_name", "is_conj"),
+    (("real", False), ("real_conj", True)),
+    ids=("plain", "conj"),
+)
+def test_real(op_name, is_conj):
     # This measures dispatch and view-metadata overhead; no device kernel runs.
     bench = RealBenchmark(
-        op_name="real",
+        op_name=op_name,
         torch_op=torch.real,
         dtypes=consts.COMPLEX_DTYPES,
+        is_conj=is_conj,
     )
     bench.run()

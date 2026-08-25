@@ -675,7 +675,7 @@ from flag_gems.ops.randn import randn
 from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
 from flag_gems.ops.range import range
-from flag_gems.ops.real import real
+from flag_gems.ops.real import real, real_conjugate, real_device
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
 from flag_gems.ops.reflection_pad1d_backward import reflection_pad1d_backward
@@ -1655,6 +1655,8 @@ __all__ = [
     "randperm",
     "range",
     "real",
+    "real_conjugate",
+    "real_device",
     "reciprocal",
     "reciprocal_",
     "reflection_pad1d",
