@@ -30,11 +30,18 @@ if utils.fp64_is_supported:
     _BASE_DTYPES.append(torch.complex128)
 TRANSPOSE_COPY_DTYPES = list(dict.fromkeys(_BASE_DTYPES))
 
-FLOAT8_DTYPES = [
-    getattr(torch, dtype_name)
-    for dtype_name in ("float8_e4m3fn", "float8_e5m2", "float8_e8m0fnu")
-    if hasattr(torch, dtype_name)
-]
+_MIN_FP8_E4M3FN_CUDA_CAPABILITY = (8, 9)
+
+
+def _float8_dtypes():
+    dtype_names = ["float8_e4m3fn", "float8_e5m2", "float8_e8m0fnu"]
+    if flag_gems.vendor_name == "nvidia" and torch.cuda.is_available():
+        if torch.cuda.get_device_capability() < _MIN_FP8_E4M3FN_CUDA_CAPABILITY:
+            dtype_names.remove("float8_e4m3fn")
+    return [getattr(torch, name) for name in dtype_names if hasattr(torch, name)]
+
+
+FLOAT8_DTYPES = _float8_dtypes()
 
 TRANSPOSE_COPY_CASES = [
     ((7,), 0, 0),
@@ -155,7 +162,7 @@ def test_transpose_copy_invalid_dims(shape, dim0, dim1):
 
 @pytest.mark.transpose_copy
 @pytest.mark.skipif(
-    flag_gems.device != "cuda" or not FLOAT8_DTYPES,
+    flag_gems.device != "cuda" or not torch.cuda.is_available() or not FLOAT8_DTYPES,
     reason="float8 coverage requires a CUDA-compatible backend and PyTorch float8",
 )
 @pytest.mark.parametrize("dtype", FLOAT8_DTYPES)
