@@ -26,7 +26,7 @@ from benchmark import base
 from benchmark import conftest as benchmark_conftest
 from benchmark import consts
 
-SKIP_REASON = "aten::unique_dim falls back to CPU on Ascend"
+SKIP_REASON = "native baseline is unavailable on Ascend"
 
 
 def _marker(*args, **kwargs):
@@ -264,13 +264,13 @@ def test_unmarked_result_parsing_preserves_legacy_overwrite(monkeypatch, tmp_pat
 
 def test_native_skip_result_parsing_and_markdown(monkeypatch, tmp_path):
     raw_result = {
-        "unique_dim": {
+        "sample_op": {
             "result": "passed",
             "reason": None,
-            "test_case": "benchmark/test_unique_dim.py::test_unique_dim_dim0",
+            "test_case": "benchmark/test_sample_op.py::test_sample_op",
             "details": [
                 {
-                    "op_name": "unique_dim",
+                    "op_name": "sample_op",
                     "dtype": "torch.int16",
                     "mode": "kernel",
                     "level": "core",
@@ -288,7 +288,7 @@ def test_native_skip_result_parsing_and_markdown(monkeypatch, tmp_path):
                     ],
                 },
                 {
-                    "op_name": "unique_dim",
+                    "op_name": "sample_op",
                     "dtype": "torch.int16",
                     "mode": "kernel",
                     "level": "core",
@@ -312,7 +312,7 @@ def test_native_skip_result_parsing_and_markdown(monkeypatch, tmp_path):
     raw_path.write_text(json.dumps(raw_result))
 
     run_tests = _load_run_tests_module(monkeypatch)
-    parsed = run_tests.parse_perf_data("unique_dim", raw_path)
+    parsed = run_tests.parse_perf_data("sample_op", raw_path)
 
     assert parsed["status"] == "Passed"
     assert parsed["native_baseline_skip_reason"] == SKIP_REASON
@@ -327,7 +327,7 @@ def test_native_skip_result_parsing_and_markdown(monkeypatch, tmp_path):
         "timestamp": "2026-08-12 00:00:00",
         "env": {},
         "result": {
-            "unique_dim": {
+            "sample_op": {
                 "accuracy": {
                     "status": "Passed",
                     "duration": 0,
@@ -366,7 +366,7 @@ def test_native_skip_result_parsing_and_markdown(monkeypatch, tmp_path):
     before_dir.mkdir(parents=True)
     after_dir.mkdir()
     before_summary = json.loads(json.dumps(summary))
-    before_performance = before_summary["result"]["unique_dim"]["performance"]
+    before_performance = before_summary["result"]["sample_op"]["performance"]
     before_performance.pop("native_baseline_skip_reason")
     before_dtype = before_performance["data"]["int16"]
     before_dtype["speedup"] = 1.0
@@ -374,7 +374,7 @@ def test_native_skip_result_parsing_and_markdown(monkeypatch, tmp_path):
         detail["base"] = detail["gems"]
         detail["speedup"] = 1.0
     (before_dir / "summary.json").write_text(json.dumps(before_summary))
-    after_dtype = summary["result"]["unique_dim"]["performance"]["data"]["int16"]
+    after_dtype = summary["result"]["sample_op"]["performance"]["data"]["int16"]
     after_dtype["details"]["[[512,512]]"] = {
         "base": None,
         "gems": 3.0,
