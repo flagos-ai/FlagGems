@@ -35,7 +35,6 @@ def apply_feature_mask_inplace_kernel(
     X,
     MASK,
     numel,
-    N,
     C,
     spatial_size,
     BLOCK: tl.constexpr,
@@ -94,6 +93,7 @@ def packed_feature_dropout_inplace_kernel(
 
 
 def _rounded_scale(input, scale, spatial_size):
+    # Match MThreads FP16/BF16 feature-dropout scale rounding for spatial inputs.
     if spatial_size >= 2 and input.dtype in (torch.float16, torch.bfloat16):
         return torch.tensor(scale, dtype=input.dtype).item()
     return scale
@@ -117,7 +117,7 @@ def _feature_dropout_phase_a_contiguous(input, p, N, C, spatial_size, numel):
 
         grid_apply = (triton.cdiv(numel, _PHASE_A_BLOCK),)
         apply_feature_mask_inplace_kernel[grid_apply](
-            input, mask, numel, N, C, spatial_size, _PHASE_A_BLOCK
+            input, mask, numel, C, spatial_size, _PHASE_A_BLOCK
         )
 
     return input
