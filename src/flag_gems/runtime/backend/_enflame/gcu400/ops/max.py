@@ -99,9 +99,9 @@ def max_kernel_inner_1d(
     dtype = inp.type.element_ty
     min_value = get_dtype_min(dtype)
 
-    if tl.constexpr(dtype == tl.float16) or tl.constexpr(dtype == tl.bfloat16):
+    if tl.constexpr(dtype == tl.float16) | tl.constexpr(dtype == tl.bfloat16):
         acc_dtype = tl.float32
-    elif tl.constexpr(dtype == tl.int16) or tl.constexpr(dtype == tl.int8):
+    elif tl.constexpr(dtype == tl.int16) | tl.constexpr(dtype == tl.int8):
         acc_dtype = tl.int32
     else:
         acc_dtype = dtype
@@ -148,9 +148,9 @@ def max_kernel_non_inner(
     total_work = M * num_k_tiles
 
     dtype = inp.type.element_ty
-    if tl.constexpr(dtype == tl.float16) or tl.constexpr(dtype == tl.bfloat16):
+    if tl.constexpr(dtype == tl.float16) | tl.constexpr(dtype == tl.bfloat16):
         acc_dtype = tl.float32
-    elif tl.constexpr(dtype == tl.int16) or tl.constexpr(dtype == tl.int8):
+    elif tl.constexpr(dtype == tl.int16) | tl.constexpr(dtype == tl.int8):
         acc_dtype = tl.int32
     else:
         acc_dtype = dtype
