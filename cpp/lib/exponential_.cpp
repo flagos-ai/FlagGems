@@ -158,19 +158,40 @@ at::Tensor &exponential_(at::Tensor &self, double lambd, c10::optional<at::Gener
   c10::DeviceGuard guard(x_.device());
   backend::StreamType stream = backend::getCurrentStream();
   backend::RawStreamType raw_stream = backend::getRawStream(stream);
-  (*f)(raw_stream,
-       grid_x,
-       /* grid_y = */ 1,
-       /* grid_z = */ 1,
-       /* num_warps = */ 8,
-       /* num_stages = */ 1,
-       x_,
-       N,
-       lambd,
-       get_epsilon(dtype_to_floattype(dtype)),
-       static_cast<int64_t>(philox_seed),
-       static_cast<int64_t>(philox_offset),
-       128);
+  const double epsilon = get_epsilon(dtype_to_floattype(dtype));
+  if (is_double) {
+    (*f)(raw_stream,
+         grid_x,
+         /* grid_y = */ 1,
+         /* grid_z = */ 1,
+         /* num_warps = */ 8,
+         /* num_stages = */ 1,
+         x_,
+         N,
+         lambd,
+         epsilon,
+         static_cast<int64_t>(philox_seed),
+         static_cast<int64_t>(philox_offset),
+         128);
+  } else {
+    // The f32 kernel has to receive fp32 scalars: a C++ double makes the JIT
+    // signature fp64, and the kernel then folds it into expressions such as
+    // `1.0 + eps_minus`, which backends without double support reject outright
+    // (Cambricon MLU: "MLU unsupported floating-point type fp64").
+    (*f)(raw_stream,
+         grid_x,
+         /* grid_y = */ 1,
+         /* grid_z = */ 1,
+         /* num_warps = */ 8,
+         /* num_stages = */ 1,
+         x_,
+         N,
+         static_cast<float>(lambd),
+         static_cast<float>(epsilon),
+         static_cast<int64_t>(philox_seed),
+         static_cast<int64_t>(philox_offset),
+         128);
+  }
   if (!inplace) {
     self.copy_(x_);
     return self;

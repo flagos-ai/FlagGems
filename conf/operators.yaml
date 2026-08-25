@@ -13,6 +13,28 @@
 # limitations under the License.
 
 ops:
+  - id: batch_norm_with_update_functional
+    description: Functional variant of _batch_norm_with_update that applies training-mode Batch Normalization and updates running statistics.
+    for:
+      - _batch_norm_with_update_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: batch_norm_impl_index
+    description: Applies Batch Normalization and returns the normalized output along with saved statistics, a reserve tensor, and the backend implementation index.
+    for:
+      - _batch_norm_impl_index
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: _reshape_alias
     description: |
       Creates a view of the input tensor with the given size and stride,
@@ -88,6 +110,21 @@ ops:
       - Math
     stages:
       - stable: '5.0'
+  - id: acos_
+    description: >
+      In-place version of acos. Computes the arccosine (in radians) of each element of `input` and writes the result
+      back to the input tensor.
+    for:
+      - acos_
+    labels:
+      - aten
+      - pointwise
+      - inplace
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: acosh
     description: Triton kernel implementation for acosh.
     for:
@@ -120,6 +157,19 @@ ops:
       - Quantization
     stages:
       - beta: '5.3'
+  - id: adaptive_avg_pool1d
+    description: |
+      Applies a one-dimensional adaptive average pooling over an input signal,
+      producing an output of the requested length.
+    for:
+      - adaptive_avg_pool1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: adaptive_avg_pool2d
     description: |
       Apply a 2D adaptive average pooling over an input signal composed of several input planes.
@@ -143,6 +193,19 @@ ops:
       - aten
       - KernelGen
       - reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: adaptive_max_pool2d
+    description: |
+      Applies two-dimensional adaptive max pooling and returns both pooled values
+      and the selected input indices.
+    for:
+      - adaptive_max_pool2d
+    labels:
+      - aten
+      - KernelGen
     kind:
       - NeuralNetwork
     stages:
@@ -172,6 +235,32 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: _adaptive_avg_pool3d_backward
+    description: |
+      Computes the gradient of 3D adaptive average pooling.
+    for:
+      - _adaptive_avg_pool3d_backward
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
+  - id: adaptive_avg_pool3d_backward
+    description: |
+      Computes the gradient of 3D adaptive average pooling.
+    for:
+      - adaptive_avg_pool3d_backward
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.1'
   - id: add
     description: |
       Add a scalar or tensor to `self` tensor. If both `alpha` and `other` are specified,
@@ -208,6 +297,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: add_relu_
+    description: |
+      Triton kernel implementation for the in-place `_add_relu_()`.
+    for:
+      - _add_relu_.Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: add_rms_norm
     description: |
       Add two inputs element-wise and apply Root Mean Square Layer Normalization.
@@ -228,6 +329,20 @@ ops:
       Formula: out = beta * input + alpha * (sum_i batch1_i @ batch2_i).
     for:
       - addbmm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: addbmm_
+    description: |
+      Inplace variant of addbmm. Performs a batch matrix-matrix product of matrices in
+      `batch1` and `batch2`, with a reduced add step, and stores the result in `self`.
+      Formula: self = beta * self + alpha * (sum_i batch1_i @ batch2_i).
+    for:
+      - addbmm_
     labels:
       - aten
       - KernelGen
@@ -400,6 +515,18 @@ ops:
       - BLAS
     stages:
       - stable: '4.0'
+  - id: addmv_
+    description: |
+      Performs matrix-vector product with accumulation in-place.
+    for:
+      - addmv_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: addr
     description: |
       Performs the outer-product of vectors `vec1` and `vec2`
@@ -408,6 +535,19 @@ ops:
       - addr
     labels:
       - aten
+    kind:
+      - BLAS
+    stages:
+      - stable: '4.0'
+  - id: addr_
+    description: |
+      In-place version of addr. Performs the outer-product of vectors `vec1` and `vec2`
+      and adds it to the matrix `input` in-place.
+    for:
+      - addr_
+    labels:
+      - aten
+      - KernelGen
     kind:
       - BLAS
     stages:
@@ -524,6 +664,20 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: alpha_dropout_
+    description: |
+      Applies alpha dropout to the input inplace. Alpha Dropout is a type of
+      Dropout that maintains the self-normalizing property by scaling
+      activations with SELU activation function parameters.
+    for:
+      - alpha_dropout_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: amax
     description: Returns the maximum value of each slice of the `input` tensor in the given dimension(s) `dim`.
     for:
@@ -575,6 +729,22 @@ ops:
       value is detected, `found_inf` is set to 1.0.
     for:
       - _amp_foreach_non_finite_check_and_unscale_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: amp_update_scale_
+    description: |
+      Updates the AMP loss scale in-place: when `found_inf` is non-zero the
+      scale is multiplied by `scale_backoff_factor` and the growth tracker
+      is reset to 0; otherwise the growth tracker is incremented and, once
+      it reaches `growth_interval`, the scale is multiplied by
+      `scale_growth_factor` and the tracker is reset to 0.
+    for:
+      - _amp_update_scale_
     labels:
       - aten
       - KernelGen
@@ -981,6 +1151,19 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: as_strided_scatter
+    description: |
+      Returns a clone of the input storage with source values written through a
+      view defined by the requested size, stride, and storage offset.
+    for:
+      - as_strided_scatter
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: asin
     description: Returns a new tensor with the arcsine of the elements of input.
     for:
@@ -1038,6 +1221,56 @@ ops:
       - Tensor
     stages:
       - stable: '5.3'
+  - id: chalf
+    description: |
+      Returns a copy of the tensor cast to the ``complex32`` dtype. Real inputs are
+      down-cast to a complex tensor with zero imaginary part, and complex inputs have
+      both their real and imaginary components cast to half precision.
+    for:
+      - chalf
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: blackman_window
+    description: Computes the Blackman window function.
+    for:
+      - blackman_window
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: blackman_window_periodic
+    description: A variant of blackman_window() that takes an explicit periodic flag.
+    for:
+      - blackman_window.periodic
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: choose_qparams_optimized
+    description: |
+      Chooses optimized quantization parameters (scale and zero-point) for a tensor
+      by searching candidate value ranges and selecting the pair that minimizes the
+      quantization error.
+    for:
+      - choose_qparams_optimized
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: functional_assert_async
     description: |
       Functional version of _assert_async that takes a dependency token and returns a new token.
@@ -1133,6 +1366,23 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: avg_pool1d
+    description: |
+      Applies 1D average-pooling operation in kL regions by step size sL steps.
+      The number of output features is equal to the number of input planes.
+    for:
+      - avg_pool1d
+    marks:
+      - avg_pool1d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+    device:
+      - nvidia
   - id: avg_pool2d
     description: |
       Applies 2D average-pooling operation in `kH \mul kW` regions by step size `sH \mul sW` steps.
@@ -1233,6 +1483,21 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '3.0'
+  - id: batch_norm_impl_index_backward
+    description: |
+      Backward pass dispatcher for `_batch_norm_impl_index`. Selects the
+      matching batch-norm backward backend (native / cudnn / miopen) from the
+      `impl_index` returned by the forward and produces the gradients with
+      respect to the input, weight and bias.
+    for:
+      - _batch_norm_impl_index_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_no_update
     description: Applies Batch Normalization using precomputed running statistics without updating running_mean/running_var.
     for:
@@ -1304,6 +1569,18 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: bilinear
+    description: |
+      Applies a bilinear transformation to the incoming data: y = x1^T A x2 + b.
+    for:
+      - bilinear
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: binary_cross_entropy_backward
     description: Computes the gradient of binary cross entropy loss with respect to the input, with optional per-element weight.
     for:
@@ -1339,6 +1616,37 @@ ops:
       - Reduction
     stages:
       - stable: '5.0'
+  - id: binary_cross_entropy
+    description: |
+      Measures the binary cross entropy between the target and input probabilities,
+      with optional per-element weighting.
+    for:
+      - binary_cross_entropy
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: binary_cross_entropy_out
+    description: |
+      The out variant of binary_cross_entropy. Measures the binary cross entropy
+      between the target and input probabilities and writes the result to the
+      provided output tensor.
+    for:
+      - binary_cross_entropy_out
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: bitwise_and_scalar
     description: Computes the bitwise AND of `input` and `other` scalar.
     for:
@@ -1727,6 +2035,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: cdist
+    description: |
+      Computes the p-norm distance between each pair of the two collections of row vectors.
+      This is the canonical user-facing API for cdist computation.
+    for:
+      - cdist.default
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: ceil
     description: |
       Returns a new tensor with the ceil of the elements of `input`, the smallest integer greater than
@@ -1803,6 +2124,19 @@ ops:
     description: Compute inverse of symmetric positive-definite matrix from Cholesky factor.
     for:
       - cholesky_inverse
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: cholesky_solve_helper
+    description: |
+      Solves a positive-definite linear system using its lower- or upper-triangular
+      Cholesky factor.
+    for:
+      - _cholesky_solve_helper
     labels:
       - aten
       - KernelGen
@@ -2013,6 +2347,35 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: compute_linear_combination
+    description: |
+      Computes a batched linear combination: given `coefficients` of shape
+      `[m, n]` and `input` of shape `[n, ...]`, returns an output of shape
+      `[m, ...]` where `output[i, ...] = sum_j coefficients[i, j] * input[j, ...]`
+      (equivalent to `coefficients @ input.flatten(1)`). Backs the string-padding
+      form dispatched by `torch._compute_linear_combination`.
+    for:
+      - _compute_linear_combination
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: compute_linear_combination_out
+    description: |
+      A variant of `_compute_linear_combination()` that writes the result into
+      the `out` tensor.
+    for:
+      - _compute_linear_combination.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: concat
     description: An alias of `cat()`.
     for:
@@ -2053,6 +2416,31 @@ ops:
       For non-complex tensors, returns the input unchanged.
     for:
       - _conj
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: conj_copy
+    description: |
+      Computes the element-wise conjugate of a complex `input` tensor and
+      returns it as a new (copied) tensor. For non-complex tensors this op
+      is not supported.
+    for:
+      - _conj_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: conj_copy_out
+    description: A variant of `_conj_copy()` that writes the result into the `out` tensor.
+    for:
+      - _conj_copy.out
     labels:
       - aten
       - KernelGen
@@ -2205,6 +2593,43 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: convolution_double_backward
+    description: |
+      Second-order backward of a convolution, supporting both 1D (3-D operands
+      [N, C, L]) and 2D (4-D operands [N, C, H, W]) cases. Given the gradients of
+      the first-order gradients (ggI, ggW, ggb) and the output gradient (gO),
+      returns the gradients of the scalar `<gX, ggI> + <gW, ggW> + <gB, ggb>` with
+      respect to (gO, input, weight). The 2D path runs on Triton conv /
+      conv-transpose kernels plus a custom Triton weight-gradient correlation
+      kernel; 1D reuses the 2D path by unsqueezing the lone spatial axis
+      (mirroring how `conv1d` delegates to `conv2d`). 3D (5-D operands) is not
+      yet supported and raises `NotImplementedError`.
+    for:
+      - _convolution_double_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
+    stages:
+      - alpha: '5.4'
+  - id: convolution_mode
+    description: |
+      Low-level dispatcher backing the string-padding form of convolution.
+      Given an input, a weight, an optional bias, stride, a string padding mode
+      (`valid` or `same`), dilation and groups, it computes the N-D convolution
+      by dispatching to the FlagGems `conv1d`/`conv2d`/`conv3d` Triton kernels
+      based on the spatial dimensionality of the weight tensor. `same` padding
+      requires unit strides.
+    for:
+      - _convolution_mode
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Convolution
     stages:
       - alpha: '5.4'
   - id: copy
@@ -2400,6 +2825,20 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: cudnn_rnn_backward
+    description: |
+      Backward pass of a single-layer unidirectional cuDNN LSTM. Reimplements the
+      RNN forward in pure PyTorch and applies autograd to compute gradients,
+      avoiding the opaque cuDNN reserve tensor.
+    for:
+      - _cudnn_rnn_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cummax
     description: |
       Returns a named tuple `(values, indices)` where `values` is the cumulative maximum of elements
@@ -2414,6 +2853,20 @@ ops:
       - Math
     stages:
       - stable: '3.0'
+  - id: cummaxmin_backward
+    description: |
+      Backward pass shared by `cummax` and `cummin`. Scatter-adds the output gradient back to the
+      input positions selected during the forward pass (given by `indices`), accumulating in
+      float32 for numerical stability. Equivalent to `grad_input.scatter_add_(dim, indices, grad_output)`.
+    for:
+      - cummaxmin_backward
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cummin
     description: |
       Returns a named tuple `(values, indices)` where values is the cumulative minimum of elements
@@ -2428,6 +2881,21 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: cummin_helper
+    description: |
+      Triton kernel implementation for `_cummin_helper`, the out-of-place helper used
+      by `aten::cummin` / `aten::cummin.out`. It writes the cumulative minimum of
+      elements of `input` along `dim` into the pre-allocated `values` tensor and the
+      index location of each minimum value into the pre-allocated `indices` tensor.
+    for:
+      - _cummin_helper
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: cumprod
     description: Returns the cumulative product of elements of `input` in the dimension `dim`.
     for:
@@ -2460,6 +2928,17 @@ ops:
       - LinearAlg
     stages:
       - stable: '1.0'
+  - id: cumsum_
+    description: In-place version of cumsum.
+    for:
+      - cumsum_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: cumsum_out
     destination: |
       Returns the cumulative sum of elements of `input` in the dimension `dim`.
@@ -2660,6 +3139,18 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: dist
+    description: |
+      Computes the p-norm distance between two tensors.
+    for:
+      - dist
+    labels:
+      - aten
+      - Reduction
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: dispatch_fused_moe_kernel
     description: |
       Accelerates neural network training by combining token routing (dispatch/all-to-all communication),
@@ -2747,7 +3238,6 @@ ops:
     for:
       - div.Tensor
       - divide.Tensor
-      - true_divide.Tensor
     labels:
       - aten
       - pointwise
@@ -2802,7 +3292,7 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
-  - id: dropout_backward
+  - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
       - native_dropout_backward
@@ -3007,6 +3497,20 @@ ops:
     description: Tensor factory operator — verifies dtype inference for newly allocated tensors.
     for:
       - empty
+    labels:
+      - aten
+      - KernelGen
+      - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: empty_permuted
+    description: |
+      Tensor factory operator — allocates an uninitialized tensor whose memory
+      follows the given physical layout.
+    for:
+      - empty_permuted
     labels:
       - aten
       - KernelGen
@@ -3241,6 +3745,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: expand_copy
+    description: Returns a copy of the input tensor expanded by broadcasting singleton dimensions.
+    for:
+      - expand_copy
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: expm1
     description: Computes the exponential of the elements minus 1 of `input`.
     for:
@@ -3271,6 +3786,17 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: exponential
+    description: Returns a new tensor with elements drawn from an exponential PDF (probability density function).
+    for:
+      - exponential
+    labels:
+      - aten
+      - skip_precision_check
+    kind:
+      - Distribution
+    stages:
+      - alpha: '5.4'
   - id: exponential_
     description: Fills `self` tensor with elements drawn from a PDF (probability density function).
     for:
@@ -3306,6 +3832,30 @@ ops:
       - LinearAlg
     stages:
       - stable: '3.0'
+  - id: fake_quantize_per_channel_affine_cachemask
+    description: Applies per-channel affine fake quantization and returns the quantization-range mask.
+    for:
+      - fake_quantize_per_channel_affine_cachemask
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
+  - id: fake_quantize_per_channel_affine_cachemask_out
+    description: A variant of `fake_quantize_per_channel_affine_cachemask` that assigns the results to the provided output tensors.
+    for:
+      - fake_quantize_per_channel_affine_cachemask.out
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
   - id: feature_dropout
     description: |
       Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.
@@ -3330,6 +3880,31 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.3'
+  - id: fake_quantize_learnable_per_tensor_affine
+    description: |
+      Fake-quantizes the input tensor per-tensor with learnable scale and zero_point.
+    for:
+      - _fake_quantize_learnable_per_tensor_affine
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: fake_quantize_per_channel_affine
+    description: Applies fake quantization per channel with affine parameters (scale and zero_point).
+    for:
+      - fake_quantize_per_channel_affine
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
   - id: fill_scalar
     description: Fills a scalar with the specified value.
     for:
@@ -3532,10 +4107,90 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: fliplr
+    description: |
+      Flips a tensor in the left-to-right direction by reversing dimension 1.
+      The input must have at least two dimensions.
+    for:
+      - fliplr
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: float_power_
     description: Triton kernel implementation for float_power_.
     for:
       - float_power_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_scalar_tensor
+    description: Computes a scalar base raised element-wise to tensor exponents in float64.
+    for:
+      - float_power.Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_scalar_tensor_out
+    description: Out variant of float_power.Scalar.
+    for:
+      - float_power.Scalar_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_scalar
+    description: Raises tensor elements to a scalar exponent in float64.
+    for:
+      - float_power.Tensor_Scalar
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_scalar_out
+    description: Out variant of float_power.Tensor_Scalar.
+    for:
+      - float_power.Tensor_Scalar_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_tensor
+    description: Raises tensor elements to tensor exponents in float64 with broadcasting.
+    for:
+      - float_power.Tensor_Tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: float_power_tensor_tensor_out
+    description: Out variant of float_power.Tensor_Tensor.
+    for:
+      - float_power.Tensor_Tensor_out
     labels:
       - aten
       - KernelGen
@@ -3842,6 +4497,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: frexp
+    description: Return mantissa and exponent of input, such that x = mantissa * 2^exponent, with mantissa in (-1, 1).
+    for:
+      - frexp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: full
     description: |
       Creates a tensor of size `size` filled with `fill_value`.
@@ -3926,17 +4592,6 @@ ops:
     stages:
       - stable: '2.0'
     cpp: '4.0'
-  - id: fused_rms_norm
-    description: Fused RMS normalization returning the normalized output and inverse RMS.
-    for:
-      - _fused_rms_norm
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - NeuralNetwork
-    stages:
-      - alpha: '5.4'
   - id: fused_deepseek_v4_qnorm_rope_kv_rope_insert
     description: |
       Horizontally-fused DeepseekV4-MLA BF16 variant.
@@ -4005,6 +4660,18 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.3'
+  - id: fused_moving_avg_obs_fq_helper
+    description: Fused moving-average observer with fake-quantize for QAT; updates running min/max, recomputes scale/zero_point, and fake-quantizes the input for both per-tensor and per-channel modes.
+    for:
+      - _fused_moving_avg_obs_fq_helper
+    labels:
+      - aten
+      - quantization
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: fused_q_kv_rmsnorm
     description: |
       Applies RMSNorm to Q and KV tensors in a single fused kernel for DeepSeekV4 attention.
@@ -4032,6 +4699,30 @@ ops:
     stages:
       - alpha: '5.0'
       - beta: '5.3'
+  - id: fused_rms_norm
+    description: Fused RMS normalization returning the normalized output and inverse RMS.
+    for:
+      - _fused_rms_norm
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: fused_rms_norm_backward
+    description: |
+      Computes input and weight gradients for fused RMS normalization using the
+      saved reciprocal root-mean-square values.
+    for:
+      - _fused_rms_norm_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: gather
     description: Gathers values along an axis specified by `dim`.
     for:
@@ -4317,6 +5008,17 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.3'
+  - id: grid_sampler_3d_backward
+    description: Backward pass for 3D grid sampling with bilinear/nearest interpolation and multiple padding modes.
+    for:
+      - grid_sampler_3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: group_norm
     description: An internal IR for applying Group Normalization for last certain number of dimensions.
     for:
@@ -4457,6 +5159,19 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: hardsigmoid_backward
+    description: |
+      The backward pass for `hardsigmoid`. Computes the gradient of the hardsigmoid
+      activation function: ``grad_output * (|self| < 3) / 6``.
+    for:
+      - hardsigmoid_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: hardsigmoid_out
     description: |
       A variant of `hardsigmoid` that supports an output tensor to receive the result.
@@ -4519,6 +5234,20 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: hardswish_backward
+    description: |
+      The backward pass for `hardswish`. Computes the gradient of the hardswish activation
+      function: piecewise derivative ``0`` for ``x <= -3``, ``(2x + 3) / 6`` for ``-3 < x < 3``,
+      and ``1`` for ``x >= 3``.
+    for:
+      - hardswish_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: hardswish_out
     description: |
       A variant of `hardswish` that supports an output tensor to receive the result.
@@ -4548,6 +5277,19 @@ ops:
       - KernelGen
     kind:
       - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: hardtanh_backward
+    description: |
+      The backward pass for hardtanh activation function. Computes the gradient of hardtanh:
+      grad_output when min_val < x < max_val, 0 otherwise.
+    for:
+      - hardtanh_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
     stages:
       - alpha: '5.4'
   - id: has_compatible_shallow_copy_type
@@ -4878,6 +5620,30 @@ ops:
       - Tensor
     stages:
       - beta: '5.3'
+  - id: index_fill
+    description: |
+      Fills elements of the input tensor with a scalar or 0-dimensional tensor value
+      at positions selected by `index` along the given `dim`.
+    for:
+      - index_fill.int_Scalar
+      - index_fill.int_Tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: index_fill_
+    description: The in-place version of `index_fill()`.
+    for:
+      - index_fill_.int_Scalar
+      - index_fill_.int_Tensor
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: index_put
     description: |
       Puts values from the tensor `values` into the tensor `input` using the indices specified
@@ -5478,6 +6244,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg_householder_product
+    description: Compute the matrix product of Householder matrices from QR decomposition.
+    for:
+      - linalg_householder_product
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: linalg_ldl_solve
     description: Triton kernel implementation for linalg_ldl_solve.
     for:
@@ -5525,6 +6302,26 @@ ops:
       - aten
     kind:
       - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: linalg_cross
+    description: Computes the cross product of two 3-dimensional vectors along a specified dimension.
+    for:
+      - linalg_cross
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_cross_out
+    description: A variant of `linalg_cross` that allows the output to be assigned to `out`.
+    for:
+      - linalg_cross.out
+    labels:
+      - aten
+    kind:
+      - LinearAlg
     stages:
       - alpha: '5.4'
   - id: linalg_eigvals
@@ -5593,6 +6390,26 @@ ops:
       - aten
     kind:
       - Math
+  - id: linalg_det
+    description: |
+      Computes the determinant of a square matrix via LU decomposition with partial pivoting.
+    for:
+      - linalg.det
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_det_out
+    description: |
+      A variant of linalg_det that writes the determinant to the provided out tensor.
+    for:
+      - linalg.det.out
+    labels:
+      - aten
+    kind:
+      - LinearAlg
     stages:
       - alpha: '5.4'
   - id: linalg_lu_factor_ex
@@ -5624,6 +6441,47 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_lu
+    description: |
+      Computes the LU factorization with partial pivoting of a matrix and
+      returns the permutation matrix P and the lower/upper triangular factors
+      L and U such that P @ L @ U = A (or L @ U = A for pivot=False).
+    for:
+      - linalg.lu
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_lu_out
+    description: |
+      Out-of-place version of linalg_lu. Supports calling
+      torch.linalg.lu(A, *, pivot=True, out=(P, L, U)). The out parameter
+      provides pre-allocated output tensors for in-place writing.
+    for:
+      - linalg.lu.out
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_matrix_norm
+    description: |
+      Computes the matrix norm over the given dimensions.
+      Supports ord values: 1, -1, 2, -2, inf, -inf, 'fro', 'nuc'.
+      For ord=2/-2/nuc, internally uses SVD (singular value decomposition).
+      For ord=1/-1/inf/-inf, uses max/min absolute column/row sums.
+      For ord='fro', uses Frobenius norm via per-row L2 reduction.
+    for:
+      - linalg_matrix_norm
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
@@ -5636,6 +6494,44 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
+  - id: linalg_solve_triangular
+    description: |-
+      Solves a triangular system of linear equations with a unique solution, returning
+      a tensor X such that A*X = B (or X*A = B when right=True) for a triangular
+      matrix A and matrix of right-hand sides B.
+    for:
+      - linalg_solve_triangular
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+      - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: linalg_solve_triangular_out
+    description: |-
+      Out-of-place variant of linalg_solve_triangular: solves a triangular system
+      of linear equations and writes the result into the provided out tensor.
+    for:
+      - linalg_solve_triangular.out
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+      - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: linalg_svd
+    description: Computes the singular value decomposition (SVD) of a matrix.
+    for:
+      - linalg_svd
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linalg_svdvals
     description: Computes the singular values of a matrix.
     for:
@@ -5643,6 +6539,26 @@ ops:
     labels:
       - aten
       - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_vecdot
+    description: 'Computes the dot product of two vectors along a specified dimension.'
+    for:
+      - linalg.vecdot
+    labels:
+      - aten
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: linalg_vecdot_out
+    description: 'Computes the dot product of two vectors along a specified dimension.'
+    for:
+      - linalg.vecdot.out
+    labels:
+      - aten
     kind:
       - Math
     stages:
@@ -5681,6 +6597,17 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: list_to_tensor
+    description: |
+      Constructs a 1-D int32 tensor from a Python list of integers. This is an
+      IR/prim operator; the FlagGems implementation copies the values into the
+      output tensor with a Triton kernel.
+    for:
+      - _list_to_tensor
+    labels:
+      - aten
+      - KernelGen
+      - IR
   - id: log
     description: Returns a new tensor with the natural logarithm of the elements of `input`.
     for:
@@ -5821,6 +6748,28 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: log_sigmoid_backward
+    description: Computes the input gradient of the Logsigmoid function.
+    for:
+      - log_sigmoid_backward
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: log_sigmoid_backward_out
+    description: A variant of `log_sigmoid_backward` that assigns the output to the `grad_input` tensor.
+    for:
+      - log_sigmoid_backward.grad_input
+    labels:
+      - aten
+      - pointwise
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: log_softmax
     description: An internal IR for applying a softmax followed by a logarithm.
     for:
@@ -5894,6 +6843,21 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: scaled_dot_product_cudnn_attention
+    description: |
+      Computes scaled dot product attention using the cuDNN attention API
+      interface, returning output, log-sum-exp, and auxiliary tensors for
+      backward computation.
+    for:
+      - _scaled_dot_product_cudnn_attention
+    labels:
+      - aten
+      - NoCPU
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: lu_unpack
     description: Unpacks the LU decomposition returned by `lu_factor` into separate permutation matrix P, lower triangular L, and upper triangular U.
     for:
@@ -5916,6 +6880,32 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: unflatten
+    description: Expand a single dimension into multiple dimensions (inverse of flatten).
+    for:
+      - unflatten
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: mkldnn_rnn_layer
+    description: |
+      Applies a single-layer unidirectional LSTM (oneDNN mkldnn_rnn_layer, mode=2)
+      to the input sequence, returning the output sequence and the final hidden and
+      cell states.
+    for:
+      - mkldnn_rnn_layer
+    labels:
+      - aten
+      - KernelGen
+      - NoCPU
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: unsafe_chunk
     description: Split a tensor into a specified number of chunks along a given dimension.
     for:
@@ -5927,6 +6917,17 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: upsample_bilinear2d_aa_backward
+    description: A backward case for `_upsample_bilinear2d_aa()`.
+    for:
+      - _upsample_bilinear2d_aa_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: weight_int4pack_mm_with_scales_and_zeros
     description: |
       Int4 quantized matrix multiplication with separate scales and zeros. Computes
@@ -5934,6 +6935,18 @@ ops:
       the activation matrix, using per-group scale and zero-point quantization.
     for:
       - _weight_int4pack_mm_with_scales_and_zeros
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: weight_int8pack_mm
+    description: |
+      Performs int8 weight-only quantized matrix multiplication with per-channel scales.
+    for:
+      - weight_int8pack_mm
     labels:
       - aten
       - KernelGen
@@ -6190,6 +7203,17 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: logit_backward
+    description: Triton kernel implementation for logit_backward.
+    for:
+      - logit_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: logit_out
     description: |
       A variant of `logit` that allows the output to be assigned to another tensor.
@@ -6403,6 +7427,22 @@ ops:
       - tensor
     stages:
       - stable: '4.2'
+  - id: masked_scatter_backward
+    description: |
+      Backward of `masked_scatter` with respect to the `source` tensor.
+      Returns a tensor of shape `sizes` where the first ``mask.sum()`` elements
+      are the gradient values from the positions where ``mask`` was True
+      (obtained via stream-compaction / masked_select), and the remaining
+      elements are zero (the tail of `source` that was never consumed by the
+      forward pass).
+    for:
+      - masked_scatter_backward
+    labels:
+      - aten
+    kind:
+      - tensor
+    stages:
+      - alpha: '5.4'
   - id: masked_select
     description: |
       Returns a new 1-D tensor which indexes the `input` tensor according to
@@ -7070,12 +8110,58 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: native_batch_norm_legit
+    description: >
+      Batch normalization with in-place running statistics updates, returning the
+      normalized output along with the saved mean and inverse standard deviation.
+    for:
+      - _native_batch_norm_legit
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: native_batch_norm_legit_functional
     description: >
       Functional version of batch normalization that returns the saved mean and
       inverse standard deviation, along with updated running estimates.
     for:
       - _native_batch_norm_legit_functional
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: native_batch_norm_legit_no_stats
+    description: Batch normalization without persistent running statistics.
+    for:
+      - _native_batch_norm_legit.no_stats
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: native_batch_norm_legit_no_stats_out
+    description: Out variant of batch normalization without running statistics.
+    for:
+      - _native_batch_norm_legit.no_stats_out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: native_batch_norm_legit_out
+    description: Out variant of batch normalization with running statistics.
+    for:
+      - _native_batch_norm_legit.out
     labels:
       - aten
       - KernelGen
@@ -7946,6 +9032,21 @@ ops:
       - Tensor
     stages:
       - stable: '2.2'
+  - id: quantized_lstm
+    description: >-
+      Applies a multi-layer quantized LSTM over an input sequence. Takes the
+      input sequence, initial hidden and cell states, and per-layer quantized
+      weights, and returns the output sequence together with the final hidden
+      and cell states.
+    for:
+      - quantized_lstm.input
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: rad2deg
     description: |
       Converts each element from angles in radians to degrees.
@@ -8568,6 +9669,18 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: resize_output_
+    description: |
+      Resizes the output tensor in-place to the given size.
+    for:
+      - _resize_output_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: resolve_conj
     description: |
       Returns a new tensor with materialized conjugation if `input`'s conjugate bit is set to True,
@@ -8696,6 +9809,33 @@ ops:
       - rrelu_with_noise_functional
     labels:
       - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: rshift
+    description: Applies a bitwise right shift to an integer tensor with a tensor or scalar shift value.
+    for:
+      - __rshift__.Scalar
+      - __rshift__.Tensor
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: rshift_out
+    description: |
+      A variant of `rshift()` that assigns the output to the given `out` parameter.
+    for:
+      - __rshift__.Scalar_out
+      - __rshift__.Tensor_out
+    labels:
+      - aten
+      - pointwise
       - KernelGen
     kind:
       - Math
@@ -8843,6 +9983,22 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.4'
+  - id: scaled_dot_product_efficient_attention
+    description: |
+      Computes the efficient memory attention for `scaled_dot_product_attention`.
+      This is a composite operator that wraps scaled_dot_product_attention_forward
+      and additionally returns log-sumexp and dropout RNG state.
+    for:
+      - _scaled_dot_product_efficient_attention
+    labels:
+      - KernelGen
+      - nn.functional
+      - Attention
+      - aten
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: scaled_dot_product_efficient_attention_backward
     description: |
       Backward kernel for FlashAttention, computing gradients of queries, keys, values, and attention outputs efficiently.
@@ -9725,6 +10881,29 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: sparse_sampled_addmm
+    description: |
+      Computes alpha * (mat1 @ mat2) * spy(input) + beta * input, where input is a sparse CSR tensor
+      and spy(input) keeps only its sparsity pattern. The result shares the CSR pattern with input.
+    for:
+      - sparse_sampled_addmm
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
+  - id: sparse_sampled_addmm_out
+    description: |
+      A variant of sparse_sampled_addmm that assigns the result to the provided sparse CSR out tensor.
+    for:
+      - sparse_sampled_addmm.out
+    labels:
+      - aten
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: sparse_semi_structured_mm
     description: >
       Performs a sparse semi-structured matrix multiplication of a dense matrix
@@ -9741,6 +10920,19 @@ ops:
       Computes the Bessel function of the first kind of order 1 for each element of input.
     for:
       - special_bessel_j1
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_bessel_y0
+    description: |
+      Computes the Bessel function of the second kind of order 0 for each element of input.
+    for:
+      - special_bessel_y0
     labels:
       - aten
       - KernelGen
@@ -9958,6 +11150,18 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_expit
+    description: Computes the expit (sigmoid) function element-wise. Returns 1 / (1 + exp(-x)).
+    for:
+      - special.expit
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_gammainc
     description: |
       Computes the regularized lower incomplete gamma function P(a, x) element-wise.
@@ -10061,6 +11265,19 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: special_bessel_y1
+    description: |
+      Computes the Bessel function of the second kind of order 1 (Y_1(x)) for each element
+      in the input tensor.
+    for:
+      - special.bessel_y1
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_i1e
     description: |
       Computes the exponentially scaled modified Bessel function of the first kind
@@ -10083,6 +11300,20 @@ ops:
       - special.legendre_polynomial_p
     labels:
       - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_log_ndtr
+    description: |
+      Computes the log of the cumulative distribution function of the standard
+      normal distribution (log_ndtr(x)) for each element in the input tensor.
+    for:
+      - special_log_ndtr
+    labels:
+      - aten
+      - pointwise
       - KernelGen
     kind:
       - Math
@@ -10119,6 +11350,30 @@ ops:
     labels:
       - aten
       - nn.functional
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_logit
+    description: |
+      Returns a new tensor with the logit of the elements of input.
+      Input is clamped to [eps, 1 - eps] when eps is not None.
+    for:
+      - special.logit
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_logit_out
+    description: A variant of `special_logit` that allows the output to be assigned to another tensor.
+    for:
+      - special.logit.out
+    labels:
+      - aten
       - KernelGen
     kind:
       - Math
@@ -10168,6 +11423,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_multigammaln
+    description: |
+      Computes the multivariate log-gamma function for each element of the input.
+      Out-of-place counterpart of mvlgamma_; delegates to the mvlgamma kernel,
+      which supports orders p up to 12.
+    for:
+      - special_multigammaln
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_round
     description: |
       Rounds a tensor to the nearest integer, with ties rounding to the nearest
@@ -10186,6 +11455,19 @@ ops:
       A variant of `special_round()` with output saved to provided `out`.
     for:
       - special.round.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_shifted_chebyshev_polynomial_t
+    description: |
+      Computes the shifted Chebyshev polynomial of the first kind T_n^*(x)
+      for each pair of elements in `x` and `n`.
+    for:
+      - special_shifted_chebyshev_polynomial_t
     labels:
       - aten
       - KernelGen
@@ -10275,6 +11557,17 @@ ops:
       - KernelGen
     kind:
       - Reduction
+    stages:
+      - alpha: '5.4'
+  - id: special_ndtr
+    description: Computes the standard normal cumulative distribution function (CDF).
+    for:
+      - special.ndtr
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
     stages:
       - alpha: '5.4'
   - id: split_with_sizes_copy
@@ -10500,6 +11793,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: sym_constrain_range
+    description: >-
+      Constrains the range of a symbolic integer value. Used for torch.compile
+      symbolic tracing to provide bounds information.
+    for:
+      - sym_constrain_range
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: sym_storage_offset
     description: Returns the storage offset of the input tensor as an integer. Used for torch.compile symbolic tracing.
     for:
@@ -10921,6 +12227,18 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '5.0'
+  - id: true_divide
+    description: Performs element-wise true division between two tensors.
+    for:
+      - true_divide.Tensor
+    labels:
+      - aten
+      - KernelGen
+      - pointwise
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: trunc
     description: Rounds each element of the input tensor to the nearest integer towards zero.
     for:
@@ -11183,6 +12501,19 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.1'
+  - id: upsample_bilinear2d
+    description: |
+      Upsamples the input, using bilinear mode.
+      The input has to be 4 dimensional, and the `output_size` is a tuple of 2 ints.
+    for:
+      - upsample_bilinear2d
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: upsample_linear1d
     description: |
       Upsamples the `input`, using linear mode.
@@ -11257,6 +12588,30 @@ ops:
       - NeuralNetwork
     stages:
       - beta: '5.0'
+  - id: upsample_nearest_exact1d_backward
+    description: A backward case for `_upsample_nearest_exact1d()`.
+    for:
+      - _upsample_nearest_exact1d_backward
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: upsample_nearest_exact1d_backward_grad_input
+    description: An out variant of `_upsample_nearest_exact1d_backward()`.
+    for:
+      - _upsample_nearest_exact1d_backward.grad_input
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: upsample_nearest_exact2d
     description: Triton kernel implementation for _upsample_nearest_exact2d.
     for:
@@ -11302,6 +12657,20 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: value_selecting_reduction_backward
+    description: |
+      Computes the gradient of a value-selecting reduction (such as `max.dim`
+      or `min.dim`) by scattering the upstream gradient to the positions
+      given by the indices of the selected values in the original input.
+    for:
+      - value_selecting_reduction_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
     stages:
       - alpha: '5.4'
   - id: var
@@ -11372,6 +12741,16 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.0'
+  - id: view_as_complex
+    description: Returns a view of the real input tensor as a complex tensor (zero-copy view operation).
+    for:
+      - view_as_complex
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: view_copy
     description: |
       Returns a copy of the tensor with the specified shape.
