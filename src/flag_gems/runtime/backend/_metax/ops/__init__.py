@@ -10,6 +10,7 @@ from .avg_pool3d import avg_pool3d_backward
 from .bmm import bmm
 from .broadcast_to import broadcast_to
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .dist import dist
 from .exponential_ import exponential_
@@ -73,6 +74,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_conv_depthwise2d",
     "_make_dep_token",
     "_nested_view_from_buffer_copy",
     "_thnn_fused_lstm_cell_backward_impl",
