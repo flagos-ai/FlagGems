@@ -44,6 +44,10 @@ else:
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3861: some ops hang in op tests",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Issues #5748: repeat_interleave_self_int produces incorrect results when numel > 4M",
+)
 def test_repeat_interleave_self_int(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     repeats = 2
@@ -63,6 +67,10 @@ def test_repeat_interleave_self_int(shape, dim, dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3861: some ops hang in op tests",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Issues #5748: repeat_interleave_self_int produces incorrect results when numel > 4M",
 )
 def test_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)[::2]
