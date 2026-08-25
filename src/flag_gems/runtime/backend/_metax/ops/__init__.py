@@ -13,10 +13,7 @@ from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .dist import dist
 from .exponential_ import exponential_
-from .fractional_max_pool2d import (
-    fractional_max_pool2d,
-    fractional_max_pool2d_backward,
-)
+from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
 from .greater_equal import greater_equal_
