@@ -600,7 +600,7 @@ class InstanceNorm(torch.autograd.Function):
                     # directly. (The old kernel used (1/rstd^2 + eps) * N/(N-1) -- both the
                     # +2*eps and the N/(N-1) correction were wrong -> pre-existing failures.)
                     batch_mean = mean.mean(dim=0)  # [C]
-                    var_bc = 1.0 / (rstd * rstd) - eps  # [B, C] biased variance
+                    var_bc = (1.0 / (rstd * rstd) - eps) * N / (N - 1)  # [B, C] unbiased variance
                     batch_var = var_bc.mean(dim=0)  # [C]
                     running_mean.lerp_(batch_mean.to(running_mean.dtype), momentum)
                     running_var.lerp_(batch_var.to(running_var.dtype), momentum)

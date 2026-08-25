@@ -50,13 +50,9 @@ def test_cummin(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.cummin(ref_inp, dim=dim)
-    if flag_gems.vendor_name == "kunlunxin":
-        from flag_gems.runtime.backend._kunlunxin import ops as kl_ops
 
-        res_out = kl_ops.cummin(inp, dim=dim)
-    else:
-        with flag_gems.use_gems():
-            res_out = torch.cummin(inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.cummin(inp, dim=dim)
 
     utils.gems_assert_close(
         res_out.values, ref_out.values, dtype, reduce_dim=shape[dim]
@@ -86,13 +82,9 @@ def test_cummin_with_nan(shape, dtype, nan_ratio):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.cummin(ref_inp, dim=dim)
-    if flag_gems.vendor_name == "kunlunxin":
-        from flag_gems.runtime.backend._kunlunxin import ops as kl_ops
 
-        res_out = kl_ops.cummin(inp, dim=dim)
-    else:
-        with flag_gems.use_gems():
-            res_out = torch.cummin(inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.cummin(inp, dim=dim)
 
     utils.gems_assert_close(
         res_out.values, ref_out.values, dtype, reduce_dim=shape[dim], equal_nan=True

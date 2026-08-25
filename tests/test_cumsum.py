@@ -64,14 +64,9 @@ def test_cumsum(shape, dtype):
         ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
-    # Issue 2806: This customization doesn't look correct.
-    if flag_gems.vendor_name == "kunlunxin":
-        from flag_gems.runtime.backend._kunlunxin import ops as kl_ops
 
-        res_out = kl_ops.cumsum(inp, dim=dim)
-    else:
-        with flag_gems.use_gems():
-            res_out = torch.cumsum(inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.cumsum(inp, dim=dim)
 
     # we should use ref's output type, since cumsum of int dtype results in int64
     if flag_gems.vendor_name in ["cambricon", "enflame", "tsingmicro"]:
