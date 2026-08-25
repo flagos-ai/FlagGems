@@ -16,10 +16,10 @@ import math
 
 import pytest
 import torch
-from benchmark.base import Benchmark
-from benchmark.conftest import Config
 
 import flag_gems
+from benchmark.base import Benchmark
+from benchmark.conftest import Config
 
 try:
     from vllm.model_executor.layers.fla.ops import (
