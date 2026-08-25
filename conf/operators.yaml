@@ -12196,6 +12196,18 @@ ops:
       - BLAS
     stages:
       - beta: '5.3'
+  - id: tril_indices
+    description: |
+      Returns the row and column coordinates of the lower-triangular part of a
+      `row` by `col` matrix in row-major order.
+    for:
+      - tril_indices
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: triton_lighting_indexer_k_tiled_interface
     description: Part of FP8 MQA framework. It is currently not exposed as an operator for use.
     for:
@@ -12219,6 +12231,18 @@ ops:
       - BLAS
     stages:
       - stable: '1.0'
+  - id: triu_indices
+    description: |
+      Returns the row and column coordinates of the upper-triangular part of a
+      `row` by `col` matrix in row-major order.
+    for:
+      - triu_indices
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: triu_
     description: The in-place version of `triu()`.
     for:
