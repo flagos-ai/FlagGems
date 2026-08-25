@@ -13,6 +13,20 @@
 # limitations under the License.
 
 ops:
+  - id: batch_norm_backward_elemt
+    description: |
+      Compute the per-element gradient for batch normalization backward pass.
+      Given pre-computed channel statistics (sum_dy, sum_dy_xmu), produces
+      grad_input without reduction.
+    for:
+      - batch_norm_backward_elemt
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - stable: '3.0'
   - id: batch_norm_with_update_functional
     description: Functional variant of _batch_norm_with_update that applies training-mode Batch Normalization and updates running statistics.
     for:
