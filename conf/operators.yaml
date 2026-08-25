@@ -6370,6 +6370,8 @@ ops:
     kind:
       - LinearAlg
       - BLAS
+    stages:
+      - alpha: '5.4'
   - id: linalg_lu_factor
     description: |
       Computes a compact representation of the LU factorization with partial pivoting of a matrix.
