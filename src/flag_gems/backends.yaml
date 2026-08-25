@@ -83,6 +83,9 @@ backends:
     deps:
       - torch==2.9.0+cpu
       - torch-npu==2.9.0
+      - decorator==5.1.1
+      - attrs==24.2.0
+      - psutil==6.0.0
 
   ascend-cann900:
     python: "3.11"
