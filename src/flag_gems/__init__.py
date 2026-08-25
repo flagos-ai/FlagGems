@@ -389,7 +389,6 @@ _FULL_CONFIG = (
     ("block_diag", block_diag),
     ("bmm", bmm),
     ("bmm.out", bmm_out),
-    ("bmm_w8a8_fp8", bmm_w8a8_fp8),
     ("broadcast_tensors", broadcast_tensors),
     ("broadcast_to", broadcast_to),
     ("bucketize.Tensor", bucketize),
