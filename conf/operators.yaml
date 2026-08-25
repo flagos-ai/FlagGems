@@ -12160,6 +12160,18 @@ ops:
       - Tensor
     stages:
       - alpha: '5.1'
+  - id: transpose_copy
+    description: |
+      Returns a new contiguous tensor with the two specified dimensions swapped.
+      The result does not alias the input tensor.
+    for:
+      - transpose_copy.int
+    labels:
+      - aten
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: tril
     description: |
       Returns the lower triangular part of an input matrix (or a batch of matrices) and
