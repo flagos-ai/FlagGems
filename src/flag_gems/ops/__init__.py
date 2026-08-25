@@ -263,6 +263,7 @@ from flag_gems.ops.avg_pool3d import avg_pool3d, avg_pool3d_backward
 from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
 from flag_gems.ops.baddbmm_ import baddbmm_
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
+from flag_gems.ops.batch_norm_backward_elemt import batch_norm_backward_elemt
 from flag_gems.ops.batch_norm_backward_reduce import batch_norm_backward_reduce
 from flag_gems.ops.bernoulli import bernoulli
 from flag_gems.ops.bernoulli_ import bernoulli_
@@ -1347,6 +1348,7 @@ __all__ = [
     "baddbmm_out",
     "batch_norm",
     "batch_norm_backward",
+    "batch_norm_backward_elemt",
     "batch_norm_backward_reduce",
     "bernoulli",
     "bernoulli_",
