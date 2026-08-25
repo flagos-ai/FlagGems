@@ -49,6 +49,15 @@ def _make_chain(dimensions, first_vector, last_vector, dtype):
     return tensors
 
 
+def _reference_multi_dot(tensors):
+    allow_tf32 = torch.backends.cuda.matmul.allow_tf32
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = False
+        return torch.linalg.multi_dot(tensors)
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = allow_tf32
+
+
 @pytest.mark.linalg_multi_dot
 @pytest.mark.parametrize("dimensions,first_vector,last_vector", CHAIN_CASES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -56,7 +65,7 @@ def test_accuracy_linalg_multi_dot(dimensions, first_vector, last_vector, dtype)
     tensors = _make_chain(dimensions, first_vector, last_vector, dtype)
     reference_tensors = [utils.to_reference(tensor) for tensor in tensors]
 
-    reference = torch.linalg.multi_dot(reference_tensors)
+    reference = _reference_multi_dot(reference_tensors)
     with flag_gems.use_gems():
         result = torch.linalg.multi_dot(tensors)
 
@@ -69,7 +78,7 @@ def test_accuracy_linalg_multi_dot(dimensions, first_vector, last_vector, dtype)
 def test_accuracy_linalg_multi_dot_out(dimensions, first_vector, last_vector, dtype):
     tensors = _make_chain(dimensions, first_vector, last_vector, dtype)
     reference_tensors = [utils.to_reference(tensor) for tensor in tensors]
-    reference = torch.linalg.multi_dot(reference_tensors)
+    reference = _reference_multi_dot(reference_tensors)
 
     out = torch.empty(0, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
@@ -86,7 +95,7 @@ def test_accuracy_linalg_multi_dot_out_noncontiguous(dtype):
     dimensions = (64, 32, 128)
     tensors = _make_chain(dimensions, False, False, dtype)
     reference_tensors = [utils.to_reference(tensor) for tensor in tensors]
-    reference = torch.linalg.multi_dot(reference_tensors)
+    reference = _reference_multi_dot(reference_tensors)
     out = torch.empty(
         dimensions[-1], dimensions[0], dtype=dtype, device=flag_gems.device
     ).t()

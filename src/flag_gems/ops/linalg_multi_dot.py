@@ -31,6 +31,9 @@ def _native_mm(left, right, out=None):
     """Run the backend GEMM without re-entering FlagGems' ``mm`` override."""
     keyset = _CPU_KEYSET if left.device.type == "cpu" else _DEVICE_KEYSET
     if out is not None:
+        if not out.is_contiguous():
+            out.copy_(torch.ops.aten.mm.default.redispatch(keyset, left, right))
+            return out
         return torch.ops.aten.mm.out.redispatch(keyset, left, right, out=out)
     return torch.ops.aten.mm.default.redispatch(keyset, left, right)
 
