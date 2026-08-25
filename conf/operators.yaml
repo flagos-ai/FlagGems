@@ -1609,6 +1609,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: batch_norm_backward_reduce
+  description: Triton kernel implementation for batch normalization backward reduce stage.
+  for:
+  - native_batch_norm_backward_reduce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: batch_norm_impl_index
   description: Applies Batch Normalization and returns the normalized output along
     with saved statistics, a reserve tensor, and the backend implementation index.
