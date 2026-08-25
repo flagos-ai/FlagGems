@@ -6244,6 +6244,20 @@ ops:
     stages:
       - beta: '5.0'
       - stable: '5.3'
+  - id: linalg__powsum
+    description: |
+      Computes the sum of the absolute input values raised to `ord` over the
+      requested dimensions, without applying the final norm root.
+    for:
+      - linalg__powsum
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_householder_product
     description: Compute the matrix product of Householder matrices from QR decomposition.
     for:
