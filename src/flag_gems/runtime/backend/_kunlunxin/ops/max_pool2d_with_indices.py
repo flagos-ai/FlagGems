@@ -47,12 +47,6 @@ def max_pool2d_output_size(
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 64}, num_stages=2, num_warps=8),
-    ],
-    key=["out_h", "out_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
-)
 @triton.jit
 def max_pool2d_forward_kernel(
     input_ptr,
@@ -132,12 +126,6 @@ def max_pool2d_forward_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_IN_H": 64, "BLOCK_IN_W": 16}, num_warps=8),
-    ],
-    key=["in_h", "in_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
-)
 @triton.jit
 def max_pool2d_backward_kernel(
     grad_output_ptr,
@@ -298,9 +286,19 @@ def max_pool2d_with_indices(
     if output.numel() == 0:
         return output, indices
 
-    grid = lambda meta: (
+    # Adaptive tiling: size the (BLOCK_H, BLOCK_W) tile to the actual output so we
+    # don't allocate a fixed 64x64 tile (4096 lanes) for tiny outputs (e.g. 7x7 or
+    # 4x4 on late ResNet stages). The old fixed 64x64 tile made every one of the
+    # N*C programs issue ~BLOCK_H*BLOCK_W*kh*kw masked loads, the vast majority of
+    # them wasted -> masked-load volume dominated runtime (~96ms for 128x512x7x7).
+    # next_pow2(out) capped at 64 keeps the tile just big enough to cover the output
+    # (grid dim1 tiles anything larger) while cutting wasted lanes up to ~64x.
+    block_h = min(triton.next_power_of_2(out_h), 64)
+    block_w = min(triton.next_power_of_2(out_w), 64)
+
+    grid = (
         in_n * in_c,
-        triton.cdiv(out_h, meta["BLOCK_H"]) * triton.cdiv(out_w, meta["BLOCK_W"]),
+        triton.cdiv(out_h, block_h) * triton.cdiv(out_w, block_w),
     )
 
     with torch_device_fn.device(input.device):
@@ -325,6 +323,8 @@ def max_pool2d_with_indices(
             padding_w,
             dilation_h,
             dilation_w,
+            block_h,
+            block_w,
         )
 
     return output, indices
@@ -365,9 +365,15 @@ def max_pool2d_backward(
     if grad_input.numel() == 0:
         return grad_input.to(original_dtype)
 
-    grid = lambda meta: (
+    # Adaptive tiling (same rationale as forward): avoid a fixed 64x16 tile over a
+    # tiny grad_input (e.g. 7x7). next_pow2(in) capped keeps the tile just covering
+    # the input, grid dim1 tiles anything larger.
+    block_in_h = min(triton.next_power_of_2(in_h), 64)
+    block_in_w = min(triton.next_power_of_2(in_w), 32)
+
+    grid = (
         in_n * in_c,
-        triton.cdiv(in_h, meta["BLOCK_IN_H"]) * triton.cdiv(in_w, meta["BLOCK_IN_W"]),
+        triton.cdiv(in_h, block_in_h) * triton.cdiv(in_w, block_in_w),
     )
 
     out_stride_nc = out_h * out_w
@@ -395,6 +401,8 @@ def max_pool2d_backward(
             padding_w,
             dilation_h,
             dilation_w,
+            block_in_h,
+            block_in_w,
         )
 
     return grad_input.to(original_dtype)

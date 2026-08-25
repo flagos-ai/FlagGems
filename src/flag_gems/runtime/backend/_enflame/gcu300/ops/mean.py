@@ -53,6 +53,8 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def mean(inp, *, dtype=None):
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -116,7 +118,7 @@ def mean_kernel_dim_low(
         n_offset_0 = tl.arange(0, BLOCK_N)
         offset_0 = m_offset[:, None] * N + n_offset_0[None, :]
         # set mask
-        mask_0 = m_offset[:, None] < M and n_offset_0[None, :] < N
+        mask_0 = (m_offset[:, None] < M) & (n_offset_0[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         _mean = tl.load(inp_ptrs_0, mask_0, other=0.0).to(tl.float32)
         if N > BLOCK_N:
@@ -124,7 +126,7 @@ def mean_kernel_dim_low(
                 n_offset = i + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 a = tl.load(inp_ptrs, mask, other=0.0).to(tl.float32)
                 _mean = a + _mean
@@ -158,7 +160,7 @@ def mean_kernel_dim_high(
         n_offset = tile_id_n * BLOCK_N + tl.arange(0, BLOCK_N)
         m_offset_0 = tl.arange(0, BLOCK_M)
         offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
-        mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
+        mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         _mean = tl.load(inp_ptrs_0, mask_0, other=0.0).to(tl.float32)
         if M > BLOCK_M:
@@ -166,7 +168,7 @@ def mean_kernel_dim_high(
                 m_offset = i + tl.arange(0, BLOCK_M)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 a = tl.load(inp_ptrs, mask, other=0.0).to(tl.float32)
                 _mean += a
@@ -198,23 +200,21 @@ def mean_kernel_dim_mid(
     pid_n = tl.program_id(0)
     step = tl.num_programs(1)
     for tile_id_b in tl.range(pid_b, B, step):
-        print("tile_id_b", tile_id_b)
         b_offset = tile_id_b * M * N
         inp = inpIn + b_offset
         out_value = out_value_in + tile_id_b * N
         n_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
         m_offset_0 = tl.arange(0, BLOCK_M)
         offset_0 = m_offset_0[:, None] * N + n_offset[None, :]
-        mask_0 = m_offset_0[:, None] < M and n_offset[None, :] < N
+        mask_0 = (m_offset_0[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs_0 = inp + offset_0
         _mean = tl.load(inp_ptrs_0, mask_0, other=0.0).to(tl.float32)
-        print("_mean", _mean)
         if M > BLOCK_M:
             for i in tl.range(BLOCK_M, M, BLOCK_M, num_stages=num_stages):
                 m_offset = i + tl.arange(0, BLOCK_M)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 # set mask
-                mask = m_offset[:, None] < M and n_offset[None, :] < N
+                mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
                 inp_ptrs = inp + offset
                 a = tl.load(inp_ptrs, mask, other=0.0).to(tl.float32)
                 _mean += a
@@ -226,6 +226,8 @@ def mean_kernel_dim_mid(
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
+    if not x.is_contiguous():
+        x = x.contiguous()
     return_dtype = x.dtype
     if x.dtype == torch.int64:
         x.dtype = torch.int32

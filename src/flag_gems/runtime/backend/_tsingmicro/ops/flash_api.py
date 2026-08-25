@@ -286,17 +286,23 @@ def mha_varlan_fwd(
     assert cu_seqlens_k.dtype == torch.int32
     assert cu_seqlens_k.is_contiguous()
 
-    assert page_table is not None
+    is_paged = page_table is not None
+    if not is_paged:
+        # Triton kernels require a tensor argument even though the non-paged
+        # path never dereferences the page table.
+        page_table = torch.empty((0, 0), device=q_device, dtype=torch.int32)
 
     # q shape: [total_q_tokens, num_heads, head_size]
     # k shape:
     #   paged_kv: [num_pages, block_size, num_heads_k, head_size]
     # batch_size, number of sentences
     total_q, num_heads, head_size = q.size()
-    num_heads_k = k.size(2)
+    num_heads_k = k.size(2) if is_paged else k.size(1)
     batch_size = cu_seqlens_q.numel() - 1
-    block_size = k.size(1)
-    num_pages = k.size(0)
+    # On TXDA BLOCK_N follows block_size. A unit tile makes the dot-product
+    # path both inefficient and numerically inaccurate for contiguous KV.
+    block_size = k.size(1) if is_paged else 32
+    num_pages = k.size(0) if is_paged else 0
     k_batch_size = num_pages
     # max_num_pages_per_seq = page_table.size(1)
     page_table_batch_stride = page_table.stride(0)
@@ -366,9 +372,6 @@ def mha_varlan_fwd(
 
     assert leftpad_k is None, "leftpad_k is not supported."
     assert (
-        head_size <= 256
-    ), "FlashAttention forward only supports head dimension at most 256"
-    assert (
         head_size % 8 == 0
     ), "head_size must be a multiple of 8, this is ensured by padding!"
     assert (
@@ -376,15 +379,19 @@ def mha_varlan_fwd(
     ), "Number of heads in key/value must divide number of heads in query"
 
     assert q.shape == (total_q, num_heads, head_size)
-    assert k.shape == (num_pages, block_size, num_heads_k, head_size)
-    assert v.shape == (num_pages, block_size, num_heads_k, head_size)
+    if is_paged:
+        assert k.shape == (num_pages, block_size, num_heads_k, head_size)
+        assert v.shape == (num_pages, block_size, num_heads_k, head_size)
+    else:
+        assert k.ndim == 3 and k.shape[1:] == (num_heads_k, head_size)
+        assert v.shape == k.shape
     assert k.stride() == v.stride()
 
     if softcap > 0.0:
         assert p_dropout == 0, "dropout is not supported if softcap is used."
 
     round_multiple = lambda x, m: (x + m - 1) // m * m
-    head_size_rounded = round_multiple(head_size, 32) if head_size < 192 else 256
+    head_size_rounded = round_multiple(head_size, 32)
     seqlen_q_rounded = round_multiple(max_seqlen_q, 128)
     seqlen_k_rounded = round_multiple(max_seqlen_k, 32)
 
@@ -481,7 +488,7 @@ def mha_varlan_fwd(
             o_batch_stride,  # o_batch_stride,
             cu_seqlens_q is not None,  # is_cu_seqlens_q,
             cu_seqlens_q,  # cu_seqlens_q_ptr,
-            seqused_k is None,  # is_cu_seqlens_k,
+            seqused_k is None or not is_paged,  # is_cu_seqlens_k,
             cu_seqlens_k,  # cu_seqlens_k_ptr,
             seqused_k is not None,  # is_seqused_k,
             seqused_k,  # seqused_k_ptr,
@@ -546,10 +553,11 @@ def mha_varlan_fwd(
             "num_warps": cfg["num_warps"](args),
             "num_stages": cfg["num_stages"](args),
         }
-        assert (
-            block_size % cfg_params["BLOCK_N"] == 0
-        ), f"block_size must be divisible by {cfg_params['BLOCK_N']}."
-        kernel(*args, **cfg_params)
+        if is_paged:
+            assert (
+                block_size % cfg_params["BLOCK_N"] == 0
+            ), f"block_size must be divisible by {cfg_params['BLOCK_N']}."
+        kernel(*args, IS_PAGED=is_paged, **cfg_params)
 
         if seqlenq_ngroups_swapped:
             out = out.reshape(

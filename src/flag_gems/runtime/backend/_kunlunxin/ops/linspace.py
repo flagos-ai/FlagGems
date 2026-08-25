@@ -69,9 +69,33 @@ def linspace(
             end = end.item()
         mid = steps // 2
         step_size = (float(end) - float(start)) / (steps - 1)
-        BLOCK_SIZE = 128
+        # Size-based BLOCK_SIZE/num_warps heuristic (mirrors the sibling generation
+        # op `arange` on this backend). The original hard-coded BLOCK_SIZE=128 spawned
+        # cdiv(steps, 128) programs (up to ~8M for 1G steps), each writing only 128
+        # elements -> launch-bound, ~10 GB/s regardless of size. Larger blocks let the
+        # write-only kernel reach the ~90 GB/s store ceiling (~9.5x on large shapes).
+        if steps <= 1024:
+            BLOCK_SIZE = 256
+            num_warps = 2
+        elif steps <= 8192:
+            BLOCK_SIZE = 1024
+            num_warps = 4
+        elif steps <= 65536:
+            BLOCK_SIZE = 4096
+            num_warps = 8
+        else:
+            BLOCK_SIZE = 8192
+            num_warps = 8
         grid = (triton.cdiv(steps, BLOCK_SIZE),)
         linspace_kernel[grid](
-            out, out.stride(0), start, mid, end, step_size, steps, BLOCK_SIZE=BLOCK_SIZE
+            out,
+            out.stride(0),
+            start,
+            mid,
+            end,
+            step_size,
+            steps,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=num_warps,
         )
         return out

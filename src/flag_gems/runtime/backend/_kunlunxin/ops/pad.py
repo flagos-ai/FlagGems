@@ -158,6 +158,14 @@ def generate_destination_passing_padding_wrapper(
         code.writeline(
             "BLOCK_SIZE = triton.next_power_of_2(triton.cdiv(out0.numel(), num_ctas))"
         )
+        # NOTE (kunlunxin/XPU): cap BLOCK_SIZE so it never becomes a giant
+        # constexpr tile. The original `next_power_of_2(cdiv(numel, 12))` produced
+        # e.g. `tensor<67108864>` (67M-element) tiles for the 655M/1G benchmark
+        # outputs, exploding the IR to ~1.1GB. The kernel already covers the whole
+        # output via `grid = cdiv(numel, BLOCK_SIZE)` + `mask=offset<out_elem_cnt`,
+        # so bounding the tile just uses more (smaller) programs with identical
+        # semantics for every mode.
+        code.writeline("BLOCK_SIZE = min(BLOCK_SIZE, 8192)")
         code.writeline("grid = (triton.cdiv(out0.numel(), BLOCK_SIZE), 1, 1)")
         code.newline()
 
@@ -473,6 +481,50 @@ class PadFunction:
 _pad_func = PadFunction()
 
 
+def _constant_pad_fast(self, pad, value):
+    """Fast path for `mode == "constant"` with non-negative pads.
+
+    The generated `_pad_func` kernel walks every output element and recovers its
+    multi-dim index with per-element `//` / `%` (divmod) against the output
+    strides, which is both compute-heavy and (with the unbounded tile) IR-heavy.
+    For constant padding the result is simply: an output prefilled with `value`,
+    with the input block copied into the interior. That is two pure-bandwidth
+    passes (fill + interior copy) and no index arithmetic, matching how torch
+    itself implements constant pad.
+
+    The interior is a *strided* narrow view of the output. Writing into it with
+    the gems `copy_` (`interior.copy_(self)`) is catastrophic on kunlunxin: the
+    gems triton `_copy_kernel` degrades to fully discrete access for a strided
+    fp16/bf16 destination (~83x slower than native, e.g. 21.6ms vs 0.26ms for a
+    [64,512,512] pad), and its CompositeExplicitAutograd fallback is just as slow.
+    We instead invoke the ATen `_copy_from` primitive directly: gems overrides
+    only `copy_`/`copy`, never `_copy_from`, so this reaches the vendor's native
+    strided-copy engine (fast for every dtype) even while `use_gems` is active.
+    """
+    ndim = self.ndim
+    pad_pairs = len(pad) // 2
+
+    pad_before = [0 for _ in range(ndim)]
+    pad_after = [0 for _ in range(ndim)]
+    for i in range(pad_pairs):
+        pad_before[ndim - 1 - i] = pad[2 * i]
+        pad_after[ndim - 1 - i] = pad[2 * i + 1]
+
+    dst_shape = [self.shape[i] + pad_before[i] + pad_after[i] for i in range(ndim)]
+
+    out = torch.empty(dst_shape, device=self.device, dtype=self.dtype)
+    out.fill_(value)
+
+    # narrow the output down to the interior region that receives the input
+    interior = out
+    for d in range(ndim):
+        interior = interior.narrow(d, pad_before[d], self.shape[d])
+    # Native strided copy (bypasses the slow gems strided copy_). `_copy_from`
+    # copies `self` into `interior` and handles non-contiguous src correctly.
+    torch.ops.aten._copy_from(self, interior, False)
+    return out
+
+
 def pad(self, pad, mode="constant", value=None):
     logger.debug("GEMS_KUNLUNXIN CONSTANT_PAD_ND")
 
@@ -499,6 +551,17 @@ def pad(self, pad, mode="constant", value=None):
             assert (
                 pad_l <= input_size and pad_r <= input_size
             ), "Padding value causes wrapping around more than once."
+
+    # Fast constant path: only for non-negative pads (negative pads crop, which
+    # the narrow/copy shortcut cannot express -> fall back to the general kernel).
+    #
+    # This path fills the output then writes the input into a strided interior
+    # view via the ATen `_copy_from` primitive (native strided copy). Because it
+    # no longer relies on the gems `copy_` (whose triton kernel is both slow and,
+    # for a last-dim-only narrow on ndim >= 5 fp16/bf16, buggy), there is no rank
+    # restriction: `_copy_from` is correct and fast for every rank and dtype.
+    if mode == "constant" and all(p >= 0 for p in pad):
+        return _constant_pad_fast(self, pad, float(value))
 
     out = _pad_func(self, pad, mode, float(value))
     return out
