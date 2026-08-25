@@ -224,3 +224,155 @@ def test_cudnn_attention_backward(
     utils.gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
     utils.gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
     utils.gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+@pytest.mark.cudnn_attention_backward
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_cudnn_attention_backward_dropout_pos_rejected(dtype):
+    """dropout_p > 0 is not supported and must raise NotImplementedError."""
+    if TO_CPU:
+        pytest.skip(
+            "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
+        )
+
+    batch, num_head, q_seq_len, kv_seq_len, head_size = 1, 2, 64, 64, 64
+    scale = float(1.0 / math.sqrt(head_size))
+
+    Q, K, V = make_qkv(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        flag_gems.device,
+    )
+    dOut = torch.randn(
+        batch,
+        q_seq_len,
+        num_head,
+        head_size,
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    out, lse, philox_seed, philox_offset = cudnn_attn_forward_native(
+        Q,
+        K,
+        V,
+        attn_bias=None,
+        is_causal=False,
+        softmax_scale=scale,
+        # Forward with dropout_p=0.1 so the rejection under test only comes
+        # from the GEMS backward.
+        dropout_p=0.1,
+    )
+
+    Q_bhsd = Q.permute(0, 2, 1, 3).contiguous()
+    K_bhsd = K.permute(0, 2, 1, 3).contiguous()
+    V_bhsd = V.permute(0, 2, 1, 3).contiguous()
+    out_bhsd = out.permute(0, 2, 1, 3).contiguous()
+    dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
+
+    with pytest.raises(NotImplementedError):
+        with flag_gems.use_gems():
+            torch.ops.aten._cudnn_attention_backward(
+                dOut_bhsd,
+                Q_bhsd,
+                K_bhsd,
+                V_bhsd,
+                out_bhsd,
+                lse,
+                philox_seed,
+                philox_offset,
+                None,
+                None,
+                None,
+                q_seq_len,
+                kv_seq_len,
+                0.1,
+                False,
+                scale=scale,
+            )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+@pytest.mark.cudnn_attention_backward
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_cudnn_attention_backward_dropout_neg_degrades_to_zero(dtype):
+    """dropout_p < 0 is treated as no-dropout and must match dropout_p=0.0."""
+    if TO_CPU:
+        pytest.skip(
+            "_cudnn_attention_backward is CUDA-only, cannot run in quick-cpu mode"
+        )
+
+    batch, num_head, q_seq_len, kv_seq_len, head_size = 1, 2, 64, 64, 64
+    scale = float(1.0 / math.sqrt(head_size))
+
+    Q, K, V = make_qkv(
+        batch,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        flag_gems.device,
+    )
+    dOut = torch.randn(
+        batch,
+        q_seq_len,
+        num_head,
+        head_size,
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    # Drive the forward with dropout_p=0.0 and only vary the backward dropout_p.
+    out, lse, philox_seed, philox_offset = cudnn_attn_forward_native(
+        Q,
+        K,
+        V,
+        attn_bias=None,
+        is_causal=False,
+        softmax_scale=scale,
+    )
+
+    Q_bhsd = Q.permute(0, 2, 1, 3).contiguous()
+    K_bhsd = K.permute(0, 2, 1, 3).contiguous()
+    V_bhsd = V.permute(0, 2, 1, 3).contiguous()
+    out_bhsd = out.permute(0, 2, 1, 3).contiguous()
+    dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
+
+    def _gems_backward(dropout_p):
+        with flag_gems.use_gems():
+            dQ, dK, dV = torch.ops.aten._cudnn_attention_backward(
+                dOut_bhsd,
+                Q_bhsd,
+                K_bhsd,
+                V_bhsd,
+                out_bhsd,
+                lse,
+                philox_seed,
+                philox_offset,
+                None,
+                None,
+                None,
+                q_seq_len,
+                kv_seq_len,
+                dropout_p,
+                False,
+                scale=scale,
+            )
+        return (
+            dQ.permute(0, 2, 1, 3).contiguous(),
+            dK.permute(0, 2, 1, 3).contiguous(),
+            dV.permute(0, 2, 1, 3).contiguous(),
+        )
+
+    dQ_neg, dK_neg, dV_neg = _gems_backward(-1.0)
+    dQ_zero, dK_zero, dV_zero = _gems_backward(0.0)
+
+    utils.gems_assert_close(dQ_neg, dQ_zero, dtype, equal_nan=True)
+    utils.gems_assert_close(dK_neg, dK_zero, dtype, equal_nan=True)
+    utils.gems_assert_close(dV_neg, dV_zero, dtype, equal_nan=True)

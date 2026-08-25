@@ -405,6 +405,11 @@ def cudnn_attention_backward(
     if lse.ndim == 4 and lse.shape[-1] == 1:
         lse = lse.squeeze(-1)
 
+    if dropout_p > 0.0:
+        raise NotImplementedError(
+            "cudnn_attention_backward: dropout > 0 is not yet supported"
+        )
+
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
