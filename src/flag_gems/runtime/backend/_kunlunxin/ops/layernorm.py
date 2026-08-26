@@ -581,3 +581,10 @@ def layer_norm_backward(
             isCloseVectorization=True,
         )
     return in_grad, weight_grad, bias_grad
+
+
+def native_layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
+    logger.debug("GEMS_KUNLUNXIN NATIVE_LAYER_NORM")
+    output, mean, rstd = layer_norm(input, normalized_shape, weight, bias, eps)
+    stats_shape = input.shape[: -len(normalized_shape)] + (1,) * len(normalized_shape)
+    return output, mean.view(stats_shape), rstd.view(stats_shape)

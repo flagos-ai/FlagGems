@@ -168,7 +168,7 @@ from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
 from .kron import kron
-from .layernorm import layer_norm, layer_norm_backward
+from .layernorm import layer_norm, layer_norm_backward, native_layer_norm
 from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
@@ -547,6 +547,7 @@ __all__ = [
     "kron",
     "layer_norm",
     "layer_norm_backward",
+    "native_layer_norm",
     "leaky_relu",
     "leaky_relu_",
     "leaky_relu_out",
