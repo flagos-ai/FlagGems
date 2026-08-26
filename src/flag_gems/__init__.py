@@ -1051,6 +1051,18 @@ _FULL_CONFIG = (
     ("special_gammaln", special_gammaln),
     ("special_gammaln.out", special_gammaln_out),
     ("special_hermite_polynomial_h", special_hermite_polynomial_h),
+    ("special_laguerre_polynomial_l", special_laguerre_polynomial_l),
+    ("special_laguerre_polynomial_l.out", special_laguerre_polynomial_l_out),
+    ("special_laguerre_polynomial_l.x_scalar", special_laguerre_polynomial_l),
+    (
+        "special_laguerre_polynomial_l.x_scalar_out",
+        special_laguerre_polynomial_l_out,
+    ),
+    ("special_laguerre_polynomial_l.n_scalar", special_laguerre_polynomial_l),
+    (
+        "special_laguerre_polynomial_l.n_scalar_out",
+        special_laguerre_polynomial_l_out,
+    ),
     ("special_i0e", special_i0e),
     ("special_i0e_out", special_i0e_out),
     ("special_i1", special_i1),
