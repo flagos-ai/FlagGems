@@ -406,6 +406,7 @@ from flag_gems.ops.fractional_max_pool2d import (
     fractional_max_pool2d_backward,
 )
 from flag_gems.ops.frexp import frexp
+from flag_gems.ops.frobenius_norm import frobenius_norm
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.functional_assert_async import _functional_assert_async
@@ -1324,6 +1325,7 @@ __all__ = [
     "fractional_max_pool2d",
     "fractional_max_pool2d_backward",
     "frexp",
+    "frobenius_norm",
     "full",
     "full_like",
     "gather",
