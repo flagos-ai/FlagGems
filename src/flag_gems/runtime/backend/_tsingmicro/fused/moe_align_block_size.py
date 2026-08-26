@@ -276,7 +276,7 @@ def moe_align_block_size_triton(
             block_size_expert,
         )
     if num_experts == triton.next_power_of_2(num_experts):
-        experts_per_cta = num_experts // 16
+        experts_per_cta = max(1, num_experts // 16)
         grid2 = (num_experts // experts_per_cta,)
         moe_align_block_size_stage2_vec[grid2](
             tokens_cnts,

@@ -50,6 +50,22 @@ cdist_backward:
 randperm:
   <<: *single_dim_shapes
 
+exponential:
+  shapes:
+    - [64, 64]
+    - [10000, 1]
+    - [100, 1, 100]
+    - [10000, 256]
+    - [100, 256, 100]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [268435456]
+    - [10000, 65536]
+    - [100, 65536, 100]
+    - [1024, 1024, 1024]
+    - [1073741824]
+  shape_desc: "input shape"
+
 svd:
   shapes:
     - [4096, 2, 2]
@@ -111,6 +127,15 @@ cosh_out:
     - [64, 512, 512]
     - [1024, 65536]
   shape_desc: "(B), M, N"
+
+linalg_matrix_norm:
+  shapes:
+    - [256, 512]
+    - [2, 2048]
+    - [4, 32, 64]
+    - [16, 2, 2048]
+    - [8, 4, 32, 32]
+  shape_desc: "(*B), M, N"
 
 log10:
   shapes:
@@ -265,12 +290,62 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+addmm_vector_bias:
+  shapes:
+    - [1, 64, 256, 184]
+    - [1, 128, 512, 512]
+    - [1, 256, 256, 1024]
+    - [1, 512, 1024, 1024]
+    - [1, 1024, 512, 1536]
+  shape_desc: "B, M, N, K"
+
+addmm_out_vector_bias:
+  shapes:
+    - [1, 64, 256, 184]
+    - [1, 128, 512, 512]
+    - [1, 256, 256, 1024]
+    - [1, 512, 1024, 1024]
+    - [1, 1024, 512, 1536]
+  shape_desc: "B, M, N, K"
+
 grouped_mm:
   shapes:
     - [16, 512, 2048]
     - [16, 2560, 2048]
     - [64, 2048, 128]
   shape_desc: "Groups, N, K"   # shapes are defined as (Groups, N, K)
+
+sparse_sampled_addmm:
+  shapes:
+    - [2, 128, 128, 128]
+    - [4, 256, 256, 256]
+    - [8, 512, 512, 512]
+    - [16, 512, 512, 512]
+    - [4, 1024, 1024, 1024]
+    - [16, 1024, 1024, 1024]
+    - [8, 2048, 2048, 64]
+    - [2, 2048, 2048, 128]
+    - [4, 4096, 4096, 128]
+    - [1, 4096, 4096, 64]
+    - [2, 4096, 1024, 512]
+    - [2, 1024, 1000, 384]
+  shape_desc: "B, M, N, K"
+
+sparse_sampled_addmm_out:
+  shapes:
+    - [2, 128, 128, 128]
+    - [4, 256, 256, 256]
+    - [8, 512, 512, 512]
+    - [16, 512, 512, 512]
+    - [4, 1024, 1024, 1024]
+    - [16, 1024, 1024, 1024]
+    - [8, 2048, 2048, 64]
+    - [2, 2048, 2048, 128]
+    - [4, 4096, 4096, 128]
+    - [1, 4096, 4096, 64]
+    - [2, 4096, 1024, 512]
+    - [2, 1024, 1000, 384]
+  shape_desc: "B, M, N, K"
 
 MvAndOuterBenchmark:
   shapes:
@@ -350,6 +425,34 @@ TensorRepeatBenchmark:
     - [512, 2048]
   shape_desc: "(B), M, N"
 
+weight_norm:
+  shapes:
+    - [64, 64]
+    - [512, 512]
+    - [1024, 1024]
+
+# MetaX C550: reduced shapes to avoid 32-bit pointer limitation in MacaLauncher
+group_norm:
+  shapes:
+    - [4, 16, 64, 4]
+    - [16, 16, 8, 48]
+    - [16, 16, 8, 88]
+    - [16, 16, 128]
+  shape_desc: "N, C, *"
+
+argmin:
+  shapes:
+    - [65536]
+    - [64, 64]
+    - [512, 512]
+    - [64, 64, 64]
+
+log_softmax:
+  shapes:
+    - [64, 64]
+    - [256, 256]
+    - [1024, 1024]
+
 GenericBenchmarkExcluse1D:
   shapes:
     - [64, 64]
@@ -405,6 +508,24 @@ GenericBenchmark2DOnly:
     - [1024, 1024]
     - [4096, 4096]
     - [1024, 65536]
+
+# huber_loss is a reduction op: small tensors are dominated by launch/dispatch
+# overhead, so its per-op shape set keeps the default 2D shapes and additionally
+# covers larger reduction workloads where the Triton kernel is representative.
+huber_loss:
+  shapes:
+    - [64, 64]
+    - [256, 256]
+    - [1024, 1024]
+    - [4096, 4096]
+    - [1024, 65536]
+    - [2048, 32768]
+    - [2048, 65536]
+    - [4096, 32768]
+    - [4096, 65536]
+    - [3072, 49152]
+    - [3072, 65536]
+  shape_desc: "M, N"
 
 # default 4d-only shapes
 GenericBenchmark4DOnly:

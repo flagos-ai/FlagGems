@@ -82,8 +82,7 @@ vendor_info = VendorDescriptor(
 
 CUSTOMIZED_UNUSED_OPS = (
     "arange_start",
-    # "copy",
-    # "copy_",
+    "argmax",
     "gcd",
     "gcd_out",
     "gelu",
@@ -92,11 +91,24 @@ CUSTOMIZED_UNUSED_OPS = (
     "sort",
     "sort_stable",
     "topk",
-    # "to_copy",
     "tril",
     "tril_",
     "tril_out",
     "unique_consecutive",
+    "broadcast_to",
+    "expand",
+    "expand_",
+    "repeat_interleave_self_int",
+    "repeat_interleave_self_tensor",
+    "pad",
+    "pow_scalar",
+    "pow_tensor_scalar",
+    "pow_tensor_scalar_",
+    "pow_tensor_tensor",
+    "pow_tensor_tensor_",
+    "constant_pad_nd",
+    "masked_fill",
+    "masked_fill_",
 )
 
 __all__ = ["*"]

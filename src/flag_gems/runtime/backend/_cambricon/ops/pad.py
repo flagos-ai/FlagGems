@@ -88,6 +88,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("from triton import language as tl")
     code.newline()
+    code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils.libentry import libentry")
     code.writeline("from flag_gems.runtime import torch_device_fn")
     code.writeline("from flag_gems.utils import triton_lang_extension as ext")
@@ -159,7 +160,14 @@ def generate_destination_passing_padding_wrapper(
 
     with code.indent():
         # docstring
-        code.writeline("BLOCK_SIZE = 2048")
+        code.writeline('pad_configs = runtime.get_tuned_config("pad")')
+        code.writeline(
+            'BLOCK_SIZE = pad_configs[0].kwargs.get("BLOCK_SIZE", 256) '
+            "if pad_configs else 256"
+        )
+        code.writeline("if 0 < out0.numel() < BLOCK_SIZE:")
+        with code.indent():
+            code.writeline("BLOCK_SIZE = triton.next_power_of_2(out0.numel())")
         code.writeline("grid = (triton.cdiv(out0.numel(), BLOCK_SIZE), 1, 1)")
         code.newline()
 
@@ -245,8 +253,8 @@ def generate_pad_kernel(
     code.newline()
 
     # the decorators
-    code.writeline("@libentry()")
     non_specialize_arg_names = ["value"]
+    code.writeline("@libentry()")
     code.writeline(f"@triton.jit(do_not_specialize={non_specialize_arg_names})")
 
     # signature
@@ -471,7 +479,6 @@ class PadFunction:
 _pad_func = PadFunction()
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_SIZE": 2**n}, num_stages=s)
@@ -480,6 +487,7 @@ _pad_func = PadFunction()
     ],
     key=["inp_elements"],
 )
+@libentry()
 @triton.jit
 def pad_1d_constant_kernel(
     inp_ptr,
@@ -497,14 +505,13 @@ def pad_1d_constant_kernel(
     out_elements = pad_left + inp_elements + pad_right
     for off in range(start, out_elements, step):
         inp_offset = off + tl.arange(0, BLOCK_SIZE) - pad_left
-        inp_mask = inp_offset >= 0 and inp_offset < inp_elements
+        inp_mask = (inp_offset >= 0) & (inp_offset < inp_elements)
         inp = tl.load(inp_ptr + inp_offset, mask=inp_mask, other=pad_value)
         out_offset = off + tl.arange(0, BLOCK_SIZE)
         out_mask = out_offset < out_elements
         tl.store(out_ptr + out_offset, inp, mask=out_mask)
 
 
-@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_H": n}, num_stages=s)
@@ -513,6 +520,7 @@ def pad_1d_constant_kernel(
     ],
     key=["H", "W"],
 )
+@libentry()
 @triton.jit
 def pad_2d_constant_kernel(
     inp_ptr,
@@ -536,15 +544,18 @@ def pad_2d_constant_kernel(
         offset_h = tl.arange(0, BLOCK_H) + batch_idx - pad_top
         offset_w = tl.arange(0, out_W) - pad_left
         offsets = offset_h[:, None] * W + offset_w[None, :]
-        mask = (offset_h[:, None] >= 0 and offset_h[:, None] < H) and (
-            offset_w[None, :] >= 0 and offset_w[None, :] < W
+        mask = (
+            (offset_h[:, None] >= 0)
+            & (offset_h[:, None] < H)
+            & (offset_w[None, :] >= 0)
+            & (offset_w[None, :] < W)
         )
         inp = tl.load(inp_ptr + offsets, mask=mask, other=pad_value)
 
         out_offset_c = tl.arange(0, out_W)
         out_offset_n = tl.arange(0, BLOCK_H) + batch_idx
         out_offsets = out_offset_n[:, None] * out_W + out_offset_c[None, :]
-        out_mask = out_offset_n[:, None] < out_H and out_offset_c[None, :] < out_W
+        out_mask = (out_offset_n[:, None] < out_H) & (out_offset_c[None, :] < out_W)
         tl.store(out_ptr + out_offsets, inp, mask=out_mask)
 
 
