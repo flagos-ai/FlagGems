@@ -346,20 +346,6 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     for d in normalized_dim:
         reduce_elements *= x.shape[d % x.ndim]
 
-    # On P800, compiling the row-wise kernel with more than ~1000 reduction
-    # tiles makes the ord=1 accumulation silently reuse/drop lanes.  Keep the
-    # normal Triton path (including all core benchmark shapes), but use the
-    # native CPU reduction for this extreme correctness case.
-    if ord == 1 and reduce_elements > 1_000_000 and len(normalized_dim) < x.ndim:
-        cpu_out = torch.linalg.vector_norm(
-            x.cpu(),
-            ord=ord,
-            dim=tuple(normalized_dim),
-            keepdim=keepdim,
-            dtype=dtype,
-        )
-        return cpu_out.to(x.device)
-
     with torch_device_fn.device(x.device):
         if (not dim) or len(dim) == x.ndim:
             dim = list(range(x.ndim))
