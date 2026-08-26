@@ -1919,6 +1919,19 @@ ops:
     stages:
       - stable: '5.0'
     cpp: '4.0'
+  - id: bmm_w8a8_fp8
+    description: |
+      Performs batched matrix multiplication with block-wise FP8 E4M3
+      quantized activations and weights using FP32 accumulation.
+    for:
+      - None
+    labels:
+      - NoCPU
+      - Quantization
+    kind:
+      - BLAS
+    stages:
+      - alpha: '5.4'
   - id: broadcast_tensors
     description: >-
       Broadcasts the given tensors to a common shape according to
