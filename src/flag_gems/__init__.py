@@ -168,6 +168,7 @@ _FULL_CONFIG = (
     ("alpha_dropout_", alpha_dropout_),
     ("binary_cross_entropy_backward", binary_cross_entropy_backward),
     ("choose_qparams_optimized", choose_qparams_optimized),
+    ("fractional_max_pool3d", fractional_max_pool3d),
     ("grid_sampler_3d_backward", grid_sampler_3d_backward),
     ("linalg_svdvals", linalg_svdvals),
     ("_log_softmax", log_softmax),
