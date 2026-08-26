@@ -66,12 +66,12 @@ def rms_norm_kernel(
     x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
 
     var = tl.sum(x * x, axis=0) / N
+    tl.store(INV_RMS + pid, var)
     rrms = 1 / tl.sqrt(var + eps)
 
     w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
     y = (x * rrms).to(Y.dtype.element_ty) * w
     tl.store(Y + cols * y_stride_c, y, mask=mask)
-    tl.store(INV_RMS + pid, rrms)
 
 
 # --- Multi-row 2D-tile forward kernel (launch-bound huge-M / small-N only) -------
@@ -111,11 +111,11 @@ def rms_norm_multirow_kernel(
     x = tl.load(X + offs, mask=m_mask[:, None], other=0.0).to(tl.float32)
 
     var = tl.sum(x * x, axis=1) / N
+    tl.store(INV_RMS + m_off, var, mask=m_mask)
     rrms = 1.0 / tl.sqrt(var + eps)
 
     y = (x * rrms[:, None]).to(Y.dtype.element_ty) * w[None, :]
     tl.store(Y + offs, y.to(Y.dtype.element_ty), mask=m_mask[:, None])
-    tl.store(INV_RMS + m_off, rrms, mask=m_mask)
 
 
 @libentry()
@@ -156,6 +156,7 @@ def rms_norm_kerne_tile(
             x = tl.load(X + cols).to(tl.float32)
         _var_base += x * x / N
     var = tl.sum(_var_base)
+    tl.store(INV_RMS + pid, var)
     rrms = 1 / tl.sqrt(var + eps)
 
     for off in range(0, N, BLOCK_SIZE):
@@ -171,8 +172,6 @@ def rms_norm_kerne_tile(
             w = tl.load(W + cols)
             y = (x * rrms).to(Y.dtype.element_ty) * w
             tl.store(Y + cols * y_stride_c, y)
-
-    tl.store(INV_RMS + pid, rrms)
 
 
 @libentry()
@@ -200,7 +199,8 @@ def rms_norm_grad_dx_kernel(
     mask = tl.arange(0, BLOCK_SIZE) < N
     cols = tl.arange(0, BLOCK_SIZE)
     x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-    inv_rms = tl.load(INV_RMS).to(tl.float32)
+    var = tl.load(INV_RMS).to(tl.float32)
+    inv_rms = 1 / tl.sqrt(var + eps)
     dy = tl.load(DY + cols * x_stride_c, mask, other=0.0).to(tl.float32)
     w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
 
@@ -240,8 +240,8 @@ def rms_norm_grad_dx_kernel_tile(
     # mask = tl.arange(0, BLOCK_SIZE) < N
     # cols = tl.arange(0, BLOCK_SIZE)
     # x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-    inv_rms = tl.load(INV_RMS).to(tl.float32)
-    # dy = tl.load(DY + cols * x_stride_c, mask, other=0.0).to(tl.float32)
+    var = tl.load(INV_RMS).to(tl.float32)
+    inv_rms = 1 / tl.sqrt(var + eps)
     # w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
 
     # dy = dy * w
@@ -284,11 +284,11 @@ def rms_norm_grad_dx_kernel_tile(
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["eps"])
 def rms_norm_grad_dw_kernel(
     X,  # pointer to the input
     DY,
-    INV_RMS,  # pointer to inverse rms
+    INV_RMS,  # pointer to variance
     DW,  # pointer to the output
     dx_stride_r,
     dx_stride_c,
@@ -296,6 +296,7 @@ def rms_norm_grad_dw_kernel(
     x_stride_c,  # how much to increase the pointer when moving by 1 col
     M,  # number of rows in X
     N,  # number of columns in X
+    eps,
     ROW_BLOCK_SIZE: tl.constexpr,
     COL_BLOCK_SIZE: tl.constexpr,
 ):
@@ -322,6 +323,7 @@ def rms_norm_grad_dw_kernel(
         other=0.0,
     ).to(tl.float32)
     inv_rms = tl.load(INV_RMS + rows, row_mask, other=0.0).to(tl.float32)
+    inv_rms = 1 / tl.sqrt(inv_rms + eps)
     dy = tl.load(
         DY + rows[:, None] * x_stride_r + cols[None, :] * x_stride_c,
         row_mask[:, None] & col_mask[None, :],
@@ -365,6 +367,7 @@ def rms_norm_grad_kernel(
     dy = tl.load(dy_ptr, mask=mask, other=0.0).to(tl.float32)
     weight = tl.load(w_ptr, mask=mask, other=0.0).to(tl.float32)
     inv_rms = tl.load(INV_RMS + row_idx).to(tl.float32)
+    inv_rms = 1 / tl.sqrt(inv_rms + eps)
 
     dy_w = dy * weight
     x_inv_rms = x * inv_rms
@@ -485,6 +488,7 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps=1e-5):
             1,
             M,
             N,
+            eps,
             ROW_BLOCK_SIZE,
             COL_BLOCK_SIZE,
             isCloseUnrollControl=True,
