@@ -12,12 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .matmul_bias_activation import matmul_bias_activation
-from .sparse_attention import sparse_attn_triton
-from .top_k_per_row_prefill import top_k_per_row_prefill
+import pytest
+import torch
 
-__all__ = [
-    "matmul_bias_activation",
-    "sparse_attn_triton",
-    "top_k_per_row_prefill",
-]
+from . import base, consts
+
+
+@pytest.mark.divide
+def test_divide():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="divide",
+        torch_op=torch.ops.aten.divide.Tensor,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
