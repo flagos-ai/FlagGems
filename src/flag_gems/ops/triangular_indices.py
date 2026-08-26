@@ -255,26 +255,36 @@ def _launch_metadata(row_count, max_length):
     grid = min(total_tasks, grid_limit)
     if grid <= 0 or grid > configured_limit:
         raise RuntimeError("triangular_indices kernel grid exceeds the backend limit")
-    return blocks_per_row, total_tasks, (grid,)
+    return blocks_per_row, total_tasks, grid < total_tasks, (grid,)
 
 
 @libentry()
 @triton.jit
 def _rectangle_indices_kernel(
     output_ptr,
-    output_size,
-    output_offset,
-    row_start,
-    row_count,
-    matrix_col,
-    blocks_per_row,
-    total_tasks,
+    output_size: tl.constexpr,
+    output_offset: tl.constexpr,
+    row_start: tl.constexpr,
+    row_count: tl.constexpr,
+    matrix_col: tl.constexpr,
+    blocks_per_row: tl.constexpr,
+    total_tasks: tl.constexpr,
+    PERSISTENT: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = ext.program_id(0)
     num_programs = ext.num_programs(0)
 
-    for task_id in range(pid, total_tasks, num_programs):
+    if PERSISTENT:
+        tasks_per_program = total_tasks // num_programs
+        extra_tasks = total_tasks - tasks_per_program * num_programs
+        task_start = pid * tasks_per_program + tl.minimum(pid, extra_tasks)
+        task_end = task_start + tasks_per_program + tl.where(pid < extra_tasks, 1, 0)
+    else:
+        task_start = pid
+        task_end = pid + 1
+
+    for task_id in range(task_start, task_end):
         local_row = task_id // blocks_per_row
         block_index = task_id - local_row * blocks_per_row
         column = block_index * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -289,19 +299,29 @@ def _rectangle_indices_kernel(
 @triton.jit
 def _tril_ramp_indices_kernel(
     output_ptr,
-    output_size,
-    output_offset,
-    row_start,
-    row_count,
-    first_length,
-    blocks_per_row,
-    total_tasks,
+    output_size: tl.constexpr,
+    output_offset: tl.constexpr,
+    row_start: tl.constexpr,
+    row_count: tl.constexpr,
+    first_length: tl.constexpr,
+    blocks_per_row: tl.constexpr,
+    total_tasks: tl.constexpr,
+    PERSISTENT: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = ext.program_id(0)
     num_programs = ext.num_programs(0)
 
-    for task_id in range(pid, total_tasks, num_programs):
+    if PERSISTENT:
+        tasks_per_program = total_tasks // num_programs
+        extra_tasks = total_tasks - tasks_per_program * num_programs
+        task_start = pid * tasks_per_program + tl.minimum(pid, extra_tasks)
+        task_end = task_start + tasks_per_program + tl.where(pid < extra_tasks, 1, 0)
+    else:
+        task_start = pid
+        task_end = pid + 1
+
+    for task_id in range(task_start, task_end):
         local_row = task_id // blocks_per_row
         block_index = task_id - local_row * blocks_per_row
         column = block_index * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -325,20 +345,30 @@ def _tril_ramp_indices_kernel(
 @triton.jit
 def _triu_ramp_indices_kernel(
     output_ptr,
-    output_size,
-    output_offset,
-    row_start,
-    row_count,
-    first_length,
-    matrix_col,
-    blocks_per_row,
-    total_tasks,
+    output_size: tl.constexpr,
+    output_offset: tl.constexpr,
+    row_start: tl.constexpr,
+    row_count: tl.constexpr,
+    first_length: tl.constexpr,
+    matrix_col: tl.constexpr,
+    blocks_per_row: tl.constexpr,
+    total_tasks: tl.constexpr,
+    PERSISTENT: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = ext.program_id(0)
     num_programs = ext.num_programs(0)
 
-    for task_id in range(pid, total_tasks, num_programs):
+    if PERSISTENT:
+        tasks_per_program = total_tasks // num_programs
+        extra_tasks = total_tasks - tasks_per_program * num_programs
+        task_start = pid * tasks_per_program + tl.minimum(pid, extra_tasks)
+        task_end = task_start + tasks_per_program + tl.where(pid < extra_tasks, 1, 0)
+    else:
+        task_start = pid
+        task_end = pid + 1
+
+    for task_id in range(task_start, task_end):
         local_row = task_id // blocks_per_row
         block_index = task_id - local_row * blocks_per_row
         element = block_index * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -362,7 +392,7 @@ def _triu_ramp_indices_kernel(
 def _launch_plan(output, plan, col, is_lower):
     with torch_device_fn.device(output.device):
         if plan.rectangle_rows:
-            blocks, tasks, grid = _launch_metadata(plan.rectangle_rows, col)
+            blocks, tasks, persistent, grid = _launch_metadata(plan.rectangle_rows, col)
             _rectangle_indices_kernel[grid](
                 output,
                 plan.size,
@@ -372,6 +402,7 @@ def _launch_plan(output, plan, col, is_lower):
                 col,
                 blocks,
                 tasks,
+                persistent,
                 _BLOCK_SIZE,
             )
 
@@ -382,7 +413,9 @@ def _launch_plan(output, plan, col, is_lower):
                     plan.ramp_rows - 1,
                     "tril_indices maximum row length",
                 )
-                blocks, tasks, grid = _launch_metadata(plan.ramp_rows, max_length)
+                blocks, tasks, persistent, grid = _launch_metadata(
+                    plan.ramp_rows, max_length
+                )
                 _tril_ramp_indices_kernel[grid](
                     output,
                     plan.size,
@@ -392,10 +425,11 @@ def _launch_plan(output, plan, col, is_lower):
                     plan.ramp_first_length,
                     blocks,
                     tasks,
+                    persistent,
                     _BLOCK_SIZE,
                 )
             else:
-                blocks, tasks, grid = _launch_metadata(
+                blocks, tasks, persistent, grid = _launch_metadata(
                     plan.ramp_rows, plan.ramp_first_length
                 )
                 _triu_ramp_indices_kernel[grid](
@@ -408,6 +442,7 @@ def _launch_plan(output, plan, col, is_lower):
                     col,
                     blocks,
                     tasks,
+                    persistent,
                     _BLOCK_SIZE,
                 )
 
