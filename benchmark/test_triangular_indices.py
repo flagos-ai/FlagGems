@@ -19,6 +19,14 @@ import flag_gems
 
 from . import base, consts
 
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason=(
+        "Ascend native torch.tril_indices/triu_indices benchmark baseline "
+        "is prohibitively slow."
+    ),
+)
+
 
 class TriangularIndicesBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
