@@ -13,6 +13,18 @@
 # limitations under the License.
 
 ops:
+  - id: batch_norm_update_stats
+    description: |
+      Triton kernel implementation for computing per-channel mean and invstd from input and updating running statistics.
+    for:
+      - batch_norm_update_stats
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.5'
   - id: batch_norm_with_update_functional
     description: Functional variant of _batch_norm_with_update that applies training-mode Batch Normalization and updates running statistics.
     for:
