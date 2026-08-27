@@ -3313,6 +3313,22 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
+  - id: gather_sparse_backward
+    description: |
+      Backward of `gather()` producing a sparse (COO) gradient w.r.t. `self`.
+      Each entry of the flattened `grad`/`index` contributes one non-zero at the
+      gather position `index[..., ]` along `dim` (the other coordinates are the
+      unraveled index of the entry). The result is an uncoalesced sparse COO
+      tensor of size `self.size()`.
+    for:
+      - _gather_sparse_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '2.2'
   - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
