@@ -50,6 +50,19 @@ def _quantize_state_tile_int8(values, mask_k):
     return quantized, state_scale
 
 
+@triton.jit
+def _quantize_state_tile_int8_v_first(values, mask_k):
+    absmax_per_k = tl.max(
+        tl.where(mask_k[:, None], tl.abs(values), 0.0),
+        axis=1,
+    )
+    absmax = tl.max(absmax_per_k, axis=0)
+    state_scale = tl.where(absmax > 0.0, absmax * (1.0 / 127.0), 1.0)
+    inv_scale = tl.where(absmax > 0.0, 127.0 / absmax, 0.0)
+    quantized = _fp32_to_int8_rni(values * inv_scale)
+    return quantized, state_scale
+
+
 @libentry()
 @triton.jit
 def _quantize_gdn_state_int8_kernel(
@@ -190,7 +203,6 @@ def _fused_recurrent_gated_delta_rule_w8a16_int8_kernel(
         mask=mask_state,
         other=0.0,
     ).to(tl.float32)
-    b_h *= b_state_scale
 
     q_offsets = (
         i_b * stride_q_b + i_t * stride_q_t + i_h * stride_q_h + o_k * stride_q_k
@@ -206,13 +218,14 @@ def _fused_recurrent_gated_delta_rule_w8a16_int8_kernel(
     b_v = tl.load(v + v_offsets, mask=mask_v, other=0.0).to(tl.float32)
 
     if USE_QK_L2NORM:
-        b_q *= tl.rsqrt(tl.sum(b_q * b_q, axis=0) + 1e-6)
+        b_q *= tl.rsqrt(tl.sum(b_q * b_q, axis=0) + 1e-6) * scale
         b_k *= tl.rsqrt(tl.sum(b_k * b_k, axis=0) + 1e-6)
-    b_q *= scale
+    else:
+        b_q *= scale
 
     g_offset = i_b * stride_g_b + i_t * stride_g_t + i_hv * stride_g_h
     beta_offset = i_b * stride_beta_b + i_t * stride_beta_t + i_hv * stride_beta_h
-    b_h *= exp(tl.load(g + g_offset).to(tl.float32))
+    b_h *= b_state_scale * exp(tl.load(g + g_offset).to(tl.float32))
     b_v -= tl.sum(b_h * b_k[:, None], axis=0)
     b_v *= tl.load(beta + beta_offset).to(tl.float32)
     b_h += b_k[:, None] * b_v[None, :]
@@ -262,6 +275,8 @@ def _fused_recurrent_gated_delta_rule_grouped_w8a16_int8_kernel(
     BK: tl.constexpr,
     V: tl.constexpr,
     BV: tl.constexpr,
+    STREAM_STATE_STORE: tl.constexpr,
+    REDUCE_V_FIRST: tl.constexpr,
 ):
     i_v = tl.program_id(0)
     i_nh = tl.program_id(1)
@@ -298,10 +313,9 @@ def _fused_recurrent_gated_delta_rule_grouped_w8a16_int8_kernel(
         scale_offsets = scale_base + o_v
         b_state_scale = tl.load(state_scale + scale_base + i_v * BV).to(tl.float32)
         b_h = tl.load(state_int8 + state_offsets).to(tl.float32)
-        b_h *= b_state_scale
         b_v = tl.load(v + i_t * stride_v_t + i_hv * stride_v_h + o_v).to(tl.float32)
 
-        b_h *= decay
+        b_h *= b_state_scale * decay
         b_v = (b_v - tl.sum(b_h * b_k[:, None], axis=0)) * b_beta
         b_h += b_k[:, None] * b_v[None, :]
         b_o = tl.sum(b_h * b_q[:, None], axis=0)
@@ -310,8 +324,18 @@ def _fused_recurrent_gated_delta_rule_grouped_w8a16_int8_kernel(
             o + i_t * stride_o_t + i_hv * stride_o_h + o_v,
             b_o.to(o.dtype.element_ty),
         )
-        quantized, b_state_scale = _quantize_state_tile_int8(b_h, mask_k)
-        tl.store(state_int8 + state_offsets, quantized)
+        if REDUCE_V_FIRST:
+            quantized, b_state_scale = _quantize_state_tile_int8_v_first(b_h, mask_k)
+        else:
+            quantized, b_state_scale = _quantize_state_tile_int8(b_h, mask_k)
+        if STREAM_STATE_STORE:
+            tl.store(
+                state_int8 + state_offsets,
+                quantized,
+                cache_modifier=".cs",
+            )
+        else:
+            tl.store(state_int8 + state_offsets, quantized)
         tl.store(state_scale + scale_offsets, b_state_scale)
 
 
@@ -399,9 +423,10 @@ def _fused_recurrent_gated_delta_rule_persistent_w8a16_int8_kernel(
     b_q = tl.load(q + q_offsets, mask=mask_k, other=0.0).to(tl.float32)
     b_k = tl.load(k + k_offsets, mask=mask_k, other=0.0).to(tl.float32)
     if USE_QK_L2NORM:
-        b_q *= tl.rsqrt(tl.sum(b_q * b_q, axis=0) + 1e-6)
+        b_q *= tl.rsqrt(tl.sum(b_q * b_q, axis=0) + 1e-6) * scale
         b_k *= tl.rsqrt(tl.sum(b_k * b_k, axis=0) + 1e-6)
-    b_q *= scale
+    else:
+        b_q *= scale
 
     for i_group in tl.range(0, GROUP_HV, loop_unroll_factor=1):
         i_hv = i_hv_base + i_group
@@ -428,7 +453,6 @@ def _fused_recurrent_gated_delta_rule_persistent_w8a16_int8_kernel(
                 mask=mask_state,
                 other=0.0,
             ).to(tl.float32)
-            b_h *= b_state_scale
             v_offsets = (
                 i_b * stride_v_b
                 + i_t * stride_v_t
@@ -437,7 +461,7 @@ def _fused_recurrent_gated_delta_rule_persistent_w8a16_int8_kernel(
             )
             b_v = tl.load(v + v_offsets, mask=mask_v, other=0.0).to(tl.float32)
 
-            b_h *= decay
+            b_h *= b_state_scale * decay
             b_v = (b_v - tl.sum(b_h * b_k[:, None], axis=0)) * b_beta
             b_h += b_k[:, None] * b_v[None, :]
             b_o = tl.sum(b_h * b_q[:, None], axis=0)
@@ -651,7 +675,7 @@ def fused_recurrent_gated_delta_rule_w8a16_int8(
         block_v = _STATE_BLOCK_V
         if N == 1:
             grouped_maxnreg = 255
-        elif N >= 512:
+        elif N >= 128:
             grouped_maxnreg = 160
         else:
             grouped_maxnreg = 192
@@ -689,6 +713,8 @@ def fused_recurrent_gated_delta_rule_w8a16_int8(
             BK,
             V,
             block_v,
+            STREAM_STATE_STORE=N >= 512,
+            REDUCE_V_FIRST=N >= 128,
             num_warps=1,
             num_stages=1,
             maxnreg=grouped_maxnreg,
