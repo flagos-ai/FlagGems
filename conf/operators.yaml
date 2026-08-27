@@ -6947,6 +6947,18 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.4'
+  - id: upsample_trilinear3d_backward
+    description: |
+      Computes the gradient of upsample_trilinear3d with respect to its input (NCDHW),
+      scattering the output gradient back to the eight source corner voxels.
+    for:
+      - upsample_trilinear3d_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
   - id: weight_int4pack_mm_with_scales_and_zeros
     description: |
       Int4 quantized matrix multiplication with separate scales and zeros. Computes
