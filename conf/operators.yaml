@@ -12046,6 +12046,28 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: thnn_fused_gru_cell
+    description: Computes the fused GRU cell forward pass and backward workspace.
+    for:
+      - _thnn_fused_gru_cell
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: thnn_fused_gru_cell_out
+    description: Writes the fused GRU cell output and workspace to provided tensors.
+    for:
+      - _thnn_fused_gru_cell.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: thnn_fused_lstm_cell
     description: Fused LSTM cell computation with optional input and hidden biases.
     for:
