@@ -665,6 +665,8 @@ _FULL_CONFIG = (
     ("kthvalue", kthvalue),
     ("lcm", lcm),
     ("lcm_", lcm_),
+    ("ldexp.Tensor", ldexp),
+    ("ldexp.out", ldexp_out),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
     ("le_.Scalar", le_scalar_),
