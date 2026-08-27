@@ -69,6 +69,7 @@ from flag_gems.ops._functional_sym_constrain_range import (
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from flag_gems.ops._fused_adagrad_ import _fused_adagrad, _fused_adagrad_
 from flag_gems.ops._fused_adam import _fused_adam, _fused_adam_
 from flag_gems.ops._fused_moving_avg_obs_fq_helper import (
     _fused_moving_avg_obs_fq_helper,
@@ -998,6 +999,8 @@ __all__ = [
     "_flash_attention_forward",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
+    "_fused_adagrad",
+    "_fused_adagrad_",
     "_fused_adam",
     "_fused_adam_",
     "_fused_moving_avg_obs_fq_helper",
