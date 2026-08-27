@@ -41,6 +41,7 @@ from .div import (
     trunc_divide,
     trunc_divide_,
 )
+from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import (
     fill_scalar,
@@ -57,7 +58,9 @@ from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
 from .isin import isin
 from .lcm import lcm, lcm_
+from .linalg_matrix_norm import linalg_matrix_norm
 from .log_normal_ import log_normal_
+from .masked_scatter_backward import masked_scatter_backward
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .max_pool3d_with_indices import (
@@ -123,6 +126,7 @@ __all__ = [
     "diff",
     "div_mode",
     "div_mode_",
+    "exponential",
     "exponential_",
     "fill_scalar",
     "fill_scalar_",
@@ -146,7 +150,9 @@ __all__ = [
     "isin",
     "lcm",
     "lcm_",
+    "linalg_matrix_norm",
     "log_normal_",
+    "masked_scatter_backward",
     "matmul_bf16",
     "matmul_int8",
     "max_pool3d_backward",
