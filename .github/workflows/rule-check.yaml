@@ -127,3 +127,38 @@ jobs:
         run: |
           python tools/ci_checks/check_aten_operators.py \
             --operators '${{ needs.derive-changed-operators.outputs.changed_operators }}'
+
+  # --- Warning-only checks (Phase 3) ---
+  # These emit ::warning annotations but always exit 0
+
+  check-api-logs:
+    runs-on: ubuntu-latest
+    needs: derive-changed-operators
+    if: needs.derive-changed-operators.outputs.has_changes == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pyyaml
+      - name: Check API logging convention
+        run: |
+          python tools/ci_checks/check_api_logs.py \
+            --operators '${{ needs.derive-changed-operators.outputs.changed_operators }}'
+
+  check-benchmark-coverage:
+    runs-on: ubuntu-latest
+    needs: derive-changed-operators
+    if: needs.derive-changed-operators.outputs.has_changes == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pyyaml
+      - name: Check benchmark coverage
+        run: |
+          python tools/ci_checks/check_performance_reference.py \
+            --operators '${{ needs.derive-changed-operators.outputs.changed_operators }}'
