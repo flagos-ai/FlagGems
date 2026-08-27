@@ -265,7 +265,7 @@ def digit_hist_kernel(
         blk_bin_start = bin_segid * bins_segment
         for s in range(bins_segment):
             bin_id = s + blk_bin_start
-            digit_mask = tl.where(key_digit == bin_id and key_mask, 1, 0)
+            digit_mask = tl.where((key_digit == bin_id) & key_mask, 1, 0)
             digit_sum = tl.sum(digit_mask)
             # +1 for exclusive
             bin_offset = p * (bins + 1) * grid0 + (bin_id + 1) * grid0 + pid0
