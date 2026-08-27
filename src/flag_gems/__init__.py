@@ -262,6 +262,7 @@ _FULL_CONFIG = (
     ("_upsample_nearest_exact2d", _upsample_nearest_exact2d),
     ("_upsample_nearest_exact2d_backward", _upsample_nearest_exact2d_backward),
     ("_upsample_nearest_exact3d", _upsample_nearest_exact3d),
+    ("_weight_int8pack_mm", weight_int8pack_mm),
     ("_weight_norm", _weight_norm),
     ("_weight_norm_interface", weight_norm_interface),
     ("_weight_norm_interface_backward", weight_norm_interface_backward),
@@ -1160,7 +1161,6 @@ _FULL_CONFIG = (
     ("zero_", zero_),
     ("zeros", zeros),
     ("zeros_like", zeros_like),
-    ("_weight_int8pack_mm", weight_int8pack_mm),
 )
 
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
