@@ -136,7 +136,7 @@ def _gru_cell_backward_kernel(
 
 @libentry()
 @triton.jit
-def _gru_bias_backward_kernel(
+def _gru_bias_backward_kernel_small_batch(
     grad_input_gates,
     grad_hidden_gates,
     grad_input_bias,
@@ -192,6 +192,123 @@ def _gru_bias_backward_kernel(
         grad_hidden_bias + gate_offset * grad_hidden_bias_stride,
         tl.sum(hidden_accumulator, axis=0),
     )
+
+
+@libentry()
+@triton.jit
+def _gru_bias_backward_stage1_kernel(
+    grad_input_gates,
+    grad_hidden_gates,
+    partial_input_sums,
+    partial_hidden_sums,
+    batch_size,
+    hidden_size,
+    grad_input_stride_0,
+    grad_input_stride_1,
+    grad_hidden_stride_0,
+    grad_hidden_stride_1,
+    BLOCK_BATCH: tl.constexpr,
+    BLOCK_GATE: tl.constexpr,
+    IS_FP64: tl.constexpr,
+):
+    batch_block_id = tl.program_id(0)
+    gate_block_id = tl.program_id(1)
+
+    batch_start = batch_block_id * BLOCK_BATCH
+    gate_start = gate_block_id * BLOCK_GATE
+
+    gate_offsets = tl.arange(0, BLOCK_GATE)
+    gate_indices = gate_start + gate_offsets
+    gate_mask = gate_indices < 3 * hidden_size
+
+    if IS_FP64:
+        input_sums = tl.zeros((BLOCK_GATE,), dtype=tl.float64)
+        hidden_sums = tl.zeros((BLOCK_GATE,), dtype=tl.float64)
+    else:
+        input_sums = tl.zeros((BLOCK_GATE,), dtype=tl.float32)
+        hidden_sums = tl.zeros((BLOCK_GATE,), dtype=tl.float32)
+
+    for batch_offset in range(BLOCK_BATCH):
+        batch_idx = batch_start + batch_offset
+        if batch_idx < batch_size:
+            input_row_ptr = (
+                grad_input_gates
+                + batch_idx * grad_input_stride_0
+                + gate_indices * grad_input_stride_1
+            )
+            hidden_row_ptr = (
+                grad_hidden_gates
+                + batch_idx * grad_hidden_stride_0
+                + gate_indices * grad_hidden_stride_1
+            )
+
+            input_vals = tl.load(input_row_ptr, mask=gate_mask, other=0.0)
+            hidden_vals = tl.load(hidden_row_ptr, mask=gate_mask, other=0.0)
+
+            if IS_FP64:
+                input_sums += input_vals.to(tl.float64)
+                hidden_sums += hidden_vals.to(tl.float64)
+            else:
+                input_sums += input_vals.to(tl.float32)
+                hidden_sums += hidden_vals.to(tl.float32)
+
+    output_ptr_input = (
+        partial_input_sums + batch_block_id * (3 * hidden_size) + gate_indices
+    )
+    output_ptr_hidden = (
+        partial_hidden_sums + batch_block_id * (3 * hidden_size) + gate_indices
+    )
+
+    tl.store(output_ptr_input, input_sums, mask=gate_mask)
+    tl.store(output_ptr_hidden, hidden_sums, mask=gate_mask)
+
+
+@libentry()
+@triton.jit
+def _gru_bias_backward_stage2_kernel(
+    partial_input_sums,
+    partial_hidden_sums,
+    grad_input_bias,
+    grad_hidden_bias,
+    num_batch_blocks,
+    hidden_size,
+    grad_input_bias_stride,
+    grad_hidden_bias_stride,
+    BLOCK_GATE: tl.constexpr,
+    IS_FP64: tl.constexpr,
+):
+    gate_block_id = tl.program_id(0)
+    gate_start = gate_block_id * BLOCK_GATE
+    gate_offsets = tl.arange(0, BLOCK_GATE)
+    gate_indices = gate_start + gate_offsets
+    gate_mask = gate_indices < 3 * hidden_size
+
+    if IS_FP64:
+        input_sum = tl.zeros((BLOCK_GATE,), dtype=tl.float64)
+        hidden_sum = tl.zeros((BLOCK_GATE,), dtype=tl.float64)
+    else:
+        input_sum = tl.zeros((BLOCK_GATE,), dtype=tl.float32)
+        hidden_sum = tl.zeros((BLOCK_GATE,), dtype=tl.float32)
+
+    for block_idx in range(num_batch_blocks):
+        input_ptr = partial_input_sums + block_idx * (3 * hidden_size) + gate_indices
+        hidden_ptr = partial_hidden_sums + block_idx * (3 * hidden_size) + gate_indices
+
+        input_vals = tl.load(input_ptr, mask=gate_mask, other=0.0)
+        hidden_vals = tl.load(hidden_ptr, mask=gate_mask, other=0.0)
+
+        if IS_FP64:
+            input_sum += input_vals.to(tl.float64)
+            hidden_sum += hidden_vals.to(tl.float64)
+        else:
+            input_sum += input_vals.to(tl.float32)
+            hidden_sum += hidden_vals.to(tl.float32)
+
+    output_ptr_input = grad_input_bias + gate_indices * grad_input_bias_stride
+    output_ptr_hidden = grad_hidden_bias + gate_indices * grad_hidden_bias_stride
+
+    tl.store(output_ptr_input, input_sum, mask=gate_mask)
+    tl.store(output_ptr_hidden, hidden_sum, mask=gate_mask)
 
 
 def _validate_inputs(grad_hy, workspace):
@@ -256,21 +373,75 @@ def _launch_gru_cell_backward(
             )
         gate_size = 3 * hidden_size
         if has_bias and gate_size != 0:
-            _gru_bias_backward_kernel[(gate_size,)](
-                grad_input_gates,
-                grad_hidden_gates,
-                grad_input_bias,
-                grad_hidden_bias,
-                batch_size,
-                grad_input_gates.stride(0),
-                grad_input_gates.stride(1),
-                grad_hidden_gates.stride(0),
-                grad_hidden_gates.stride(1),
-                grad_input_bias.stride(0),
-                grad_hidden_bias.stride(0),
-                BLOCK_BATCH=256,
-                IS_FP64=grad_hy.dtype == torch.float64,
-            )
+            # Large batches benefit from coalesced reads despite the extra launch.
+            batch_threshold = 512
+            if batch_size >= batch_threshold:
+                block_batch = 64
+                block_gate = 128
+                num_batch_blocks = triton.cdiv(batch_size, block_batch)
+                num_gate_blocks = triton.cdiv(gate_size, block_gate)
+                compute_dtype = (
+                    torch.float64 if grad_hy.dtype == torch.float64 else torch.float32
+                )
+                partial_input_sums = torch.empty(
+                    (num_batch_blocks, gate_size),
+                    dtype=compute_dtype,
+                    device=grad_hy.device,
+                )
+                partial_hidden_sums = torch.empty(
+                    (num_batch_blocks, gate_size),
+                    dtype=compute_dtype,
+                    device=grad_hy.device,
+                )
+
+                _gru_bias_backward_stage1_kernel[
+                    (
+                        num_batch_blocks,
+                        num_gate_blocks,
+                    )
+                ](
+                    grad_input_gates,
+                    grad_hidden_gates,
+                    partial_input_sums,
+                    partial_hidden_sums,
+                    batch_size,
+                    hidden_size,
+                    grad_input_gates.stride(0),
+                    grad_input_gates.stride(1),
+                    grad_hidden_gates.stride(0),
+                    grad_hidden_gates.stride(1),
+                    BLOCK_BATCH=block_batch,
+                    BLOCK_GATE=block_gate,
+                    IS_FP64=grad_hy.dtype == torch.float64,
+                )
+                _gru_bias_backward_stage2_kernel[(num_gate_blocks,)](
+                    partial_input_sums,
+                    partial_hidden_sums,
+                    grad_input_bias,
+                    grad_hidden_bias,
+                    num_batch_blocks,
+                    hidden_size,
+                    grad_input_bias.stride(0),
+                    grad_hidden_bias.stride(0),
+                    BLOCK_GATE=block_gate,
+                    IS_FP64=grad_hy.dtype == torch.float64,
+                )
+            else:
+                _gru_bias_backward_kernel_small_batch[(gate_size,)](
+                    grad_input_gates,
+                    grad_hidden_gates,
+                    grad_input_bias,
+                    grad_hidden_bias,
+                    batch_size,
+                    grad_input_gates.stride(0),
+                    grad_input_gates.stride(1),
+                    grad_hidden_gates.stride(0),
+                    grad_hidden_gates.stride(1),
+                    grad_input_bias.stride(0),
+                    grad_hidden_bias.stride(0),
+                    BLOCK_BATCH=256,
+                    IS_FP64=grad_hy.dtype == torch.float64,
+                )
 
 
 def _thnn_fused_gru_cell_backward(

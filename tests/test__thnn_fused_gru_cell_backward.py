@@ -21,7 +21,7 @@ from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
 DTYPES = utils.ALL_FLOAT_DTYPES
-SHAPES = [(1, 4), (2, 17), (8, 64), (33, 129)]
+SHAPES = [(1, 4), (2, 17), (8, 64), (33, 129), (513, 129)]
 if QUICK_MODE:
     SHAPES = [(2, 17)]
 
