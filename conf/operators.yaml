@@ -17,6 +17,10 @@ ops:
     description: Applies training-mode Batch Normalization using batch statistics and updates running_mean/running_var in place.
     for:
       - _batch_norm_with_update
+    labels:
+      - KernelGen
+    stages:
+      - alpha: '5.4'
   - id: batch_norm_with_update_functional
     description: Functional variant of _batch_norm_with_update that applies training-mode Batch Normalization and updates running statistics.
     for:
