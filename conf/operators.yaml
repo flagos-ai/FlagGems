@@ -3392,6 +3392,19 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
+  - id: histogramdd_from_bin_cts
+    description: |
+      Computes a multi-dimensional histogram of the values in a tensor using a
+      sequence of per-dimension bin counts (equal-width bins).
+    for:
+      - _histogramdd_from_bin_cts
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.0'
   - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
