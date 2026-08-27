@@ -22,6 +22,7 @@ from .argmin import argmin
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
+from .channel_shuffle import channel_shuffle
 from .conv2d import conv2d
 from .div import (
     div_mode,
@@ -110,6 +111,7 @@ __all__ = [
     "bucketize",
     "celu",
     # "celu_",
+    "channel_shuffle",
     "conv2d",
     "dropout",
     "dropout_backward",
