@@ -1260,12 +1260,12 @@ def _unsafe_index_put(inp, indices, values, accumulate=False):
     idx_numel = _volume(idx_shape)
     suffix_numel = _volume(suffix_shape)
 
-    if inp.device.type != "cuda":
-        # Non-CUDA fallback: native implementation (bypasses flag_gems' own
-        # _index_put_impl_ patch which only applies to the CUDA dispatch key).
-        out = inp.clone()
-        torch._index_put_impl_(out, processed, values, accumulate, unsafe=True)
-        return out
+    # if inp.device.type != "cuda":
+    #     # Non-CUDA fallback: native implementation (bypasses flag_gems' own
+    #     # _index_put_impl_ patch which only applies to the CUDA dispatch key).
+    #     out = inp.clone()
+    #     torch._index_put_impl_(out, processed, values, accumulate, unsafe=True)
+    #     return out
 
     # Functional contract: the input is never modified. empty_like + Triton
     # copy avoids the patched aten::clone dispatch under use_gems.
