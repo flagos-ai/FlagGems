@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import os
 
@@ -11,9 +25,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "bmm_mthreads_expand.yaml")
@@ -148,7 +160,7 @@ def bmm_kernel(
 
 
 def bmm_fma(A, B):
-    logger.debug("GEMS_MTHREADS BMM(FMA)")
+    logger.debug("GEMS_MTHREADS BMM_FMA")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()
@@ -173,13 +185,7 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
 
 @libentry()
 @libtuner(
-    configs=runtime.ops_get_configs(
-        "bmm_sqmma",
-        pre_hook=bmm_sqmma_descriptor_pre_hook,
-        yaml_path=EXPAND_CONFIG_FILENAME,
-    )
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else [
+    configs=[
         triton.Config(
             {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64},
             num_stages=1,
@@ -188,13 +194,13 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
         )
     ],
     key=["M", "N", "K"],
-    strategy=runtime.get_expand_config("bmm_sqmma", yaml_path=EXPAND_CONFIG_FILENAME)[
-        "strategy"
-    ][:3]
-    if os.environ.get("USE_FLAGTUNE") == "1"
-    else ["align32", "align32", "align32"],
+    strategy=["align32", "align32", "align32"],
     warmup=5,
     rep=5,
+    flagtune_op_name="bmm",
+    flagtune_expand_op_name="bmm_sqmma",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    flagtune_pre_hook=bmm_sqmma_descriptor_pre_hook,
 )
 @triton.jit
 def bmm_sqmma_kernel(

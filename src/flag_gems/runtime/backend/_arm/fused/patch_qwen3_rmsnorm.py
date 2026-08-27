@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Patch Qwen3RMSNorm.forward to use a single Triton kernel call,
 replacing the 5-6 ATen dispatches in the eager implementation.
 
@@ -10,6 +24,7 @@ Each Qwen3 decode token does ~113 RMSNorm calls:
 
 This patch targets the input/q/k/final norms (~85 calls/token).
 """
+
 import logging
 
 import torch
@@ -71,7 +86,7 @@ def _prewarm():
                 x, w, o, N, N, 1e-6, BLOCK_SIZE=_TILE, num_warps=1, num_stages=1
             )
     except Exception:
-        logger.debug("rmsnorm prewarm failed", exc_info=True)
+        logger.debug("GEMS_ARM rmsnorm prewarm failed", exc_info=True)
     _PREWARM_DONE = True
 
 
@@ -133,7 +148,7 @@ def patch_qwen3_rmsnorm() -> int:
         _PATCHED[key] = (cls, orig)
         cls.forward = _make_patched_forward(orig)
         n += 1
-        logger.info(f"Patched {modname}.{cls_name}.forward")
+        logger.info(f"GEMS_ARM Patched {modname}.{cls_name}.forward")
     return n
 
 

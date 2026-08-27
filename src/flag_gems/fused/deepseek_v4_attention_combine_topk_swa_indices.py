@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import Tuple
 
 import torch
@@ -30,6 +44,8 @@ def _combine_topk_swa_indices_kernel(
     WINDOW_SIZE: tl.constexpr,
     PADDED_TOP_K: tl.constexpr,
     PADDED_WINDOW_SIZE: tl.constexpr,
+    COMBINED_TOPK: tl.constexpr,
+    PADDED_COMBINED_TOPK: tl.constexpr,
 ):
     batch_idx = tl.program_id(0)
     worker_idx = tl.program_id(1)
@@ -48,6 +64,23 @@ def _combine_topk_swa_indices_kernel(
         pos = start_pos + token_in_query
         topk_len = tl.minimum((pos + 1) // COMPRESS_RATIO, TOP_K)
         swa_len = tl.minimum(pos + 1, WINDOW_SIZE)
+
+        # Write the -1 padding tail in-kernel so the caller can allocate with
+        # torch.empty instead of torch.full: that drops a separate full-buffer
+        # memset which this kernel would otherwise mostly overwrite. The upper
+        # bound here is COMBINED_TOPK -- the full alignment-padded row width,
+        # which is >= topk + window_size -- so [valid_len, COMBINED_TOPK) fills
+        # the entire tail, including the alignment padding past topk+window_size.
+        # Together with the index stores in [0, valid_len) below, every column
+        # of the row is written exactly once (disjoint ranges), so no
+        # uninitialized torch.empty value is ever left readable as a valid index.
+        valid_len = topk_len + swa_len
+        tail_offs = tl.arange(0, PADDED_COMBINED_TOPK)
+        tl.store(
+            combined_ptr + token_idx * combined_stride + tail_offs,
+            -1,
+            mask=(tail_offs >= valid_len) & (tail_offs < COMBINED_TOPK),
+        )
 
         offs = tl.arange(0, PADDED_TOP_K)
         mask = offs < topk_len
@@ -88,8 +121,10 @@ def combine_topk_swa_indices(
         // _SPARSE_PREFILL_TOPK_ALIGNMENT
         * _SPARSE_PREFILL_TOPK_ALIGNMENT
     )
-    combined = torch.full(
-        (num_tokens, combined_topk), -1, device=topk_indices.device, dtype=torch.int32
+    # Allocate uninitialized: the kernel writes the -1 padding tail itself, so
+    # torch.full's separate full-buffer memset (mostly overwritten) is avoided.
+    combined = torch.empty(
+        (num_tokens, combined_topk), device=topk_indices.device, dtype=torch.int32
     )
     lens = torch.empty((num_tokens,), device=topk_indices.device, dtype=torch.int32)
     with torch_device_fn.device(topk_indices.device):
@@ -109,6 +144,8 @@ def combine_topk_swa_indices(
             WINDOW_SIZE=window_size,
             PADDED_TOP_K=_next_power_of_2_or_1(topk_indices.shape[-1]),
             PADDED_WINDOW_SIZE=_next_power_of_2_or_1(window_size),
+            COMBINED_TOPK=combined_topk,
+            PADDED_COMBINED_TOPK=_next_power_of_2_or_1(combined_topk),
         )
     return combined, lens
 

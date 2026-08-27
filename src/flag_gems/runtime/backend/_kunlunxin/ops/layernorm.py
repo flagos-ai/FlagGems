@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 import os
@@ -11,7 +25,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -276,10 +290,7 @@ def layernorm_fwd_kernel(
 
 
 def layer_norm_backward_kernel_heur_block_row_size(args):
-    # if args["dX"].dtype == torch.bfloat16 and args["M"] == 100 and args["N"] == 40499:
-    #     return args["M"]
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))
-    # return 1
 
 
 def layer_norm_backward_kernel_heur_block_col_size(args):
@@ -373,14 +384,18 @@ def weight_bias_backward_kernel_heur_block_row_size(args):
 
 
 def weight_bias_backward_kernel_heur_block_col_size(args):
-    # if args["M"] == 100 and args["N"] == 40499:
-    #     if args["dY"].dtype == torch.bfloat16:
-    #         return 2048
-    #     return 4096  # 8192 cause leagalize error
-
     import builtins
 
-    return builtins.min(args["N"], 8192)
+    # The wb kernel parallelizes over N: grid = cdiv(N, BLOCK_COL_SIZE). A fixed 8192
+    # under-utilizes the XPU clusters for mid-range N (e.g. N=16384 -> grid=2), while a
+    # too-small block wastes DMA width for large N (e.g. N=65568 with 2048 -> grid=32,
+    # narrow tiles, slower). Aim for ~12 programs (cluster count) with the widest tile,
+    # clamped to [2048, 8192] and capped by N. This also yields 4096 for N~=40499,
+    # matching the old special-case that avoided the 8192 legalize error.
+    N = args["N"]
+    block = triton.next_power_of_2(triton.cdiv(N, 12))
+    block = builtins.max(2048, builtins.min(block, 8192))
+    return builtins.min(N, block)
 
 
 @libentry()

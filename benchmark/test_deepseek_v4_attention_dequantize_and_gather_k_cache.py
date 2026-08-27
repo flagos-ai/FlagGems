@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -64,6 +78,19 @@ class DequantizeAndGatherKCacheBenchmark(base.Benchmark):
             (4, 2048, 512, 512, 448, 64),
             (4, 2048, 2048, 512, 448, 64),
             (8, 4096, 1024, 512, 448, 64),
+            (1, 8192, 8192, 512, 448, 64),
+            (1, 16384, 16384, 512, 448, 64),
+            (1, 32768, 32768, 512, 448, 64),
+            (1, 65536, 65536, 512, 448, 64),
+            (16, 1024, 1024, 512, 448, 64),
+            (32, 512, 512, 512, 448, 64),
+            (64, 256, 256, 512, 448, 64),
+            (8, 8192, 640, 512, 448, 64),
+            (16, 32768, 640, 512, 448, 64),
+            (4, 65536, 8320, 512, 448, 64),
+            (8, 65536, 8320, 512, 448, 64),
+            (16, 4096, 128, 512, 448, 64),
+            (32, 4096, 128, 512, 448, 64),
         ]
 
     def get_input_iter(self, dtype):

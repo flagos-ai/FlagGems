@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -16,6 +30,9 @@ from . import accuracy_utils as utils
         if flag_gems.vendor_name == "cambricon"
         else utils.FLOAT_DTYPES
     ),
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_copy_inplace_same_dtype(shape, dtype):
     if flag_gems.vendor_name == "cambricon":
@@ -44,6 +61,9 @@ def test_copy_inplace_same_dtype(shape, dtype):
 
 
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_copy_inplace_broadcast():
     dst_shape = (2, 3)
     src = torch.arange(0, 3, dtype=torch.float32, device=flag_gems.device)
@@ -61,6 +81,9 @@ def test_copy_inplace_broadcast():
 
 
 @pytest.mark.copy_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_copy_inplace_dtype_fallback():
     src = torch.arange(0, 8, dtype=torch.int32, device=flag_gems.device)
     ref_src = utils.to_reference(src)
@@ -81,6 +104,17 @@ def test_copy_inplace_dtype_fallback():
     not hasattr(torch, "float8_e8m0fnu"),
     reason="PyTorch does not support float8_e8m0fnu",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="mthreads does not support float8_e8m0fnu dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "metax",
+    reason="MetaX does not support float8_e8m0fnu dtype",
+)
 @pytest.mark.parametrize("shape", [(8,), (4, 4), (2, 3, 4)])
 def test_copy_inplace_float8_e8m0fnu(shape):
     """Test that copy_ works correctly with float8_e8m0fnu (e8m0) dtype tensors.
@@ -91,14 +125,29 @@ def test_copy_inplace_float8_e8m0fnu(shape):
     device = flag_gems.device
 
     # e8m0 is an exponent-only format, create via view from uint8
-    src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support uint8 generation.
+        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device="cpu").to(
+            device
+        )
+    else:
+        src_uint8 = torch.randint(0, 255, shape, dtype=torch.uint8, device=device)
     src = src_uint8.view(torch.float8_e8m0fnu)
     ref_src = utils.to_reference(src)
 
-    ref_dst = utils.to_reference(
-        torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
-    )
-    res_dst = torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support float8_e8m0fnu generation.
+        ref_dst = utils.to_reference(
+            torch.zeros(shape, dtype=torch.float8_e8m0fnu, device="cpu").to(device)
+        )
+        res_dst = torch.zeros(shape, dtype=torch.float8_e8m0fnu, device="cpu").to(
+            device
+        )
+    else:
+        ref_dst = utils.to_reference(
+            torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
+        )
+        res_dst = torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
     ref_dst.copy_(ref_src)
 
     with flag_gems.use_gems():
@@ -112,12 +161,29 @@ def test_copy_inplace_float8_e8m0fnu(shape):
     not hasattr(torch, "float8_e8m0fnu"),
     reason="PyTorch does not support float8_e8m0fnu",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="mthreads does not support float8_e8m0fnu dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "metax",
+    reason="MetaX does not support float8_e8m0fnu dtype",
+)
 def test_copy_inplace_float8_e8m0fnu_to_float32():
     """Test copy_ from float8_e8m0fnu to float32."""
     device = flag_gems.device
     shape = (8,)
 
-    src_uint8 = torch.randint(1, 200, shape, dtype=torch.uint8, device=device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support uint8 generation.
+        src_uint8 = torch.randint(1, 200, shape, dtype=torch.uint8, device="cpu").to(
+            device
+        )
+    else:
+        src_uint8 = torch.randint(1, 200, shape, dtype=torch.uint8, device=device)
     src = src_uint8.view(torch.float8_e8m0fnu)
     ref_src = utils.to_reference(src)
 
@@ -139,6 +205,9 @@ def test_copy_inplace_float8_e8m0fnu_to_float32():
         (torch.int16, torch.float32),
         (torch.bool, torch.float32),
     ],
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_copy_inplace_mixed_dtype_triton(src_dtype, dst_dtype):
     device = flag_gems.device
@@ -178,6 +247,9 @@ def test_copy_inplace_mixed_dtype_triton(src_dtype, dst_dtype):
         else utils.FLOAT_DTYPES
     ),
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_copy_functional_same_dtype(shape, dtype):
     if flag_gems.vendor_name == "cambricon":
         if dtype in utils.FLOAT_DTYPES:
@@ -206,6 +278,9 @@ def test_copy_functional_same_dtype(shape, dtype):
 
 
 @pytest.mark.copy
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_copy_functional_broadcast():
     src = torch.arange(0, 3, dtype=torch.float32, device=flag_gems.device)
     template = torch.empty((2, 3), dtype=torch.float32, device=flag_gems.device)

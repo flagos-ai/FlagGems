@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 ---
 name: Random Test
 
@@ -48,63 +62,107 @@ jobs:
     if: needs.check-permission.outputs.authorized == 'true'
     runs-on: ${{ inputs.runner }}
     steps:
-      - id: checkout-attempt-1
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        continue-on-error: true
-      - id: sleep-1
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
-
-      - id: checkout-attempt-2
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        continue-on-error: true
-      - id: sleep-2
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        shell: bash
-        run: sleep 30s
-
-      - id: checkout-attempt-3
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-
-      - name: Setup FlagGems
+      - name: Resolve vendor
+        id: resolve
         shell: bash
         env:
           RUNNER_LABEL: ${{ inputs.runner }}
         run: |
-          # Validate vendor names
           case "${RUNNER_LABEL}" in
             h20)
               VENDOR="nvidia"
+              BACKEND="nvidia-cuda133"
+              ;;
+            a100|h100)
+              VENDOR="nvidia"
+              BACKEND="nvidia-cuda133"
+              ;;
+            ascend)
+              VENDOR="ascend"
+              # The ascend runner pool contains nodes with two different CANN
+              # toolkits (8.5.x and 9.0.x). The job may land on either node, so
+              # detect the CANN version on the node and pick the matching
+              # backend: 8.5.x -> ascend-cann850, 9.0.x -> ascend-cann900
+              CANN_VERSION=$(ls -d /usr/local/Ascend/cann-* 2>/dev/null | sed 's|.*/cann-||' | sort -V | tail -1)
+              case "${CANN_VERSION}" in
+                8.5*)
+                  BACKEND="ascend-cann850"
+                  ;;
+                9.0*)
+                  BACKEND="ascend-cann900"
+                  ;;
+                *)
+                  echo "::error::Cannot detect CANN version on ascend runner (got '${CANN_VERSION}')" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
+            cann850)
+              VENDOR="ascend"
+              BACKEND="ascend-cann850"
+              ;;
+            cann9)
+              VENDOR="ascend"
+              BACKEND="ascend-cann900"
+              ;;
+            metax)
+              VENDOR="metax"
+              # The metax runner pool contains nodes with two different MACA
+              # drivers (3.7.x and 3.8.x). The job may land on either node, so
+              # detect the driver on the node and pick the matching backend:
+              #   3.7.x -> metax-maca3720, 3.8.x -> metax-maca3810
+              MACA_VERSION=$(mx-smi 2>/dev/null | awk -F': ' '/MACA Version/{split($2,a," "); print a[1]}')
+              case "${MACA_VERSION}" in
+                3.7.*)
+                  BACKEND="metax-maca3720"
+                  ;;
+                3.8.*)
+                  BACKEND="metax-maca3810"
+                  ;;
+                *)
+                  echo "::error::Cannot detect MACA version on metax runner (got '${MACA_VERSION}')" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
+            maca372)
+              VENDOR="metax"
+              BACKEND="metax-maca3720"
+              ;;
+            maca381)
+              VENDOR="metax"
+              BACKEND="metax-maca3810"
+              ;;
+            enflame)
+              VENDOR="enflame"
+              BACKEND="enflame-tops1106"
+              ;;
+            cambricon)
+              VENDOR="cambricon"
+              BACKEND="cambricon-neuware472"
               ;;
             *)
               VENDOR="${RUNNER_LABEL}"
+              BACKEND="${RUNNER_LABEL}"
               ;;
           esac
-
-          echo "VENDOR=${VENDOR}"
+          echo "VENDOR=${VENDOR}" >> $GITHUB_OUTPUT
           echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
+          echo "BACKEND=${BACKEND}" >> $GITHUB_OUTPUT
+          echo "BACKEND=${BACKEND}" >> $GITHUB_ENV
 
-          ./setup.sh ${VENDOR}
-
-          # Install vllm for testing
-          if [ "${VENDOR}" == "nvidia" ]; then
-             source .venv/bin/activate
-             uv pip install --no-cache-dir vllm==0.21.0 --torch-backend=cu130
-          fi
-
-      - name: Check GPU availability
-        shell: bash
-        run: |
-          bash "tools/gpu_check_${VENDOR}.sh"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: ./.github/actions/checkout-retry
+      - uses: ./.github/actions/setup-flaggems
+        with:
+          backend: ${{ steps.resolve.outputs.BACKEND }}
+          gpu_check_script: tools/gpu_check_${{ steps.resolve.outputs.VENDOR }}.sh
 
       - name: Run tests
         shell: bash
         run: |
           source .venv/bin/activate
-          source tools/env.sh ${VENDOR}
           tools/run_tests.py --ops ${{ inputs.operators }} --gpus ${{ inputs.gpus }}
 
       - name: Upload results

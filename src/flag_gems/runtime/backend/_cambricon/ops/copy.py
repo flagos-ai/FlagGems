@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 from typing import Optional
 
@@ -6,11 +20,13 @@ import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
+
+_FLOAT8_E8M0FNU = getattr(torch, "float8_e8m0fnu", None)
 
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
@@ -30,6 +46,11 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
         # Preserve PyTorch's behaviour of warning when casting complex to real
         # by forcing the redispatch path, which issues the warning internally.
         return False
+    if _FLOAT8_E8M0FNU is not None and (
+        src.dtype == torch.float8_e8m0fnu or dst.dtype == torch.float8_e8m0fnu
+    ):
+        # Triton does not support float8 yet, so defer to PyTorch which has a reference implementation.
+        return False
     return True
 
 
@@ -42,7 +63,7 @@ def _expand_like(src: torch.Tensor, target_shape: torch.Size) -> torch.Tensor:
 def copy(
     template: torch.Tensor, src: torch.Tensor, *, non_blocking: Optional[bool] = False
 ):
-    logger.debug("GEMS_CAMBRICON COPY (functional)")
+    logger.debug("GEMS_CAMBRICON COPY")
     out = torch.empty_strided(
         template.size(), template.stride(), dtype=template.dtype, device=template.device
     )

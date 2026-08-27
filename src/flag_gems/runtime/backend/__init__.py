@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import ast
 import functools
 import importlib
@@ -155,22 +169,36 @@ class BackendArchEvent(BackendEventBase):
             return
         arch_map = _state.vendor_module.ARCH_MAP
         arch_string = os.environ.get("ARCH", "")
-        arch_string_num = arch_string.split("_")[-1][0] if arch_string else arch_string
-        if not arch_string_num:
+        # Candidate keys ordered from the most to the least specific. The last
+        # one is the major version alone, so a map that lists whole families
+        # keeps matching the same devices it did before.
+        keys = []
+        if arch_string:
+            keys.append(arch_string.split("_")[-1][0])
+        else:
             try:
                 if not _state.torch_device_object.is_available():
                     return False
                 props = _state.torch_device_object.get_device_properties(device)
-                arch_string_num = str(props.major)
+                # AMD reports the exact target here, sometimes with feature
+                # suffixes such as "gfx942:sramecc+:xnack-". Other vendors do
+                # not expose this attribute at all.
+                gcn_arch = (getattr(props, "gcnArchName", "") or "").strip()
+                if gcn_arch:
+                    keys.append(gcn_arch.split(":")[0])
+                keys.append(f"{props.major}.{props.minor}")
+                keys.append(str(props.major))
             except Exception:
                 self.has_arch = False
-        if arch_string_num not in arch_map:
-            print(
-                f"[INFO] : FlagGems Unsupported GPU arch {arch_string} specialization"
-            )
-        else:
-            self.has_arch = True
-            return arch_map[arch_string_num]
+
+        for key in keys:
+            if key in arch_map:
+                self.has_arch = True
+                return arch_map[key]
+        print(
+            "[INFO] : FlagGems Unsupported GPU arch "
+            f"{arch_string or (keys[0] if keys else 'unknown')} specialization"
+        )
 
     def _get_supported_archs(self, path=None):
         path = Path(path or _state.vendor_module.__path__[0])
@@ -398,12 +426,9 @@ def get_unused_ops(vendor_name=None):
 
 def get_heuristic_config(vendor_name=None):
     config_name = "heuristics_config_utils"
+    vendor_name = vendor_name or "nvidia"
     mod_name = f"_{vendor_name}.{config_name}"
-    try:
-        _state.heuristic_config_module = importlib.import_module(mod_name)
-    except Exception:
-        mod_name = f"_nvidia.{config_name}"
-        _state.heuristic_config_module = importlib.import_module(mod_name)
+    _state.heuristic_config_module = importlib.import_module(mod_name)
     return getattr(_state.heuristic_config_module, "HEURISTICS_CONFIGS", None)
 
 

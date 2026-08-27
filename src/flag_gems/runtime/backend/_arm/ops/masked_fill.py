@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -5,6 +19,8 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import broadcastable_to
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit(do_not_specialize=["value", "n_elements"])
@@ -173,7 +189,7 @@ def _launch_masked_fill_inplace(inp, expand_mask, value):
 
 
 def masked_fill(inp, mask, value):
-    logging.debug("GEMS MASKED_FILL")
+    logger.debug("GEMS_ARM MASKED_FILL")
     value = _normalize_scalar_value(value)
     assert broadcastable_to(
         mask.shape, inp.shape
@@ -199,7 +215,7 @@ def masked_fill(inp, mask, value):
 
 
 def masked_fill_(inp, mask, value):
-    logging.debug("GEMS MASKED_FILL_")
+    logger.debug("GEMS_ARM MASKED_FILL_")
     value = _normalize_scalar_value(value)
     assert broadcastable_to(
         mask.shape, inp.shape

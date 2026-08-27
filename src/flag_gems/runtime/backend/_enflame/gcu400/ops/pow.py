@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -40,14 +54,14 @@ def pow_func_safe(x, exponent):
 
 
 def pow_tensor_tensor(A, exponent):
-    logger.debug("GEMS POW_TENSOR_TENSOR")
+    logger.debug("GEMS_ENFLAME POW_TENSOR_TENSOR")
     if A.dtype == torch.float32:
         return pow_func_safe(A, exponent)
     return pow_func_fast(A, exponent)
 
 
 def pow_tensor_tensor_(A, exponent):
-    logger.debug("GEMS POW_TENSOR_TENSOR_")
+    logger.debug("GEMS_ENFLAME POW_TENSOR_TENSOR_")
     if A.dtype == torch.float32:
         return pow_func_safe(A, exponent, out0=A)
     return pow_func_fast(A, exponent, out0=A)
@@ -60,12 +74,12 @@ def pow_func_tensor_scalar(x, exponent):
 
 
 def pow_tensor_scalar(A, exponent):
-    logger.debug("GEMS POW_TENSOR_SCALAR")
+    logger.debug("GEMS_ENFLAME POW_TENSOR_SCALAR")
     return pow_func_tensor_scalar(A, exponent)
 
 
 def pow_tensor_scalar_(A, exponent):
-    logger.debug("GEMS POW_TENSOR_SCALAR_")
+    logger.debug("GEMS_ENFLAME POW_TENSOR_SCALAR_")
     return pow_func_tensor_scalar(A, exponent, out0=A)
 
 
@@ -76,5 +90,5 @@ def pow_func_scalar_tensor(x, exponent):
 
 
 def pow_scalar(A, exponent):
-    logger.debug("GEMS POW_SCALAR")
+    logger.debug("GEMS_ENFLAME POW_SCALAR")
     return pow_func_scalar_tensor(A, exponent)

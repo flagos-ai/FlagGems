@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import os
 
@@ -11,6 +25,8 @@ from flag_gems.ops.pow import pow_tensor_scalar as base_pow_tensor_scalar
 from flag_gems.ops.pow import pow_tensor_scalar_ as base_pow_tensor_scalar_
 from flag_gems.ops.pow import pow_tensor_tensor as base_pow_tensor_tensor
 from flag_gems.ops.pow import pow_tensor_tensor_ as base_pow_tensor_tensor_
+
+logger = logging.getLogger(__name__)
 
 # For small tensors, bypass Triton entirely via numpy (zero-copy views).
 _POW_NATIVE_THRESHOLD = 4096
@@ -423,12 +439,12 @@ def _maybe_prewarm_pow_kernels():
                 block1024,
             )
     except Exception:
-        logging.debug("GEMS ARM pow prewarm failed", exc_info=True)
+        logger.debug("GEMS_ARM pow prewarm failed", exc_info=True)
     _PREWARM_POW_DONE = True
 
 
 def pow_tensor_tensor(A, exponent):
-    logging.debug("GEMS_ARM POW_TENSOR_TENSOR")
+    logger.debug("GEMS_ARM POW_TENSOR_TENSOR")
     if (
         isinstance(A, torch.Tensor)
         and A.numel() < _POW_NATIVE_THRESHOLD
@@ -437,9 +453,11 @@ def pow_tensor_tensor(A, exponent):
         return torch.from_numpy(
             np.power(
                 A.detach().numpy(),
-                float(exponent)
-                if not isinstance(exponent, torch.Tensor)
-                else exponent.detach().numpy(),
+                (
+                    float(exponent)
+                    if not isinstance(exponent, torch.Tensor)
+                    else exponent.detach().numpy()
+                ),
             )
         )
     _maybe_prewarm_pow_kernels()
@@ -453,7 +471,7 @@ def pow_tensor_tensor(A, exponent):
 
 
 def pow_tensor_tensor_(A, exponent):
-    logging.debug("GEMS_ARM POW_TENSOR_TENSOR_")
+    logger.debug("GEMS_ARM POW_TENSOR_TENSOR_")
     _maybe_prewarm_pow_kernels()
     scalar_exp = _maybe_scalar(exponent)
     if scalar_exp is not None:
@@ -465,7 +483,7 @@ def pow_tensor_tensor_(A, exponent):
 
 
 def pow_tensor_scalar(A, exponent):
-    logging.debug("GEMS_ARM POW_TENSOR_SCALAR")
+    logger.debug("GEMS_ARM POW_TENSOR_SCALAR")
     if (
         isinstance(A, torch.Tensor)
         and A.numel() < _POW_NATIVE_THRESHOLD
@@ -491,7 +509,7 @@ def pow_tensor_scalar(A, exponent):
 
 
 def pow_tensor_scalar_(A, exponent):
-    logging.debug("GEMS_ARM POW_TENSOR_SCALAR_")
+    logger.debug("GEMS_ARM POW_TENSOR_SCALAR_")
     _maybe_prewarm_pow_kernels()
     scalar_exp = _maybe_scalar(exponent)
     if scalar_exp is not None:
@@ -503,7 +521,7 @@ def pow_tensor_scalar_(A, exponent):
 
 
 def pow_scalar(A, exponent):
-    logging.debug("GEMS_ARM POW_SCALAR")
+    logger.debug("GEMS_ARM POW_SCALAR")
     _maybe_prewarm_pow_kernels()
     return base_pow_scalar(A, exponent)
 

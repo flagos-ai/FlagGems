@@ -1,10 +1,29 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
+
+import flag_gems
 
 from . import base, consts
 
 
 @pytest.mark.softmax
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_softmax():
     bench = base.UnaryReductionBenchmark(
         op_name="softmax",
@@ -15,6 +34,9 @@ def test_softmax():
 
 
 @pytest.mark.softmax_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_softmax_backward():
     bench = base.UnaryReductionBenchmark(
         op_name="softmax",
@@ -35,6 +57,9 @@ def softmax_backward_out_input_fn(shape, dtype, device):
 
 
 @pytest.mark.softmax_backward_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_softmax_backward_out():
     bench = base.GenericBenchmark(
         op_name="softmax_backward_out",
@@ -53,6 +78,9 @@ def softmax_out_input_fn(shape, dtype, device):
 
 
 @pytest.mark.softmax_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_softmax_out():
     bench = base.GenericBenchmark(
         op_name="softmax_out",

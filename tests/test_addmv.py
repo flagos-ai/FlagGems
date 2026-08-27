@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -10,20 +24,18 @@ if cfg.QUICK_MODE:
     MN_SHAPES = [
         (1, 32),
     ]
-    FLOAT_DTYPES = [torch.float32]
 else:
     MN_SHAPES = [
         (1, 32),
         (160, 1024),
         (5333, 497),
     ]
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 
 @pytest.mark.addmv
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_addmv(M, N, scalar, dtype):
     mat = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
     vec = torch.randn((N,), dtype=dtype, device=flag_gems.device)
@@ -57,7 +69,7 @@ def test_addmv(M, N, scalar, dtype):
 @pytest.mark.addmv_out
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_addmv_out(M, N, scalar, dtype):
     mat = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
     vec = torch.randn((N,), dtype=dtype, device=flag_gems.device)

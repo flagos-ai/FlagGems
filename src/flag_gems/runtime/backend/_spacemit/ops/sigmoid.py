@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import triton
@@ -28,7 +42,7 @@ def sigmoid_backward_kernel(dy, y):
 
 
 def sigmoid(self):
-    logger.debug("GEMS_SPACEMIT SIGMOID_FORWARD")
+    logger.debug("GEMS_SPACEMIT SIGMOID")
     output = sigmoid_forward(self)
     return output
 
@@ -40,6 +54,6 @@ def sigmoid_backward(grad_output, output):
 
 
 def sigmoid_(A):
-    logger.debug("GEMS_SPACEMIT SIGMOID__FORWARD")
+    logger.debug("GEMS_SPACEMIT SIGMOID_")
     out = sigmoid_forward(A, out0=A)
     return out

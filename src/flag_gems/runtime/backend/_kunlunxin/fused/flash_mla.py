@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -9,7 +23,7 @@ from flag_gems.runtime import device, error, torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 
 device = device.name
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 # @triton.autotune(
@@ -168,7 +182,7 @@ def flash_mla(
     dv,
     causal,
 ):
-    logger.debug("GEMS FLASH MLA")
+    logger.debug("GEMS_KUNLUNXIN FLASH_MLA")
     assert causal, "causal False not supported"
     assert d > dv, "mla with rope dim should be larger than no rope dim"
 

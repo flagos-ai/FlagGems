@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Replace nn.Linear modules in a transformers model with TLEInt8Linear from
 a pre-quantized safetensors state dict.
 
@@ -68,7 +82,7 @@ def replace_linears_with_tle_int8(
         N, K = w.shape
         if K % require_divisible_by != 0 or N % require_divisible_by != 0:
             logger.debug(
-                "replace_linears_with_tle_int8: %s K=%d N=%d not divisible by %d",
+                "GEMS_ARM replace_linears_with_tle_int8: %s K=%d N=%d not divisible by %d",
                 name,
                 K,
                 N,
@@ -92,8 +106,7 @@ def replace_linears_with_tle_int8(
     apply_arm_overrides(include=["_int_mm"])
 
     logger.info(
-        "TLEInt8Linear: replaced %d Linear modules "
-        "(skipped: %d dtype, %d alignment, %d missing, %d explicit)",
+        "GEMS_ARM TLEInt8Linear: replaced %d Linear modules (skipped: %d dtype, %d alignment, %d missing, %d explicit)",
         n_replaced,
         n_skipped_dtype,
         n_skipped_align,

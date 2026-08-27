@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -129,7 +143,7 @@ def log_softmax(self, dim, half_to_float=False):
 
 
 def log_softmax_out(self, dim, half_to_float=False, *, out):
-    logger.debug("GEMS_ASCEND LOG_SOFTMAX OUT")
+    logger.debug("GEMS_ASCEND LOG_SOFTMAX_OUT")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
     dim = dim % self.ndim
@@ -156,7 +170,7 @@ def log_softmax_out(self, dim, half_to_float=False, *, out):
 
 
 def log_softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS_ASCEND LOG_SOFTMAX VJP")
+    logger.debug("GEMS_ASCEND LOG_SOFTMAX_VJP")
 
     assert dim >= -output.ndim and dim < output.ndim, "Invalid dim"
     dim = dim % output.ndim

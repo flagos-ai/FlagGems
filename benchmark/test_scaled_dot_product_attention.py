@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -13,9 +27,31 @@ class AttentionBenchmark(base.GenericBenchmark):
         return []
 
 
+def scaled_dot_product_flash_attention_input_fn(shape, dtype, device):
+    query = torch.randn(shape, device=device, dtype=dtype)
+    key = torch.randn(shape, device=device, dtype=dtype)
+    value = torch.randn(shape, device=device, dtype=dtype)
+    yield query, key, value, 0.0, False, False
+
+
+@pytest.mark.scaled_dot_product_flash_attention
+def test_scaled_dot_product_flash_attention():
+    bench = AttentionBenchmark(
+        op_name="scaled_dot_product_flash_attention",
+        input_fn=scaled_dot_product_flash_attention_input_fn,
+        torch_op=torch.ops.aten._scaled_dot_product_flash_attention.default,
+        # FlashAttention supports CUDA float16 and bfloat16 inputs.
+        dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.run()
+
+
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize("dropout_p", [0.0])
 @pytest.mark.parametrize("is_causal", [True, False])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_scaled_dot_product_attention(monkeypatch, dropout_p, is_causal):
     if flag_gems.vendor_name == "hygon":
         monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -10,13 +24,13 @@ from flag_gems.utils import dim_compress, libentry, libtuner
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
-@libentry()
 @libtuner(
     configs=cfggen_reduce_op(), key=["M"], strategy=["log"], reset_to_zero=["out"]
 )
+@libentry()
 @triton.jit
 def mean_kernel_1(
     inp,
@@ -54,12 +68,12 @@ def mean(inp, *, dtype=None):
     return out.to(dtype)
 
 
-@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mean"),
     key=["M", "N"],
     strategy=["log", "log"],
 )
+@libentry()
 @triton.jit
 def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     # Map the program id to the row of X it should compute.
@@ -79,7 +93,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
         for off in range(0, N, BLOCK_N):
             cols = off + tl.arange(0, BLOCK_N)[None, :]
             col_mask = cols < N
-            mask = row_mask and col_mask
+            mask = row_mask & col_mask
 
             a = tl.load(X_ptr + cols, mask, other=0.0).to(tl.float32)
             _mean += a
@@ -89,10 +103,14 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_CAMBRICON MEAN DIM")
+    logger.debug("GEMS_CAMBRICON MEAN_DIM")
 
     if dtype is None:
         dtype = x.dtype
+    if dim == [] or dim == ():
+        if not keepdim:
+            return mean(x, dtype=dtype)
+        return mean(x, dtype=dtype).reshape([1] * x.ndim)
     if dim is None:
         out = mean(x, dtype=dtype)
         if not keepdim:

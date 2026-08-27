@@ -1,4 +1,19 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
+import math
 
 import torch
 import triton
@@ -7,9 +22,7 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 
 def conv2d_output_size(
@@ -440,8 +453,8 @@ class Conv2d(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_MTHREADS CONV2D VJP")
-        (weight, input, bias) = ctx.saved_tensors
+        logger.debug("GEMS_MTHREADS CONV2D_VJP")
+        weight, input, bias = ctx.saved_tensors
         # (out_c equals origin cout divide groups)
         out_c, weight_c, weight_height, weight_width = ctx.weight_info
         in_n, input_height, input_width = ctx.input_info
@@ -593,4 +606,42 @@ class Conv2d(torch.autograd.Function):
 
 # todo test SymInt[2] of stride or padding
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
-    return Conv2d.apply(input, weight, bias, stride, padding, dilation, groups)
+    if isinstance(padding, str):
+        if padding == "same":
+            assert stride == 1, "Doesn't support any stride values other than 1 \
+                in padding = 'same' mode, received stride value {stride}"
+            ih = input.shape[-2]
+            iw = input.shape[-1]
+            kernel_size_h = weight.shape[-2]
+            kernel_size_w = weight.shape[-1]
+            padding_h = int(
+                math.ceil(
+                    (stride * (ih - 1) + 1 + dilation * (kernel_size_h - 1) - ih) / 2
+                )
+            )
+            padding_w = int(
+                math.ceil(
+                    (stride * (iw - 1) + 1 + dilation * (kernel_size_w - 1) - iw) / 2
+                )
+            )
+            oh = int(
+                (ih + 2 * padding_h - dilation * (kernel_size_h - 1) - 1) / stride + 1
+            )
+            ow = int(
+                (iw + 2 * padding_w - dilation * (kernel_size_w - 1) - 1) / stride + 1
+            )
+            # Use per-dimension padding so asymmetric kernels (kh != kw) pad each
+            # spatial axis independently; the trailing slice trims the extra pad
+            # that ceil() introduces on the bottom/right, matching torch's "same".
+            padding = (padding_h, padding_w)
+            return Conv2d.apply(input, weight, bias, stride, padding, dilation, groups)[
+                ..., (oh - ih) :, (ow - iw) :
+            ]
+        elif padding == "valid":
+            return Conv2d.apply(input, weight, bias, stride, 0, dilation, groups)
+        else:
+            raise ValueError(
+                f"Unsupported padding string: {padding}, only'valild'/'same' are allowed."
+            )
+    else:
+        return Conv2d.apply(input, weight, bias, stride, padding, dilation, groups)

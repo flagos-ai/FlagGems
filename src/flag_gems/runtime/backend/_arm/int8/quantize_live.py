@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Live (in-memory) W8 per-channel symmetric quantization of nn.Linear layers,
 replacing each with a TLEInt8Linear.
 
@@ -16,6 +30,7 @@ Example:
     m = AutoModelForCausalLM.from_pretrained("...", dtype=torch.bfloat16)
     n = quantize_and_replace_linears(m, skip={"lm_head"})
 """
+
 import logging
 from typing import Iterable, Optional, Tuple
 
@@ -87,7 +102,7 @@ def quantize_and_replace_linears(
         if K % require_divisible_by != 0 or N % require_divisible_by != 0:
             n_skipped_align += 1
             logger.debug(
-                "quantize_and_replace_linears: %s K=%d N=%d not divisible by %d",
+                "GEMS_ARM quantize_and_replace_linears: %s K=%d N=%d not divisible by %d",
                 name,
                 K,
                 N,
@@ -117,8 +132,7 @@ def quantize_and_replace_linears(
     apply_arm_overrides(include=["_int_mm"])
 
     logger.info(
-        "quantize_and_replace_linears: replaced %d Linears "
-        "(skipped: %d alignment, %d bias, %d explicit)",
+        "GEMS_ARM quantize_and_replace_linears: replaced %d Linears (skipped: %d alignment, %d bias, %d explicit)",
         n_replaced,
         n_skipped_align,
         n_skipped_bias,

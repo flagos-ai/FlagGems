@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # SPDX-License-Identifier: Apache-2.0
 import random
 
@@ -44,6 +58,8 @@ CUDA_DEVICES = [f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 e
 # We assume fp8 is always enabled for testing.
 if flag_gems.vendor_name in ["kunlunxin", "cambricon", "sunrise"]:
     KV_CACHE_DTYPE = ["auto"]
+elif flag_gems.vendor_name == "thead" and torch.cuda.get_device_capability() == (8, 0):
+    KV_CACHE_DTYPE = ["auto"]
 else:
     KV_CACHE_DTYPE = ["auto", "fp8"]
 
@@ -89,9 +105,11 @@ def convert_fp8(
 @pytest.mark.parametrize("seed", SEEDS)
 @pytest.mark.parametrize(
     "device",
-    [flag_gems.device]
-    if flag_gems.vendor_name in ["mthreads", "sunrise"]
-    else CUDA_DEVICES,
+    (
+        [flag_gems.device]
+        if flag_gems.vendor_name in ["mthreads", "sunrise"]
+        else CUDA_DEVICES
+    ),
 )
 @pytest.mark.parametrize("kv_cache_dtype", KV_CACHE_DTYPE)
 @torch.inference_mode()

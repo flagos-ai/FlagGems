@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -18,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def reduce_any(a, b):
-    return a or b
+    return a | b
 
 
 def keep(conf):
@@ -54,10 +68,10 @@ def any_kernel_dim(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
 
         a = tl.load(inp + cols, mask, other=0.0)
-        _any = _any or (a != 0)
+        _any = _any | (a != 0)
     any = tl.reduce(_any, axis=1, combine_fn=reduce_any)
     tl.store(out, any[:, None], row_mask)
 
@@ -93,7 +107,7 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def any(inp):
-    logger.debug("GEMS ANY")
+    logger.debug("GEMS_ENFLAME ANY")
     n_elements = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
@@ -110,7 +124,7 @@ def any(inp):
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ANY DIM")
+    logger.debug("GEMS_ENFLAME ANY_DIM")
     shape = list(inp.shape)
     if dim is None:
         out = any(inp)
@@ -135,7 +149,7 @@ def any_dim(inp, dim=None, keepdim=False):
 
 
 def any_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ANY DIMS")
+    logger.debug("GEMS_ENFLAME ANY_DIMS")
 
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)

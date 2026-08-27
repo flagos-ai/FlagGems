@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -11,11 +25,11 @@ from flag_gems.utils.shape_utils import can_use_int32_index
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.autotune(configs=runtime.get_tuned_config("triu"), key=["M", "N"])
+@libentry()
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_kernel(
     X,
@@ -43,7 +57,7 @@ def triu_kernel(
             for n_offset in range(0, N, N_BLOCK_SIZE):
                 cols = n_offset + tl.arange(0, N_BLOCK_SIZE)[None, :]
                 n_mask = cols < N
-                mask = m_mask and n_mask
+                mask = m_mask & n_mask
 
                 x = tl.load(PX + cols, mask, other=0.0)
                 y = tl.where(row + diagonal <= cols, x, 0.0)
@@ -64,11 +78,11 @@ def triu_kernel(
             tl.store(Y + offset, write, mask=n_mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("triu_batch"),
     key=["batch", "MN", "N", "diagonal"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_batch_kernel(
     X,
@@ -93,7 +107,7 @@ def triu_batch_kernel(
 
     cols = mn_id * MN_BLOCK_SIZE + tl.arange(0, MN_BLOCK_SIZE)[None, :]
     mn_mask = cols < MN
-    mask = batch_mask and mn_mask
+    mask = batch_mask & mn_mask
     x = tl.load(X + cols, mask, other=0.0)
     m = cols // N
     n = cols % N
@@ -184,7 +198,7 @@ def triu(A, diagonal=0):
 
 
 def triu_(A, diagonal=0):
-    logger.debug("GEMS_CAMBRICON TRIU_(inplace)")
+    logger.debug("GEMS_CAMBRICON TRIU_")
 
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     diagonal = int(diagonal)
@@ -194,7 +208,7 @@ def triu_(A, diagonal=0):
 
     if not can_use_directly:
         logger.debug(
-            "Input tensor does not satisfy contiguity requirements, "
+            "GEMS_CAMBRICON Input tensor does not satisfy contiguity requirements, "
             "using temporary tensor for computation"
         )
 

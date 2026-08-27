@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -150,10 +164,10 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
 
 
 def reflection_pad2d(input: torch.Tensor, padding):
-    logger.debug("GEMS REFLECTION_PAD2D")
+    logger.debug("GEMS_SUNRISE REFLECTION_PAD2D")
     return launch_reflection_pad2d(input, padding, out=None)
 
 
 def reflection_pad2d_out(input: torch.Tensor, padding, out: torch.Tensor):
-    logger.debug("GEMS REFLECTION_PAD2D_OUT")
+    logger.debug("GEMS_SUNRISE REFLECTION_PAD2D_OUT")
     return launch_reflection_pad2d(input, padding, out=out)

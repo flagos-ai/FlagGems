@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -6,6 +20,8 @@ import triton.language as tl
 
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 div_rn = tl_extra_shim.div_rn
 _silu = tl_extra_shim.silu
@@ -33,14 +49,14 @@ def silu_backward(x, dy):
 class Silu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logging.debug("GEMS_SPACEMIT SILU_FORWARD")
+        logger.debug("GEMS_SPACEMIT SILU_FORWARD")
         out = silu_forward(A)
         ctx.save_for_backward(A)
         return out
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS_SPACEMIT SILU_BACKWARD")
+        logger.debug("GEMS_SPACEMIT SILU_BACKWARD")
         (inp,) = ctx.saved_tensors
         in_grad = silu_backward(inp, out_grad)
         return in_grad
@@ -53,7 +69,7 @@ def silu(A):
 class InplaceSilu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logging.debug("GEMS_SPACEMIT SILU__FORWARD")
+        logger.debug("GEMS_SPACEMIT SILU_FORWARD")
         ctx.save_for_backward(A.clone())
         ctx.mark_dirty(A)
         out = silu_forward(A, out0=A)
@@ -61,7 +77,7 @@ class InplaceSilu(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS_SPACEMIT SILU__BACKWARD")
+        logger.debug("GEMS_SPACEMIT SILU_BACKWARD")
         (inp,) = ctx.saved_tensors
         in_grad = silu_backward(inp, out_grad)
         return in_grad

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -8,7 +22,7 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 from .randn import randn_kernel
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 UNROLL = 4
 
 
@@ -22,6 +36,12 @@ def randn_like(
         dtype = x.dtype
     out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
+    if N == 0:
+        # Empty input: nothing to fill. Guard against N==0 because
+        # next_power_of_2(cdiv(0, ...)) == 0 -> BLOCK_SIZE == 0 -> the grid
+        # computation cdiv(N, BLOCK_SIZE * UNROLL) divides by zero and crashes
+        # (e.g. torch.randn_like of an empty diagonal in the backward benchmark).
+        return out
     cluster_num = 12
     BLOCK_SIZE = min(triton.next_power_of_2(triton.cdiv(N, cluster_num * UNROLL)), 1024)
     grid_fn = triton.cdiv(N, BLOCK_SIZE * UNROLL)

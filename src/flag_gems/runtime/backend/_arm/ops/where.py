@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -5,6 +19,8 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
+
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(
@@ -194,7 +210,7 @@ def _where_scalar_tensor_fastpath(condition, self, other, out):
 
 
 def where_self_out(condition, self, other, out=None):
-    logging.debug("GEMS WHERE_SELF_OUT")
+    logger.debug("GEMS_ARM WHERE_SELF_OUT")
     result_type = torch.result_type(self, other)
     if out is not None:
         assert (
@@ -247,15 +263,15 @@ def where_self_out(condition, self, other, out=None):
 
 
 def where_self(condition, self, other):
-    logging.debug("GEMS WHERE_SELF")
+    logger.debug("GEMS_ARM WHERE_SELF")
     return where_self_out(condition, self, other)
 
 
 def where_scalar_self(condition, self, other):
-    logging.debug("GEMS WHERE_SCALAR_SELF")
+    logger.debug("GEMS_ARM WHERE_SCALAR_SELF")
     return where_self_out(condition, self, other)
 
 
 def where_scalar_other(condition, self, other):
-    logging.debug("GEMS WHERE_SCALAR_OTHER")
+    logger.debug("GEMS_ARM WHERE_SCALAR_OTHER")
     return where_self_out(condition, self, other)

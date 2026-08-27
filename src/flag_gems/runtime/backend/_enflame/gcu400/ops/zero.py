@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -48,7 +62,7 @@ def _launch_zero_kernel(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def zero(*args, **kwargs):
-    logger.debug("GEMS ZERO")
+    logger.debug("GEMS_ENFLAME ZERO")
     target = None
     if len(args) >= 1 and isinstance(args[0], torch.Tensor):
         target = args[0]
@@ -66,7 +80,7 @@ def zero(*args, **kwargs):
 
 
 def zero_out(*args, **kwargs):
-    logger.debug("GEMS ZERO_OUT")
+    logger.debug("GEMS_ENFLAME ZERO_OUT")
     out = None
     if "out" in kwargs and isinstance(kwargs["out"], torch.Tensor):
         out = kwargs["out"]
@@ -80,5 +94,5 @@ def zero_out(*args, **kwargs):
 
 
 def zero_(x: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS ZERO_")
+    logger.debug("GEMS_ENFLAME ZERO_")
     return _launch_zero_kernel(x)
