@@ -1160,6 +1160,7 @@ _FULL_CONFIG = (
     ("zero_", zero_),
     ("zeros", zeros),
     ("zeros_like", zeros_like),
+    ("_weight_int8pack_mm", weight_int8pack_mm),
 )
 
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
