@@ -126,6 +126,7 @@ from flag_gems.ops._scaled_dot_product_fused_attention_overrideable import (
 )
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
 from flag_gems.ops._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
+from flag_gems.ops._thnn_fused_lstm_cell_backward import _thnn_fused_lstm_cell_backward
 from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
     _thnn_fused_lstm_cell_backward_impl,
 )
@@ -1009,6 +1010,7 @@ __all__ = [
     "_segment_reduce_backward_out",
     "_sparse_semi_structured_mm",
     "_thnn_fused_lstm_cell",
+    "_thnn_fused_lstm_cell_backward",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "_unsafe_masked_index",
