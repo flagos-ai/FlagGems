@@ -25,6 +25,7 @@ from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
+from ..utils.reduce_native import dim_compress_materializes, native_reduce
 
 logger = logging.getLogger(__name__)
 
@@ -238,6 +239,11 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
+    # Non-inner-dim reduction: dim_compress would materialize a permuted copy
+    # through the broken strided copy_ path. Redispatch to the native kernel.
+    if dim_compress_materializes(inp, dim):
+        src = inp if dtype == inp.dtype else inp.to(dtype)
+        return native_reduce("aten::sum.dim_IntList", src, dim=dim, keepdim=keepdim)
     inp = dim_compress(inp, dim)
     N = 1
     for i in dim:
@@ -281,6 +287,14 @@ def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
+    # Non-inner-dim reduction: dim_compress would materialize a permuted copy
+    # through the broken strided copy_ path. Redispatch to the native kernel
+    # and copy into the caller-provided out buffer.
+    if dim_compress_materializes(inp, dim):
+        src = inp if dtype == inp.dtype else inp.to(dtype)
+        r = native_reduce("aten::sum.dim_IntList", src, dim=dim, keepdim=keepdim)
+        out.resize_(r.shape).copy_(r)
+        return out
     inp = dim_compress(inp, dim)
     N = 1
     for i in dim:

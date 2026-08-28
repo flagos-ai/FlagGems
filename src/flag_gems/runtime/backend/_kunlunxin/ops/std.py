@@ -22,6 +22,8 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 
+from ..utils.reduce_native import dim_compress_materializes, native_var_mean_parts
+
 logger = logging.getLogger(__name__)
 
 
@@ -168,6 +170,19 @@ def std(x, dim=None, *, correction=None, keepdim=False):
     # launch param IR explosion of the old _std_fused_dim_kernel path
     # (ir-std-dev5.log = 7.7M lines) and (b) avoids the non_inner (K>1) softmax
     # kernel, which was numerically wrong on XPU (std ~sqrt(K)x too small).
+    # Non-inner-dim reduction: dim_compress would materialize a permuted
+    # copy through the broken strided copy_ path (invalid device function).
+    # Redispatch to the native kernel -- POSITIONAL (x, dim, correction,
+    # keepdim): kwargs marshalling fails for std.dim. native_reduce upcasts
+    # contiguous fp16/bf16 to fp32 first because the native std kernel
+    # accumulates in the input dtype and overflows f16 for >=1M-element
+    # reductions.
+    if dim_compress_materializes(x, dim_list_normalized):
+        var, _ = native_var_mean_parts(x, dim_list_normalized, effective_correction)
+        out = var.clamp_min(0).sqrt().to(x.dtype)
+        if not keepdim:
+            out = out.squeeze(dim=dim_list_normalized)
+        return out
     x_view = dim_compress(x, dim_list_normalized)
     N = 1
     for d in dim_list_normalized:

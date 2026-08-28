@@ -23,6 +23,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from ..utils.reduce_native import dim_compress_materializes, native_var_mean_parts
+
 logger = logging.getLogger(__name__)
 
 
@@ -173,33 +175,27 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         correction = 1.0
 
     if dim is None or len(dim) == x.ndim:
-        dim = list(range(x.ndim))
-        shape = [1] * x.ndim
-        N = x.numel()
-        var = torch.empty(shape, dtype=x.dtype, device=x.device)
-        mean = torch.empty(shape, dtype=x.dtype, device=x.device)
-        BLOCK_N = 1024
-        BLOCK_NUM = triton.cdiv(N, BLOCK_N)
-        acc = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
-        average = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
-        count = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
-
-        with torch_device_fn.device(x.device):
-            var_mean_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
-            var_mean_kernel_2[(1,)](
-                acc,
-                average,
-                count,
-                var,
-                mean,
-                N,
-                correction,
-                BLOCK_NUM,
-                isCloseUnrollControl=True,
-            )
+        # The two-stage kernel reduces partials with a welford tl.reduce
+        # combine_fn containing tl.maximum(count, 1) (int literal), which
+        # fails to lower on XPU (arith.maxnumf MLIR type error, surfacing
+        # as OutOfResources). The native aten::var_mean.correction kernel
+        # is correct, so redispatch (kwargs; positional marshalling fails).
+        var, mean = native_var_mean_parts(x, list(range(x.ndim)), correction)
+        if not keepdim:
+            var = var.squeeze(dim=list(range(x.ndim)))
+            mean = mean.squeeze(dim=list(range(x.ndim)))
+        return var.to(x.dtype), mean.to(x.dtype)
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]
+        # Non-inner-dim reduction: dim_compress would materialize a permuted
+        # copy through the broken strided copy_ path. Redispatch to native.
+        if dim_compress_materializes(x, dim):
+            var, mean = native_var_mean_parts(x, dim, correction)
+            if not keepdim:
+                var = var.squeeze(dim=dim)
+                mean = mean.squeeze(dim=dim)
+            return var.to(x.dtype), mean.to(x.dtype)
         x = dim_compress(x, dim)
         N = 1
         for i in dim:

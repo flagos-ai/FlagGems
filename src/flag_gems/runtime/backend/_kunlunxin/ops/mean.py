@@ -25,6 +25,7 @@ from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
+from ..utils.reduce_native import dim_compress_materializes, native_reduce
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,8 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         for s in shape[d + 1 :]:
             M1 *= s
         try:
+            if M1 < 8 or M1 > 8192:
+                raise RuntimeError("skip bmm fast path for tiny/huge free dim")
             x3 = x.reshape(M0, N, M1)
             ones = torch.ones((M0, 1, N), dtype=x.dtype, device=x.device)
             out = (torch.bmm(ones, x3).reshape(M0, M1) / N).to(dtype)
@@ -202,6 +205,13 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         except Exception:
             logger.debug("GEMS_KUNLUNXIN MEAN_DIM bmm fast path unavailable, fallback")
 
+    # Non-inner-dim reduction: dim_compress would materialize a permuted
+    # copy through the broken strided copy_ path. Redispatch to the native
+    # kernel (kwargs required by call_boxed). The bmm fast path above already
+    # handled contiguous fp16/bf16 single non-last dim; this catches the rest.
+    if dim_compress_materializes(x, dim):
+        src = x if dtype == x.dtype else x.to(dtype)
+        return native_reduce("aten::mean.dim", src, dim=dim, keepdim=keepdim)
     x = dim_compress(x, dim)
     N = 1
     for i in dim:
