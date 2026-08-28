@@ -25,7 +25,7 @@ def test_iand(shape, dtype):
 
     ref_out = ref_inp1.__iand__(ref_inp2)
     with flag_gems.use_gems():
-        res_out = inp1.bitwise_and_(inp2)
+        res_out = inp1.__iand__(inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
