@@ -6635,6 +6635,28 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
+  - id: linalg_matrix_sqrth
+    description: Computes the principal square root of a symmetric or Hermitian positive-definite matrix.
+    for:
+      - linalg_matrix_sqrth
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_matrix_sqrth_out
+    description: Writes the principal square root of a symmetric or Hermitian positive-definite matrix to an output tensor.
+    for:
+      - linalg_matrix_sqrth.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
