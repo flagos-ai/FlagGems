@@ -81,7 +81,7 @@ def test_cudnn_rnn_backward(shape, dtype):
 
     output_mask = [True, True, True, True]
 
-    # ATen reference (outside use_gems, on CUDA).
+    # ATen reference (on CUDA).
     ref_out = torch.ops.aten._cudnn_rnn_backward(
         input,
         weight,
@@ -106,31 +106,30 @@ def test_cudnn_rnn_backward(shape, dtype):
         reserve,
         output_mask,
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._cudnn_rnn_backward(
-            input,
-            weight,
-            4,
-            weight_buf,
-            hx,
-            cx,
-            output,
-            grad_output,
-            grad_hy,
-            grad_cy,
-            2,
-            hidden_size,
-            0,
-            1,
-            False,
-            0.0,
-            True,
-            False,
-            [],
-            None,
-            reserve,
-            output_mask,
-        )
+    res_out = flag_gems.ops.cudnn_rnn_backward(
+        input,
+        weight,
+        4,
+        weight_buf,
+        hx,
+        cx,
+        output,
+        grad_output,
+        grad_hy,
+        grad_cy,
+        2,
+        hidden_size,
+        0,
+        1,
+        False,
+        0.0,
+        True,
+        False,
+        [],
+        None,
+        reserve,
+        output_mask,
+    )
 
     # ref_out order: (grad_input, grad_hx, grad_cx, grad_weight_list)
     ref_grad_input, ref_grad_hx, ref_grad_cx, ref_grad_weight = ref_out
