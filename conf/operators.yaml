@@ -3392,21 +3392,6 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '1.0'
-  - id: histogramdd_from_bin_tensors
-    description: |
-      Triton kernel implementation for _histogramdd_from_bin_tensors.
-      Computes a multi-dimensional histogram from explicit per-dimension
-      bin-edge tensors, supporting optional weights and density
-      normalisation.
-    for:
-      - _histogramdd_from_bin_tensors
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Reduction
-    stages:
-      - alpha: '5.4'
   - id: native_dropout_backward
     description: The backward case of `dropout()`.
     for:
@@ -5529,6 +5514,21 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: histogramdd_from_bin_tensors
+    description: |
+      Triton kernel implementation for _histogramdd_from_bin_tensors.
+      Computes a multi-dimensional histogram from explicit per-dimension
+      bin-edge tensors, supporting optional weights and density
+      normalisation.
+    for:
+      - _histogramdd_from_bin_tensors
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: hsplit
     description: |
       Split a tensor into multiple sub-tensors horizontally (column-wise).
