@@ -6972,6 +6972,20 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: nested_sum_backward
+    description: |
+      Triton kernel implementation for `_nested_sum_backward`, the backward of
+      a (nested) tensor `sum` over a single dimension. It broadcasts the
+      gradient back to the shape of the original input along the reduced dim.
+    for:
+      - _nested_sum_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: scaled_dot_product_cudnn_attention
     description: |
       Computes scaled dot product attention using the cuDNN attention API
