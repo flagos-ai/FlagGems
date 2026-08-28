@@ -12245,6 +12245,17 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: thnn_differentiable_gru_cell_backward
+    description: Computes differentiable gradients for a fused GRU cell.
+    for:
+      - _thnn_differentiable_gru_cell_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: thnn_fused_lstm_cell
     description: Fused LSTM cell computation with optional input and hidden biases.
     for:
