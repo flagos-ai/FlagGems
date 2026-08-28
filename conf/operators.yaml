@@ -2471,6 +2471,19 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.3'
+  - id: conj_physical_
+    description: |
+      In-place version of `conj_physical`.
+      Computes the element-wise conjugate of the given `input` tensor in place.
+      If `input` has a non-complex dtype, this function just returns `input`.
+    for:
+      - conj_physical_
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: constant_pad_nd
     description: |
       Pads the input tensor boundaries with a constant value.
