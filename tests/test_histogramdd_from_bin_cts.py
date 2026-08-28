@@ -109,8 +109,7 @@ def test_histogramdd_from_bin_cts_basic(shape, dtype):
     ref_inp = _to_cpu_ref(inp)
 
     ref_out = torch._histogramdd_from_bin_cts(ref_inp, bins)
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_cts(inp, bins)
+    res_out = flag_gems._histogramdd_from_bin_cts(inp, bins)
     _assert_close(res_out, ref_out, dtype)
 
 
@@ -124,8 +123,7 @@ def test_histogramdd_from_bin_cts_with_range(shape, dtype):
     ref_inp = _to_cpu_ref(inp)
 
     ref_out = torch._histogramdd_from_bin_cts(ref_inp, bins, range=_range_for(ndim))
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_cts(inp, bins, range=_range_for(ndim))
+    res_out = flag_gems._histogramdd_from_bin_cts(inp, bins, range=_range_for(ndim))
     _assert_close(res_out, ref_out, dtype)
 
 
@@ -145,10 +143,9 @@ def test_histogramdd_from_bin_cts_with_weight(shape, dtype):
     ref_out = torch._histogramdd_from_bin_cts(
         ref_inp, bins, range=_range_for(ndim), weight=ref_weight
     )
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_cts(
-            inp, bins, range=_range_for(ndim), weight=weight
-        )
+    res_out = flag_gems._histogramdd_from_bin_cts(
+        inp, bins, range=_range_for(ndim), weight=weight
+    )
     _assert_close(res_out, ref_out, dtype)
 
 
@@ -164,10 +161,9 @@ def test_histogramdd_from_bin_cts_density(shape, dtype):
     ref_out = torch._histogramdd_from_bin_cts(
         ref_inp, bins, range=_range_for(ndim), density=True
     )
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_cts(
-            inp, bins, range=_range_for(ndim), density=True
-        )
+    res_out = flag_gems._histogramdd_from_bin_cts(
+        inp, bins, range=_range_for(ndim), density=True
+    )
     _assert_close(res_out, ref_out, dtype)
 
 
@@ -196,8 +192,7 @@ def test_histogramdd_from_bin_cts_boundary_and_outliers():
     # NaN/inf inputs are excluded from every bin, so the counts are finite;
     # equal_nan=True is harmless here (no NaN lands in the count tensor).
     ref_out = torch._histogramdd_from_bin_cts(ref_inp, [4], range=[0.0, 2.0])
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_cts(inp, [4], range=[0.0, 2.0])
+    res_out = flag_gems._histogramdd_from_bin_cts(inp, [4], range=[0.0, 2.0])
     _assert_close(res_out, ref_out, torch.float32, equal_nan=True)
 
 
@@ -212,8 +207,7 @@ def test_histogramdd_from_bin_cts_auto_range_constant_dim():
     ref_inp = _to_cpu_ref(inp)
 
     ref_out = torch._histogramdd_from_bin_cts(ref_inp, [3, 3])
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_cts(inp, [3, 3])
+    res_out = flag_gems._histogramdd_from_bin_cts(inp, [3, 3])
     _assert_close(res_out, ref_out, torch.float32)
 
 
@@ -225,10 +219,9 @@ def test_histogramdd_from_bin_cts_empty_input():
     ref_out = torch._histogramdd_from_bin_cts(
         ref_inp, [3, 3], range=[0.0, 2.0, 0.0, 2.0]
     )
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_cts(
-            inp, [3, 3], range=[0.0, 2.0, 0.0, 2.0]
-        )
+    res_out = flag_gems._histogramdd_from_bin_cts(
+        inp, [3, 3], range=[0.0, 2.0, 0.0, 2.0]
+    )
     _assert_close(res_out, ref_out, torch.float32)
 
 
@@ -253,10 +246,7 @@ def test_histogramdd_from_bin_cts_out(shape, dtype):
 
     out_shape = tuple(bins)
     out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._histogramdd_from_bin_cts.out(
-            inp, bins, range=rng, out=out
-        )
+    res_out = flag_gems._histogramdd_from_bin_cts_out(inp, bins, range=rng, out=out)
 
     # The .out variant returns the out tensor and writes into it in-place.
     _assert_close(res_out, ref_out, dtype)
@@ -281,9 +271,8 @@ def test_histogramdd_from_bin_cts_out_weighted_density(dtype):
     )
 
     out = torch.empty((10, 10), dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._histogramdd_from_bin_cts.out(
-            inp, [10, 10], range=rng, weight=weight, density=True, out=out
-        )
+    res_out = flag_gems._histogramdd_from_bin_cts_out(
+        inp, [10, 10], range=rng, weight=weight, density=True, out=out
+    )
     _assert_close(res_out, ref_out, dtype)
     _assert_close(out, ref_out, dtype)
