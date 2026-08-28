@@ -362,6 +362,9 @@ from flag_gems.ops.fake_quantize_per_channel_affine_cachemask import (
     fake_quantize_per_channel_affine_cachemask,
     fake_quantize_per_channel_affine_cachemask_out,
 )
+from flag_gems.ops.fake_quantize_per_tensor_affine import (
+    fake_quantize_per_tensor_affine,
+)
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.fft import fft
 from flag_gems.ops.fill import (
@@ -453,6 +456,7 @@ from flag_gems.ops.hardtanh_backward import hardtanh_backward
 from flag_gems.ops.heaviside import heaviside
 from flag_gems.ops.heaviside_ import heaviside_
 from flag_gems.ops.histc import histc
+from flag_gems.ops.hsplit import hsplit
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.huber_loss import huber_loss, huber_loss_out
 from flag_gems.ops.hypot import hypot, hypot_out
@@ -1288,6 +1292,7 @@ __all__ = [
     "fake_quantize_per_channel_affine",
     "fake_quantize_per_channel_affine_cachemask",
     "fake_quantize_per_channel_affine_cachemask_out",
+    "fake_quantize_per_tensor_affine",
     "feature_dropout",
     "feature_dropout_",
     "fft",
@@ -1389,6 +1394,7 @@ __all__ = [
     "heaviside",
     "heaviside_",
     "histc",
+    "hsplit",
     "hstack",
     "huber_loss",
     "huber_loss_out",
