@@ -183,6 +183,7 @@ from .gt import gt, gt_scalar
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid import hardsigmoid, hardsigmoid_out
 from .hstack import hstack
+from .hypot_ import hypot_
 from .index import index
 from .index_add import index_add, index_add_
 from .index_put import index_put, index_put_
@@ -568,6 +569,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "hstack",
+    "hypot_",
     "hadamard_transform",
     "hardsigmoid",
     "hardsigmoid_out",
