@@ -1235,6 +1235,30 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: column_stack
+    description: |
+      Creates a new tensor by horizontally stacking the tensors in tensors. Equivalent to
+      torch.hstack after 0-D and 1-D tensors have been reshaped into (numel, 1) columns.
+    for:
+      - column_stack
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: column_stack_out
+    description: A variant of column_stack() that writes the result into the out tensor.
+    for:
+      - column_stack.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: blackman_window
     description: Computes the Blackman window function.
     for:
