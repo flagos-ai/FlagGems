@@ -805,7 +805,7 @@ from flag_gems.ops.special_gammaln import special_gammaln, special_gammaln_out
 from flag_gems.ops.special_hermite_polynomial_h import special_hermite_polynomial_h
 from flag_gems.ops.special_i0e import special_i0e, special_i0e_out
 from flag_gems.ops.special_i1 import special_i1, special_i1_out
-from flag_gems.ops.special_i1e import special_i1e
+from flag_gems.ops.special_i1e import special_i1e, special_i1e_out
 from flag_gems.ops.special_legendre_polynomial_p import special_legendre_polynomial_p
 from flag_gems.ops.special_log1p import special_log1p, special_log1p_out
 from flag_gems.ops.special_log_ndtr import special_log_ndtr
@@ -1817,6 +1817,7 @@ __all__ = [
     "special_i1",
     "special_i1_out",
     "special_i1e",
+    "special_i1e_out",
     "special_legendre_polynomial_p",
     "special_log_ndtr",
     "special_log_softmax",
