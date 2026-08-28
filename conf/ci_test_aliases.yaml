@@ -44,5 +44,3 @@ arctan: test_atan
 # Operators tested in combined files or with different naming
 batch_norm_backward: test_batch_norm
 batch_norm_impl_index: test_batch_norm
-thnn_fused_gru_cell: test__thnn_fused_gru_cell
-thnn_fused_gru_cell_out: test__thnn_fused_gru_cell
