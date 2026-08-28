@@ -17,7 +17,15 @@ import torch
 
 import flag_gems
 
-from . import base
+from . import base, consts
+from .conftest import Config
+
+VENDOR = flag_gems.vendor_name
+
+# On ascend the general KERNEL-mode do_bench_npu is unreliable; use the
+# operator (end-to-end) timing mode (same as det/lu_factor/cholesky_solve).
+if VENDOR == "ascend":
+    Config.mode = consts.BenchMode.OPERATOR
 
 SOLVE_TRI_SHAPES = [
     (8, 16),
@@ -32,8 +40,58 @@ SOLVE_TRI_SHAPES = [
 SOLVE_TRI_DTYPES = [
     torch.float32,
 ]
-if flag_gems.runtime.device.support_fp64:
+if flag_gems.runtime.device.support_fp64 and VENDOR != "ascend":
     SOLVE_TRI_DTYPES.append(torch.float64)
+
+
+def _solve_tri_small_ops(A, B, upper=False, left=True, unitriangular=False, **kwargs):
+    """Small-op combination baseline (block forward/backward substitution via
+    torch.matmul + torch.linalg.inv), running on AI Core.
+
+    On ascend the torch reference (aclnnTriangularSolve) runs on AI_CPU, which
+    is not a meaningful comparison; this small-op combination is used as the
+    benchmark baseline instead (same approach as det / lu_factor).  Its
+    agreement with torch.linalg.solve_triangular is validated by
+    test_baseline_matches_torch in tests/test_linalg_solve_triangular.py.
+    """
+    n = A.shape[-1]
+    bs = 64
+    X = B.clone()
+    if not left:
+        # X A = B  <=>  A^T X^T = B^T  (reduce to left-multiply, transpose back)
+        return _solve_tri_small_ops(
+            A.mT.contiguous(),
+            B.mT.contiguous(),
+            not upper,
+            True,
+            unitriangular,
+        ).mT.contiguous()
+    if upper:
+        for i in range(n - 1, -1, -bs):
+            i0 = max(0, i - bs + 1)
+            i1 = i + 1
+            Aii = A[..., i0:i1, i0:i1]
+            rhs = B[..., i0:i1, :]
+            if i1 < n:
+                rhs = rhs - torch.matmul(A[..., i0:i1, i1:], X[..., i1:, :])
+            X[..., i0:i1, :] = torch.matmul(torch.linalg.inv(Aii), rhs)
+    else:
+        for i in range(0, n, bs):
+            i1 = min(i + bs, n)
+            Aii = A[..., i:i1, i:i1]
+            rhs = B[..., i:i1, :]
+            if i > 0:
+                rhs = rhs - torch.matmul(A[..., i:i1, :i], X[..., :i, :])
+            X[..., i:i1, :] = torch.matmul(torch.linalg.inv(Aii), rhs)
+    return X
+
+
+def _torch_solve_tri(A, B, **kwargs):
+    """Benchmark baseline: on NPU use the small-op combination (AI Core);
+    elsewhere use the torch reference."""
+    if A.device.type == "npu":
+        return _solve_tri_small_ops(A, B, **kwargs)
+    return torch.linalg.solve_triangular(A, B, **kwargs)
 
 
 def _make_triangular_input(n, k, dtype, device, upper, unitriangular):
@@ -69,7 +127,7 @@ class SolveTriBenchmark(base.Benchmark):
 def test_linalg_solve_triangular():
     bench = SolveTriBenchmark(
         op_name="linalg_solve_triangular",
-        torch_op=torch.linalg.solve_triangular,
+        torch_op=_torch_solve_tri,
         gems_op=flag_gems.linalg_solve_triangular,
         dtypes=SOLVE_TRI_DTYPES,
     )
@@ -94,7 +152,7 @@ class SolveTriOutBenchmark(base.Benchmark):
 def test_linalg_solve_triangular_out():
     bench = SolveTriOutBenchmark(
         op_name="linalg_solve_triangular_out",
-        torch_op=torch.linalg.solve_triangular,
+        torch_op=_torch_solve_tri,
         gems_op=flag_gems.linalg_solve_triangular_out,
         dtypes=SOLVE_TRI_DTYPES,
     )
