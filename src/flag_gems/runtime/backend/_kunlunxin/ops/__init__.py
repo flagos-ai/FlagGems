@@ -23,6 +23,7 @@ from .abs import abs, abs_
 from .absolute import absolute
 from .acos import acos
 from .adaptive_avg_pool2d import adaptive_avg_pool2d
+from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .add import add, add_
 from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_out
@@ -402,6 +403,7 @@ __all__ = [
     "atan_",
     "avg_pool2d",
     "avg_pool2d_backward",
+    "_adaptive_avg_pool2d_backward",
     "baddbmm",
     "batch_norm",
     "batch_norm_backward",
