@@ -4700,17 +4700,6 @@ ops:
       - Tensor
     stages:
       - beta: '5.0'
-  - id: fused_adagrad
-    description: Fused Adagrad optimizer step with optional weight decay, lr decay, gradient scaling, and gradient maximize support.
-    for:
-      - _fused_adagrad
-    labels:
-      - aten
-      - KernelGen
-    kind:
-      - Math
-    stages:
-      - alpha: '5.4'
   - id: fused_adagrad_
     description: The in-place version of `fused_adagrad()`.
     for:

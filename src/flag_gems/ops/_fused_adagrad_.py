@@ -184,54 +184,6 @@ def _fused_adagrad_run(
         )
 
 
-def _fused_adagrad(
-    params,
-    grads,
-    state_sums,
-    state_steps,
-    *,
-    lr: float = 1e-2,
-    lr_decay: float = 0.0,
-    weight_decay: float = 0.0,
-    eps: float = 1e-10,
-    maximize: bool = False,
-    grad_scale=None,
-    found_inf=None,
-):
-    """Out-of-place fused Adagrad step.
-
-    Mirrors ``aten::_fused_adagrad`` which returns fresh copies of the inputs
-    rather than mutating them in place.  The caller's tensors are left
-    untouched; the updated ``param``/``grad``/``state_sum``/``state_steps`` are
-    returned as new tensors.
-    """
-    logger.debug("GEMS FUSED_ADAGRAD")
-
-    # Clone the operands so the caller's storage is not modified.  ``grad`` is
-    # only mutated when ``grad_scale`` is set, but we clone it unconditionally
-    # to match the out-of-place contract (returned ``grads_out`` is a copy).
-    out_params = [p.clone() for p in params]
-    out_grads = [g.clone() for g in grads]
-    out_state_sums = [s.clone() for s in state_sums]
-    out_state_steps = state_steps
-
-    _fused_adagrad_run(
-        out_params,
-        out_grads,
-        out_state_sums,
-        out_state_steps,
-        lr=lr,
-        lr_decay=lr_decay,
-        weight_decay=weight_decay,
-        eps=eps,
-        maximize=maximize,
-        grad_scale=grad_scale,
-        found_inf=found_inf,
-    )
-
-    return out_params, out_grads, out_state_sums, out_state_steps
-
-
 def _fused_adagrad_(
     params,
     grads,

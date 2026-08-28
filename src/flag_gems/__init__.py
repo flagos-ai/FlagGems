@@ -144,7 +144,6 @@ _FULL_CONFIG = (
         "_functional_sym_constrain_range_for_size",
         _functional_sym_constrain_range_for_size,
     ),
-    ("_fused_adagrad", _fused_adagrad),
     ("_fused_adagrad_", _fused_adagrad_),
     ("_fused_adam", _fused_adam),
     ("_fused_adam_", _fused_adam_),
