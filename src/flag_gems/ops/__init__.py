@@ -235,6 +235,7 @@ from flag_gems.ops.binary_cross_entropy_with_logits import (
     binary_cross_entropy_with_logits,
 )
 from flag_gems.ops.bincount import bincount
+from flag_gems.ops.binomial import binomial, binomial_out
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_,
@@ -1135,11 +1136,13 @@ __all__ = [
     "bernoulli",
     "bernoulli_",
     "bilinear",
+    "binary_cross_entropy",
     "binary_cross_entropy_backward",
+    "binary_cross_entropy_out",
     "binary_cross_entropy_with_logits",
     "bincount",
-    "binary_cross_entropy",
-    "binary_cross_entropy_out",
+    "binomial",
+    "binomial_out",
     "bitwise_and_scalar",
     "bitwise_and_scalar_",
     "bitwise_and_scalar_tensor",
