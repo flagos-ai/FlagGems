@@ -220,6 +220,7 @@ from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .max import max, max_dim
+from .max_pool3d_with_indices import max_pool3d_with_indices
 from .max_pool2d_with_indices import (
     max_pool2d_backward,
     max_pool2d_with_indices,
@@ -882,4 +883,5 @@ __all__ = [
     "_native_batch_norm_legit_no_training",
     "_native_batch_norm_legit_out",
     "miopen_batch_norm_backward",
+    "max_pool3d_with_indices",
 ]
