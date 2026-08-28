@@ -40,9 +40,9 @@ def test_iand_scalar_int(shape, dtype, scalar):
     ).to(flag_gems.device)
     ref_inp1 = utils.to_reference(inp1.clone())
 
-    ref_out = ref_inp1.bitwise_and_(scalar)
+    ref_out = ref_inp1.__iand__(scalar)
     with flag_gems.use_gems():
-        res_out = inp1.bitwise_and_(scalar)
+        res_out = inp1.__iand__(scalar)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -54,8 +54,8 @@ def test_iand_scalar_bool(shape, scalar):
     inp1 = torch.randint(0, 2, size=shape, dtype=torch.bool, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1.clone())
 
-    ref_out = ref_inp1.bitwise_and_(scalar)
+    ref_out = ref_inp1.__iand__(scalar)
     with flag_gems.use_gems():
-        res_out = inp1.bitwise_and_(scalar)
+        res_out = inp1.__iand__(scalar)
 
     utils.gems_assert_equal(res_out, ref_out)
