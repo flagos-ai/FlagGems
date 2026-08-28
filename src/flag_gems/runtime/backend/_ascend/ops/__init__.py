@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .addmm import addmm
+from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .angle import angle
@@ -41,6 +41,7 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .dot import dot
 from .embedding import embedding
+from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
@@ -53,12 +54,14 @@ from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
+from .index_fill import index_fill, index_fill_
 from .index_select import index_select
 from .isin import isin
 from .layernorm import layer_norm, native_layer_norm
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
 from .linalg_lstsq import linalg_lstsq
+from .linalg_lu import linalg_lu, linalg_lu_out
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linspace import linspace
@@ -123,6 +126,9 @@ __all__ = [
     "_unique2",
     "_upsample_bicubic2d_aa",
     "addmm",
+    "addmm_dtype",
+    "addmm_dtype_out",
+    "addmm_out",
     "all",
     "all_dim",
     "all_dims",
@@ -150,6 +156,7 @@ __all__ = [
     "diagonal_backward",
     "dot",
     "embedding",
+    "exponential",
     "exponential_",
     "fill_scalar",
     "fill_scalar_",
@@ -171,6 +178,8 @@ __all__ = [
     "index_add_",
     "index_copy",
     "index_copy_",
+    "index_fill",
+    "index_fill_",
     "index_select",
     "isin",
     "layer_norm",
@@ -180,10 +189,12 @@ __all__ = [
     "linalg_det",
     "linalg_det_out",
     "linalg_lstsq",
+    "linalg_lu",
     "linalg_lu_factor",
     "linalg_lu_factor_ex",
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
+    "linalg_lu_out",
     "linspace",
     "log_sigmoid_backward",
     "log_sigmoid_backward_out",
