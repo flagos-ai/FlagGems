@@ -20,8 +20,7 @@ def test__aminmax(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_min, ref_max = torch._aminmax(ref_inp)
-    with flag_gems.use_gems():
-        res_min, res_max = torch._aminmax(inp)
+    res_min, res_max = flag_gems._aminmax(inp)
 
     utils.gems_assert_equal(res_min, ref_min)
     utils.gems_assert_equal(res_max, ref_max)
@@ -35,8 +34,7 @@ def test__aminmax_zero(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_min, ref_max = torch._aminmax(ref_inp)
-    with flag_gems.use_gems():
-        res_min, res_max = torch._aminmax(inp)
+    res_min, res_max = flag_gems._aminmax(inp)
 
     utils.gems_assert_equal(res_min, ref_min)
     utils.gems_assert_equal(res_max, ref_max)
@@ -54,8 +52,7 @@ def test__aminmax_inf(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_min, ref_max = torch._aminmax(ref_inp)
-    with flag_gems.use_gems():
-        res_min, res_max = torch._aminmax(inp)
+    res_min, res_max = flag_gems._aminmax(inp)
 
     utils.gems_assert_equal(res_min, ref_min, equal_nan=True)
     utils.gems_assert_equal(res_max, ref_max, equal_nan=True)
@@ -68,8 +65,7 @@ def test__aminmax_int(shape):
     ref_inp = utils.to_reference(inp)
 
     ref_min, ref_max = torch._aminmax(ref_inp)
-    with flag_gems.use_gems():
-        res_min, res_max = torch._aminmax(inp)
+    res_min, res_max = flag_gems._aminmax(inp)
 
     utils.gems_assert_equal(res_min, ref_min)
     utils.gems_assert_equal(res_max, ref_max)
@@ -81,8 +77,7 @@ def test__aminmax_scalar():
     ref_inp = utils.to_reference(inp)
 
     ref_min, ref_max = torch._aminmax(ref_inp)
-    with flag_gems.use_gems():
-        res_min, res_max = torch._aminmax(inp)
+    res_min, res_max = flag_gems._aminmax(inp)
 
     utils.gems_assert_equal(res_min, ref_min)
     utils.gems_assert_equal(res_max, ref_max)
@@ -101,8 +96,7 @@ def test__aminmax_out(shape, dtype):
 
     min_out = torch.empty((), dtype=dtype, device=flag_gems.device)
     max_out = torch.empty((), dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten._aminmax.out(inp, out0=min_out, out1=max_out)
+    flag_gems._aminmax_out(inp, out0=min_out, out1=max_out)
 
     utils.gems_assert_equal(min_out, ref_min)
     utils.gems_assert_equal(max_out, ref_max)
