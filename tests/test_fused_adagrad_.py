@@ -106,18 +106,17 @@ def test_fused_adagrad__basic(shape, dtype):
 
     torch.manual_seed(42)
     params, grads, state_sums, steps = _make_inputs(shape, dtype, flag_gems.device)
-    with flag_gems.use_gems():
-        torch._fused_adagrad_(
-            params,
-            grads,
-            state_sums,
-            steps,
-            lr=0.01,
-            lr_decay=0.0,
-            weight_decay=0.0,
-            eps=1e-10,
-            maximize=False,
-        )
+    flag_gems._fused_adagrad_(
+        params,
+        grads,
+        state_sums,
+        steps,
+        lr=0.01,
+        lr_decay=0.0,
+        weight_decay=0.0,
+        eps=1e-10,
+        maximize=False,
+    )
 
     utils.gems_assert_close(
         utils.to_reference(params[0]), utils.to_reference(ref_p), dtype, atol=atol
@@ -163,18 +162,17 @@ def test_fused_adagrad__options(shape, dtype, lr_decay, weight_decay, maximize):
 
     torch.manual_seed(42)
     params, grads, state_sums, steps = _make_inputs(shape, dtype, flag_gems.device)
-    with flag_gems.use_gems():
-        torch._fused_adagrad_(
-            params,
-            grads,
-            state_sums,
-            steps,
-            lr=0.05,
-            lr_decay=lr_decay,
-            weight_decay=weight_decay,
-            eps=1e-10,
-            maximize=maximize,
-        )
+    flag_gems._fused_adagrad_(
+        params,
+        grads,
+        state_sums,
+        steps,
+        lr=0.05,
+        lr_decay=lr_decay,
+        weight_decay=weight_decay,
+        eps=1e-10,
+        maximize=maximize,
+    )
 
     utils.gems_assert_close(
         utils.to_reference(params[0]), utils.to_reference(ref_p), dtype, atol=atol
@@ -233,18 +231,17 @@ def test_fused_adagrad__multi_tensor(shape, dtype):
 
     torch.manual_seed(42)
     params, grads, state_sums, steps = _build()
-    with flag_gems.use_gems():
-        torch._fused_adagrad_(
-            params,
-            grads,
-            state_sums,
-            steps,
-            lr=0.01,
-            lr_decay=0.0,
-            weight_decay=0.0,
-            eps=1e-10,
-            maximize=False,
-        )
+    flag_gems._fused_adagrad_(
+        params,
+        grads,
+        state_sums,
+        steps,
+        lr=0.01,
+        lr_decay=0.0,
+        weight_decay=0.0,
+        eps=1e-10,
+        maximize=False,
+    )
 
     for p, rp, s, rs in zip(params, ref_ps, state_sums, ref_ss):
         utils.gems_assert_close(
@@ -285,20 +282,17 @@ def test_fused_adagrad(shape, dtype):
         maximize=False,
     )
 
-    with flag_gems.use_gems():
-        out_params, out_grads, out_state_sums, out_state_steps = (
-            torch.ops.aten._fused_adagrad(
-                params,
-                grads,
-                state_sums,
-                steps,
-                lr=0.01,
-                lr_decay=0.0,
-                weight_decay=0.0,
-                eps=1e-10,
-                maximize=False,
-            )
-        )
+    out_params, out_grads, out_state_sums, out_state_steps = flag_gems._fused_adagrad(
+        params,
+        grads,
+        state_sums,
+        steps,
+        lr=0.01,
+        lr_decay=0.0,
+        weight_decay=0.0,
+        eps=1e-10,
+        maximize=False,
+    )
 
     # Inputs must not be mutated by the out-of-place variant.
     assert torch.equal(params[0], param_orig)
