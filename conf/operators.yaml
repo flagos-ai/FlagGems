@@ -8218,6 +8218,32 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: nanmean
+    description: |
+      Computes the mean of all non-`NaN` elements along the specified dimensions,
+      ignoring `NaN` values.
+    for:
+      - nanmean
+    labels:
+      - aten
+      - Reduction
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: nanmean_out
+    description: A variant of `nanmean()` that assigns the output to the out tensor.
+    for:
+      - nanmean.out
+    labels:
+      - aten
+      - Reduction
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: nanmedian
     description: Returns the median of the values in `input`, ignoring `NaN` values.
     for:
