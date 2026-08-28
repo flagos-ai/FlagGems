@@ -63,14 +63,21 @@ def _make_qkv(shape, dtype, device):
 @pytest.mark.parametrize("dtype", ATTENTION_DTYPES)
 def test_fused_sdp_choice(shape, dtype):
     """Default backend selection across attention shapes and dtypes."""
+    # ``_fused_sdp_choice`` returns the SDPBackend that PyTorch would dispatch to
+    # for *the inputs' own device*.  With ``--ref=cpu`` the reference tensors are
+    # moved to CPU (where aten can only ever select the math backend), while the
+    # Gems kernel still runs on the GPU and selects a fused backend -- the two
+    # integers are device-dependent and not comparable, so the cross-device
+    # reference path is skipped.
+    if utils.TO_CPU:
+        pytest.skip("_fused_sdp_choice is device-dependent; CPU ref is always math")
     q, k, v = _make_qkv(shape, dtype, flag_gems.device)
     ref_q = utils.to_reference(q)
     ref_k = utils.to_reference(k)
     ref_v = utils.to_reference(v)
 
     ref_out = torch.ops.aten._fused_sdp_choice(ref_q, ref_k, ref_v)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._fused_sdp_choice(q, k, v)
+    res_out = flag_gems._fused_sdp_choice(q, k, v)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -79,6 +86,8 @@ def test_fused_sdp_choice(shape, dtype):
 @pytest.mark.parametrize("dtype", MID_PREC_DTYPES)
 def test_fused_sdp_choice_is_causal(shape, dtype):
     """Selection under the ``is_causal`` flag."""
+    if utils.TO_CPU:
+        pytest.skip("_fused_sdp_choice is device-dependent; CPU ref is always math")
     q, k, v = _make_qkv(shape, dtype, flag_gems.device)
     ref_q, ref_k, ref_v = (
         utils.to_reference(q),
@@ -87,8 +96,7 @@ def test_fused_sdp_choice_is_causal(shape, dtype):
     )
 
     ref_out = torch.ops.aten._fused_sdp_choice(ref_q, ref_k, ref_v, is_causal=True)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._fused_sdp_choice(q, k, v, is_causal=True)
+    res_out = flag_gems._fused_sdp_choice(q, k, v, is_causal=True)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -97,6 +105,8 @@ def test_fused_sdp_choice_is_causal(shape, dtype):
 @pytest.mark.parametrize("dtype", MID_PREC_DTYPES)
 def test_fused_sdp_choice_with_attn_mask(shape, dtype):
     """Selection when a boolean attention mask is supplied."""
+    if utils.TO_CPU:
+        pytest.skip("_fused_sdp_choice is device-dependent; CPU ref is always math")
     batch, heads, seq_q, head_dim = shape
     seq_k = seq_q
     q = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -115,8 +125,7 @@ def test_fused_sdp_choice_with_attn_mask(shape, dtype):
     ref_mask = utils.to_reference(attn_mask)
 
     ref_out = torch.ops.aten._fused_sdp_choice(ref_q, ref_k, ref_v, attn_mask=ref_mask)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._fused_sdp_choice(q, k, v, attn_mask=attn_mask)
+    res_out = flag_gems._fused_sdp_choice(q, k, v, attn_mask=attn_mask)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -125,6 +134,8 @@ def test_fused_sdp_choice_with_attn_mask(shape, dtype):
 @pytest.mark.parametrize("dtype", MID_PREC_DTYPES)
 def test_fused_sdp_choice_dropout(shape, dtype):
     """Selection under a non-zero dropout probability."""
+    if utils.TO_CPU:
+        pytest.skip("_fused_sdp_choice is device-dependent; CPU ref is always math")
     q, k, v = _make_qkv(shape, dtype, flag_gems.device)
     ref_q, ref_k, ref_v = (
         utils.to_reference(q),
@@ -133,8 +144,7 @@ def test_fused_sdp_choice_dropout(shape, dtype):
     )
 
     ref_out = torch.ops.aten._fused_sdp_choice(ref_q, ref_k, ref_v, dropout_p=0.1)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._fused_sdp_choice(q, k, v, dropout_p=0.1)
+    res_out = flag_gems._fused_sdp_choice(q, k, v, dropout_p=0.1)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -142,6 +152,8 @@ def test_fused_sdp_choice_dropout(shape, dtype):
 @pytest.mark.parametrize("dtype", MID_PREC_DTYPES)
 def test_fused_sdp_choice_gqa(dtype):
     """Grouped-query attention with ``enable_gqa`` toggled on and off."""
+    if utils.TO_CPU:
+        pytest.skip("_fused_sdp_choice is device-dependent; CPU ref is always math")
     shape_q = (2, 8, 128, 64)
     shape_kv = (2, 2, 128, 64)
     q = torch.randn(shape_q, dtype=dtype, device=flag_gems.device)
@@ -155,13 +167,11 @@ def test_fused_sdp_choice_gqa(dtype):
 
     # Without enable_gqa the mismatched num_heads block the fused kernels.
     ref_off = torch.ops.aten._fused_sdp_choice(ref_q, ref_k, ref_v)
-    with flag_gems.use_gems():
-        res_off = torch.ops.aten._fused_sdp_choice(q, k, v)
+    res_off = flag_gems._fused_sdp_choice(q, k, v)
     utils.gems_assert_equal(res_off, ref_off)
 
     ref_on = torch.ops.aten._fused_sdp_choice(ref_q, ref_k, ref_v, enable_gqa=True)
-    with flag_gems.use_gems():
-        res_on = torch.ops.aten._fused_sdp_choice(q, k, v, enable_gqa=True)
+    res_on = flag_gems._fused_sdp_choice(q, k, v, enable_gqa=True)
     utils.gems_assert_equal(res_on, ref_on)
 
 
@@ -169,6 +179,8 @@ def test_fused_sdp_choice_gqa(dtype):
 @pytest.mark.parametrize("dtype", MID_PREC_DTYPES)
 def test_fused_sdp_choice_non_contiguous(dtype):
     """A non-stride-1 last dimension must drive selection to the math backend."""
+    if utils.TO_CPU:
+        pytest.skip("_fused_sdp_choice is device-dependent; CPU ref is always math")
     # Slice every other element along the last dim so stride(-1) == 2.
     full = torch.randn((2, 8, 128, 128), dtype=dtype, device=flag_gems.device)
     q = full[..., ::2]
@@ -181,8 +193,7 @@ def test_fused_sdp_choice_non_contiguous(dtype):
     )
 
     ref_out = torch.ops.aten._fused_sdp_choice(ref_q, ref_k, ref_v)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._fused_sdp_choice(q, k, v)
+    res_out = flag_gems._fused_sdp_choice(q, k, v)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -190,6 +201,8 @@ def test_fused_sdp_choice_non_contiguous(dtype):
 @pytest.mark.parametrize("dtype", LOW_PREC_DTYPES)
 def test_fused_sdp_choice_singleton_head_dim(dtype):
     """A singleton head dim is tolerated by cuDNN/Flash even when stride != 1."""
+    if utils.TO_CPU:
+        pytest.skip("_fused_sdp_choice is device-dependent; CPU ref is always math")
     # head_dim == 1 reached by slicing; the permissive ignore_singleton branch
     # should let cuDNN/Flash through (the efficient kernel still rejects it).
     full = torch.randn((2, 8, 128, 8), dtype=dtype, device=flag_gems.device)
@@ -203,8 +216,7 @@ def test_fused_sdp_choice_singleton_head_dim(dtype):
     )
 
     ref_out = torch.ops.aten._fused_sdp_choice(ref_q, ref_k, ref_v)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._fused_sdp_choice(q, k, v)
+    res_out = flag_gems._fused_sdp_choice(q, k, v)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -212,6 +224,8 @@ def test_fused_sdp_choice_singleton_head_dim(dtype):
 @pytest.mark.parametrize("dtype", MID_PREC_DTYPES)
 def test_fused_sdp_choice_scale(dtype):
     """The ``scale`` keyword must not affect the backend choice."""
+    if utils.TO_CPU:
+        pytest.skip("_fused_sdp_choice is device-dependent; CPU ref is always math")
     q, k, v = _make_qkv((2, 8, 128, 64), dtype, flag_gems.device)
     ref_q, ref_k, ref_v = (
         utils.to_reference(q),
@@ -220,6 +234,5 @@ def test_fused_sdp_choice_scale(dtype):
     )
 
     ref_out = torch.ops.aten._fused_sdp_choice(ref_q, ref_k, ref_v, scale=0.1)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._fused_sdp_choice(q, k, v, scale=0.1)
+    res_out = flag_gems._fused_sdp_choice(q, k, v, scale=0.1)
     utils.gems_assert_equal(res_out, ref_out)
