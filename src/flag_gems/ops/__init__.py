@@ -545,6 +545,7 @@ from flag_gems.ops.log_softmax import (
 from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
 from flag_gems.ops.logaddexp2 import logaddexp2, logaddexp2_out
 from flag_gems.ops.logcumsumexp import logcumsumexp, logcumsumexp_out
+from flag_gems.ops.logdet import logdet
 from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not, logical_not_
 from flag_gems.ops.logical_or import logical_or, logical_or_
@@ -1480,6 +1481,7 @@ __all__ = [
     "linspace",
     "log",
     "log_",
+    "logdet",
     "log10",
     "log10_",
     "log10_out",

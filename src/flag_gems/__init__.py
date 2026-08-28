@@ -720,6 +720,7 @@ _FULL_CONFIG = (
     ("linspace", linspace),
     ("log", log),
     ("log_", log_),
+    ("logdet", logdet),
     ("log10", log10),
     ("log10.out", log10_out),
     ("log10_", log10_),

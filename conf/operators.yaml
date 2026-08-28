@@ -6638,6 +6638,17 @@ ops:
       - Math
     stages:
       - stable: '2.2'
+  - id: logdet
+    description: Computes the logarithm of the determinant of a square matrix or batch of square matrices.
+    for:
+      - logdet
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: log_
     description: The in-place version of `log()`. Computes the natural logarithm of each element in the input tensor in-place.
     for:
