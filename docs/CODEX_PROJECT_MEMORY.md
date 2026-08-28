@@ -40,3 +40,9 @@ The repair branch contains these validated operator fixes; merge commits preserv
 2. Run `git log --all -- <operator file>` and inspect the relevant source branch and tests/reports.
 3. If a repair is listed, validate or extend it instead of reimplementing it; record new evidence here.
 4. Only after the check finds no existing fix, create a new branch from `klx/repair-main` and add the operator repair.
+
+## Pre-repair gate (mandatory)
+
+For every candidate operator, first switch to `klx/repair-main`, verify the worktree, search this memory/backlog/reports for existing repairs, and run the original unmodified operator test there. Record the exact command and counts. Only a reproducible operator failure on `repair-main` authorizes new implementation work; collection, infrastructure, timeout, or unrelated failures must be classified separately.
+
+After confirming failure, switch to the intended clean `master` baseline and create a fresh `klx/<operator>-fix` branch. Do not branch the new repair from `repair-main` or an old topic branch. Implement and validate on the topic branch, then return to `klx/repair-main`, review the diff and evidence, merge the verified repair, and update this memory and the skill backlog with branch, commit, and test results.
