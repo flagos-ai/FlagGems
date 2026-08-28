@@ -343,6 +343,8 @@ from .triu import triu, triu_
 from .trunc import trunc, trunc_
 from .uniform import uniform_
 from .unique import _unique2
+from .unique_consecutive import unique_consecutive
+from .unique_dim import unique_dim
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest1d import upsample_nearest1d
@@ -811,6 +813,8 @@ __all__ = [
     "trunc_",
     "true_divide_",
     "uniform_",
+    "unique_consecutive",
+    "unique_dim",
     "upsample_linear1d",
     "upsample_nearest1d",
     "upsample_nearest2d",
