@@ -4932,6 +4932,16 @@ ops:
       A variant of `hardtanh` that supports an output tensor to receive the result.
     for:
       - hardtanh.out
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - Activation
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: hardswish_out
     description: |
       A variant of `hardswish` that supports an output tensor to receive the result.
