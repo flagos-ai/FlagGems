@@ -1235,6 +1235,30 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: column_stack
+    description: |
+      Creates a new tensor by horizontally stacking the tensors in tensors. Equivalent to
+      torch.hstack after 0-D and 1-D tensors have been reshaped into (numel, 1) columns.
+    for:
+      - column_stack
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: column_stack_out
+    description: A variant of column_stack() that writes the result into the out tensor.
+    for:
+      - column_stack.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: blackman_window
     description: Computes the Blackman window function.
     for:
@@ -1250,6 +1274,31 @@ ops:
     description: A variant of blackman_window() that takes an explicit periodic flag.
     for:
       - blackman_window.periodic
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: binomial
+    description: |
+      Draws samples from a binomial distribution with the number of trials
+      given by `count` and the success probability given by `prob`.
+    for:
+      - binomial
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: binomial_out
+    description: |
+      A variant of binomial() that writes the result into the out tensor.
+    for:
+      - binomial.out
     labels:
       - aten
       - KernelGen
@@ -2312,6 +2361,23 @@ ops:
       - KernelGen
       - aten
       - skip_precision_check
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: coalesced_
+    description: |
+      Sets the `coalesced` flag of a sparse coordinate (COO) tensor in place
+      and returns `self`. This is a metadata-only mutation: the underlying
+      indices/values data is not modified, only the `is_coalesced` bit is
+      toggled. The flag flip is dispatched through the native backend kernel
+      (below the autograd key); a Triton identity kernel is provided over the
+      values data as the per-element implementation.
+    for:
+      - _coalesced_
+    labels:
+      - aten
+      - KernelGen
     kind:
       - Tensor
     stages:
@@ -3969,6 +4035,20 @@ ops:
       - Quantization
     stages:
       - alpha: '5.4'
+  - id: fill_diagonal_
+    description: |
+      Fills the main diagonal of a tensor that has at least two dimensions
+      with the specified scalar value, in-place.
+    for:
+      - fill_diagonal_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: fill_scalar
     description: Fills a scalar with the specified value.
     for:
@@ -4177,6 +4257,20 @@ ops:
       The input must have at least two dimensions.
     for:
       - fliplr
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: flipud
+    description: |
+      Flips a tensor in the up-to-down direction by reversing dimension 0.
+      The input must have at least one dimension.
+    for:
+      - flipud
     labels:
       - aten
       - pointwise
@@ -6919,6 +7013,20 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: nested_sum_backward
+    description: |
+      Triton kernel implementation for `_nested_sum_backward`, the backward of
+      a (nested) tensor `sum` over a single dimension. It broadcasts the
+      gradient back to the shape of the original input along the reduced dim.
+    for:
+      - _nested_sum_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: scaled_dot_product_cudnn_attention
     description: |
       Computes scaled dot product attention using the cuDNN attention API
@@ -6991,6 +7099,20 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: unsafe_split_with_sizes
+    description: |
+      Splits a tensor into sub-tensors along a given dimension, where each split
+      has a specified size. Returns views into the original tensor without safety
+      checks.
+    for:
+      - unsafe_split_with_sizes
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
     stages:
       - alpha: '5.4'
   - id: upsample_bilinear2d_aa_backward
@@ -11563,6 +11685,21 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_ndtri
+    description: |
+      Computes the argument `x` for which the area under the standard Gaussian
+      probability density function, integrated from minus infinity to `x`, equals
+      `input`. In other words it is the inverse of the standard normal CDF.
+    for:
+      - special_ndtri
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_round
     description: |
       Rounds a tensor to the nearest integer, with ties rounding to the nearest
@@ -12648,6 +12785,42 @@ ops:
     labels:
       - aten
       - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: upsample_lanczos2d_aa
+    description: Resizes a 4D image tensor with antialiased Lanczos-3 interpolation.
+    for:
+      - _upsample_lanczos2d_aa
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: upsample_lanczos2d_aa_out
+    description: An out variant of `_upsample_lanczos2d_aa()`.
+    for:
+      - _upsample_lanczos2d_aa.out
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: upsample_lanczos2d_aa_vec
+    description: A vector-parameter variant of `_upsample_lanczos2d_aa()`.
+    for:
+      - _upsample_lanczos2d_aa.vec
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
     kind:
       - NeuralNetwork
     stages:
