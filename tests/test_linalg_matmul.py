@@ -29,8 +29,7 @@ def test_linalg_matmul_2d(M, N, K, dtype):
     ref_mat2 = utils.to_reference(mat2, True)
 
     ref_out = torch.linalg.matmul(ref_mat1, ref_mat2)
-    with flag_gems.use_gems():
-        res_out = torch.linalg.matmul(mat1, mat2)
+    res_out = flag_gems.linalg_matmul(mat1, mat2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
@@ -50,7 +49,6 @@ def test_linalg_matmul_3d(M, N, K, dtype):
     ref_mat2 = utils.to_reference(mat2, True)
 
     ref_out = torch.linalg.matmul(ref_mat1, ref_mat2)
-    with flag_gems.use_gems():
-        res_out = torch.linalg.matmul(mat1, mat2)
+    res_out = flag_gems.linalg_matmul(mat1, mat2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
