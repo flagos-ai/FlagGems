@@ -47,11 +47,11 @@ def aminmax_kernel_1(
 
     min_fill = get_dtype_max(inp.type.element_ty)
     max_fill = get_dtype_min(inp.type.element_ty)
-    min_val = tl.load(inp_ptrs, mask=mask, other=min_fill).to(acc_type)
-    max_val = tl.load(inp_ptrs, mask=mask, other=max_fill).to(acc_type)
-
-    min_val = tl.min(min_val)
-    max_val = tl.max(max_val)
+    min_fill_t = tl.full([], value=min_fill, dtype=acc_type)
+    max_fill_t = tl.full([], value=max_fill, dtype=acc_type)
+    val = tl.load(inp_ptrs, mask=mask, other=0.0).to(acc_type)
+    min_val = tl.min(tl.where(mask, val, min_fill_t))
+    max_val = tl.max(tl.where(mask, val, max_fill_t))
 
     min_ptr = min_out + pid
     max_ptr = max_out + pid
