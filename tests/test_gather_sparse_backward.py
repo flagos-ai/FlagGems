@@ -94,8 +94,7 @@ def test_gather_sparse_backward_float(inp_shape, dim, dtype):
     ref_grad = utils.to_reference(grad)
     ref_out = _gather_sparse_backward(ref_inp, dim, ref_index, ref_grad)
 
-    with flag_gems.use_gems():
-        res_out = _gather_sparse_backward(inp, dim, index, grad)
+    res_out = flag_gems._gather_sparse_backward(inp, dim, index, grad)
 
     _assert_sparse_equal(res_out, ref_out, dtype)
 
@@ -118,8 +117,7 @@ def test_gather_sparse_backward_duplicate(inp_shape, dim, dtype, duplicate_indic
     ref_grad = utils.to_reference(grad)
     ref_out = _gather_sparse_backward(ref_inp, dim, ref_index, ref_grad)
 
-    with flag_gems.use_gems():
-        res_out = _gather_sparse_backward(inp, dim, index, grad)
+    res_out = flag_gems._gather_sparse_backward(inp, dim, index, grad)
 
     _assert_sparse_equal(res_out, ref_out, dtype)
 
@@ -138,8 +136,7 @@ def test_gather_sparse_backward_int(inp_shape, dim, dtype):
     ref_grad = utils.to_reference(grad)
     ref_out = _gather_sparse_backward(ref_inp, dim, ref_index, ref_grad)
 
-    with flag_gems.use_gems():
-        res_out = _gather_sparse_backward(inp, dim, index, grad)
+    res_out = flag_gems._gather_sparse_backward(inp, dim, index, grad)
 
     _assert_sparse_equal(res_out, ref_out, dtype)
 
@@ -186,8 +183,7 @@ def test_gather_sparse_backward_edge(shape, dim, dtype):
     ref_grad = utils.to_reference(grad)
     ref_out = _gather_sparse_backward(ref_inp, dim, ref_index, ref_grad)
 
-    with flag_gems.use_gems():
-        res_out = _gather_sparse_backward(inp, dim, index, grad)
+    res_out = flag_gems._gather_sparse_backward(inp, dim, index, grad)
 
     _assert_sparse_equal(res_out, ref_out, dtype)
 
@@ -210,7 +206,6 @@ def test_gather_sparse_backward_negative_dim(inp_shape, dim, dtype):
     ref_grad = utils.to_reference(grad)
     ref_out = _gather_sparse_backward(ref_inp, neg_dim, ref_index, ref_grad)
 
-    with flag_gems.use_gems():
-        res_out = _gather_sparse_backward(inp, neg_dim, index, grad)
+    res_out = flag_gems._gather_sparse_backward(inp, neg_dim, index, grad)
 
     _assert_sparse_equal(res_out, ref_out, dtype)
