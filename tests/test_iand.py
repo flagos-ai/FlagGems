@@ -23,7 +23,7 @@ def test_iand(shape, dtype):
     ref_inp1 = utils.to_reference(inp1.clone())
     ref_inp2 = utils.to_reference(inp2)
 
-    ref_out = ref_inp1.bitwise_and_(ref_inp2)
+    ref_out = ref_inp1.__iand__(ref_inp2)
     with flag_gems.use_gems():
         res_out = inp1.bitwise_and_(inp2)
 
