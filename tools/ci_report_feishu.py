@@ -23,7 +23,8 @@ import json
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Any
 
 # --- Feishu API ---
 
@@ -376,7 +377,7 @@ def main() -> int:
     for i, run in enumerate(runs):
         run_id = run["id"]
         print(
-            f"  [{i + 1}/{len(runs)}] Run #{run['run_number']} ({run['conclusion']})..."
+            f"  [{i+1}/{len(runs)}] Run #{run['run_number']} ({run['conclusion']})..."
         )
         jobs = get_run_jobs(args.repo, run_id, args.github_token)
 
