@@ -116,6 +116,11 @@ def main():
         "If not provided, only duplicate-id check runs globally.",
         default="",
     )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Check all operators (for pre-commit use)",
+    )
     args = parser.parse_args()
 
     if not OPERATORS_YAML.exists():
