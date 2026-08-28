@@ -2,7 +2,7 @@ from ._make_dep_token import _make_dep_token
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
-from .addmm import addmm
+from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .alpha_dropout import alpha_dropout
 from .amax import amax
 from .arange import arange, arange_start
@@ -82,6 +82,9 @@ __all__ = [
     "_unique2",
     "adaptive_max_pool3d_backward",
     "addmm",
+    "addmm_dtype",
+    "addmm_dtype_out",
+    "addmm_out",
     "alpha_dropout",
     "amax",
     "arange",
