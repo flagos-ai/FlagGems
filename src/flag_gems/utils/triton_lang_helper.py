@@ -1240,12 +1240,24 @@ def _fallback_erfc(x):
     return 1.0 - tl.math.erf(x)
 
 
+@triton.jit
+def _fallback_isfinite(x):
+    # IEEE identity: x-x is exactly 0 for any finite x and NaN for +-inf/NaN
+    # lanes, so (x - x) == 0.0 is isfinite.  Uses only core triton operators,
+    # so it lowers on every backend -- unlike borrowing CUDA's finitef extern,
+    # which compiles to None on backends whose libdevice lacks the symbol
+    # (e.g. HIP with the vendored triton 3.5.1).
+    return (x - x) == 0.0
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "tanh": _fallback_tanh,
     "erfc": _fallback_erfc,
     "erfinv": _fallback_erfinv,
+    "finitef": _fallback_isfinite,
     "floor": _fallback_floor,
+    "isfinited": _fallback_isfinite,
     "j0": _fallback_j0,
     "j1": _fallback_j1,
     "log2": _fallback_log2,
