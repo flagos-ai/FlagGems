@@ -1329,6 +1329,158 @@ def test_benchmark_success_count_tracks_finite_uncached_benchmarks(monkeypatch):
     assert tuner._run_mode is LibTunerRunMode.NORMAL
 
 
+def test_cached_config_compile_failure_is_discarded_and_retuned(monkeypatch):
+    """Recover from a cached best-config that no longer compiles.
+
+    A best-config cached by another environment that shares the same
+    ConfigCache table (e.g. a different compiler whose triton major/minor
+    version matches ours) can fail to compile at launch. LibTuner must delete
+    the poisoned entry and re-tune from scratch — ignoring stale cached
+    latencies, which would otherwise re-select the same broken config —
+    instead of crashing the process.
+    """
+    configs = [
+        triton.Config({"BLOCK": 8}),
+        triton.Config({"BLOCK": 16}),
+        triton.Config({"BLOCK": 32}),
+    ]
+    poisoned = configs[2]  # BLOCK=32 fails to compile in the current env
+
+    class FakeConfigCache:
+        """Track best-config values and deletions without hitting SQLite."""
+
+        def __init__(self, values):
+            """Store one shape-to-best-config entry."""
+            self.values = values
+            self.delitem_count = 0
+
+        def __contains__(self, key):
+            """Perform a best-config membership query."""
+            return key in self.values
+
+        def __getitem__(self, key):
+            """Return the stored best config."""
+            return self.values[key]
+
+        def __setitem__(self, key, value):
+            """Persist one best config in memory."""
+            self.values[key] = value
+
+        def __delitem__(self, key):
+            """Record and drop one poisoned best config."""
+            self.delitem_count += 1
+            del self.values[key]
+
+    class FakeBenchmarkCache:
+        """Store per-config latency tuples for one synthetic shape."""
+
+        def __init__(self, values):
+            """Initialize the config-to-latency mapping."""
+            self.values = values
+
+        def get(self, config):
+            """Return a cached latency tuple when present."""
+            return self.values.get(config)
+
+        def __setitem__(self, config, value):
+            """Persist a newly measured latency tuple."""
+            self.values[config] = value
+
+    benchmark_cache = FakeBenchmarkCache({poisoned: (0.5, 0.6, 0.7)})
+
+    class FakeLibCache:
+        """Expose the single BenchmarkCache expected by the fake tuner."""
+
+        def __getitem__(self, key):
+            """Validate the benchmark table/key pair and return its cache."""
+            assert key == (
+                "fake_benchmark",
+                (32, "triton_do_bench", 5, 20),
+            )
+            return benchmark_cache
+
+    class FakeFn:
+        """Reject the poisoned config exactly as a failing launch would."""
+
+        @staticmethod
+        def run(*args, **kwargs):
+            """Raise on the broken block size and otherwise capture arguments."""
+            if kwargs["BLOCK"] == 32:
+                raise RuntimeError("PassManager::run failed")
+            return args, kwargs
+
+    class FakeTuner:
+        """Implement the minimal protocol consumed by ``LibTuner.run``."""
+
+        arg_names = ["M"]
+        benchmark_table_name = "fake_benchmark"
+        fn = FakeFn()
+        # Mirrors the default LibTuner sets in its ``__init__`` so ``run``
+        # follows the NORMAL path that can self-heal a poisoned cache entry.
+        _run_mode = LibTunerRunMode.NORMAL
+
+        @staticmethod
+        def get_key(_args):
+            """Return one stable synthetic shape key."""
+            return (32,)
+
+        @staticmethod
+        def get_benchmark_key(args):
+            """Return the exact shape plus benchmark protocol identity."""
+            return (args["M"], "triton_do_bench", 5, 20)
+
+        def prune_configs(self, _kwargs):
+            """Yield every active config without pruning."""
+            return iter(self.configs)
+
+        def policy(self, bench, candidates, _args, _kwargs):
+            """Track normal-policy calls, benchmark candidates, and minimize p50."""
+            self.policy_call_count = getattr(self, "policy_call_count", 0) + 1
+            timings = {config: bench(config)[1] for config in candidates}
+            return min(timings, key=timings.get), timings
+
+        def _bench(self, *args, config, **kwargs):
+            """Simulate a compiler that refuses to compile BLOCK=32 kernels."""
+            if config.kwargs["BLOCK"] == 32:
+                raise RuntimeError("PassManager::run failed")
+            block = float(config.kwargs["BLOCK"])
+            return [block - 1.0, block, block + 1.0]
+
+        @staticmethod
+        def pre_hook(_kwargs, reset_only=False):
+            """Accept LibTuner's reset hook without external side effects."""
+            return None
+
+    monkeypatch.delenv("TRITON_PRINT_AUTOTUNING", raising=False)
+    monkeypatch.setattr(libentry_mod, "libcache", FakeLibCache())
+    tuner = FakeTuner()
+    tuner.configs = configs
+    # The poisoned config is cached as best with a stale finite latency, exactly
+    # as a different compiler would have left it behind.
+    config_cache = FakeConfigCache({(32,): poisoned})
+    tuner.cache = config_cache
+
+    result = LibTuner.run(tuner, 32)
+
+    # The launch succeeded with a re-tuned, compilable config (minimal p50).
+    assert result[1]["BLOCK"] == 8
+    assert tuner.best_config.kwargs["BLOCK"] == 8
+    # The poisoned entry was deleted and the shape re-cached with a good config.
+    assert config_cache.delitem_count == 1
+    assert config_cache.values == {(32,): configs[0]}
+    # Only the retune pass invokes the policy; the cache-hit pass does not.
+    assert tuner.policy_call_count == 1
+    # Stale cached latencies were not trusted: both healthy configs were
+    # re-measured fresh and the broken one hit the inf fallback.
+    assert tuner.benchmark_success_count == 2
+    assert tuner.benchmark_cache_hit_count == 0
+    assert benchmark_cache.values[poisoned] == (float("inf"),) * 3
+
+    assert tuner._last_benchmark_args == (32,)
+    assert tuner._last_benchmark_meta == {}
+    assert tuner._run_mode is LibTunerRunMode.NORMAL
+
+
 def test_benchmark_key_preserves_raw_shape_and_scopes_timing_protocol(monkeypatch):
     """Keep ConfigCache bucketing while separating exact benchmark labels."""
 
