@@ -257,6 +257,9 @@ _FULL_CONFIG = (
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_bilinear2d_aa", _upsample_bilinear2d_aa),
     ("_upsample_bilinear2d_aa_backward", _upsample_bilinear2d_aa_backward),
+    ("_upsample_lanczos2d_aa", _upsample_lanczos2d_aa),
+    ("_upsample_lanczos2d_aa.out", _upsample_lanczos2d_aa_out),
+    ("_upsample_lanczos2d_aa.vec", _upsample_lanczos2d_aa_vec),
     ("_upsample_nearest_exact1d", _upsample_nearest_exact1d),
     ("_upsample_nearest_exact1d_backward", _upsample_nearest_exact1d_backward),
     (
