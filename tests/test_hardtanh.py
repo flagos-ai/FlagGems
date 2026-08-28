@@ -30,8 +30,7 @@ def test_hardtanh(shape, dtype):
     ref_inp = utils.to_reference(res_inp, True)
 
     ref_out = torch.ops.aten.hardtanh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardtanh(res_inp)
+    res_out = flag_gems.hardtanh(res_inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -46,8 +45,7 @@ def test_hardtanh_explicit(shape, dtype, min_max):
     ref_inp = utils.to_reference(res_inp, True)
 
     ref_out = torch.ops.aten.hardtanh(ref_inp, min_val, max_val)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardtanh(res_inp, min_val, max_val)
+    res_out = flag_gems.hardtanh(res_inp, min_val, max_val)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -63,8 +61,7 @@ def test_hardtanh_out(shape, dtype):
     torch.ops.aten.hardtanh.out(ref_inp, out=ref_out)
 
     out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardtanh.out(inp, out=out)
+    res_out = flag_gems.hardtanh_out(inp, out=out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype)
@@ -83,8 +80,7 @@ def test_hardtanh_out_explicit(shape, dtype, min_max):
     torch.ops.aten.hardtanh.out(ref_inp, min_val, max_val, out=ref_out)
 
     out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardtanh.out(inp, min_val, max_val, out=out)
+    res_out = flag_gems.hardtanh_out(inp, min_val, max_val, out=out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype)
@@ -110,8 +106,7 @@ def test_hardtanh_special_values(dtype):
     ref_inp = utils.to_reference(res_inp, True)
 
     ref_out = torch.ops.aten.hardtanh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardtanh(res_inp)
+    res_out = flag_gems.hardtanh(res_inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -140,8 +135,7 @@ def test_hardtanh_out_special_values(dtype):
     torch.ops.aten.hardtanh.out(ref_inp, out=ref_out)
 
     out = torch.empty_like(inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardtanh.out(inp, out=out)
+    res_out = flag_gems.hardtanh_out(inp, out=out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
