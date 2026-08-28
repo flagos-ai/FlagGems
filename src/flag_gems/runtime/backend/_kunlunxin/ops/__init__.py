@@ -821,6 +821,7 @@ __all__ = [
     "uniform_",
     "unique_consecutive",
     "unique_dim",
+    "upsample_bilinear2d",
     "upsample_linear1d",
     "upsample_nearest1d",
     "upsample_nearest2d",
