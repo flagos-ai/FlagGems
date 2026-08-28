@@ -563,6 +563,7 @@ _FULL_CONFIG = (
     ("flatten.using_ints", flatten),
     ("flip", flip),
     ("fliplr", fliplr),
+    ("flipud", flipud),
     ("float_power.Scalar", float_power_scalar_tensor),
     ("float_power.Scalar_out", float_power_scalar_tensor_out),
     ("float_power.Tensor_Scalar", float_power_tensor_scalar),
