@@ -5528,7 +5528,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: histogramdd_bin_edges_out
     description: |
       A variant of ``_histogramdd_bin_edges`` that writes the computed bin edges
@@ -5541,7 +5541,7 @@ ops:
     kind:
       - Math
     stages:
-      - alpha: '5.3'
+      - alpha: '5.4'
   - id: hsplit
     description: |
       Split a tensor into multiple sub-tensors horizontally (column-wise).
