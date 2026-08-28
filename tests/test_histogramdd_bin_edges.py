@@ -25,7 +25,7 @@ from . import accuracy_utils as utils
 
 # Pair each (shape, bins) so the bin count always matches the innermost dim.
 if utils.QUICK_MODE:
-    HIST_CASES = [((64, 2), (5, 3)), ((1024, 3), (5, 3))]
+    HIST_CASES = [((64, 2), (5, 3)), ((1024, 3), (5, 3, 4))]
 else:
     HIST_CASES = [
         ((10, 1), (1,)),
