@@ -135,13 +135,27 @@ def cat(
     outp_strides = outp.stride()
     start = 0
     for a in A:
-        ap = a.permute(perm).contiguous()
-        w = ap.shape[0]
-        in_view = StridedBuffer(ap, ap.shape, ap.stride())
+        # Read the permuted view by stride in-kernel. Materializing it via
+        # .permute().contiguous() routes through torch copy_ with a strided
+        # source, which is broken on XPU ("invalid device function").
+        ap_shape = [a.shape[p] for p in perm]
+        ap_strides = [a.stride()[p] for p in perm]
+        w = ap_shape[0]
+        if a.dtype == torch.int32:
+            # The tuned codegen hits an illegal memory access for int32 on the
+            # strided-read path (vectorization knobs do not help). int32 and
+            # float32 share itemsize, so bit-cast both sides and reuse the
+            # proven fp32 copy path; the copy is bit-exact.
+            src_t = a.view(torch.float32)
+            dst_t = outp.view(torch.float32)
+        else:
+            src_t = a
+            dst_t = outp
+        in_view = StridedBuffer(src_t, ap_shape, ap_strides)
         out_view = StridedBuffer(
-            outp, ap.shape, outp_strides, offset=start * outp_strides[0]
+            dst_t, ap_shape, outp_strides, offset=start * outp_strides[0]
         )
-        copy_func.instantiate(ap.ndim)(in_view, out0=out_view)
+        copy_func.instantiate(a.ndim)(in_view, out0=out_view)
         start += w
     return outp.permute(inv)
 
