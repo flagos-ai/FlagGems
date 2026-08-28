@@ -84,6 +84,8 @@ backends:
       - torch==2.9.0+cpu
       - torch-npu==2.9.0
       - decorator==5.1.1
+      - attrs==24.2.0
+      - psutil==6.0.0
 
   ascend-cann900:
     python: "3.11"
@@ -184,7 +186,7 @@ backends:
       - torch==2.9.0+das.opt1.dtk2604
 
   iluvatar:
-    python: "3.10"
+    python: "3.12"
     cmake_backend: IX
     triton: triton==3.1.0+corex.4.4.0
     # flagtree==0.5.1+iluvatar3.1 — plugin loading bug in venv, disabled for now
