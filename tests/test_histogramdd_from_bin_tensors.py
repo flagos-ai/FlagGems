@@ -79,8 +79,7 @@ def test_histogramdd_from_bin_tensors(shape, num_bins, dtype):
     )
 
     ref_out = _ref_histogramdd(inp, bins)
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_tensors(inp, bins)
+    res_out = flag_gems._histogramdd_from_bin_tensors(inp, bins)
 
     utils.gems_assert_close(res_out.to("cpu"), ref_out, dtype)
 
@@ -100,8 +99,7 @@ def test_histogramdd_from_bin_tensors_weighted(shape, num_bins, dtype):
     weight = torch.rand(shape[:-1], dtype=dtype, device=flag_gems.device)
 
     ref_out = _ref_histogramdd(inp, bins, weight=weight)
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_tensors(inp, bins, weight=weight)
+    res_out = flag_gems._histogramdd_from_bin_tensors(inp, bins, weight=weight)
 
     _assert_weighted_close(res_out, ref_out, dtype, inp.numel() // D)
 
@@ -120,8 +118,7 @@ def test_histogramdd_from_bin_tensors_density(shape, num_bins, dtype):
     )
 
     ref_out = _ref_histogramdd(inp, bins, density=True)
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_tensors(inp, bins, density=True)
+    res_out = flag_gems._histogramdd_from_bin_tensors(inp, bins, density=True)
 
     utils.gems_assert_close(res_out.to("cpu"), ref_out, dtype)
 
@@ -141,10 +138,9 @@ def test_histogramdd_from_bin_tensors_density_weighted(shape, num_bins, dtype):
     weight = torch.rand(shape[:-1], dtype=dtype, device=flag_gems.device)
 
     ref_out = _ref_histogramdd(inp, bins, weight=weight, density=True)
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_tensors(
-            inp, bins, weight=weight, density=True
-        )
+    res_out = flag_gems._histogramdd_from_bin_tensors(
+        inp, bins, weight=weight, density=True
+    )
 
     _assert_weighted_close(res_out, ref_out, dtype, inp.numel() // D)
 
@@ -159,8 +155,7 @@ def test_histogramdd_from_bin_tensors_non_uniform_bins():
     )
 
     ref_out = _ref_histogramdd(inp, bins)
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_tensors(inp, bins)
+    res_out = flag_gems._histogramdd_from_bin_tensors(inp, bins)
 
     utils.gems_assert_close(res_out.to("cpu"), ref_out, torch.float32)
 
@@ -176,8 +171,7 @@ def test_histogramdd_from_bin_tensors_higher_dim_input():
     weight = torch.rand(4, 5, dtype=torch.float32, device=flag_gems.device)
 
     ref_out = _ref_histogramdd(inp, bins, weight=weight)
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_tensors(inp, bins, weight=weight)
+    res_out = flag_gems._histogramdd_from_bin_tensors(inp, bins, weight=weight)
 
     utils.gems_assert_close(res_out.to("cpu"), ref_out, torch.float32)
 
@@ -196,8 +190,7 @@ def test_histogramdd_from_bin_tensors_outliers():
     )
 
     ref_out = _ref_histogramdd(inp, bins)
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_tensors(inp, bins)
+    res_out = flag_gems._histogramdd_from_bin_tensors(inp, bins)
 
     utils.gems_assert_close(res_out.to("cpu"), ref_out, torch.float32)
 
@@ -214,8 +207,7 @@ def test_histogramdd_from_bin_tensors_boundary_edges():
     bins = (edges,)
 
     ref_out = _ref_histogramdd(inp, bins)
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_tensors(inp, bins)
+    res_out = flag_gems._histogramdd_from_bin_tensors(inp, bins)
 
     # Counts are exact integers, so require bit-equality.
     utils.gems_assert_equal(res_out.to("cpu"), ref_out)
@@ -231,8 +223,7 @@ def test_histogramdd_from_bin_tensors_dims(D):
     )
 
     ref_out = _ref_histogramdd(inp, bins)
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_from_bin_tensors(inp, bins)
+    res_out = flag_gems._histogramdd_from_bin_tensors(inp, bins)
 
     utils.gems_assert_close(res_out.to("cpu"), ref_out, torch.float32)
 
@@ -259,10 +250,11 @@ def test_histogramdd_from_bin_tensors_out(shape, num_bins, dtype):
     out = torch.zeros(out_shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = _ref_histogramdd(inp, bins)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._histogramdd_from_bin_tensors.out(inp, bins, out=out)
+    res_out = flag_gems._histogramdd_from_bin_tensors_out(inp, bins, out=out)
 
-    assert res_out is out
+    # The .out variant writes into and returns the provided out buffer; the
+    # returned tensor shares storage with ``out`` (reshape may return a view).
+    assert res_out.data_ptr() == out.data_ptr()
     utils.gems_assert_close(res_out.to("cpu"), ref_out, dtype)
 
 
@@ -289,10 +281,11 @@ def test_histogramdd_from_bin_tensors_out_weighted(shape, num_bins, dtype):
     out = torch.zeros(out_shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = _ref_histogramdd(inp, bins, weight=weight)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._histogramdd_from_bin_tensors.out(
-            inp, bins, weight=weight, out=out
-        )
+    res_out = flag_gems._histogramdd_from_bin_tensors_out(
+        inp, bins, weight=weight, out=out
+    )
 
-    assert res_out is out
+    # The .out variant writes into and returns the provided out buffer; the
+    # returned tensor shares storage with ``out`` (reshape may return a view).
+    assert res_out.data_ptr() == out.data_ptr()
     _assert_weighted_close(res_out, ref_out, dtype, inp.numel() // D)
