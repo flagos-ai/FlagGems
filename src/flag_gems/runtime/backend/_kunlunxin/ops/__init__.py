@@ -24,6 +24,8 @@ from .absolute import absolute
 from .acos import acos
 from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
+from .adaptive_max_pool3d import adaptive_max_pool3d
+from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .add import add, add_
 from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_out
@@ -357,10 +359,12 @@ __all__ = [
     "abs_",
     "absolute",
     "acos",
+<<<<<<< HEAD
     "adaptive_avg_pool2d",
-    "add",
-    "add_",
-    "addcdiv",
+=======
+    "adaptive_avg_pool2d",
+    "adaptive_max_pool3d",
+    "adaptive_max_pool3d_backward",
     "addcdiv_",
     "addcdiv_out",
     "addcmul",
