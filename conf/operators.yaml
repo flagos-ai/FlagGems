@@ -3977,6 +3977,20 @@ ops:
       - Quantization
     stages:
       - alpha: '5.4'
+  - id: fill_diagonal_
+    description: |
+      Fills the main diagonal of a tensor that has at least two dimensions
+      with the specified scalar value, in-place.
+    for:
+      - fill_diagonal_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: fill_scalar
     description: Fills a scalar with the specified value.
     for:
