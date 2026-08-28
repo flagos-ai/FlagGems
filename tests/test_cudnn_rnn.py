@@ -595,25 +595,25 @@ def test_cudnn_rnn_dispatch():
     hx = torch.randn(1, batch_size, hidden_size, dtype=dtype, device=device)
     cx = torch.randn(1, batch_size, hidden_size, dtype=dtype, device=device)
 
-    with flag_gems.use_gems(include=["cudnn_rnn"]):
-        dispatch_result = torch.ops.aten._cudnn_rnn(
-            inp,
-            weights,
-            4,
-            None,
-            hx,
-            cx,
-            LSTM,
-            hidden_size,
-            0,
-            1,
-            False,
-            0.0,
-            False,
-            False,
-            [],
-            None,
-        )
+    flag_gems.only_enable(include=["cudnn_rnn"])
+    dispatch_result = torch.ops.aten._cudnn_rnn(
+        inp,
+        weights,
+        4,
+        None,
+        hx,
+        cx,
+        LSTM,
+        hidden_size,
+        0,
+        1,
+        False,
+        0.0,
+        False,
+        False,
+        [],
+        None,
+    )
 
     direct_result = flag_gems.ops.cudnn_rnn(
         inp,
