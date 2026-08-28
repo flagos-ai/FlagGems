@@ -8,6 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
+_ATAN2 = tl_extra_shim.atan2
 _ASIN = tl_extra_shim.asin
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,15 @@ config_ = CodeGenConfig(
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=config_)
 @triton.jit
 def arcsin_func(x):
-    return _ASIN(x.to(tl.float32))
+    x_f32 = x.to(tl.float32)
+    in_domain = tl.abs(x_f32) <= 1.0
+    # P800 asin intrinsic mirrors acos: ~3e-3 repeatable error on
+    # in-domain fp32 values.  atan2(x, sqrt(1-x^2)) avoids the intrinsic
+    # (radicand clamped against fp32 roundoff at endpoints; keep the
+    # intrinsic for out-of-domain/NaN where identity gives finite 0).
+    radicand = tl.maximum(1.0 - x_f32 * x_f32, 0.0)
+    stable = _ATAN2(x_f32, tl.sqrt(radicand))
+    return tl.where(in_domain, stable, _ASIN(x_f32))
 
 
 def arcsin(x, *, out=None):
