@@ -71,15 +71,19 @@ def test__batch_norm_with_update(shape, dtype, affine):
     ref_running_var = utils.to_reference(running_var.clone(), True)
 
     # Reference: training-mode batch norm updates running stats in place.
-    ref_out = torch.ops.aten._batch_norm_with_update((
+    (
+        ref_out,
+        ref_save_mean,
+        ref_save_invstd,
+        ref_reserve,
+    ) = torch.ops.aten._batch_norm_with_update(
         ref_inp,
+        ref_weight,
+        ref_bias,
         ref_running_mean,
         ref_running_var,
-        weight=ref_weight,
-        bias=ref_bias,
-        training=True,
-        momentum=momentum,
-        eps=eps,
+        momentum,
+        eps,
     )
 
     res_running_mean = running_mean.clone()
