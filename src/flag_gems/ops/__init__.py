@@ -49,6 +49,7 @@ from flag_gems.ops._compute_linear_combination import (
 )
 from flag_gems.ops._conj import _conj
 from flag_gems.ops._conj_copy import _conj_copy, _conj_copy_out
+from flag_gems.ops._conj_physical import _conj_physical, _conj_physical_out
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
 from flag_gems.ops._convolution_double_backward import _convolution_double_backward
 from flag_gems.ops._convolution_mode import _convolution_mode
@@ -953,6 +954,8 @@ from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
 __all__ = [
+    "_conj_physical",
+    "_conj_physical_out",
     "_nested_sum_backward",
     "SUPPORTED_FP8_DTYPE",
     "ScaleDotProductAttention",
