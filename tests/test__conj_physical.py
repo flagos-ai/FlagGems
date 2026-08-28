@@ -25,8 +25,7 @@ def test__conj_physical(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch._conj_physical(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch._conj_physical(inp)
+    res_out = flag_gems._conj_physical(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=1)
 
@@ -41,8 +40,7 @@ def test__conj_physical_real(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch._conj_physical(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch._conj_physical(inp)
+    res_out = flag_gems._conj_physical(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=1)
 
@@ -59,7 +57,6 @@ def test__conj_physical_out(shape, dtype):
     torch.ops.aten._conj_physical.out(ref_inp, out=ref_out)
 
     res_out = torch.empty_like(inp)
-    with flag_gems.use_gems():
-        torch.ops.aten._conj_physical.out(inp, out=res_out)
+    flag_gems._conj_physical_out(inp, out=res_out)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=1)
