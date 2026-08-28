@@ -24,7 +24,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops._cslt_sparse_mm import _cslt_sparse_mm_enabled
+from flag_gems.ops._cslt_sparse_mm import _cslt_sparse_mm, _cslt_sparse_mm_enabled
 
 from . import accuracy_utils as utils
 
@@ -38,8 +38,8 @@ CSLT_AVAILABLE = (
 # The cuSPARSELt compressed layout is vendor internal and differs per GPU
 # architecture, so the Triton decoder is only registered where its swizzle is
 # known to be correct. Skip rather than fail elsewhere: on those devices
-# use_gems() intentionally leaves the native op in place, so there is nothing
-# of ours to compare against.
+# the native op remains registered, so there is no Triton implementation to
+# compare against.
 ARCH_SUPPORTED = CSLT_AVAILABLE and _cslt_sparse_mm_enabled()
 
 pytestmark = [
@@ -83,8 +83,7 @@ def test_accuracy_cslt_sparse_mm(shape, dtype):
     ref_compressed_A = utils.to_reference(compressed_A)
     ref_B = utils.to_reference(B)
     ref_out = torch._cslt_sparse_mm(ref_compressed_A, ref_B)
-    with flag_gems.use_gems():
-        res_out = torch._cslt_sparse_mm(compressed_A, B)
+    res_out = _cslt_sparse_mm(compressed_A, B)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -104,8 +103,7 @@ def test_accuracy_cslt_sparse_mm_with_alpha(shape, dtype):
     ref_B = utils.to_reference(B)
     ref_alpha = utils.to_reference(alpha)
     ref_out = torch._cslt_sparse_mm(ref_compressed_A, ref_B, alpha=ref_alpha)
-    with flag_gems.use_gems():
-        res_out = torch._cslt_sparse_mm(compressed_A, B, alpha=alpha)
+    res_out = _cslt_sparse_mm(compressed_A, B, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -123,8 +121,7 @@ def test_accuracy_cslt_sparse_mm_transpose(shape, dtype):
     ref_compressed_A = utils.to_reference(compressed_A)
     ref_B = utils.to_reference(B)
     ref_out = torch._cslt_sparse_mm(ref_compressed_A, ref_B, transpose_result=True)
-    with flag_gems.use_gems():
-        res_out = torch._cslt_sparse_mm(compressed_A, B, transpose_result=True)
+    res_out = _cslt_sparse_mm(compressed_A, B, transpose_result=True)
 
     assert res_out.shape == ref_out.shape
     utils.gems_assert_close(res_out, ref_out, dtype)
