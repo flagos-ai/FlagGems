@@ -78,8 +78,7 @@ def test_histogramdd_bin_edges(shape, bins, dtype):
     ref_inp = _to_cpu_ref(inp)
 
     ref_out = torch._histogramdd_bin_edges(ref_inp, list(bins))
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_bin_edges(inp, list(bins))
+    res_out = flag_gems._histogramdd_bin_edges(inp, list(bins))
 
     _assert_edges_close(res_out, ref_out, dtype)
 
@@ -101,8 +100,7 @@ def test_histogramdd_bin_edges_with_range(shape, bins, dtype):
     rng = tuple(rng)
 
     ref_out = torch._histogramdd_bin_edges(ref_inp, list(bins), range=rng)
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_bin_edges(inp, list(bins), range=rng)
+    res_out = flag_gems._histogramdd_bin_edges(inp, list(bins), range=rng)
 
     _assert_edges_close(res_out, ref_out, dtype)
 
@@ -115,8 +113,7 @@ def test_histogramdd_bin_edges_constant(dtype):
     ref_inp = _to_cpu_ref(inp)
 
     ref_out = torch._histogramdd_bin_edges(ref_inp, [5, 3])
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_bin_edges(inp, [5, 3])
+    res_out = flag_gems._histogramdd_bin_edges(inp, [5, 3])
 
     _assert_edges_close(res_out, ref_out, dtype)
 
@@ -130,8 +127,7 @@ def test_histogramdd_bin_edges_explicit_degenerate_range(dtype):
 
     rng = (7.0, 7.0, 0.0, 2.0)
     ref_out = torch._histogramdd_bin_edges(ref_inp, [4, 3], range=rng)
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_bin_edges(inp, [4, 3], range=rng)
+    res_out = flag_gems._histogramdd_bin_edges(inp, [4, 3], range=rng)
 
     _assert_edges_close(res_out, ref_out, dtype)
 
@@ -144,8 +140,7 @@ def test_histogramdd_bin_edges_empty(dtype):
     ref_inp = _to_cpu_ref(inp)
 
     ref_out = torch._histogramdd_bin_edges(ref_inp, [5, 3])
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_bin_edges(inp, [5, 3])
+    res_out = flag_gems._histogramdd_bin_edges(inp, [5, 3])
 
     _assert_edges_close(res_out, ref_out, dtype)
 
@@ -158,8 +153,7 @@ def test_histogramdd_bin_edges_small_bins(dtype):
     ref_inp = _to_cpu_ref(inp)
 
     ref_out = torch._histogramdd_bin_edges(ref_inp, [0, 1])
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_bin_edges(inp, [0, 1])
+    res_out = flag_gems._histogramdd_bin_edges(inp, [0, 1])
 
     _assert_edges_close(res_out, ref_out, dtype)
 
@@ -176,8 +170,7 @@ def test_histogramdd_bin_edges_weight_density(dtype):
     ref_out = torch._histogramdd_bin_edges(
         ref_inp, [5, 3], weight=ref_weight, density=True
     )
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_bin_edges(inp, [5, 3], weight=weight, density=True)
+    res_out = flag_gems._histogramdd_bin_edges(inp, [5, 3], weight=weight, density=True)
 
     _assert_edges_close(res_out, ref_out, dtype)
 
@@ -189,8 +182,7 @@ def test_histogramdd_bin_edges_higher_dim():
     ref_inp = _to_cpu_ref(inp)
 
     ref_out = torch._histogramdd_bin_edges(ref_inp, [4, 2, 6])
-    with flag_gems.use_gems():
-        res_out = torch._histogramdd_bin_edges(inp, [4, 2, 6])
+    res_out = flag_gems._histogramdd_bin_edges(inp, [4, 2, 6])
 
     _assert_edges_close(res_out, ref_out, torch.float32)
 
@@ -200,40 +192,35 @@ def test_histogramdd_bin_edges_validation_errors():
     # Mirror PyTorch's validation error messages.
     # ndim < 2
     with pytest.raises(RuntimeError, match="at least 2 dimensions"):
-        with flag_gems.use_gems():
-            torch._histogramdd_bin_edges(torch.randn(10, device=flag_gems.device), [5])
+        flag_gems._histogramdd_bin_edges(torch.randn(10, device=flag_gems.device), [5])
     # bins length != ndim
     with pytest.raises(RuntimeError, match="size of bins must be equal"):
-        with flag_gems.use_gems():
-            torch._histogramdd_bin_edges(
-                torch.randn(10, 2, device=flag_gems.device), [5]
-            )
+        flag_gems._histogramdd_bin_edges(
+            torch.randn(10, 2, device=flag_gems.device), [5]
+        )
     # range length mismatch
     with pytest.raises(RuntimeError, match="should have 6 elements"):
-        with flag_gems.use_gems():
-            torch._histogramdd_bin_edges(
-                torch.randn(10, 3, device=flag_gems.device),
-                [5, 3, 2],
-                range=(0.0, 1.0, 2.0),
-            )
+        flag_gems._histogramdd_bin_edges(
+            torch.randn(10, 3, device=flag_gems.device),
+            [5, 3, 2],
+            range=(0.0, 1.0, 2.0),
+        )
     # min > max
     with pytest.raises(RuntimeError, match="min should not exceed max"):
-        with flag_gems.use_gems():
-            torch._histogramdd_bin_edges(
-                torch.randn(10, 3, device=flag_gems.device),
-                [5, 3, 2],
-                range=(1.0, 0.0, 0.0, 1.0, 0.0, 1.0),
-            )
+        flag_gems._histogramdd_bin_edges(
+            torch.randn(10, 3, device=flag_gems.device),
+            [5, 3, 2],
+            range=(1.0, 0.0, 0.0, 1.0, 0.0, 1.0),
+        )
     # non-finite data range
     with pytest.raises(RuntimeError, match="is not finite"):
-        with flag_gems.use_gems():
-            torch._histogramdd_bin_edges(
-                torch.tensor(
-                    [[float("inf"), 1.0], [2.0, 3.0], [float("-inf"), 5.0]],
-                    device=flag_gems.device,
-                ),
-                [5, 3],
-            )
+        flag_gems._histogramdd_bin_edges(
+            torch.tensor(
+                [[float("inf"), 1.0], [2.0, 3.0], [float("-inf"), 5.0]],
+                device=flag_gems.device,
+            ),
+            [5, 3],
+        )
 
 
 @pytest.mark.histogramdd_bin_edges_out
@@ -248,10 +235,9 @@ def test_histogramdd_bin_edges_out(shape, bins, dtype):
     ref_out = [torch.empty(0, dtype=dtype) for _ in range(n_dims)]
     torch.ops.aten._histogramdd_bin_edges.out(ref_inp, bins_list, out=ref_out)
 
-    with flag_gems.use_gems():
-        res_out = [
-            torch.empty(0, dtype=dtype, device=flag_gems.device) for _ in range(n_dims)
-        ]
-        torch.ops.aten._histogramdd_bin_edges.out(inp, bins_list, out=res_out)
+    res_out = [
+        torch.empty(0, dtype=dtype, device=flag_gems.device) for _ in range(n_dims)
+    ]
+    flag_gems._histogramdd_bin_edges_out(inp, bins_list, out=res_out)
 
     _assert_edges_close(res_out, ref_out, dtype)
