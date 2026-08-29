@@ -908,6 +908,7 @@ _FULL_CONFIG = (
     ("pixel_shuffle", pixel_shuffle),
     ("pixel_unshuffle", pixel_unshuffle),
     ("pixel_unshuffle.out", pixel_unshuffle_out),
+    ("pinverse", pinverse, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("poisson", poisson),
     ("polar", polar),
     ("polygamma", polygamma),

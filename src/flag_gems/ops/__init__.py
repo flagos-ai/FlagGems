@@ -672,6 +672,7 @@ from flag_gems.ops.per_token_group_quant_fp8 import (
     per_token_group_quant_fp8,
 )
 from flag_gems.ops.permute_copy import permute_copy
+from flag_gems.ops.pinverse import pinverse
 from flag_gems.ops.pixel_shuffle import pixel_shuffle
 from flag_gems.ops.pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from flag_gems.ops.poisson import poisson
@@ -1680,6 +1681,7 @@ __all__ = [
     "pdist",
     "per_token_group_quant_fp8",
     "permute_copy",
+    "pinverse",
     "pixel_shuffle",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
