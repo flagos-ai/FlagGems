@@ -17,7 +17,9 @@ def npu_log_normal(x, mean=1.0, std=2.0):
 
 @pytest.mark.log_normal
 def test_log_normal():
-    torch_op = npu_log_normal if flag_gems.device == "npu" else torch.Tensor.log_normal_
+    torch_op = (
+        npu_log_normal if flag_gems.device == "npu" else torch.ops.aten.log_normal
+    )
     bench = base.GenericBenchmark(
         op_name="log_normal",
         torch_op=torch_op,
