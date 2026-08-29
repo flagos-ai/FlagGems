@@ -92,17 +92,12 @@ def _masked_select_backward_redundant_prefix_kernel(
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elements", "num_blocks", "num_blocks_per_row"])
-def _masked_select_backward_fused_kernel(
-    grad_ptr,
+def _masked_select_backward_count_kernel(
     mask_ptr,
     part_sums_ptr,
-    counter_ptr,
-    out_ptr,
-    grad_numel,
     n_elements,
     num_blocks,
     num_blocks_per_row,
-    NP_BLOCK: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     row_id = tl.program_id(0)
@@ -110,38 +105,48 @@ def _masked_select_backward_fused_kernel(
     offsets = start_block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     last_block_id = min(num_blocks - 1, start_block + num_blocks_per_row - 1)
 
-    # Compute per-program mask counts. The last arriving program turns them into
-    # exclusive prefixes, then releases the other resident programs to scatter.
-    count_acc = tl.zeros((BLOCK_SIZE,), dtype=part_sums_ptr.dtype.element_ty)
-    count_offsets = offsets
+    count = 0
     for _ in range(start_block, last_block_id):
-        count_acc += tl.load(mask_ptr + count_offsets).to(
-            part_sums_ptr.dtype.element_ty
-        )
-        count_offsets += BLOCK_SIZE
-    count_valid = count_offsets < n_elements
-    count_acc += tl.load(mask_ptr + count_offsets, mask=count_valid, other=0).to(
-        part_sums_ptr.dtype.element_ty
+        count += tl.sum(tl.load(mask_ptr + offsets).to(tl.int32), axis=0)
+        offsets += BLOCK_SIZE
+    valid = offsets < n_elements
+    count += tl.sum(
+        tl.load(mask_ptr + offsets, mask=valid, other=0).to(tl.int32), axis=0
     )
-    tl.store(part_sums_ptr + row_id, tl.sum(count_acc, axis=0))
+    tl.store(part_sums_ptr + row_id, count)
 
-    arrival = tl.atomic_add(counter_ptr, 1, sem="acq_rel")
-    num_programs = tl.num_programs(0)
-    if arrival == num_programs - 1:
-        prefix_valid = tl.arange(0, NP_BLOCK) < num_programs
-        part_sums = tl.load(
-            part_sums_ptr + tl.arange(0, NP_BLOCK), mask=prefix_valid, other=0
-        )
-        prefixes = tl.cumsum(part_sums, axis=0) - part_sums
-        tl.store(
-            part_sums_ptr + tl.arange(0, NP_BLOCK),
-            prefixes,
-            mask=prefix_valid,
-        )
-        tl.atomic_xchg(counter_ptr, num_programs + 1, sem="release")
-    else:
-        while tl.atomic_add(counter_ptr, 0, sem="acquire") <= num_programs:
-            pass
+
+@libentry()
+@triton.jit(do_not_specialize=["num_programs"])
+def _masked_select_backward_prefix_kernel(
+    part_sums_ptr,
+    num_programs,
+    NP_BLOCK: tl.constexpr,
+):
+    offsets = tl.arange(0, NP_BLOCK)
+    valid = offsets < num_programs
+    counts = tl.load(part_sums_ptr + offsets, mask=valid, other=0)
+    prefixes = tl.cumsum(counts, axis=0) - counts
+    tl.store(part_sums_ptr + offsets, prefixes, mask=valid)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elements", "num_blocks", "num_blocks_per_row"])
+def _masked_select_backward_scatter_kernel(
+    grad_ptr,
+    mask_ptr,
+    part_sums_ptr,
+    out_ptr,
+    grad_numel,
+    n_elements,
+    num_blocks,
+    num_blocks_per_row,
+    BLOCK_SIZE: tl.constexpr,
+):
+    row_id = tl.program_id(0)
+    start_block = row_id * num_blocks_per_row
+    offsets = start_block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    last_block_id = min(num_blocks - 1, start_block + num_blocks_per_row - 1)
 
     grad_advance = tl.load(part_sums_ptr + row_id)
 
@@ -216,19 +221,31 @@ def _masked_select_backward_real(grad, mask, out):
     index_dtype = torch.int32 if n_elements < 2**31 else torch.int64
 
     with torch_device_fn.device(out.device):
-        part_sums = torch.empty(num_programs + 1, dtype=index_dtype, device=out.device)
-        barrier = torch.zeros((), dtype=torch.int32, device=out.device)
-        _masked_select_backward_fused_kernel[(num_programs,)](
+        part_sums = torch.empty(num_programs, dtype=index_dtype, device=out.device)
+        _masked_select_backward_count_kernel[(num_programs,)](
+            mask,
+            part_sums,
+            n_elements,
+            num_blocks,
+            num_blocks_per_row,
+            BLOCK_SIZE=block_size,
+            num_warps=num_warps,
+        )
+        _masked_select_backward_prefix_kernel[(1,)](
+            part_sums,
+            num_programs,
+            NP_BLOCK=scan_block,
+            num_warps=4,
+        )
+        _masked_select_backward_scatter_kernel[(num_programs,)](
             grad,
             mask,
             part_sums,
-            barrier,
             out,
             grad.numel(),
             n_elements,
             num_blocks,
             num_blocks_per_row,
-            NP_BLOCK=scan_block,
             BLOCK_SIZE=block_size,
             num_warps=num_warps,
         )
