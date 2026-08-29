@@ -9073,6 +9073,18 @@ ops:
       - Math
     stages:
       - beta: '5.3'
+  - id: poisson_nll_loss
+    description: Computes the Poisson negative log likelihood loss.
+    for:
+      - poisson_nll_loss
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: polar
     description: |
       Constructs a complex tensor whose elements are Cartesian coordinates corresponding to
