@@ -23,6 +23,7 @@ from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
 from .celu import celu
 from .conv2d import conv2d
+from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .div import (
     div_mode,
     div_mode_,
@@ -111,6 +112,8 @@ __all__ = [
     "celu",
     # "celu_",
     "conv2d",
+    "conv_transpose1d",
+    "conv_transpose1d_output_size",
     "dropout",
     "dropout_backward",
     "erfinv",
