@@ -33,8 +33,7 @@ MOMENT_PARAMS_NO_FP16 = [(1.0, 2.0)]
 def test_log_normal(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     x_ref = utils.to_reference(x.clone())
-    with flag_gems.use_gems():
-        y = torch.ops.aten.log_normal(x)
+    y = flag_gems.log_normal(x)
 
     assert y.shape == x.shape
     assert y.dtype == x.dtype
@@ -52,8 +51,7 @@ def test_log_normal(shape, dtype):
 def test_log_normal_params(dtype, mean, std):
     shape = (100, 256, 100)
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        y = torch.ops.aten.log_normal(x, mean=mean, std=std)
+    y = flag_gems.log_normal(x, mean=mean, std=std)
 
     assert y.shape == x.shape
     assert y.dtype == x.dtype
@@ -75,8 +73,7 @@ def test_log_normal_params(dtype, mean, std):
 @pytest.mark.parametrize("mean,std", MOMENT_PARAMS)
 def test_log_normal_moments(shape, dtype, mean, std):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        y = torch.ops.aten.log_normal(x, mean=mean, std=std)
+    y = flag_gems.log_normal(x, mean=mean, std=std)
 
     y_res = utils.to_reference(y).to(torch.float32)
     mean_res = torch.mean(y_res)
@@ -102,8 +99,7 @@ def test_log_normal_moments(shape, dtype, mean, std):
 @pytest.mark.parametrize("mean,std", MOMENT_PARAMS_NO_FP16)
 def test_log_normal_moments_large_std(shape, dtype, mean, std):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        y = torch.ops.aten.log_normal(x, mean=mean, std=std)
+    y = flag_gems.log_normal(x, mean=mean, std=std)
 
     y_res = utils.to_reference(y).to(torch.float32)
     mean_res = torch.mean(y_res)
@@ -119,8 +115,7 @@ def test_log_normal_moments_large_std(shape, dtype, mean, std):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_log_normal_large_shapes(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        y = torch.ops.aten.log_normal(x)
+    y = flag_gems.log_normal(x)
 
     assert y.shape == x.shape
     assert y.dtype == x.dtype
