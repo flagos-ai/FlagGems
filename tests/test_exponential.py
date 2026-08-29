@@ -26,7 +26,8 @@ OUTPLACE_MOMENT_SHAPES = [(256, 1024), (1024, 1024), (4096, 4096), (64, 512, 512
 def test_exponential(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     x_ref = x.clone()
-    y = flag_gems.exponential(x)
+    with flag_gems.use_gems():
+        y = torch.ops.aten.exponential(x)
 
     assert y.shape == x.shape
     assert y.dtype == x.dtype
@@ -43,7 +44,8 @@ def test_exponential_moments(shape, dtype):
     lambd = 1.0
     mean_tol = 0.05
     var_tol = 0.05
-    y = flag_gems.exponential(x, lambd=lambd)
+    with flag_gems.use_gems():
+        y = torch.ops.aten.exponential(x, lambd=lambd)
 
     y_res = utils.to_reference(y)
     mean_res = torch.mean(y_res.to(torch.float32)).to(dtype)
