@@ -68,8 +68,7 @@ dependencies = [
     "packaging>=26.0",
     "PyYAML==6.0.1",
     "sqlalchemy==2.0.48",
-    # python 3.10 requires numpy < 2, while upper layer requires numpy>2 ..
-    "numpy",
+    "numpy==1.26.4",
 ]
 
 [project.optional-dependencies]
