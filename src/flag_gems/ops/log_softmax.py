@@ -26,6 +26,39 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
+# Self-contained heuristics for the inner log_softmax kernel. These intentionally
+# do NOT reuse runtime.get_heuristic_config("softmax_inner"): that config name is
+# redefined per-backend with different signatures (e.g. Cambricon exposes only
+# TILE_MODE, not TILE_N/ONE_TILE_PER_CTA), so sharing it would couple this kernel
+# to whatever a backend happens to export. Defining them here keeps the kernel
+# self-contained and correct on every backend that falls through to this generic
+# implementation.
+def _log_softmax_inner_tile_n(args):
+    if args["N"] <= (32 * 1024):
+        return triton.next_power_of_2(args["N"])
+    return 4096
+
+
+def _log_softmax_inner_one_tile_per_cta(args):
+    return args["TILE_N"] >= args["N"]
+
+
+def _log_softmax_inner_num_warps(args):
+    tile_size = args["TILE_N"]
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    return 16
+
+
+_LOG_SOFTMAX_INNER_HEURISTICS = {
+    "TILE_N": _log_softmax_inner_tile_n,
+    "ONE_TILE_PER_CTA": _log_softmax_inner_one_tile_per_cta,
+    "num_warps": _log_softmax_inner_num_warps,
+}
+
+
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
 @triton.jit
@@ -84,6 +117,81 @@ def log_softmax_kernel_non_inner(
             )
             out = inp - m[None, :] - log_z[None, :]
             tl.store(output_ptr + offsets, out, mask=mask)
+
+
+@libentry()
+@triton.heuristics(_LOG_SOFTMAX_INNER_HEURISTICS)
+@triton.jit
+def log_softmax_kernel_inner(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = ext.program_id(0)
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        offset = pid_m * N + n_offsets
+        input_ptrs = input_ptr + offset
+        mask = n_offsets < N
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
+        m = tl.max(inp, 0)
+        e = tl.exp(inp - m)
+        z = tl.sum(e, 0)
+        out = inp - m - tl.log(z)
+        output_ptrs = output_ptr + offset
+        tl.store(output_ptrs, out, mask=mask)
+    else:
+        m = tl.full([TILE_N], value=float("-inf"), dtype=tl.float32)
+        z = tl.full([TILE_N], value=0.0, dtype=tl.float32)
+        input_ptr += pid_m * N
+        output_ptr += pid_m * N
+
+        previous_multiple = tl.cdiv(N, TILE_N) * TILE_N - TILE_N
+        for start_n in range(0, previous_multiple, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            inp = tl.load(input_ptr + n_offsets).to(tl.float32)
+            m_new = tl.maximum(m, inp)
+            all_neg_inf = m_new == float("-inf")
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
+            m = m_new
+        for start_n in range(previous_multiple, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            mask = n_offsets < N
+            inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("inf")).to(
+                tl.float32
+            )
+            m_new = tl.maximum(m, inp)
+            all_neg_inf = m_new == float("-inf")
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
+            m = m_new
+
+        m_reduced = tl.max(m, 0)
+        z = tl.sum(z * tl.exp(m - m_reduced), 0)
+        m = m_reduced
+        log_z = tl.log(z)
+
+        previous_multiple = tl.cdiv(N, TILE_N) * TILE_N - TILE_N
+        for start_n in range(0, TILE_N, TILE_N):
+            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
+            mask = n_offsets < N
+            inp = tl.load(
+                input_ptr + n_offsets,
+                mask=mask,
+                other=-float("inf"),
+                eviction_policy="evict_first",
+            ).to(tl.float32)
+            o = inp - m - log_z
+            tl.store(output_ptr + n_offsets, o, mask=mask)
+        for start_n in range(TILE_N, N, TILE_N):
+            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
+            inp = tl.load(input_ptr + n_offsets, eviction_policy="evict_first").to(
+                tl.float32
+            )
+            o = inp - m - log_z
+            tl.store(output_ptr + n_offsets, o)
 
 
 @libentry()
@@ -202,17 +310,12 @@ def log_softmax_out(self, dim, half_to_float=False, *, out):
                 K,
             )
         else:
-            grid = lambda meta: (
-                triton.cdiv(M, meta["BLOCK_M"]),
-                K,
-            )
-            log_softmax_kernel[grid](
+            grid = (M, 1, 1)
+            log_softmax_kernel_inner[grid](
                 out,
                 inp,
                 M,
                 N,
-                K,
-                num_warps=8,
             )
     return out
 
