@@ -23,14 +23,15 @@ from . import accuracy_utils as utils
 @pytest.mark.upsample_nearest_exact2d_backward
 @pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_upsample_nearest_exact2d_backward(shape, dtype):
+@pytest.mark.parametrize("factor", [2, 1.5])
+def test_upsample_nearest_exact2d_backward(shape, dtype, factor):
     # Create input tensor and upsample it to get output size
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
 
     # Forward pass to get output size
-    out_h = shape[2] * 2
-    out_w = shape[3] * 2
+    out_h = int(shape[2] * factor)
+    out_w = int(shape[3] * factor)
     output_size = (out_h, out_w)
 
     # Compute reference forward output using torch.ops.aten
@@ -59,14 +60,15 @@ def test_upsample_nearest_exact2d_backward(shape, dtype):
 @pytest.mark.upsample_nearest_exact2d_backward
 @pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_upsample_nearest_exact2d_backward_with_scales(shape, dtype):
+@pytest.mark.parametrize("scale", [2.0, 1.5])
+def test_upsample_nearest_exact2d_backward_with_scales(shape, dtype, scale):
     # Test with explicit scales
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
 
     # Use scales instead of output_size
-    scale_h = 2.0
-    scale_w = 2.0
+    scale_h = scale
+    scale_w = scale
     out_h = int(shape[2] * scale_h)
     out_w = int(shape[3] * scale_w)
     output_size = (out_h, out_w)

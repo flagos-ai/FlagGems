@@ -39,8 +39,7 @@ def _upsample_nearest_exact1d_kernel(
     sN_out,
     sC_out,
     sW_out,
-    use_scales: tl.constexpr,
-    scale_w,
+    reciprocal_scale_w,
     BLOCK_W: tl.constexpr,
 ):
     pid_w = tl.program_id(0)
@@ -57,14 +56,11 @@ def _upsample_nearest_exact1d_kernel(
     base_in = n * sN_in + c * sC_in
     base_out = n * sN_out + c * sC_out
 
-    # Compute source indices iw for each output index ow
-    iw = tl.zeros([BLOCK_W], dtype=tl.int32)
-    if use_scales:
-        ow_f = offs_w.to(tl.float32)
-        iw_f = tl.floor(ow_f / scale_w)
-        iw = iw_f.to(tl.int32)
-    else:
-        iw = (offs_w * IW) // OW
+    # Compute source indices iw for each output index ow, using the
+    # "nearest exact" formula from PyTorch:
+    # src_index = min(floor((dst_index + 0.5) * (IW / OW)), IW - 1)
+    iw_f = tl.floor((offs_w.to(tl.float32) + 0.5) * reciprocal_scale_w)
+    iw = iw_f.to(tl.int32)
     iw = tl.minimum(iw, IW - 1)
 
     in_ptrs = in_ptr + base_in + iw * sW_in
@@ -127,8 +123,11 @@ def _launch_upsample_nearest_exact1d_kernel(input, out, output_size=None, scale=
     BLOCK_W = 256
     grid = (triton.cdiv(OW, BLOCK_W), N * C)
 
+    # The source-index formula uses the IW / OW ratio; a given scale factor is
+    # OW / IW, so its reciprocal is that ratio. Computed here, in the same
+    # order as ATen, so the float rounding matches.
     use_scales = scale is not None and output_size is None
-    scale_w = float(scale) if use_scales else 1.0
+    reciprocal_scale_w = 1.0 / float(scale) if use_scales else IW / OW
 
     _upsample_nearest_exact1d_kernel[grid](
         input,
@@ -143,8 +142,7 @@ def _launch_upsample_nearest_exact1d_kernel(input, out, output_size=None, scale=
         sN_out,
         sC_out,
         sW_out,
-        use_scales=use_scales,
-        scale_w=scale_w,
+        reciprocal_scale_w=reciprocal_scale_w,
         BLOCK_W=BLOCK_W,
     )
     return out
