@@ -26,6 +26,7 @@ LSTM_SHAPES = [
     (4, 16),  # batch=4, hidden=16
     (8, 32),  # batch=8, hidden=32
     (16, 64),  # batch=16, hidden=64
+    (4, 256),  # hidden larger than the forward kernel's BLOCK_SIZE
 ]
 
 
@@ -72,4 +73,50 @@ def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):
         assert (
             res.dtype == ref.dtype
         ), f"Dtype mismatch at output[{i}]: {res.dtype} vs {ref.dtype}"
+        utils.gems_assert_close(res.cpu(), ref.cpu(), dtype, atol=5e-2)
+
+
+@pytest.mark.thnn_fused_lstm_cell_backward_impl
+@pytest.mark.parametrize("shape", LSTM_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_thnn_fused_lstm_cell_forward_backward_roundtrip(shape, dtype):
+    """Check the gems backward against the workspace the gems forward writes.
+
+    The two ops are registered as a pair, so in real use the backward always
+    reads a workspace produced by the gems forward. The test above feeds it an
+    aten workspace instead, which hides any disagreement between the pair about
+    what the workspace holds.
+    """
+    batch_size, hidden_size = shape
+    dev = flag_gems.device
+
+    input_gates = torch.randn(batch_size, 4 * hidden_size, dtype=dtype, device=dev)
+    hidden_gates = torch.randn(batch_size, 4 * hidden_size, dtype=dtype, device=dev)
+    cx = torch.randn(batch_size, hidden_size, dtype=dtype, device=dev)
+    input_bias = torch.randn(4 * hidden_size, dtype=dtype, device=dev)
+    hidden_bias = torch.randn(4 * hidden_size, dtype=dtype, device=dev)
+    grad_hy = torch.randn(batch_size, hidden_size, dtype=dtype, device=dev)
+    grad_cy = torch.randn(batch_size, hidden_size, dtype=dtype, device=dev)
+
+    # aten forward, then aten backward
+    _, ref_cy, ref_workspace = torch.ops.aten._thnn_fused_lstm_cell(
+        input_gates, hidden_gates, cx, input_bias, hidden_bias
+    )
+    ref_out = torch.ops.aten._thnn_fused_lstm_cell_backward_impl(
+        grad_hy, grad_cy, cx, ref_cy, ref_workspace, True
+    )
+
+    # gems forward, then gems backward
+    with flag_gems.use_gems():
+        _, res_cy, res_workspace = torch.ops.aten._thnn_fused_lstm_cell(
+            input_gates, hidden_gates, cx, input_bias, hidden_bias
+        )
+        res_out = torch.ops.aten._thnn_fused_lstm_cell_backward_impl(
+            grad_hy, grad_cy, cx, res_cy, res_workspace, True
+        )
+
+    for i, (ref, res) in enumerate(zip(ref_out, res_out)):
+        assert (
+            res.shape == ref.shape
+        ), f"Shape mismatch at output[{i}]: {res.shape} vs {ref.shape}"
         utils.gems_assert_close(res.cpu(), ref.cpu(), dtype, atol=5e-2)
