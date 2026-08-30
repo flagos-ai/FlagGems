@@ -1120,6 +1120,7 @@ _FULL_CONFIG = (
     ("sum.out", sum_out),
     ("svd", svd),
     ("sym_constrain_range", sym_constrain_range),
+    ("sym_numel", sym_numel),
     ("sym_storage_offset", sym_storage_offset),
     ("sym_stride", sym_stride),
     ("t_copy", t_copy),
