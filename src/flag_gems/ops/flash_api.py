@@ -1116,8 +1116,10 @@ def mha_fwd(
         # Do kernel dispatching
         def dispatch(B, H, Q, K, D, params):
             num_sms = torch_device_fn.get_device_properties(
-                "cuda"
+                runtime.device.name
             ).multi_processor_count
+            if num_sms is None:
+                num_sms = 1
 
             # Try bh parallel
             # if B * H > 0.8 * num_sms:
@@ -1161,15 +1163,20 @@ def mha_fwd(
                     BLOCK_K = triton.next_power_of_2(D)
                     grid = lambda args: (triton.cdiv(B * H * Q, BLOCK_M),)
                     combine_kernel = flash_fwd_splitkv_combine_kernel[grid]
+                    # The combine kernel treats out as flat (B*H*Q, D) in B,H,Q order.
+                    # out is (B, Q, H, D) so we need a temp buffer in (B, H, Q, D) order.
+                    out_combine = torch.empty(
+                        (B, H, Q, D), dtype=out.dtype, device=out.device
+                    )
                     combine_args = {
-                        "out_ptr": out,
+                        "out_ptr": out_combine,
                         "lse_ptr": lse,
                         "head_size": head_size,
                         "out_split_stride": out_splits.stride(0),
                         "lse_split_stride": lse_splits.stride(0),
-                        "out_b_stride": out.stride(0),
-                        "out_s_stride": out.stride(-3),
-                        "out_h_stride": out.stride(-1),
+                        "out_b_stride": out_combine.stride(0),
+                        "out_s_stride": out_combine.stride(-2),
+                        "out_h_stride": out_combine.stride(-1),
                         "out_splits_ptr": out_splits,
                         "lse_splits_ptr": lse_splits,
                         "n_splits": n_splits,
@@ -1179,6 +1186,8 @@ def mha_fwd(
                         "MAX_N_SPLITS": triton.next_power_of_2(n_splits),
                     }
                     combine_kernel(**combine_args)
+                    # Copy back to out (B, Q, H, D)
+                    out.copy_(out_combine.transpose(1, 2))
                     return kernel
 
             # Last option: flash_fwd

@@ -273,7 +273,6 @@ def keep(cfg, must_keep=None):
     BN = cfg.kwargs["BLOCK_N"]
     w = cfg.num_warps
 
-    # we always keep configurations in `must_keep`
     return (BM, BN, w) in ((128, 32, 4), (128, 128, 8)) or (
         must_keep and cfg in must_keep
     )
@@ -770,7 +769,7 @@ def flash_fwd_splitkv_kernel_heur_block_k(args):
         "BLOCK_N": block_n_splitkv_heuristic_spec_args,
         "BLOCK_K": flash_fwd_splitkv_kernel_heur_block_k,
         "num_warps": lambda args: 4,
-        "num_stages": lambda args: 3,
+        "num_stages": lambda args: 2 if runtime.device.vendor_name == "ascend" else 3,
         "PRE_LOAD_V": lambda args: True,
         "IS_EVEN_MN": is_even_mn_spec_args,
     }

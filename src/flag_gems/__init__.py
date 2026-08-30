@@ -135,7 +135,7 @@ _FULL_CONFIG = (
     ),
     ("_euclidean_dist", _euclidean_dist),
     ("_flash_attention_backward", flash_attention_backward),
-    ("_flash_attention_forward", _flash_attention_forward),
+    ("_flash_attention_forward", flash_attention_forward),
     (
         "_functional_sym_constrain_range",
         _functional_sym_constrain_range,
@@ -218,7 +218,7 @@ _FULL_CONFIG = (
     ),
     (
         "_scaled_dot_product_flash_attention",
-        _scaled_dot_product_flash_attention,
+        scaled_dot_product_flash_attention,
     ),
     (
         "_scaled_dot_product_flash_attention_backward",
@@ -991,7 +991,6 @@ _FULL_CONFIG = (
     ("scatter.src", scatter),
     ("scatter_.reduce", scatter_),
     ("scatter_.src", scatter_),
-    ("scatter_add", scatter_add),
     ("scatter_add_", scatter_add_),
     ("scatter_reduce.two", scatter_reduce),
     ("scatter_reduce.two_out", scatter_reduce_out),
