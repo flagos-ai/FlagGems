@@ -26,27 +26,17 @@ _PERSISTENT_BLOCK_V = 32
 
 
 @triton.jit
-def _fp32_to_int8_rni(values):
-    return tl.inline_asm_elementwise(
-        "cvt.rni.sat.s8.f32 $0, $1;",
-        constraints="=r,f",
-        args=[values],
-        dtype=tl.int32,
-        is_pure=True,
-        pack=1,
-    ).to(tl.int8)
-
-
-@triton.jit
 def _quantize_state_tile_int8(values, mask_k):
     absmax_per_v = tl.max(
         tl.where(mask_k[:, None], tl.abs(values), 0.0),
         axis=0,
     )
     absmax = tl.max(absmax_per_v, axis=0)
-    state_scale = tl.where(absmax > 0.0, absmax * (1.0 / 127.0), 1.0)
-    inv_scale = tl.where(absmax > 0.0, 127.0 / absmax, 0.0)
-    quantized = _fp32_to_int8_rni(values * inv_scale)
+    safe_absmax = tl.maximum(absmax, 1e-12)
+    state_scale = safe_absmax * (1.0 / 127.0)
+    inv_scale = 127.0 / safe_absmax
+    scaled = values * inv_scale
+    quantized = tl.floor(scaled + 0.5).to(tl.int8)
     return quantized, state_scale
 
 
@@ -57,9 +47,20 @@ def _quantize_state_tile_int8_v_first(values, mask_k):
         axis=1,
     )
     absmax = tl.max(absmax_per_k, axis=0)
-    state_scale = tl.where(absmax > 0.0, absmax * (1.0 / 127.0), 1.0)
-    inv_scale = tl.where(absmax > 0.0, 127.0 / absmax, 0.0)
-    quantized = _fp32_to_int8_rni(values * inv_scale)
+    safe_absmax = tl.maximum(absmax, 1e-12)
+    state_scale = safe_absmax * (1.0 / 127.0)
+    inv_scale = 127.0 / safe_absmax
+    scaled = values * inv_scale
+    quantized = tl.floor(scaled + 0.5).to(tl.int8)
+    return quantized, state_scale
+
+
+@triton.jit
+def _quantize_state_tile_int8_from_bound(values, absmax_bound):
+    safe_absmax = tl.maximum(absmax_bound, 1e-12)
+    state_scale = safe_absmax * (1.0 / 127.0)
+    inv_scale = 127.0 / safe_absmax
+    quantized = tl.floor(values * inv_scale + 0.5).to(tl.int8)
     return quantized, state_scale
 
 
@@ -162,6 +163,7 @@ def _fused_recurrent_gated_delta_rule_w8a16_int8_kernel(
     USE_PACKED_INPUT: tl.constexpr,
     USE_STATE_INDICES: tl.constexpr,
     USE_QK_L2NORM: tl.constexpr,
+    USE_ABSMAX_BOUND: tl.constexpr,
 ):
     i_v = tl.program_id(0)
     i_nh = tl.program_id(1)
@@ -225,9 +227,14 @@ def _fused_recurrent_gated_delta_rule_w8a16_int8_kernel(
 
     g_offset = i_b * stride_g_b + i_t * stride_g_t + i_hv * stride_g_h
     beta_offset = i_b * stride_beta_b + i_t * stride_beta_t + i_hv * stride_beta_h
-    b_h *= b_state_scale * exp(tl.load(g + g_offset).to(tl.float32))
+    decay = exp(tl.load(g + g_offset).to(tl.float32))
+    if USE_ABSMAX_BOUND:
+        old_absmax_bound = b_state_scale * 127.0 * decay
+    b_h *= b_state_scale * decay
     b_v -= tl.sum(b_h * b_k[:, None], axis=0)
     b_v *= tl.load(beta + beta_offset).to(tl.float32)
+    if USE_ABSMAX_BOUND:
+        update_absmax = tl.max(tl.abs(b_k), axis=0) * tl.max(tl.abs(b_v), axis=0)
     b_h += b_k[:, None] * b_v[None, :]
     b_o = tl.sum(b_h * b_q[:, None], axis=0)
 
@@ -236,7 +243,12 @@ def _fused_recurrent_gated_delta_rule_w8a16_int8_kernel(
     )
     tl.store(o + o_offsets, b_o.to(o.dtype.element_ty), mask=mask_v)
 
-    quantized, b_state_scale = _quantize_state_tile_int8(b_h, mask_k)
+    if USE_ABSMAX_BOUND:
+        quantized, b_state_scale = _quantize_state_tile_int8_from_bound(
+            b_h, old_absmax_bound + update_absmax
+        )
+    else:
+        quantized, b_state_scale = _quantize_state_tile_int8_v_first(b_h, mask_k)
     tl.store(state_int8 + state_offsets, quantized, mask=mask_state)
     tl.store(state_scale + scale_offsets, b_state_scale, mask=mask_v)
 
@@ -659,7 +671,7 @@ def fused_recurrent_gated_delta_rule_w8a16_int8(
     optimized_shape = K == 128 and V == 128
     use_grouped_kernel = (
         optimized_shape
-        and (N < 80 or N >= 96)
+        and (32 <= N < 80 or N >= 96)
         and use_packed_input
         and state_indices is not None
         and use_qk_l2norm_in_kernel
@@ -675,7 +687,7 @@ def fused_recurrent_gated_delta_rule_w8a16_int8(
         block_v = _STATE_BLOCK_V
         if N == 1:
             grouped_maxnreg = 255
-        elif N >= 128:
+        elif N >= 96:
             grouped_maxnreg = 160
         else:
             grouped_maxnreg = 192
@@ -713,8 +725,8 @@ def fused_recurrent_gated_delta_rule_w8a16_int8(
             BK,
             V,
             block_v,
-            STREAM_STATE_STORE=N >= 512,
-            REDUCE_V_FIRST=N >= 128,
+            STREAM_STATE_STORE=N >= 128,
+            REDUCE_V_FIRST=N >= 32,
             num_warps=1,
             num_stages=1,
             maxnreg=grouped_maxnreg,
@@ -735,16 +747,12 @@ def fused_recurrent_gated_delta_rule_w8a16_int8(
         )
     else:
         block_v = _STATE_BLOCK_V
-        if K == 128 and V == 128:
-            if N == 1:
-                block_v = 8
-            elif N == 2:
-                block_v = 16
         NV = triton.cdiv(V, block_v)
         _fused_recurrent_gated_delta_rule_w8a16_int8_kernel[(NV, N * HV)](
             **kernel_args,
             BV=block_v,
-            num_warps=1,
+            USE_ABSMAX_BOUND=4 <= N <= 8,
+            num_warps=4 if N <= 2 else 2 if N <= 4 else 1,
             num_stages=1,
         )
     return o, state_int8, state_scale
