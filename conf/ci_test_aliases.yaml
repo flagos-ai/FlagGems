@@ -42,6 +42,6 @@ and_tensor: test_bitwise_and
 arctan: test_atan
 
 # Operators tested in combined files or with different naming
-attention_w8a8_fp8: test_flash_attention
+flash_attn_varlen_func_w8a8_fp8: test_flash_attention
 batch_norm_backward: test_batch_norm
 batch_norm_impl_index: test_batch_norm

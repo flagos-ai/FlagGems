@@ -19,7 +19,9 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems.ops.attention_w8a8_fp8 import attention_w8a8_fp8
+from flag_gems.ops.flash_attn_varlen_func_w8a8_fp8 import (
+    flash_attn_varlen_func_w8a8_fp8,
+)
 
 from . import base, utils
 
@@ -381,7 +383,7 @@ def _quantize_qkv_w8a8(q, k, v):
     )
 
 
-def torch_attention_w8a8_fp8(
+def torch_flash_attn_varlen_func_w8a8_fp8(
     q,
     k,
     v,
@@ -410,7 +412,7 @@ def torch_attention_w8a8_fp8(
     return result[0]
 
 
-def gems_attention_w8a8_fp8(
+def gems_flash_attn_varlen_func_w8a8_fp8(
     q,
     k,
     v,
@@ -424,7 +426,7 @@ def gems_attention_w8a8_fp8(
     is_causal,
 ):
     out = torch.empty_like(q, dtype=torch.float16)
-    return attention_w8a8_fp8(
+    return flash_attn_varlen_func_w8a8_fp8(
         q_fp8,
         k_fp8,
         v_fp8,
@@ -437,7 +439,7 @@ def gems_attention_w8a8_fp8(
     )
 
 
-class AttentionW8A8FP8Benchmark(base.GenericBenchmark):
+class FlashAttnVarlenFuncW8A8FP8Benchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = []
 
@@ -464,7 +466,7 @@ class AttentionW8A8FP8Benchmark(base.GenericBenchmark):
         return []
 
 
-def attention_w8a8_fp8_input_fn(config, dtype, device):
+def flash_attn_varlen_func_w8a8_fp8_input_fn(config, dtype, device):
     batch, seq_len, num_head, head_size, is_causal = config
     q = torch.empty(
         (batch, seq_len, num_head, head_size),
@@ -518,13 +520,13 @@ def attention_w8a8_fp8_input_fn(config, dtype, device):
     getattr(torch, "float8_e4m3fn", None) is None,
     reason="FP8 is not available",
 )
-@pytest.mark.attention_w8a8_fp8
-def test_attention_w8a8_fp8():
-    bench = AttentionW8A8FP8Benchmark(
-        op_name="attention_w8a8_fp8",
-        input_fn=attention_w8a8_fp8_input_fn,
-        torch_op=torch_attention_w8a8_fp8,
+@pytest.mark.flash_attn_varlen_func_w8a8_fp8
+def test_flash_attn_varlen_func_w8a8_fp8():
+    bench = FlashAttnVarlenFuncW8A8FP8Benchmark(
+        op_name="flash_attn_varlen_func_w8a8_fp8",
+        input_fn=flash_attn_varlen_func_w8a8_fp8_input_fn,
+        torch_op=torch_flash_attn_varlen_func_w8a8_fp8,
         dtypes=[torch.float16],
     )
-    bench.set_gems(gems_attention_w8a8_fp8)
+    bench.set_gems(gems_flash_attn_varlen_func_w8a8_fp8)
     bench.run()

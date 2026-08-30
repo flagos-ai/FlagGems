@@ -3477,7 +3477,7 @@ def mha_fwd(
     return out, q, k, v, lse, philox_args, unused, p
 
 
-def attention_w8a8_fp8(
+def flash_attn_varlen_func_w8a8_fp8(
     q,
     k,
     v,

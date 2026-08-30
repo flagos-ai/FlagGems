@@ -20,7 +20,9 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems.ops.attention_w8a8_fp8 import attention_w8a8_fp8
+from flag_gems.ops.flash_attn_varlen_func_w8a8_fp8 import (
+    flash_attn_varlen_func_w8a8_fp8,
+)
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import random_utils
 
@@ -862,7 +864,7 @@ def _quantize_qkv_w8a8(q, k, v):
     )
 
 
-def gems_attention_w8a8_fp8(q, k, v, scale, is_causal):
+def gems_flash_attn_varlen_func_w8a8_fp8(q, k, v, scale, is_causal):
     (
         q_fp8,
         k_fp8,
@@ -873,7 +875,7 @@ def gems_attention_w8a8_fp8(q, k, v, scale, is_causal):
     ) = _quantize_qkv_w8a8(q, k, v)
 
     out = None if q.dtype == torch.bfloat16 else torch.empty_like(q)
-    result = attention_w8a8_fp8(
+    result = flash_attn_varlen_func_w8a8_fp8(
         q_fp8,
         k_fp8,
         v_fp8,
@@ -910,7 +912,7 @@ def _assert_w8a8_attention_close(actual, expected):
     assert cosine.item() > 0.99, f"cosine={cosine.item():.6f}"
 
 
-@pytest.mark.attention_w8a8_fp8
+@pytest.mark.flash_attn_varlen_func_w8a8_fp8
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(flag_gems.vendor_name != "nvidia", reason="NVIDIA-only path")
@@ -928,7 +930,7 @@ def _assert_w8a8_attention_close(actual, expected):
 @pytest.mark.parametrize("head_size", [64, 128])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_attention_w8a8_fp8(
+def test_flash_attn_varlen_func_w8a8_fp8(
     batch,
     num_head,
     q_seq_len,
@@ -950,7 +952,7 @@ def test_attention_w8a8_fp8(
     )
     scale = 1.0 / math.sqrt(head_size)
 
-    gems_out, (ref_q, ref_k, ref_v) = gems_attention_w8a8_fp8(
+    gems_out, (ref_q, ref_k, ref_v) = gems_flash_attn_varlen_func_w8a8_fp8(
         q.transpose(1, 2).contiguous(),
         k.transpose(1, 2).contiguous(),
         v.transpose(1, 2).contiguous(),
@@ -968,7 +970,7 @@ def test_attention_w8a8_fp8(
     _assert_w8a8_attention_close(gems_out, torch_out)
 
 
-@pytest.mark.attention_w8a8_fp8
+@pytest.mark.flash_attn_varlen_func_w8a8_fp8
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(flag_gems.vendor_name != "nvidia", reason="NVIDIA-only path")
@@ -979,7 +981,7 @@ def test_attention_w8a8_fp8(
     getattr(torch, "float8_e4m3fn", None) is None,
     reason="FP8 is not available",
 )
-def test_attention_w8a8_fp8_rejects_gqa():
+def test_flash_attn_varlen_func_w8a8_fp8_rejects_gqa():
     device = torch_device_fn.current_device()
     fp8_dtype = _get_fp8_dtype()
     q = torch.empty((1, 128, 4, 64), dtype=fp8_dtype, device=device)
@@ -989,4 +991,4 @@ def test_attention_w8a8_fp8_rejects_gqa():
     kv_descale = torch.ones((1, 2, 1), dtype=torch.float32, device=device)
 
     with pytest.raises(NotImplementedError, match="GQA is not supported"):
-        attention_w8a8_fp8(q, k, v, q_descale, kv_descale, kv_descale)
+        flash_attn_varlen_func_w8a8_fp8(q, k, v, q_descale, kv_descale, kv_descale)
