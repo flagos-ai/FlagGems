@@ -37,6 +37,8 @@ def _pdist_forward_p2_kernel(
     stride_x,
     stride_out,
     BLOCK_M: tl.constexpr,
+    NUM_TILES: tl.constexpr,
+    WIDE_INDEX: tl.constexpr,
 ):
     """Forward kernel for p=2 (Euclidean distance) case."""
     # Each program handles one pair of rows
@@ -46,6 +48,12 @@ def _pdist_forward_p2_kernel(
     # pdist output indices: for row i, pairs are (i, i+1), (i, i+2), ..., (i, n-1)
     # Total pairs before row i: i * N - (i * (i + 1)) // 2
     # Within row i's pairs: j - i - 1
+
+    # The pair count and the pair decode overflow int32 once N*(N-1) exceeds
+    # 2^31 (N >= 46342). 64-bit arithmetic costs about 2x on this search, so
+    # the host requests it only when the 32-bit form would overflow.
+    if WIDE_INDEX:
+        N = N.to(tl.int64)
 
     # Binary search to find row i for this output index
     # N*(N-1)//2 total pairs
@@ -57,7 +65,10 @@ def _pdist_forward_p2_kernel(
     # Find which row this pair belongs to
     # We need smallest i such that i * N - (i * (i + 1)) // 2 > pid
     # This is the cumulative count of pairs up to row i-1
-    lo = 0
+    if WIDE_INDEX:
+        lo = tl.full([], 0, dtype=tl.int64)
+    else:
+        lo = 0
     hi = N - 1
     while lo < hi:
         mid = (lo + hi) // 2
@@ -67,31 +78,34 @@ def _pdist_forward_p2_kernel(
         else:
             hi = mid
 
-    i = lo - 1 if lo > 0 else 0
+    i = tl.maximum(lo - 1, 0)
     pairs_before_i = i * N - (i * (i + 1)) // 2
     j = pid - pairs_before_i + i + 1
 
     if i >= N or j >= N:
         return
 
-    # Load row i and row j
+    # Load row i and row j, accumulating over feature tiles: BLOCK_M is capped
+    # at 1024, so a single tile would silently drop every feature beyond it.
     i_offset = i * stride_x
     j_offset = j * stride_x
 
-    m_offsets = tl.arange(0, BLOCK_M)
-    m_mask = m_offsets < M
+    dist = 0.0
+    for tile in tl.static_range(NUM_TILES):
+        m_offsets = tile * BLOCK_M + tl.arange(0, BLOCK_M)
+        m_mask = m_offsets < M
 
-    xi_vals = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
-    xj_vals = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
+        xi_vals = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
+            tl.float32
+        )
+        xj_vals = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
+            tl.float32
+        )
 
-    # Compute Euclidean distance: sum((xi - xj)^2)
-    diff = xi_vals - xj_vals
-    sq_dist = diff * diff
-    dist = tl.sum(sq_dist, axis=0)
+        # Compute Euclidean distance: sum((xi - xj)^2)
+        diff = xi_vals - xj_vals
+        sq_dist = diff * diff
+        dist += tl.sum(sq_dist, axis=0)
     dist = tl.sqrt(dist)
 
     out_idx = pid * stride_out
@@ -108,16 +122,25 @@ def _pdist_forward_p1_kernel(
     stride_x,
     stride_out,
     BLOCK_M: tl.constexpr,
+    NUM_TILES: tl.constexpr,
+    WIDE_INDEX: tl.constexpr,
 ):
     """Forward kernel for p=1 (Manhattan distance) case."""
     pid = tle.program_id(0)
+
+    # 64-bit index arithmetic only when needed; see _pdist_forward_p2_kernel.
+    if WIDE_INDEX:
+        N = N.to(tl.int64)
 
     num_pairs = N * (N - 1) // 2
 
     if pid >= num_pairs:
         return
 
-    lo = 0
+    if WIDE_INDEX:
+        lo = tl.full([], 0, dtype=tl.int64)
+    else:
+        lo = 0
     hi = N - 1
     while lo < hi:
         mid = (lo + hi) // 2
@@ -127,7 +150,7 @@ def _pdist_forward_p1_kernel(
         else:
             hi = mid
 
-    i = lo - 1 if lo > 0 else 0
+    i = tl.maximum(lo - 1, 0)
     pairs_before_i = i * N - (i * (i + 1)) // 2
     j = pid - pairs_before_i + i + 1
 
@@ -137,19 +160,21 @@ def _pdist_forward_p1_kernel(
     i_offset = i * stride_x
     j_offset = j * stride_x
 
-    m_offsets = tl.arange(0, BLOCK_M)
-    m_mask = m_offsets < M
+    dist = 0.0
+    for tile in tl.static_range(NUM_TILES):
+        m_offsets = tile * BLOCK_M + tl.arange(0, BLOCK_M)
+        m_mask = m_offsets < M
 
-    xi_vals = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
-    xj_vals = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
+        xi_vals = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
+            tl.float32
+        )
+        xj_vals = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
+            tl.float32
+        )
 
-    # Compute Manhattan distance: sum(|xi - xj|)
-    diff = tl.abs(xi_vals - xj_vals)
-    dist = tl.sum(diff, axis=0)
+        # Compute Manhattan distance: sum(|xi - xj|)
+        diff = tl.abs(xi_vals - xj_vals)
+        dist += tl.sum(diff, axis=0)
 
     out_idx = pid * stride_out
     tl.store(out_ptr + out_idx, dist.to(out_ptr.dtype.element_ty))
@@ -165,16 +190,25 @@ def _pdist_forward_inf_kernel(
     stride_x,
     stride_out,
     BLOCK_M: tl.constexpr,
+    NUM_TILES: tl.constexpr,
+    WIDE_INDEX: tl.constexpr,
 ):
     """Forward kernel for p=inf (Chebyshev distance) case."""
     pid = tle.program_id(0)
+
+    # 64-bit index arithmetic only when needed; see _pdist_forward_p2_kernel.
+    if WIDE_INDEX:
+        N = N.to(tl.int64)
 
     num_pairs = N * (N - 1) // 2
 
     if pid >= num_pairs:
         return
 
-    lo = 0
+    if WIDE_INDEX:
+        lo = tl.full([], 0, dtype=tl.int64)
+    else:
+        lo = 0
     hi = N - 1
     while lo < hi:
         mid = (lo + hi) // 2
@@ -184,7 +218,7 @@ def _pdist_forward_inf_kernel(
         else:
             hi = mid
 
-    i = lo - 1 if lo > 0 else 0
+    i = tl.maximum(lo - 1, 0)
     pairs_before_i = i * N - (i * (i + 1)) // 2
     j = pid - pairs_before_i + i + 1
 
@@ -194,19 +228,21 @@ def _pdist_forward_inf_kernel(
     i_offset = i * stride_x
     j_offset = j * stride_x
 
-    m_offsets = tl.arange(0, BLOCK_M)
-    m_mask = m_offsets < M
+    dist = 0.0
+    for tile in tl.static_range(NUM_TILES):
+        m_offsets = tile * BLOCK_M + tl.arange(0, BLOCK_M)
+        m_mask = m_offsets < M
 
-    xi_vals = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
-    xj_vals = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
+        xi_vals = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
+            tl.float32
+        )
+        xj_vals = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
+            tl.float32
+        )
 
-    # Compute Chebyshev distance: max(|xi - xj|)
-    diff = tl.abs(xi_vals - xj_vals)
-    dist = tl.max(diff, axis=0)
+        # Compute Chebyshev distance: max(|xi - xj|)
+        diff = tl.abs(xi_vals - xj_vals)
+        dist = tl.maximum(dist, tl.max(diff, axis=0))
 
     out_idx = pid * stride_out
     tl.store(out_ptr + out_idx, dist.to(out_ptr.dtype.element_ty))
@@ -223,16 +259,25 @@ def _pdist_forward_general_kernel(
     stride_x,
     stride_out,
     BLOCK_M: tl.constexpr,
+    NUM_TILES: tl.constexpr,
+    WIDE_INDEX: tl.constexpr,
 ):
     """Forward kernel for general p value."""
     pid = tle.program_id(0)
+
+    # 64-bit index arithmetic only when needed; see _pdist_forward_p2_kernel.
+    if WIDE_INDEX:
+        N = N.to(tl.int64)
 
     num_pairs = N * (N - 1) // 2
 
     if pid >= num_pairs:
         return
 
-    lo = 0
+    if WIDE_INDEX:
+        lo = tl.full([], 0, dtype=tl.int64)
+    else:
+        lo = 0
     hi = N - 1
     while lo < hi:
         mid = (lo + hi) // 2
@@ -242,7 +287,7 @@ def _pdist_forward_general_kernel(
         else:
             hi = mid
 
-    i = lo - 1 if lo > 0 else 0
+    i = tl.maximum(lo - 1, 0)
     pairs_before_i = i * N - (i * (i + 1)) // 2
     j = pid - pairs_before_i + i + 1
 
@@ -252,27 +297,34 @@ def _pdist_forward_general_kernel(
     i_offset = i * stride_x
     j_offset = j * stride_x
 
-    m_offsets = tl.arange(0, BLOCK_M)
-    m_mask = m_offsets < M
+    acc = 0.0
+    for tile in tl.static_range(NUM_TILES):
+        m_offsets = tile * BLOCK_M + tl.arange(0, BLOCK_M)
+        m_mask = m_offsets < M
 
-    xi_vals = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
-    xj_vals = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
+        xi_vals = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
+            tl.float32
+        )
+        xj_vals = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
+            tl.float32
+        )
 
-    # Compute p-norm distance
-    diff = tl.abs(xi_vals - xj_vals)
+        # Compute p-norm distance
+        diff = tl.abs(xi_vals - xj_vals)
 
-    # For p=0 (Hamming-like), count non-zero elements
+        # For p=0 (Hamming-like), count non-zero elements
+        if p_val == 0.0:
+            acc += tl.sum(tl.where(diff != 0.0, 1.0, 0.0), axis=0)
+        else:
+            # General case: accumulate sum(|diff|^p)
+            powered = tl.where(diff > 0.0, tl.exp(p_val * tl.log(diff)), 0.0)
+            acc += tl.sum(powered, axis=0)
+
     if p_val == 0.0:
-        dist = tl.sum(tl.where(diff != 0.0, 1.0, 0.0), axis=0)
+        dist = acc
     else:
-        # General case: (sum(|diff|^p))^(1/p)
-        powered = tl.where(diff > 0.0, tl.exp(p_val * tl.log(diff)), 0.0)
-        sum_powered = tl.sum(powered, axis=0)
-        dist = tl.where(sum_powered > 0.0, tl.exp(tl.log(sum_powered) / p_val), 0.0)
+        # (sum(|diff|^p))^(1/p)
+        dist = tl.where(acc > 0.0, tl.exp(tl.log(acc) / p_val), 0.0)
 
     out_idx = pid * stride_out
     tl.store(out_ptr + out_idx, dist.to(out_ptr.dtype.element_ty))
@@ -306,6 +358,10 @@ def pdist(x, p=2.0):
     out = torch.empty(num_pairs, dtype=x.dtype, device=x.device)
 
     BLOCK_M = min(triton.next_power_of_2(M), 1024)
+    # One program per pair reads the whole feature axis in NUM_TILES tiles.
+    # The pair-index arithmetic must go 64-bit once N * (N - 1) overflows int32.
+    NUM_TILES = triton.cdiv(M, BLOCK_M)
+    WIDE_INDEX = N * (N - 1) >= 2**31
 
     with torch_device_fn.device(x.device):
         if p == 2.0:
@@ -317,6 +373,8 @@ def pdist(x, p=2.0):
                 x.stride(0),
                 out.stride(0),
                 BLOCK_M=BLOCK_M,
+                NUM_TILES=NUM_TILES,
+                WIDE_INDEX=WIDE_INDEX,
             )
         elif p == 1.0:
             _pdist_forward_p1_kernel[(num_pairs,)](
@@ -327,6 +385,8 @@ def pdist(x, p=2.0):
                 x.stride(0),
                 out.stride(0),
                 BLOCK_M=BLOCK_M,
+                NUM_TILES=NUM_TILES,
+                WIDE_INDEX=WIDE_INDEX,
             )
         elif math.isinf(p):
             _pdist_forward_inf_kernel[(num_pairs,)](
@@ -337,6 +397,8 @@ def pdist(x, p=2.0):
                 x.stride(0),
                 out.stride(0),
                 BLOCK_M=BLOCK_M,
+                NUM_TILES=NUM_TILES,
+                WIDE_INDEX=WIDE_INDEX,
             )
         else:
             _pdist_forward_general_kernel[(num_pairs,)](
@@ -348,6 +410,8 @@ def pdist(x, p=2.0):
                 x.stride(0),
                 out.stride(0),
                 BLOCK_M=BLOCK_M,
+                NUM_TILES=NUM_TILES,
+                WIDE_INDEX=WIDE_INDEX,
             )
 
     return out
