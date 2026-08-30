@@ -113,3 +113,23 @@ def test_mean_dim_large_innerdim(shape, dim, keepdim, dtype):
         res_out = torch.mean(inp, dim, keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mean
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_mean_full_reduction_noncontiguous(dtype):
+    # The flattened reduction kernel addresses the input linearly, so for a view
+    # whose storage still holds the discarded columns it read those elements
+    # instead. The values outside the view would change the result.
+    base = torch.full((4, 6), 100.0, dtype=dtype, device=flag_gems.device)
+    base[:, :3] = torch.arange(1, 13, dtype=dtype, device=flag_gems.device).reshape(
+        4, 3
+    )
+    inp = base[:, :3]
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.mean(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.mean(inp)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)

@@ -106,6 +106,7 @@ def amin(inp, dim=None, keepdim=False):
         torch.bfloat16,
     ), "amin only supports float dtypes"
     if dim is None or len(dim) == 0:
+        inp = inp.contiguous()
         M = inp.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
@@ -165,7 +166,9 @@ def amin_(inp, dim=None, keepdim=False):
     if isinstance(dim, int):
         dim = [dim]
     if dim is None or len(dim) == 0:
-        M = inp.numel()
+        # Read from a contiguous copy but write back to the original tensor.
+        inp_flat = inp.contiguous()
+        M = inp_flat.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
@@ -180,7 +183,7 @@ def amin_(inp, dim=None, keepdim=False):
             out = torch.empty(shape, dtype=dtype, device=inp.device)
         with torch_device_fn.device(inp.device):
             amin_kernel_1[(mid_size, 1)](
-                inp,
+                inp_flat,
                 mid,
                 M,
                 block_size,
