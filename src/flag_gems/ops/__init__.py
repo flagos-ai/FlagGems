@@ -685,6 +685,7 @@ from flag_gems.ops.pow import (
     pow_tensor_tensor_,
 )
 from flag_gems.ops.prelu import prelu
+from flag_gems.ops.prelu_backward import prelu_backward
 from flag_gems.ops.prod import prod, prod_dim
 from flag_gems.ops.quantile import quantile
 from flag_gems.ops.quantized_lstm import quantized_lstm
@@ -1545,6 +1546,7 @@ __all__ = [
     "logaddexp2_out",
     "logcumsumexp",
     "logcumsumexp_out",
+    "prelu_backward",
     "unflatten",
     "unsafe_chunk",
     "unsafe_split_with_sizes",
