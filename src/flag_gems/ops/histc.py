@@ -144,8 +144,8 @@ def histc(inp, bins=100, min=0, max=0):
     min_val = float(min)
     max_val = float(max)
 
-    if min_val == 0 and max_val == 0:
-        # Use actual min/max of the data
+    if min_val == max_val:
+        # PyTorch: min == max (including 0/0) means auto-range from the data.
         min_val = float(inp.min().item())
         max_val = float(inp.max().item())
 
