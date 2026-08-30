@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import random
-from typing import Any
 
 import pytest
 import torch
@@ -22,25 +21,14 @@ import flag_gems
 
 from . import base, consts
 
+# Try to import vllm reshape_and_cache_flash
+try:
+    from vllm._custom_ops import reshape_and_cache_flash as vllm_reshape_and_cache_flash
 
-def torch_reshape_and_cache_flash_ref(
-    key: Any,
-    value: Any,
-    key_cache: Any,
-    value_cache: Any,
-    slot_mapping: Any,
-    kv_cache_dtype: Any = "auto",
-    k_scale: Any = None,
-    v_scale: Any = None,
-):
-    block_size = key_cache.size(1)
-    num_tokens = slot_mapping.numel()
-    for i in range(num_tokens):
-        slot = slot_mapping[i].item()
-        block_idx = slot // block_size
-        block_offset = slot % block_size
-        key_cache[block_idx, block_offset] = key[i]
-        value_cache[block_idx, block_offset] = value[i]
+    _HAS_VLLM_RESHAPE_AND_CACHE_FLASH = True
+except Exception:
+    vllm_reshape_and_cache_flash = None
+    _HAS_VLLM_RESHAPE_AND_CACHE_FLASH = False
 
 
 class ReshapeAndCacheFlashBenchmark(base.GenericBenchmark):
@@ -48,61 +36,55 @@ class ReshapeAndCacheFlashBenchmark(base.GenericBenchmark):
         return []
 
 
+def _make_input_kwargs(shape, dtype, device):
+    """Shared input generator for reshape_and_cache_flash benchmarks."""
+    (
+        num_tokens,
+        num_heads,
+        head_size,
+        block_size,
+        num_blocks,
+    ) = shape
+    num_slots = block_size * num_blocks
+    slot_mapping_lst = random.sample(range(num_slots), num_tokens)
+    slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
+    qkv = torch.randn(num_tokens, 3, num_heads, head_size, dtype=dtype, device=device)
+    _, key, value = qkv.unbind(dim=1)
+
+    key_value_cache_shape = (num_blocks, 2, block_size, num_heads, head_size)
+    scale = head_size**-0.5
+    key_value_cache = torch.empty(
+        size=key_value_cache_shape, dtype=dtype, device=device
+    )
+    key_value_cache.uniform_(-scale, scale)
+    key_cache = key_value_cache[:, 0].contiguous()
+    value_cache = key_value_cache[:, 1].contiguous()
+
+    k_scale = (key.amax() / 64.0).to(torch.float32)
+    v_scale = (value.amax() / 64.0).to(torch.float32)
+
+    yield (
+        key,
+        value,
+        key_cache,
+        value_cache,
+        slot_mapping,
+        {
+            "kv_cache_dtype": "auto",
+            "k_scale": k_scale,
+            "v_scale": v_scale,
+        },
+    )
+
+
 @pytest.mark.reshape_and_cache_flash
+@pytest.mark.skipif(not _HAS_VLLM_RESHAPE_AND_CACHE_FLASH, reason="vLLM not installed")
 def test_reshape_and_cache_flash():
-    def input_kwargs(shape, dtype, device):
-        (
-            num_tokens,
-            num_heads,
-            head_size,
-            block_size,
-            num_blocks,
-        ) = shape
-        num_slots = block_size * num_blocks
-        slot_mapping_lst = random.sample(range(num_slots), num_tokens)
-        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
-        qkv = torch.randn(
-            num_tokens, 3, num_heads, head_size, dtype=dtype, device=device
-        )
-        _, key, value = qkv.unbind(dim=1)
-
-        key_value_cache_shape = (num_blocks, 2, block_size, num_heads, head_size)
-        scale = head_size**-0.5
-        key_caches: list[torch.Tensor] = []
-        value_caches: list[torch.Tensor] = []
-        key_value_cache = torch.empty(
-            size=key_value_cache_shape, dtype=dtype, device=device
-        )
-        key_value_cache.uniform_(-scale, scale)
-        key_caches.append(key_value_cache[:, 0])
-        value_caches.append(key_value_cache[:, 1])
-        key_cache, value_cache = (
-            key_caches[0].contiguous(),
-            value_caches[0].contiguous(),
-        )
-        del key_caches
-        del value_caches
-
-        k_scale = (key.amax() / 64.0).to(torch.float32)
-        v_scale = (value.amax() / 64.0).to(torch.float32)
-
-        yield (
-            key,
-            value,
-            key_cache,
-            value_cache,
-            slot_mapping,
-            {
-                "kv_cache_dtype": "auto",
-                "k_scale": k_scale,
-                "v_scale": v_scale,
-            },
-        )
-
+    """Benchmark FlagGems reshape_and_cache_flash against vllm baseline."""
     bench = ReshapeAndCacheFlashBenchmark(
         op_name="reshape_and_cache_flash",
-        input_fn=input_kwargs,
-        torch_op=torch_reshape_and_cache_flash_ref,
+        input_fn=_make_input_kwargs,
+        torch_op=vllm_reshape_and_cache_flash,
         gems_op=flag_gems.reshape_and_cache_flash,
         dtypes=consts.FLOAT_DTYPES,
     )
