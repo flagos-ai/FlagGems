@@ -22,9 +22,10 @@ from . import accuracy_utils as utils
 
 @pytest.mark.fused_adam
 @pytest.mark.parametrize("shape", [(1024,), (2048,), (4096,), (8192,)])
+@pytest.mark.parametrize("weight_decay", [0.0, 0.1])
 # _fused_adam requires float32 for optimizer state precision
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_fused_adam(shape, dtype):
+def test_fused_adam(shape, weight_decay, dtype):
     """Test fused Adam optimizer step accuracy."""
     # Create input tensors
     param = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -46,12 +47,16 @@ def test_fused_adam(shape, dtype):
     lr = 0.001
     beta1 = 0.9
     beta2 = 0.999
-    weight_decay = 0.0
     eps = 1e-8
     step = state_step.item()
 
     bias_correction1 = 1 - beta1**step
     bias_correction2 = 1 - beta2**step
+
+    # Adam applies weight decay as an L2 penalty on the gradient, so it feeds
+    # the moment updates below (AdamW's decoupled decay is a different op)
+    if weight_decay != 0:
+        ref_grad = ref_grad + weight_decay * ref_param
 
     # Update first moment estimate
     ref_exp_avg = beta1 * ref_exp_avg + (1 - beta1) * ref_grad
@@ -61,15 +66,9 @@ def test_fused_adam(shape, dtype):
     corrected_exp_avg = ref_exp_avg / bias_correction1
     corrected_exp_avg_sq = ref_exp_avg_sq / bias_correction2
     # Update parameters
-    if weight_decay > 0:
-        ref_param = ref_param - lr * (
-            corrected_exp_avg / (torch.sqrt(corrected_exp_avg_sq) + eps)
-            + weight_decay * ref_param
-        )
-    else:
-        ref_param = ref_param - lr * corrected_exp_avg / (
-            torch.sqrt(corrected_exp_avg_sq) + eps
-        )
+    ref_param = ref_param - lr * corrected_exp_avg / (
+        torch.sqrt(corrected_exp_avg_sq) + eps
+    )
 
     # Run gems implementation
     with flag_gems.use_gems():
@@ -83,7 +82,7 @@ def test_fused_adam(shape, dtype):
             lr=0.001,
             beta1=0.9,
             beta2=0.999,
-            weight_decay=0.0,
+            weight_decay=weight_decay,
             eps=1e-8,
             amsgrad=False,
             maximize=False,
@@ -97,9 +96,10 @@ def test_fused_adam(shape, dtype):
 
 @pytest.mark.fused_adam_
 @pytest.mark.parametrize("shape", [(1024,), (2048,), (4096,), (8192,)])
+@pytest.mark.parametrize("weight_decay", [0.0, 0.1])
 # _fused_adam requires float32 for optimizer state precision
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_fused_adam_(shape, dtype):
+def test_fused_adam_(shape, weight_decay, dtype):
     """Test in-place fused Adam optimizer step accuracy."""
     # Create input tensors
     param = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -119,12 +119,16 @@ def test_fused_adam_(shape, dtype):
     lr = 0.001
     beta1 = 0.9
     beta2 = 0.999
-    weight_decay = 0.0
     eps = 1e-8
     step = state_step.item()
 
     bias_correction1 = 1 - beta1**step
     bias_correction2 = 1 - beta2**step
+
+    # Adam applies weight decay as an L2 penalty on the gradient, so it feeds
+    # the moment updates below (AdamW's decoupled decay is a different op)
+    if weight_decay != 0:
+        ref_grad = ref_grad + weight_decay * ref_param
 
     # Update first moment estimate
     ref_exp_avg = beta1 * ref_exp_avg + (1 - beta1) * ref_grad
@@ -134,15 +138,9 @@ def test_fused_adam_(shape, dtype):
     corrected_exp_avg = ref_exp_avg / bias_correction1
     corrected_exp_avg_sq = ref_exp_avg_sq / bias_correction2
     # Update parameters
-    if weight_decay > 0:
-        ref_param = ref_param - lr * (
-            corrected_exp_avg / (torch.sqrt(corrected_exp_avg_sq) + eps)
-            + weight_decay * ref_param
-        )
-    else:
-        ref_param = ref_param - lr * corrected_exp_avg / (
-            torch.sqrt(corrected_exp_avg_sq) + eps
-        )
+    ref_param = ref_param - lr * corrected_exp_avg / (
+        torch.sqrt(corrected_exp_avg_sq) + eps
+    )
 
     # Run gems inplace implementation
     with flag_gems.use_gems():
@@ -156,7 +154,7 @@ def test_fused_adam_(shape, dtype):
             lr=0.001,
             beta1=0.9,
             beta2=0.999,
-            weight_decay=0.0,
+            weight_decay=weight_decay,
             eps=1e-8,
             amsgrad=False,
             maximize=False,
