@@ -78,6 +78,105 @@ def aminmax_kernel_2(
 
 
 @libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.jit
+def aminmax_dim_kernel_non_inner(
+    inp,
+    min_out,
+    max_out,
+    M,
+    N,
+    K,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    # Split the input into (M, N, K) and reduce over N with a strided read,
+    # avoiding the dim_compress copy. Computes the min and the max in one pass.
+    dtype = inp.dtype.element_ty
+    cdtype = tl.float32 if dtype is tl.bfloat16 or dtype is tl.float16 else dtype
+    min_value = get_dtype_min(dtype)
+    max_value = get_dtype_max(dtype)
+
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
+    k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
+
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)[:, None]
+        inp_offset = pid_m * N * K + n_offsets * K + k_offsets
+        mask = (n_offsets < N) & (k_offsets < K)
+        min_in = tl.load(inp + inp_offset, mask=mask, other=max_value).to(cdtype)
+        max_in = tl.load(inp + inp_offset, mask=mask, other=min_value).to(cdtype)
+        min_result = tl.min(min_in, axis=0, keep_dims=True)
+        max_result = tl.max(max_in, axis=0, keep_dims=True)
+        out_offset = pid_m * K + k_offsets
+        tl.store(min_out + out_offset, min_result, mask=k_offsets < K)
+        tl.store(max_out + out_offset, max_result, mask=k_offsets < K)
+    else:
+        min_acc = tl.full([TILE_N, TILE_K], value=max_value, dtype=cdtype)
+        max_acc = tl.full([TILE_N, TILE_K], value=min_value, dtype=cdtype)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
+            inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
+            mask = (n_offsets < N) & (k_offsets < K)
+            min_in = tl.load(inp + inp_offsets, mask=mask, other=max_value).to(cdtype)
+            max_in = tl.load(inp + inp_offsets, mask=mask, other=min_value).to(cdtype)
+            min_acc = tl.minimum(min_acc, min_in)
+            max_acc = tl.maximum(max_acc, max_in)
+        min_result = tl.min(min_acc, axis=0, keep_dims=True)
+        max_result = tl.max(max_acc, axis=0, keep_dims=True)
+        out_offset = pid_m * K + k_offsets
+        tl.store(min_out + out_offset, min_result, mask=k_offsets < K)
+        tl.store(max_out + out_offset, max_result, mask=k_offsets < K)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+@triton.jit
+def aminmax_dim_kernel_inner(
+    inp,
+    min_out,
+    max_out,
+    M,
+    N,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    dtype = inp.dtype.element_ty
+    cdtype = tl.float32 if dtype is tl.bfloat16 or dtype is tl.float16 else dtype
+    min_value = get_dtype_min(dtype)
+    max_value = get_dtype_max(dtype)
+
+    pid_m = ext.program_id(0)
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        inp_offset = pid_m * N + n_offsets
+        mask = n_offsets < N
+        min_in = tl.load(inp + inp_offset, mask=mask, other=max_value).to(cdtype)
+        max_in = tl.load(inp + inp_offset, mask=mask, other=min_value).to(cdtype)
+        min_result = tl.min(min_in, axis=0)
+        max_result = tl.max(max_in, axis=0)
+        tl.store(min_out + pid_m, min_result)
+        tl.store(max_out + pid_m, max_result)
+    else:
+        min_acc = tl.full([TILE_N], value=max_value, dtype=cdtype)
+        max_acc = tl.full([TILE_N], value=min_value, dtype=cdtype)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            inp_offsets = pid_m * N + n_offsets
+            mask = n_offsets < N
+            min_in = tl.load(inp + inp_offsets, mask=mask, other=max_value).to(cdtype)
+            max_in = tl.load(inp + inp_offsets, mask=mask, other=min_value).to(cdtype)
+            min_acc = tl.minimum(min_acc, min_in)
+            max_acc = tl.maximum(max_acc, max_in)
+        min_result = tl.min(min_acc, axis=0)
+        max_result = tl.max(max_acc, axis=0)
+        tl.store(min_out + pid_m, min_result)
+        tl.store(max_out + pid_m, max_result)
+
+
+@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("naive_reduction"),
     key=["M", "N"],
@@ -167,6 +266,40 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
 
         shape = list(inp.shape)
         dim = [d % inp.ndim for d in dim]
+
+        if len(dim) == 1:
+            # Single-dim reduction: split into (M, N, K) and reduce over N with
+            # a strided kernel, avoiding the dim_compress copy. K == 1 means the
+            # reduced dim is innermost (contiguous); K > 1 means it is a middle
+            # or outer dim, where the copy used to dominate the runtime.
+            d = dim[0]
+            N = shape[d]
+            if N == 0:
+                raise IndexError(
+                    f"aminmax: Expected reduction dim {d} to have non-zero size."
+                )
+            M = math.prod(shape[:d])
+            K = math.prod(shape[d + 1 :])
+            shape[d] = 1
+            if out is not None:
+                min_out = out[0] if isinstance(out, tuple) else out
+                max_out = out[1] if isinstance(out, tuple) else out
+            else:
+                min_out = torch.empty(shape, dtype=dtype, device=inp.device)
+                max_out = torch.empty(shape, dtype=dtype, device=inp.device)
+            inp = inp.contiguous()
+            with torch_device_fn.device(inp.device):
+                if K == 1:
+                    grid = lambda meta: (M, 1, 1)
+                    aminmax_dim_kernel_inner[grid](inp, min_out, max_out, M, N)
+                else:
+                    grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+                    aminmax_dim_kernel_non_inner[grid](inp, min_out, max_out, M, N, K)
+            if not keepdim:
+                min_out = min_out.squeeze(dim=d)
+                max_out = max_out.squeeze(dim=d)
+            return min_out, max_out
+
         inp = dim_compress(inp, dim)
         N = 1
         for i in dim:
