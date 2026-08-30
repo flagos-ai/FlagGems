@@ -15,6 +15,7 @@
 name: unit-test
 permissions:
   contents: read
+  statuses: read
 
 on:
   workflow_dispatch:
@@ -28,7 +29,11 @@ on:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 jobs:
+  cla:
+    uses: ./.github/workflows/cla-check.yaml
+
   preprocess:
+    needs: cla
     runs-on: ubuntu-latest
     outputs:
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
