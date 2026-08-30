@@ -716,6 +716,7 @@ from flag_gems.ops.repeat_interleave import (
     repeat_interleave_tensor,
 )
 from flag_gems.ops.replication_pad1d import replication_pad1d, replication_pad1d_out
+from flag_gems.ops.replication_pad1d_backward import replication_pad1d_backward
 from flag_gems.ops.replication_pad2d import replication_pad2d, replication_pad2d_out
 from flag_gems.ops.replication_pad2d_backward import (
     replication_pad2d_backward,
@@ -1731,6 +1732,7 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad1d",
+    "replication_pad1d_backward",
     "replication_pad1d_out",
     "replication_pad2d",
     "replication_pad2d_out",
