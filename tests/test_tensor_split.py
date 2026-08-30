@@ -17,6 +17,12 @@ import torch
 
 import flag_gems
 
+# aten::tensor_split has no "default" overload, so the bare-name registration
+# does not take effect and torch.tensor_split under use_gems() still runs the
+# eager implementation. Call the FlagGems implementation directly so the tests
+# actually exercise it.
+from flag_gems.ops.tensor_split import tensor_split
+
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
@@ -47,8 +53,7 @@ def test_tensor_split_by_int(shape, dtype):
     sections = 3
     ref_out = torch.tensor_split(ref_inp, sections, dim=0)
 
-    with flag_gems.use_gems():
-        res_out = torch.tensor_split(inp, sections, dim=0)
+    res_out = tensor_split(inp, sections, dim=0)
 
     # Compare number of outputs
     assert len(res_out) == len(ref_out)
@@ -70,8 +75,7 @@ def test_tensor_split_by_list(shape, dtype):
     indices = [shape[0] // 3, shape[0] * 2 // 3]
     ref_out = torch.tensor_split(ref_inp, indices, dim=0)
 
-    with flag_gems.use_gems():
-        res_out = torch.tensor_split(inp, indices, dim=0)
+    res_out = tensor_split(inp, indices, dim=0)
 
     # Compare number of outputs
     assert len(res_out) == len(ref_out)
@@ -96,8 +100,7 @@ def test_tensor_split_dim(shape, dtype):
     sections = 2
     ref_out = torch.tensor_split(ref_inp, sections, dim=1)
 
-    with flag_gems.use_gems():
-        res_out = torch.tensor_split(inp, sections, dim=1)
+    res_out = tensor_split(inp, sections, dim=1)
 
     # Compare number of outputs
     assert len(res_out) == len(ref_out)
@@ -120,8 +123,7 @@ def test_tensor_split_uneven(dtype):
     sections = 3
     ref_out = torch.tensor_split(ref_inp, sections, dim=0)
 
-    with flag_gems.use_gems():
-        res_out = torch.tensor_split(inp, sections, dim=0)
+    res_out = tensor_split(inp, sections, dim=0)
 
     # Compare number of outputs
     assert len(res_out) == len(ref_out)
