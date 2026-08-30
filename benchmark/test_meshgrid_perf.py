@@ -1,0 +1,173 @@
+# benchmark/test_meshgrid_perf.py
+import pytest
+import torch
+import time
+from typing import List, Dict
+import sys
+import os
+from tabulate import tabulate
+
+from flag_gems.ops.meshgrid import meshgrid, meshgrid_stack, register_ops
+
+
+class TestMeshgridPerformance:
+    
+    @pytest.fixture
+    def device(self):
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            return torch.device("mps")
+        else:
+            return torch.device("cpu")
+    
+    def test_compare_with_torch_comprehensive(self, device):
+        test_cases = []
+        
+        for size_x, size_y in [(8, 8), (256, 256), (1024, 1024)]:
+            for indexing in ["ij", "xy"]:
+                test_cases.append({
+                    'dim': '2D',
+                    'sizes': (size_x, size_y),
+                    'indexing': indexing,
+                    'elements': size_x * size_y
+                })
+        
+        for size_x, size_y, size_z in [(16, 16, 16), (128, 128, 128), (512, 512, 512)]:
+            for indexing in ["ij", "xy"]:
+                test_cases.append({
+                    'dim': '3D',
+                    'sizes': (size_x, size_y, size_z),
+                    'indexing': indexing,
+                    'elements': size_x * size_y * size_z
+                })
+        
+        for size_x, size_y, size_z, size_w in [(8, 8, 8, 8), (64, 64, 64, 64), (128, 128, 128, 128)]:
+            for indexing in ["ij", "xy"]:
+                test_cases.append({
+                    'dim': '4D',
+                    'sizes': (size_x, size_y, size_z, size_w),
+                    'indexing': indexing,
+                    'elements': size_x * size_y * size_z * size_w
+                })
+        
+        results = []
+        for case in test_cases:
+            result = self._benchmark_case(device, case)
+            results.append(result)
+        
+        self._print_results_table(results)
+        
+        for result in results:
+            assert result['correct']
+    
+    def _benchmark_case(self, device, case: Dict) -> Dict:
+        dim = case['dim']
+        sizes = case['sizes']
+        indexing = case['indexing']
+        total_elements = case['elements']
+        
+        tensors = [torch.linspace(0, size, size, device=device) for size in sizes]
+        
+        if total_elements < 10000:
+            num_iterations = 100
+        elif total_elements < 100000:
+            num_iterations = 50
+        elif total_elements < 1000000:
+            num_iterations = 20
+        elif total_elements < 10000000:
+            num_iterations = 10
+        else:
+            num_iterations = 5
+        
+        warmup_result = meshgrid(tensors, indexing=indexing)
+        _ = sum(r.sum() for r in warmup_result)
+        _ = torch.meshgrid(*tensors, indexing=indexing)
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        
+        our_times = []
+        for _ in range(num_iterations):
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            start = time.perf_counter()
+            our_result = meshgrid(tensors, indexing=indexing)
+            our_sum = sum(r.sum() for r in our_result)
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            our_times.append(time.perf_counter() - start)
+        
+        our_times.sort()
+        if len(our_times) > 5:
+            our_times = our_times[1:-1]
+        our_time = sum(our_times) / len(our_times)
+        
+        torch_times = []
+        for _ in range(num_iterations):
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            start = time.perf_counter()
+            torch_result = torch.meshgrid(*tensors, indexing=indexing)
+            torch_sum = sum(r.sum() for r in torch_result)
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            torch_times.append(time.perf_counter() - start)
+        
+        torch_times.sort()
+        if len(torch_times) > 5:
+            torch_times = torch_times[1:-1]
+        torch_time = sum(torch_times) / len(torch_times)
+        
+        correct = True
+        for our, torch_out in zip(our_result, torch_result):
+            if not torch.allclose(our, torch_out):
+                correct = False
+                break
+        
+        speedup = torch_time / our_time if our_time > 0 else 0
+        
+        size_str = "x".join(str(s) for s in sizes)
+        
+        return {
+            'dim': dim,
+            'size': size_str,
+            'elements': total_elements,
+            'indexing': indexing.upper(),
+            'our_time_ms': our_time * 1000,
+            'torch_time_ms': torch_time * 1000,
+            'speedup': speedup,
+            'correct': correct
+        }
+    
+    def _print_results_table(self, results: List[Dict]):
+        print("\n" + "=" * 130)
+        print("MeshGrid Performance Comparison Results")
+        print("=" * 130)
+        
+        table_data = []
+        for r in results:
+            table_data.append([
+                r['dim'],
+                r['size'],
+                f"{r['elements']:,}",
+                r['indexing'],
+                f"{r['our_time_ms']:.4f}",
+                f"{r['torch_time_ms']:.4f}",
+                f"{r['speedup']:.2f}x",
+                "✓" if r['correct'] else "✗"
+            ])
+        
+        headers = ["Dim", "Size", "Elements", "Indexing", "Our (ms)", "PyTorch (ms)", "Speedup", "Correct"]
+        print(tabulate(table_data, headers=headers, tablefmt="grid", stralign="center"))
+        print("=" * 130)
+
+
+if __name__ == "__main__":
+    pytest.main([
+        __file__, 
+        "-v", 
+        "-s",
+        "--tb=short"
+    ])
+
+
