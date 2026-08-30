@@ -42,6 +42,12 @@ from flag_gems.fused.FLA import (
     fused_recurrent_gated_delta_rule_fwd,
 )
 from flag_gems.fused.flash_mla import flash_mla
+from flag_gems.fused.flash_mla_ckv_fp8_per_token import (
+    FlashMLAFp8SplitKSchedMeta,
+    flash_mla_ckv_fp8_per_token,
+    get_mla_ckv_fp8_metadata,
+    prepare_flash_mla_ckv_fp8_per_token,
+)
 from flag_gems.fused.flash_mla_with_kvcache import flash_mla_with_kvcache
 from flag_gems.fused.flashmla_sparse import flash_mla_sparse_fwd
 from flag_gems.fused.fp8_fp4_mega_moe import (
@@ -138,6 +144,10 @@ __all__ = [
     "dreglu",
     "dswiglu",
     "flash_mla",
+    "FlashMLAFp8SplitKSchedMeta",
+    "flash_mla_ckv_fp8_per_token",
+    "get_mla_ckv_fp8_metadata",
+    "prepare_flash_mla_ckv_fp8_per_token",
     "flash_mla_sparse_fwd",
     "flash_mla_with_kvcache",
     "fp8_fp4_mega_moe",
