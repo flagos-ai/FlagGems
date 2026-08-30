@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import math
+from contextlib import contextmanager
 
 import pytest
 import torch
@@ -24,9 +26,14 @@ from .conftest import QUICK_MODE
 
 # The Gluon fp8_einsum kernel requires Triton >= 3.6.0 and specific TLE features.
 fp8_einsum = None
+w8a8_block_fp8_bmm_module = None
 if triton.__version__ >= "3.6.0":
     try:
         from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
+
+        w8a8_block_fp8_bmm_module = importlib.import_module(
+            "flag_gems.runtime.backend._nvidia.hopper.ops.w8a8_block_fp8_bmm"
+        )
     except (AttributeError, ImportError):
         pass
 
@@ -160,6 +167,52 @@ def torch_fp8_block_einsum_reference(x_data, x_scale, y_data, y_scale, block_sha
     return torch.einsum("bhr,hdr->bhd", x_deq, y_deq)
 
 
+@contextmanager
+def _force_tle_pipeline_config(num_stages):
+    """Temporarily force one registered TLE config for a regression call."""
+    kernel = w8a8_block_fp8_bmm_module.w8a8_block_fp8_bmm_kernel
+    current = kernel
+    seen = set()
+    tuner = None
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        configs = getattr(current, "configs", None)
+        if configs is not None:
+            tuner = current
+            break
+        current = getattr(current, "fn", None)
+    if tuner is None:
+        raise RuntimeError("TLE w8a8_block_fp8_bmm tuner not found")
+
+    matches = [
+        config
+        for config in tuner.configs
+        if config.num_warps == 4
+        and config.num_stages == num_stages
+        and config.kwargs.get("TILE_ORDER") == 0
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"expected one 4-warp stage-{num_stages} horizontal config, got {matches}"
+        )
+
+    original_configs = tuner.configs
+    original_defaults = tuner._flagtune_default_configs
+    tuner.configs = matches
+    tuner._flagtune_default_configs = matches
+    for cache in kernel.kernel_cache:
+        cache.clear()
+    kernel._cpu_cache.clear()
+    try:
+        yield
+    finally:
+        tuner.configs = original_configs
+        tuner._flagtune_default_configs = original_defaults
+        for cache in kernel.kernel_cache:
+            cache.clear()
+        kernel._cpu_cache.clear()
+
+
 @pytest.mark.fp8_einsum
 @pytest.mark.parametrize("config", FP8_EINSUM_CONFIGS)
 @pytest.mark.parametrize("block_shape", [[128, 128]])
@@ -196,3 +249,39 @@ def test_accuracy_fp8_einsum(config, block_shape):
     rtol = 2e-1
     atol = max(5e-2, ref.abs().max().item() * 5e-2)
     torch.testing.assert_close(result, ref.to(result.dtype), rtol=rtol, atol=atol)
+
+
+@pytest.mark.fp8_einsum
+@pytest.mark.skipif(
+    not (
+        CUDA_AVAILABLE
+        and TRITON_VERSION_OK
+        and fp8_einsum is not None
+        and w8a8_block_fp8_bmm_module is not None
+        and w8a8_block_fp8_bmm_module.HAS_TLE_W8A8_BLOCK_FP8_BMM
+    ),
+    reason="requires NVIDIA Hopper GPU and typed TLE pipe support",
+)
+def test_tle_fp8_einsum_persistent_pipe_stage8():
+    """Keep pipe generation valid when a persistent CTA advances to another tile."""
+    block_shape = [128, 128]
+    inputs = _make_fp8_einsum_inputs(
+        b=1,
+        h=16,
+        r=7168,
+        d=1024,
+        block_shape=block_shape,
+        device=flag_gems.device,
+    )
+
+    outputs = {}
+    for num_stages in (4, 8):
+        with _force_tle_pipeline_config(num_stages):
+            outputs[num_stages] = fp8_einsum(
+                "bhr,hdr->bhd",
+                *inputs,
+                block_size=block_shape,
+            )
+            torch.cuda.synchronize()
+
+    assert torch.equal(outputs[8], outputs[4])
