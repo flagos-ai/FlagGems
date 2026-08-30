@@ -34,17 +34,20 @@ def small_n_log_softmax_kernel(
     input_ptr,
     M,
     N,
-    stride_m,
     BLOCK_N: tl.constexpr,
 ):
-    """Kernel for small N (N <= 1024): single warp, single pass scan."""
-    row_id = tl.program_id(0)
+    """Kernel for small N (N <= 1024) reduced over the innermost dim (K == 1).
+
+    Only launched when K == 1, so the N elements of a row are contiguous and
+    the row stride is exactly N.
+    """
+    row_id = tle.program_id(0)
     col_offsets = tl.arange(0, BLOCK_N)
     mask = col_offsets < N
 
     # Load the entire row in one go
     row = tl.load(
-        input_ptr + row_id * stride_m + col_offsets, mask=mask, other=-float("inf")
+        input_ptr + row_id * N + col_offsets, mask=mask, other=-float("inf")
     ).to(tl.float32)
 
     # Single pass: compute max, then exp and sum
@@ -56,7 +59,7 @@ def small_n_log_softmax_kernel(
     out = row_shifted - log_sum
 
     # Store result
-    tl.store(output_ptr + row_id * stride_m + col_offsets, out, mask=mask)
+    tl.store(output_ptr + row_id * N + col_offsets, out, mask=mask)
 
 
 @libentry()
@@ -129,28 +132,23 @@ def special_log_softmax(self, dim, dtype=None):
     out = torch.empty_like(inp, dtype=dtype)
     K = inp.numel() // M // N
 
-    # Dual-path: small N uses single-warp kernel, large N uses two-pass kernel
+    # Dual-path: a small N reduced over the innermost dim uses the single-warp
+    # kernel; everything else uses the two-pass kernel, which strides by K and
+    # so also handles reductions over a non-innermost dim (K > 1).
     with torch_device_fn.device(inp.device):
-        if N <= 1024:
-            # Small N: single warp kernel
-            # For dim=1 (most common case with contiguous tensor), stride is stride(0)
-            # For dim=0, stride is stride(1) which is the full row stride
+        if N <= 1024 and K == 1:
+            # Small N, innermost dim: single warp kernel over M contiguous rows
             BLOCK_N = triton.next_power_of_2(N)
-            grid = (M * K,)
-            # Get the stride of dimension that's one step after the reduction dim
-            # For contiguous tensor, this is inp.stride(dim - 1) when dim > 0
-            # For dim=1, this is inp.stride(0) = shape[1]
-            row_stride = inp.stride(dim - 1) if dim > 0 else inp.stride(inp.ndim - 1)
+            grid = (M,)
             small_n_log_softmax_kernel[grid](
                 out,
                 inp,
                 M,
                 N,
-                row_stride,
                 BLOCK_N=BLOCK_N,
             )
         else:
-            # Large N: two-pass online softmax kernel with autotune
+            # Two-pass online softmax kernel with autotune
             grid = lambda meta: (
                 triton.cdiv(M, meta["BLOCK_M"]),
                 K,
