@@ -27,7 +27,10 @@ from . import accuracy_utils as utils
 def test_cudnn_batch_norm_backward(shape, dtype, affine):
     C = shape[1]
     # Create input and weight tensors (no requires_grad for backward kernel test)
-    res_inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    # Scale the input so the per-channel variance sits well away from 1.0:
+    # unit variance is the one fixed point where a kernel that re-applies
+    # rsqrt to the saved inverse std still returns the right answer.
+    res_inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device) * 3.0
     # Always create weight for cudnn_batch_norm_backward
     res_weight = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
     # For bias, we always create one but only check gradients when affine=True
@@ -62,7 +65,10 @@ def test_cudnn_batch_norm_backward(shape, dtype, affine):
     ref_weight = utils.to_reference(res_weight, True)
     ref_save_mean = utils.to_reference(save_mean, True)
     ref_save_var = utils.to_reference(save_var, True)
-    ref_save_invstd = torch.rsqrt(ref_save_var + eps)
+    # cudnn_batch_norm returns cuDNN's resultSaveInvVariance: save_var already
+    # is 1/sqrt(var + eps) (PyTorch's own decomposition passes it straight into
+    # native_batch_norm_backward's save_invstd slot), so no transform here.
+    ref_save_invstd = ref_save_var
     # For native_batch_norm_backward, we still need to output all gradients
     output_mask = [True, True, True]
 
