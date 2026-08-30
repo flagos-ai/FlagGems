@@ -107,6 +107,10 @@ from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import (
     stage_deepseek_v4_mega_moe_inputs,
 )
 from flag_gems.fused.swiglu import dswiglu, swiglu
+from flag_gems.fused.te_general_grouped_gemm import (
+    general_grouped_gemm,
+    te_general_grouped_gemm,
+)
 from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
 from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
 from flag_gems.fused.topk_softmax import topk_softmax
@@ -188,6 +192,8 @@ __all__ = [
     "sparse_attn_triton",
     "stage_deepseek_v4_mega_moe_inputs",
     "swiglu",
+    "te_general_grouped_gemm",
+    "general_grouped_gemm",
     "top_k_per_row_decode",
     "top_k_per_row_prefill",
     "topk_softmax",
