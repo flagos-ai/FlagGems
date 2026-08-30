@@ -87,3 +87,30 @@ def test_min_dim(shape, dim, keepdim, dtype):
 
     utils.gems_assert_equal(res_out_index, ref_out_index)
     utils.gems_assert_equal(res_out_value, ref_out_value)
+
+
+@pytest.mark.min_dim
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((4, 8, 4096), 1),  # non-inner, multi-N-tile
+        ((4, 4096, 8), 1),  # non-inner, multi-N-tile with small K
+        ((8, 4096), 1),  # inner, multi-N-tile
+        ((4096, 8), 0),  # non-inner, large M
+        ((4096, 4096), 0),  # non-inner, multi-N-tile and multi-K-tile
+    ],
+)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_min_dim_multi_tile(shape, dim, keepdim, dtype):
+    # Larger shapes that exercise the multi-tile reduction loops in the inner
+    # and non-inner kernels, which the small default shapes do not reach.
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out_value, ref_out_index = torch.min(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out_value, res_out_index = torch.min(inp, dim=dim, keepdim=keepdim)
+
+    utils.gems_assert_equal(res_out_value, ref_out_value)
+    utils.gems_assert_equal(res_out_index, ref_out_index)
