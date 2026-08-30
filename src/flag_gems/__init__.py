@@ -173,6 +173,7 @@ _FULL_CONFIG = (
     ("column_stack", column_stack),
     ("column_stack.out", column_stack_out),
     ("grid_sampler_3d_backward", grid_sampler_3d_backward),
+    ("hardshrink_backward", hardshrink_backward),
     ("linalg_svdvals", linalg_svdvals),
     ("_log_softmax", log_softmax),
     ("_log_softmax.out", log_softmax_out),

@@ -453,6 +453,7 @@ from flag_gems.ops.hadamard_transform import (
     hadamard_transform_40N,
 )
 from flag_gems.ops.hardshrink import hardshrink, hardshrink_out
+from flag_gems.ops.hardshrink_backward import hardshrink_backward
 from flag_gems.ops.hardsigmoid import hardsigmoid, hardsigmoid_out
 from flag_gems.ops.hardsigmoid_ import hardsigmoid_
 from flag_gems.ops.hardsigmoid_backward import hardsigmoid_backward
@@ -1410,6 +1411,7 @@ __all__ = [
     "hadamard_transform_28N",
     "hadamard_transform_40N",
     "hardshrink",
+    "hardshrink_backward",
     "hardshrink_out",
     "hardsigmoid",
     "hardsigmoid_backward",
