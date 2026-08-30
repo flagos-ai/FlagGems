@@ -46,3 +46,20 @@ repos:
   hooks:
     - id: black
     - id: black-jupyter
+
+- repo: local
+  hooks:
+    - id: check-init-exports
+      name: check __init__.py exports
+      language: python
+      entry: python tools/ci_checks/check_init_exports.py
+      files: ^src/flag_gems/__init__\.py$
+      additional_dependencies: []
+      pass_filenames: false
+    - id: check-operators-yaml
+      name: check operators.yaml duplicates
+      language: python
+      entry: python tools/ci_checks/check_operators_yaml.py --operators '[]'
+      files: ^conf/operators\.yaml$
+      additional_dependencies: [pyyaml]
+      pass_filenames: false
