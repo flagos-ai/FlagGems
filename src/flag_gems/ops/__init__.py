@@ -955,6 +955,8 @@ from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
+from .meshgrid import meshgrid, meshgrid_stack, register_ops
+
 __all__ = [
     "_nested_sum_backward",
     "SUPPORTED_FP8_DTYPE",
@@ -1984,4 +1986,7 @@ __all__ = [
     "zero_out",
     "zeros",
     "zeros_like",
+    "meshgrid",
+    "meshgrid_stack",
+    "register_ops",
 ]
