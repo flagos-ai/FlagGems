@@ -6622,6 +6622,20 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: linalg_lu_solve
+    description: |
+      Solves a linear system AX = B given the LU factorization of A with partial pivoting.
+      Performs pivot permutation, forward substitution (L), and backward substitution (U)
+      in a single fused Triton kernel.
+    for:
+      - linalg_lu_solve
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_matrix_norm
     description: |
       Computes the matrix norm over the given dimensions.
