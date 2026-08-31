@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+from contextlib import nullcontext
+
 import pytest
 import torch
 
@@ -50,3 +53,46 @@ def test_exponential_fast(shape, dtype):
 
     assert torch.abs(mean_res - mean_ref) < mean_tol
     assert torch.abs(var_res - var_ref) < var_tol
+
+
+def _exponential_samples(backend, seed, size):
+    x = torch.empty(size, device=flag_gems.device, dtype=torch.float32)
+    generator = torch.Generator(device=flag_gems.device).manual_seed(seed)
+    context = (
+        flag_gems.use_gems(include=["exponential_"])
+        if backend == "flaggems"
+        else nullcontext()
+    )
+    with context:
+        x.exponential_(generator=generator)
+    return x
+
+
+@pytest.mark.exponential_
+@pytest.mark.parametrize("backend", ["torch", "flaggems"])
+@pytest.mark.parametrize("seed", [260828, 2026, 7])
+def test_exponential_lower_tail(backend, seed):
+    x = _exponential_samples(backend, seed, 1048576)
+    expected = 1 - math.exp(-0.1)
+    observed = (x <= 0.1).float().mean().item()
+    assert abs(observed - expected) < 0.005, (
+        f"{backend} seed={seed}: P(X<=0.1)={observed}, "
+        f"Exp(1) expected={expected}; tolerance=0.005"
+    )
+
+
+@pytest.mark.exponential_
+@pytest.mark.parametrize("backend", ["torch", "flaggems"])
+@pytest.mark.parametrize("seed", [260828, 2026, 7])
+def test_exponential_no_repeated_blocks(backend, seed):
+    x = _exponential_samples(backend, seed, 131072)
+    fractions = {}
+    for block in [64, 128, 256, 512]:
+        tiles = x.view(-1, 8 * block)
+        fractions[block] = (
+            (tiles[:-1, 4 * block :] == tiles[1:, : 4 * block]).float().mean().item()
+        )
+    assert max(fractions.values()) < 0.01, (
+        f"{backend} seed={seed}: repeated-block fractions={fractions}; "
+        "different output coordinates must not reuse entire random blocks"
+    )
