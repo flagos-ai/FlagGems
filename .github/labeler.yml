@@ -67,6 +67,8 @@ ops/aten:
   - changed-files:
       - any-glob-to-any-file:
           - 'src/flag_gems/ops/**'
+          # JIT CUDA sources used when c_operators is absent (e.g. wgrad GemmEx).
+          - 'src/flag_gems/csrc/**'
 
 vendor/AIPU:
   - changed-files:
