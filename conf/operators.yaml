@@ -7660,6 +7660,21 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: masked_softmax
+    description: |
+      Apply a softmax over `dim` while excluding positions where the boolean
+      mask is True. mask_type selects how the mask broadcasts: 2 for an
+      elementwise mask, 1 for a (B, L) attention padding mask, and 0 for an
+      (L, L) source mask.
+    for:
+      - _masked_softmax
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: matmul_bias_activation
     description: Fused matrix multiplication with bias addition and ReLU activation.
     for:

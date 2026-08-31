@@ -89,6 +89,7 @@ from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._make_dep_token import _make_dep_token
 from flag_gems.ops._masked_scale import _masked_scale
+from flag_gems.ops._masked_softmax import _masked_softmax
 from flag_gems.ops._native_batch_norm_legit import (
     _native_batch_norm_legit,
     _native_batch_norm_legit_no_stats,
@@ -1013,6 +1014,7 @@ __all__ = [
     "_list_to_tensor",
     "_make_dep_token",
     "_masked_scale",
+    "_masked_softmax",
     "_native_batch_norm_legit",
     "_native_batch_norm_legit_functional",
     "_native_batch_norm_legit_no_stats",
