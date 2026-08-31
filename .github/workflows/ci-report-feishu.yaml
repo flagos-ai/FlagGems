@@ -1,0 +1,50 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Triggered after rule-check completes (including fork PRs).
+# workflow_run runs in the base repo context, so secrets are available.
+name: ci-report-feishu
+
+on:
+  workflow_run:
+    workflows: ["rule-check"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  report-to-feishu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          sparse-checkout: tools/ci_report_feishu.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.11'
+      - name: Report to Feishu
+        env:
+          FEISHU_BITABLE_APP_ID: ${{ secrets.FEISHU_BITABLE_APP_ID }}
+          FEISHU_BITABLE_APP_SECRET: ${{ secrets.FEISHU_BITABLE_APP_SECRET }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python tools/ci_report_feishu.py \
+            --app-id "${FEISHU_BITABLE_APP_ID}" \
+            --app-secret "${FEISHU_BITABLE_APP_SECRET}" \
+            --github-token "${GITHUB_TOKEN}" \
+            --repo "${{ github.repository }}" \
+            --workflow "rule-check"
