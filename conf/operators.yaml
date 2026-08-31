@@ -8745,6 +8745,18 @@ ops:
       - Reduction
     stages:
       - alpha: '5.4'
+  - id: native_norm
+    description: Computes the p-norm over all elements of the input tensor, reducing to a scalar.
+    for:
+      - native_norm
+    labels:
+      - aten
+      - KernelGen
+      - reduction
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: normal_
     description: Random sampling operator (normal_).
     for:

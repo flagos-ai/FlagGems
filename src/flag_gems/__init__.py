@@ -893,6 +893,7 @@ _FULL_CONFIG = (
     ("norm", norm),
     ("norm.Scalar", norm_scalar),
     ("norm.ScalarOpt_dim", norm_scalaropt_dim),
+    ("native_norm", native_norm),
     ("normal.Tensor_Tensor", normal_tensor_tensor),
     ("normal.Tensor_float", normal_tensor_float),
     ("normal.float_Tensor", normal_float_tensor),
