@@ -3009,7 +3009,7 @@ ops:
     stages:
       - beta: '5.3'
   - id: cumsum
-    destination: Returns the cumulative sum of elements of `input` in the dimension `dim`.
+    description: Returns the cumulative sum of elements of `input` in the dimension `dim`.
     for:
       - cumsum
     labels:
