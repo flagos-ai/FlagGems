@@ -17,6 +17,7 @@ import math
 from functools import reduce
 
 import torch
+import trident
 import triton
 import triton.language as tl
 
@@ -29,7 +30,6 @@ from flag_gems.utils.codegen_config_utils import get_codegen_config
 logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.jit
 def mean_kernel_1(
     inp,
@@ -56,7 +56,6 @@ def mean_kernel_1(
     tl.store(mid_ptr, sum_val)
 
 
-@libentry()
 @triton.jit
 def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
     if tl.constexpr(mid.dtype.element_ty == tl.float16) or tl.constexpr(
@@ -95,7 +94,6 @@ def mean(inp, *, dtype=None):
     return out
 
 
-@libentry()
 @triton.jit
 def mean_dim_kernel_non_inner_vec(
     output_ptr,
@@ -148,7 +146,6 @@ def mean_dim_kernel_non_inner_vec(
     tl.store(output_ptr + out_offsets, mean_val, mask=k_mask)
 
 
-@libentry()
 @triton.heuristics(runtime.get_heuristic_config("mean_non_inner"))
 @triton.jit
 def mean_dim_kernel_non_inner(
@@ -202,7 +199,6 @@ def mean_dim_kernel_non_inner(
         tl.store(output_ptrs, out, mask=k_offsets < K)
 
 
-@libentry()
 @triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
 @triton.jit
 def mean_dim_kernel_inner(
@@ -252,7 +248,7 @@ def mean_dim_kernel_inner(
         tl.store(output_ptrs, out)
 
 
-@libentry()
+
 @libtuner(
     configs=runtime.get_tuned_config("naive_reduction"),
     key=["M", "N"],
@@ -291,7 +287,7 @@ def mean_dim_kernel(
     mean = summed / N
     tl.store(out, mean, row_mask)
 
-
+@trident.jit
 def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     logger.debug("GEMS MEAN_DIM")
     if dtype is None:
