@@ -16,6 +16,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
 
 from . import accuracy_utils as utils
 
@@ -50,3 +51,31 @@ def test_unfold_backward(input_sizes, dim, size, step, dtype):
         res_out = flag_gems.unfold_backward(grad_in, input_sizes, dim, size, step)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)
+
+
+@pytest.mark.unfold_backward
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_unfold_backward_zero_size(dtype):
+    input_sizes = (2, 4, 16, 16)
+    grad_shape = (3, 4, 16, 16, 0)
+    grad_in = torch.empty(grad_shape, dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.ops.aten.unfold_backward(
+        utils.to_reference(grad_in, True), input_sizes, 0, 0, 1
+    )
+    res_out = flag_gems.unfold_backward(grad_in, input_sizes, 0, 0, 1)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.unfold_backward
+def test_unfold_backward_rejects_unexpected_grad_shape():
+    grad_in = torch.randn((16, 16), device=flag_gems.device)
+
+    with pytest.raises(RuntimeError):
+        flag_gems.unfold_backward(grad_in, (2, 4, 16, 16), 0, 0, 1)
+
+    health = torch.ones(4, device=flag_gems.device)
+    health.add_(1)
+    torch_device_fn.synchronize()
+    assert health.cpu().tolist() == [2.0] * 4
