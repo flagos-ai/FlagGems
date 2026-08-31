@@ -8516,6 +8516,19 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: nested_to_padded_tensor
+    description: |
+      Converts a nested (ragged) tensor into a padded dense tensor, filling
+      unoccupied positions with a scalar padding value.
+    for:
+      - nested_to_padded_tensor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: new_full
     description: |
       Returns a Tensor of size `size` filled with `fill_value`.

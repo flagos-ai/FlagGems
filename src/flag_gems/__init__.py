@@ -873,6 +873,15 @@ _FULL_CONFIG = (
     ("neg_", neg_),
     ("negative", negative),
     ("negative_", negative_),
+    # nested_to_padded_tensor is a CompositeImplicitAutograd op: it decomposes
+    # before reaching any backend key, so it must be registered into the
+    # CompositeImplicitAutograd key to intercept the FlagGems implementation.
+    (
+        "nested_to_padded_tensor",
+        nested_to_padded_tensor,
+        None,
+        ["CompositeImplicitAutograd"],
+    ),
     ("new_full", new_full),
     ("new_ones", new_ones),
     ("nextafter", nextafter),
