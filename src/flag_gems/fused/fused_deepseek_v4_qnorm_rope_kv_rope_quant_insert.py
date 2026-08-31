@@ -116,6 +116,7 @@ def fused_qnorm_rope_kv_insert_kernel(
     kv_block_stride,
     num_tokens_insert: tl.constexpr,
     HAS_FP8E4NV: tl.constexpr,
+    num_real_heads: tl.constexpr = -1,  # >=0: slots beyond it are zero-fill pad
 ):
     HEAD_DIM: tl.constexpr = 512
     NOPE_DIM: tl.constexpr = 448
@@ -143,6 +144,11 @@ def fused_qnorm_rope_kv_insert_kernel(
     offset_rope = tl.arange(0, ROPE_DIM)
     offset_half_rope = tl.arange(0, HALF_ROPE_DIM)
     offset_quant = tl.arange(0, QUANT_BLOCK)
+    # FlashMLA head-padding fast path: pad slots only need zero-fill
+    # (skip loads, RMSNorm and RoPE entirely).
+    if num_real_heads >= 0 and (not is_kv) and slot_idx >= num_real_heads:
+        tl.store(q_base + offset, tl.zeros((HEAD_DIM,), dtype=tl.bfloat16))
+        return
     if not is_kv:
         # load q
         q_blk = tl.load(q_base + offset).to(tl.float32)  # [NOPE_DIM]
@@ -373,6 +379,7 @@ def fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
     cos_sin_cache: torch.Tensor,
     eps: float,
     cache_block_size: int,
+    num_real_heads: int = -1,
 ):
     """
     Horizontally-fused DeepseekV4-MLA: per-head RMSNorm + GPT-J RoPE for Q, and
@@ -425,6 +432,7 @@ def fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
         k_cache.stride(0),
         num_tokens_insert,
         _has_fp8e4nv(),
+        num_real_heads=num_real_heads,
         num_warps=1,
         num_stages=2,
     )
