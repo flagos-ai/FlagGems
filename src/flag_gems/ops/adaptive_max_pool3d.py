@@ -505,6 +505,12 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
                 d_reduced, d_argmax_saved = input.max(dim=2)
             else:
                 d_reduced = input.max(dim=2).values
+            # flag_gems max drops NaN (fmax semantics); re-apply it so the
+            # result is NaN wherever the D window contained NaN, matching
+            # torch.max (which propagates NaN).
+            d_reduced = torch.where(
+                torch.isnan(input).any(dim=2), float("nan"), d_reduced
+            )
             input = d_reduced.unsqueeze(2)
             in_d = 1
 
