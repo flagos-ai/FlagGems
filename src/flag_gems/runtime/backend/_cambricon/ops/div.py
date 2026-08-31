@@ -13,16 +13,27 @@
 # limitations under the License.
 
 import logging
+from dataclasses import replace
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.utils import tl_extra_shim
+from flag_gems.utils.codegen_config_utils import get_codegen_config
 
 from ..utils.pointwise_dynamic import ComplexMode, pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+# The complex cross-division kernel promotes all four real components to fp32
+# and computes several intermediate tensors (ratios, denominators, cross
+# terms). These hidden buffers inflate the on-chip (NRAM) footprint well beyond
+# what the input/output count suggests, so tile 8192 overflows the 512 KiB NRAM
+# limit. Cap the largest candidate tile at 4096 for this kernel only; all other
+# pointwise kernels keep the default max_tile_size (8192).
+_complex_codegen_config = replace(get_codegen_config(), max_tile_size=4096)
+
 div_rn = tl_extra_shim.div_rn
 div_rz = tl_extra_shim.div_rz
 fmod = tl_extra_shim.fmod
@@ -36,6 +47,7 @@ trunc = tl_extra_shim.trunc
         (0, 1, 2, 3, "INT_TO_FLOAT"),
         (0, 1, 2, 3, "INT_TO_FLOAT"),
     ],
+    config=_complex_codegen_config,
 )
 @triton.jit
 def div_complex_kernel(ar, ai, br, bi):

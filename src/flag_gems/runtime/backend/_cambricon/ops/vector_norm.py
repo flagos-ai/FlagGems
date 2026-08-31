@@ -727,8 +727,12 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             BLOCK_N = 1024
             if ord == 2:
                 if N >= 1024:
-                    l2_norm_kernel_seq[(triton.cdiv(M, 1),)](
-                        x, out, M, N, BLOCK_M=1, BLOCK_N=1
+                    # BLOCK_N tiles the reduce dim so each tile is summed with a
+                    # tree reduction before accumulating; BLOCK_N=1 would degrade
+                    # to a serial per-element fp32 accumulation and lose precision
+                    # on large N (see l1 path below).
+                    l2_norm_kernel_seq[(triton.cdiv(M, 8),)](
+                        x, out, M, N, BLOCK_M=8, BLOCK_N=1024
                     )
                 else:
                     l2_norm_kernel[grid](x, out, M, N)
@@ -741,8 +745,13 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             else:
                 if ord == 1:
                     if N >= 1024:
-                        l1_norm_kernel_seq[(triton.cdiv(M, 1),)](
-                            x, out, M, N, 1.0, BLOCK_M=1, BLOCK_N=1
+                        # Tile the reduce dim so each BLOCK_N chunk is tree-reduced
+                        # into a partial sum before accumulating. BLOCK_N=1 made
+                        # this a serial per-element fp32 accumulation over N (up to
+                        # ~8M here), which drifts below the reference computed in
+                        # fp64 and fails the accuracy tolerance.
+                        l1_norm_kernel_seq[(triton.cdiv(M, 8),)](
+                            x, out, M, N, 1.0, BLOCK_M=8, BLOCK_N=1024
                         )
                     else:
                         v_norm_kernel[grid](x, out, M, N, ord)

@@ -302,9 +302,16 @@ class KernelGenerator:
                 f"'tile_size{i}': tile_size{i}" for i in range(self.ndim)
             )
 
+            # Honor config.max_tile_size so that a kernel can cap its largest
+            # candidate tile (e.g. complex cross kernels whose hidden
+            # intermediate buffers would otherwise overflow NRAM at tile 8192).
+            allowed_tile_sizes = [
+                t for t in [1024, 2048, 4096, 8192] if t <= self.config.max_tile_size
+            ]
+
             code.writeline("if max_elem_size < 8:")
             with code.indent():
-                code.writeline("max_tile_sizes = [1024, 2048, 4096, 8192]")
+                code.writeline(f"max_tile_sizes = {allowed_tile_sizes}")
                 code.writeline("for max_tile_size in max_tile_sizes:")
                 with code.indent():
                     code.writeline(
@@ -315,7 +322,7 @@ class KernelGenerator:
                     )
             code.writeline("else:")
             with code.indent():
-                code.writeline("max_tile_sizes = [1024, 2048, 4096, 8192]")
+                code.writeline(f"max_tile_sizes = {allowed_tile_sizes}")
                 code.writeline("for max_tile_size in max_tile_sizes:")
                 with code.indent():
                     code.writeline(

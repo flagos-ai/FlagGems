@@ -23,7 +23,7 @@ import triton.language as tl
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
-from ..utils import MAX_GRID_SIZE_Y, TOTAL_CORE_NUM
+from ..utils import MAX_GRID_SIZE_Y, MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
 logger = logging.getLogger(__name__)
 device = device.name
@@ -126,6 +126,17 @@ def config_prune(configs, named_args, **kwargs):
             continue
         # The pruning condition was obtained through experimentation. It may result in not finding the optimal solution.
         if BLOCK_N > 128 and TILE_N < 8:
+            continue
+        # NRAM hard prune: the blelloch kernel holds roughly two fp32 buffers of
+        # shape [BLOCK_M, BLOCK_N] on chip, scaled by the pipeline depth
+        # (num_stages). Configs whose estimated footprint exceeds the NRAM limit
+        # would fail to compile (OutOfResources), and if such a config gets
+        # cached as the best one the cache-hit path raises at launch. Drop them
+        # here so autotune only ever benchmarks configs that actually compile.
+        # The 0.95 factor leaves headroom for compiler overhead while keeping the
+        # best-performing config for every N (verified against measured values).
+        est_nram = 2 * BLOCK_M * BLOCK_N * 4 * num_stages
+        if est_nram > MAX_NRAM_SIZE * 0.95:
             continue
         key = (BLOCK_M, BLOCK_N, TILE_N, num_warps, num_stages)
         # Only keep one config for the same key
