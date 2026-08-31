@@ -12,14 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .cross_entropy_loss import cross_entropy_loss
-from .matmul_bias_activation import matmul_bias_activation
-from .matmuladd import matmuladd
-from .sparse_attention import sparse_attn_triton
+import logging
 
-__all__ = [
-    "cross_entropy_loss",
-    "matmul_bias_activation",
-    "sparse_attn_triton",
-    "matmuladd",
-]
+from flag_gems.runtime.backend._mthreads.ops.addmm import _addmm_impl
+
+logger = logging.getLogger(__name__)
+
+
+def matmuladd(input, other, bias):
+    """
+    Matrix multiplication with addition: output = matmul(input, other) + bias
+
+    Routes to the mthreads addmm implementation: fp16/bf16 compatible
+    layouts go through the SQMMA TensorDescriptor kernel, and fp32 (or
+    non-SQMMA shapes) through the FMA kernel, with alpha=1, beta=1.
+    """
+    logger.debug("GEMS_MTHREADS MATMULADD")
+    return _addmm_impl(bias, input, other, out=None, beta=1, alpha=1)
