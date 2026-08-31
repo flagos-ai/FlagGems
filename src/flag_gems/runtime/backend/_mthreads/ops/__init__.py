@@ -26,6 +26,7 @@ from .celu import celu
 from .channel_shuffle import channel_shuffle
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .cudnn_convolution import cudnn_convolution
 from .div import (
     div_mode,
     div_mode_,
@@ -121,6 +122,7 @@ __all__ = [
     "conv2d",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
+    "cudnn_convolution",
     "dropout",
     "dropout_backward",
     "erfinv",
