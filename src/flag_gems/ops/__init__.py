@@ -630,6 +630,7 @@ from flag_gems.ops.nansum import nansum, nansum_out
 from flag_gems.ops.narrow import narrow
 from flag_gems.ops.narrow_copy import narrow_copy
 from flag_gems.ops.native_batch_norm import native_batch_norm
+from flag_gems.ops.native_channel_shuffle import native_channel_shuffle
 from flag_gems.ops.native_dropout_backward import native_dropout_backward
 from flag_gems.ops.native_group_norm import native_group_norm
 from flag_gems.ops.native_layer_norm import native_layer_norm
@@ -1211,6 +1212,7 @@ __all__ = [
     "chalf",
     "channel_shuffle",
     "cholesky_inverse",
+    "native_channel_shuffle",
     "cholesky_solve",
     "cholesky_solve_out",
     "choose_qparams_optimized",
