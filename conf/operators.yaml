@@ -8966,6 +8966,22 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.1'
+  - id: pad_enum
+    description: |
+      Integer-mode dispatcher backing torch.nn.functional.pad. Pads an N-D
+      tensor where `mode` is an integer enum (0 reflect, 1 replicate,
+      2 circular, 3 constant); `value` is only used for constant padding.
+    for:
+      - _pad_enum
+    labels:
+      - aten
+      - pointwise
+      - nn.functional
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: pairwise_distance
     description: |
       Computes the pairwise distance between input vectors, or between columns of input matrices.
