@@ -641,6 +641,7 @@ from flag_gems.ops.negative_ import negative_
 from flag_gems.ops.new_full import new_full
 from flag_gems.ops.new_ones import new_ones
 from flag_gems.ops.nextafter import nextafter, nextafter_
+from flag_gems.ops.nll_loss2d import nll_loss2d
 from flag_gems.ops.nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward
 from flag_gems.ops.nllloss import (
     nll_loss2d_backward,
@@ -1649,6 +1650,7 @@ __all__ = [
     "new_ones",
     "nextafter",
     "nextafter_",
+    "nll_loss2d",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
     "nll_loss_backward",
