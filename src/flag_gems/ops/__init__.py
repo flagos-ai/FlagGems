@@ -525,6 +525,7 @@ from flag_gems.ops.linalg_lu_factor_ex import (
     linalg_lu_factor_ex,
     linalg_lu_factor_ex_out,
 )
+from flag_gems.ops.linalg_lu_solve import linalg_lu_solve
 from flag_gems.ops.linalg_matrix_norm import linalg_matrix_norm
 from flag_gems.ops.linalg_matrix_sqrth import (
     linalg_matrix_sqrth,
@@ -1508,6 +1509,7 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_lu_out",
+    "linalg_lu_solve",
     "linalg_matrix_norm",
     "linalg_matrix_sqrth",
     "linalg_matrix_sqrth_out",
