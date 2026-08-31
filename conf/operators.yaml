@@ -7660,6 +7660,20 @@ ops:
       - Tensor
     stages:
       - stable: '2.1'
+  - id: masked_softmax_backward
+    description: |
+      Computes the input gradient of a masked softmax: masked positions are
+      zeroed and the remaining positions follow the standard softmax backward
+      formula output * (grad_output - sum(output * grad_output over dim)).
+    for:
+      - _masked_softmax_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: matmul_bias_activation
     description: Fused matrix multiplication with bias addition and ReLU activation.
     for:
