@@ -6636,7 +6636,7 @@ ops:
     kind:
       - LinearAlg
     stages:
-      - alpha: '5.4'
+      - beta: '5.4'
   - id: linalg_matrix_sqrth
     description: Computes the principal square root of a symmetric or Hermitian positive-definite matrix.
     for:

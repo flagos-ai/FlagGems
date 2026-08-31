@@ -9,13 +9,12 @@ from .conftest import QUICK_MODE
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-
-# ILUVATAR (CoreX) has no fp64 compute path; Ascend NPU BiSheng compiler
-# rejects tl.float64 operations.  Skip fp64 tests on both backends.
-if flag_gems.vendor_name in ("iluvatar", "ascend"):
-    DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
-else:
+if flag_gems.vendor_name == "ascend":
+    DTYPES = [torch.float32]
+elif flag_gems.runtime.device.support_fp64:
     DTYPES = [torch.float32] if QUICK_MODE else (utils.FLOAT_DTYPES + [torch.float64])
+else:
+    DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
 
 _SEED = 0
 
@@ -112,6 +111,8 @@ def _reduce_dim(shape, ord):
 def _get_atol(dtype, ord):
     from .conftest import TO_CPU
 
+    if flag_gems.vendor_name == "iluvatar" and _is_svd(ord):
+        return 2e-3  # same as test_svd.py
     if flag_gems.vendor_name == "metax" and not TO_CPU and _is_svd(ord):
         return 2e-3  # same as test_svd.py
     if flag_gems.vendor_name == "thead" and _is_svd(ord):
@@ -181,9 +182,10 @@ def _compute_ref(A, ord, dim=(-2, -1), keepdim=False, dtype=None):
 
 
 def _call_op(A, ord, dim=(-2, -1), keepdim=False, dtype=None):
-    return flag_gems.linalg_matrix_norm(
+    res_out = flag_gems.linalg_matrix_norm(
         A, ord=ord, dim=dim, keepdim=keepdim, dtype=dtype
     )
+    return res_out
 
 
 # ===========================================================================
@@ -389,19 +391,19 @@ def test_large(ord, shape):
 @pytest.mark.linalg_matrix_norm
 def test_1d_rejected():
     A = torch.randn(5, device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten.linalg_matrix_norm(A)
+    with pytest.raises(RuntimeError):
+        flag_gems.linalg_matrix_norm(A)
 
 
 @pytest.mark.linalg_matrix_norm
 def test_same_dim_rejected():
     A = torch.randn(3, 4, device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten.linalg_matrix_norm(A, 2, (0, 0))
+    with pytest.raises(RuntimeError):
+        flag_gems.linalg_matrix_norm(A, 2, (0, 0))
 
 
 @pytest.mark.linalg_matrix_norm
 def test_unsupported_ord_rejected():
     A = torch.randn(3, 4, device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten.linalg_matrix_norm(A, 3)
+    with pytest.raises(RuntimeError):
+        flag_gems.linalg_matrix_norm(A, 3)

@@ -734,6 +734,7 @@ _FULL_CONFIG = (
     ("linalg_ldl_solve", linalg_ldl_solve),
     ("linalg_lstsq", linalg_lstsq),
     ("linalg_matrix_norm", linalg_matrix_norm),
+    ("linalg_matrix_norm.str_ord", linalg_matrix_norm),
     (
         "linalg_matrix_sqrth",
         linalg_matrix_sqrth,
