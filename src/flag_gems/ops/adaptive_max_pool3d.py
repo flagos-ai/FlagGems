@@ -300,6 +300,49 @@ def _kernel_cooperative(
         tl.store(indices_ptr + pid + 0 * tid, final_i, mask=lane0 & valid)
 
 
+@libentry()
+@triton.jit
+def _d_reduce_kernel(
+    in_ptr,
+    out_val_ptr,
+    out_idx_ptr,
+    M,
+    N,
+    K,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    RETURN_INDICES: tl.constexpr,
+):
+    """NaN-aware max-reduce over the N dimension of a (M, N, K) tensor.
+
+    Used for the out_d==1 path: reduce the D dimension of (N*C, in_d, H*W).
+    Propagates NaN (a NaN in the window wins, matching torch.max) so no
+    separate torch ``isnan/where`` re-mask is needed."""
+    pid_m = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    k = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)
+    m_ok = m < M
+    k_ok = k < K
+    mask = m_ok[:, None] & k_ok[None, :]
+    dtype = in_ptr.type.element_ty
+    min_val = get_dtype_min(dtype)
+    acc = tl.full((BLOCK_M, BLOCK_K), min_val, dtype=dtype)
+    acc_idx = tl.zeros((BLOCK_M, BLOCK_K), dtype=tl.int32)
+    base = m[:, None] * (N * K) + k[None, :]
+    for d in range(N):
+        v = tl.load(in_ptr + base + d * K, mask=mask, other=min_val)
+        # NaN-aware max: a NaN in the window must win (matches torch.max).
+        better = (v > acc) | (v != v)
+        acc = tl.where(better, v, acc)
+        if RETURN_INDICES:
+            acc_idx = tl.where(better, d, acc_idx)
+    out_base = m[:, None] * K + k[None, :]
+    tl.store(out_val_ptr + out_base, acc.to(dtype), mask=mask)
+    if RETURN_INDICES:
+        tl.store(out_idx_ptr + out_base, acc_idx.to(tl.int64), mask=mask)
+
+
 # ==============================================================================
 # Helpers
 # ==============================================================================
@@ -500,16 +543,36 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
                 return output, indices
             return output
         else:
-            # Two-kernel path: reduce D via torch.max first, then pool (H,W)
+            # Two-kernel path: NaN-aware Triton D-reduce, then pool (H,W).
+            # The in-file _d_reduce_kernel propagates NaN (a NaN in the window
+            # wins), so no torch.max / torch.isnan / torch.where is needed.
+            m = in_n * in_c
+            n = in_d
+            k = in_h * in_w
+            d_reduced = torch.empty(
+                (in_n, in_c, in_h, in_w), device=input.device, dtype=input.dtype
+            )
             if want_indices:
-                d_reduced, d_argmax_saved = input.max(dim=2)
+                d_argmax_saved = torch.empty(
+                    (in_n, in_c, in_h, in_w),
+                    device=input.device,
+                    dtype=torch.int64,
+                )
             else:
-                d_reduced = input.max(dim=2).values
-            # flag_gems max drops NaN (fmax semantics); re-apply it so the
-            # result is NaN wherever the D window contained NaN, matching
-            # torch.max (which propagates NaN).
-            d_reduced = torch.where(
-                torch.isnan(input).any(dim=2), float("nan"), d_reduced
+                d_argmax_saved = d_reduced
+            block_m = 64
+            block_k = min(64, triton.next_power_of_2(k))
+            grid = (triton.cdiv(m, block_m), triton.cdiv(k, block_k))
+            _d_reduce_kernel[grid](
+                input,
+                d_reduced,
+                d_argmax_saved,
+                m,
+                n,
+                k,
+                BLOCK_M=block_m,
+                BLOCK_K=block_k,
+                RETURN_INDICES=want_indices,
             )
             input = d_reduced.unsqueeze(2)
             in_d = 1

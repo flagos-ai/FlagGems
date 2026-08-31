@@ -1,23 +1,3 @@
-"""
-Test cases for adaptive_max_pool3d — full correctness coverage.
-
-Covers all 9 kernel dispatch paths, known model shapes, edge cases,
-special values (NaN, ties, zeros/negatives), empty tensors, and
-integer output_size broadcasting.
-
-Kernel dispatch paths (from adaptive_max_pool3d in operator source):
-  Path A — Identity:       in_d==out_d && in_h==out_h && in_w==out_w
-  Path B — out_d=1 fast:   out_d==1 && in_d>1 → D-reduce then 2D pooling
-  Path C — Global max.dim:  (1,1,1) && spatial >= 4096
-  Path D — Global blk_red:  (1,1,1) && 64 <= spatial < 4096
-  Path E — Global→1D:       (1,1,1) && spatial < 64
-  Path F — Large window:    total<=4096 && win>=1024 && blk_est<156
-  Path G — 1D kernel:       (total<=4096 && !prefer_2d) ||
-                             (total>4096 && win<=2048)
-  Path H — 2D fast:         !1D && out_h<=16 && out_w<=16
-  Path I — 2D regular:      !1D && (out_h>16 || out_w>16)
-"""
-
 import pytest
 import torch
 
@@ -113,6 +93,14 @@ ALL_CONFIGS = [
     ((2, 1280, 64, 42, 72), (8, 14, 14), "Qwen2.5-VL scaled"),
     ((4, 1536, 96, 32, 32), (16, 16, 16), "VideoLLaMA large"),
     ((1, 32, 4, 128, 128), (2, 32, 32), "shallow, wide"),
+    ((2, 64, 64, 256, 256), (2, 32, 32), "uniform win=8x8, large"),
+    ((1, 8, 64, 256, 256), (64, 7, 7), "in_d==out_d, large 2D pool"),
+    ((1, 4, 32, 8, 8), (1, 4, 4), "out_d=1, in_d=32>16"),
+    ((2, 3, 20, 6, 6), (1, 3, 3), "out_d=1, in_d=20>16"),
+    ((1, 4, 37, 16, 16), (2, 8, 8), "non-uniform D"),
+    ((2, 8, 17, 24, 24), (3, 12, 12), "non-uniform D, pow2 H/W"),
+    ((4, 32, 16, 32, 32), (8, 16, 16), "Path G 1D kernel"),
+    ((1, 3, 32, 224, 224), (16, 56, 56), "video pyramid (pool2d-first)"),
 ]
 
 # Deduplicate (just in case)
@@ -141,10 +129,9 @@ def test_accuracy_adaptive_max_pool3d_forward(shape, output_size, desc, dtype):
     ref_out, ref_indices = torch.nn.functional.adaptive_max_pool3d(
         ref_inp, output_size=output_size, return_indices=True
     )
-    with flag_gems.use_gems():
-        res_out, res_indices = torch.nn.functional.adaptive_max_pool3d(
-            inp, output_size=output_size, return_indices=True
-        )
+    res_out, res_indices = flag_gems.adaptive_max_pool3d(
+        inp, output_size=output_size, return_indices=True
+    )
 
     # Output values must match
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -181,10 +168,9 @@ def test_accuracy_adaptive_max_pool3d_forward_no_indices(
     ref_out = torch.nn.functional.adaptive_max_pool3d(
         ref_inp, output_size=output_size, return_indices=False
     )
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.adaptive_max_pool3d(
-            inp, output_size=output_size, return_indices=False
-        )
+    res_out = flag_gems.adaptive_max_pool3d(
+        inp, output_size=output_size, return_indices=False
+    )
 
     assert isinstance(
         res_out, torch.Tensor
@@ -219,10 +205,9 @@ def test_accuracy_adaptive_max_pool3d_int_output_size(shape, output_size, desc, 
     ref_out, ref_indices = torch.nn.functional.adaptive_max_pool3d(
         ref_inp, output_size=output_size, return_indices=True
     )
-    with flag_gems.use_gems():
-        res_out, res_indices = torch.nn.functional.adaptive_max_pool3d(
-            inp, output_size=output_size, return_indices=True
-        )
+    res_out, res_indices = flag_gems.adaptive_max_pool3d(
+        inp, output_size=output_size, return_indices=True
+    )
 
     # Verify cubic output shape
     expected_out_size = (output_size, output_size, output_size)
@@ -236,10 +221,9 @@ def test_accuracy_adaptive_max_pool3d_int_output_size(shape, output_size, desc, 
     ref_out = torch.nn.functional.adaptive_max_pool3d(
         ref_inp, output_size=output_size, return_indices=False
     )
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.adaptive_max_pool3d(
-            inp, output_size=output_size, return_indices=False
-        )
+    res_out = flag_gems.adaptive_max_pool3d(
+        inp, output_size=output_size, return_indices=False
+    )
     assert isinstance(
         res_out, torch.Tensor
     ), f"Expected Tensor for int output_size with return_indices=False. {desc}"
@@ -274,10 +258,9 @@ def test_accuracy_adaptive_max_pool3d_nan(shape, output_size, desc, dtype):
     inp[nan_pos] = float("nan")
 
     ref_inp = utils.to_reference(inp, True)
-    with flag_gems.use_gems():
-        res_out, _ = torch.nn.functional.adaptive_max_pool3d(
-            inp, output_size=output_size, return_indices=True
-        )
+    res_out, _ = flag_gems.adaptive_max_pool3d(
+        inp, output_size=output_size, return_indices=True
+    )
     ref_out, _ = torch.nn.functional.adaptive_max_pool3d(
         ref_inp, output_size=output_size, return_indices=True
     )
@@ -301,10 +284,9 @@ def test_accuracy_adaptive_max_pool3d_ties(shape, output_size, desc, dtype):
     # All-equal input — every window is a tie
     inp = torch.ones(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
-    with flag_gems.use_gems():
-        res_out, res_indices = torch.nn.functional.adaptive_max_pool3d(
-            inp, output_size=output_size, return_indices=True
-        )
+    res_out, res_indices = flag_gems.adaptive_max_pool3d(
+        inp, output_size=output_size, return_indices=True
+    )
     ref_out, _ = torch.nn.functional.adaptive_max_pool3d(
         ref_inp, output_size=output_size, return_indices=True
     )
@@ -328,10 +310,9 @@ def test_accuracy_adaptive_max_pool3d_all_negative(shape, output_size, desc, dty
     # Values in [-100, -1]
     inp = -torch.rand(shape, dtype=dtype, device=flag_gems.device) * 100 - 1
     ref_inp = utils.to_reference(inp, True)
-    with flag_gems.use_gems():
-        res_out, _ = torch.nn.functional.adaptive_max_pool3d(
-            inp, output_size=output_size, return_indices=True
-        )
+    res_out, _ = flag_gems.adaptive_max_pool3d(
+        inp, output_size=output_size, return_indices=True
+    )
     ref_out, _ = torch.nn.functional.adaptive_max_pool3d(
         ref_inp, output_size=output_size, return_indices=True
     )
@@ -349,10 +330,9 @@ def test_accuracy_adaptive_max_pool3d_mixed_sign(shape, output_size, desc, dtype
     torch.manual_seed(42)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device) * 10
     ref_inp = utils.to_reference(inp, True)
-    with flag_gems.use_gems():
-        res_out, res_indices = torch.nn.functional.adaptive_max_pool3d(
-            inp, output_size=output_size, return_indices=True
-        )
+    res_out, res_indices = flag_gems.adaptive_max_pool3d(
+        inp, output_size=output_size, return_indices=True
+    )
     ref_out, ref_indices = torch.nn.functional.adaptive_max_pool3d(
         ref_inp, output_size=output_size, return_indices=True
     )
@@ -397,10 +377,9 @@ def test_accuracy_adaptive_max_pool3d_empty_output(shape, output_size, desc, dty
     ref_inp = utils.to_reference(inp, True)
 
     # return_indices=True
-    with flag_gems.use_gems():
-        res_out, res_indices = torch.nn.functional.adaptive_max_pool3d(
-            inp, output_size=output_size, return_indices=True
-        )
+    res_out, res_indices = flag_gems.adaptive_max_pool3d(
+        inp, output_size=output_size, return_indices=True
+    )
     ref_out, ref_indices = torch.nn.functional.adaptive_max_pool3d(
         ref_inp, output_size=output_size, return_indices=True
     )
@@ -431,10 +410,9 @@ def test_accuracy_adaptive_max_pool3d_all_zero(shape, output_size, desc, dtype):
     """All-zero input: output must be zero, indices valid."""
     inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
-    with flag_gems.use_gems():
-        res_out, res_indices = torch.nn.functional.adaptive_max_pool3d(
-            inp, output_size=output_size, return_indices=True
-        )
+    res_out, res_indices = flag_gems.adaptive_max_pool3d(
+        inp, output_size=output_size, return_indices=True
+    )
     ref_out, _ = torch.nn.functional.adaptive_max_pool3d(
         ref_inp, output_size=output_size, return_indices=True
     )

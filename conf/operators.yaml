@@ -234,7 +234,7 @@ ops:
     kind:
       - NeuralNetwork
     stages:
-      - alpha: '5.4'
+      - beta: '5.4'
   - id: adaptive_max_pool3d_backward
     description: |
       Computes the gradient for adaptive max pooling 3D.
