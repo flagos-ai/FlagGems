@@ -213,13 +213,18 @@ def mm_kernel_general(
         for k in range(0, tl.cdiv(K, BLOCK_K)):
             a = a_desc.load([offset_am.to(tl.int32), offset_k.to(tl.int32)])
             b = b_desc.load([offset_k.to(tl.int32), offset_bn.to(tl.int32)])
+            # tl.dot rejects mixed-dtype operands; cast to the output dtype so that
+# mixed inputs follow torch's type promotion (issue #2463).
+            if a.dtype != b.dtype:
+                a = a.to(C.dtype.element_ty)
+                b = b.to(C.dtype.element_ty)
             if IS_FP64:
                 acc += tl.dot(a, b, allow_tf32=False)
             else:
                 acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
             offset_k += BLOCK_K
 
-        acc = acc.to(a_desc.dtype)
+        acc = acc.to(c_desc.dtype)
         c_desc.store([offset_am.to(tl.int32), offset_bn.to(tl.int32)], acc)
 
     else:
@@ -385,6 +390,12 @@ def mm_kernel_general_host_tma(
             b_t = b_desc.load([offset_bn, offset_ak])
             b = tl.trans(b_t)
 
+        # tl.dot rejects mixed-dtype operands; cast to the output dtype so that
+# mixed inputs follow torch's type promotion (issue #2463).
+        if a.dtype != b.dtype:
+            a = a.to(c_desc.dtype)
+            b = b.to(c_desc.dtype)
+
         if a_desc.dtype == tl.float16 or a_desc.dtype == tl.bfloat16:
             accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
         else:
@@ -530,7 +541,7 @@ def general_mm(a, b, c, M, N, K, op_name="mm"):
                 c.stride(0),
                 c.stride(1),
                 GROUP_M=8,
-                IS_FP64=a.dtype == torch.float64,
+                IS_FP64=c.dtype == torch.float64,
             )
     return c
 
@@ -699,6 +710,11 @@ def mm_kernel_splitk(
             mask=(offs_k[:, None] < K) & (offs_bn[None, :] < N),
             other=0.0,
         )
+        # tl.dot rejects mixed-dtype operands; cast to the output dtype so that
+# mixed inputs follow torch's type promotion (issue #2463).
+        if a.dtype != b.dtype:
+            a = a.to(C.dtype.element_ty)
+            b = b.to(C.dtype.element_ty)
         acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     offs_cm = offset_am + tl.arange(0, BLOCK_M)

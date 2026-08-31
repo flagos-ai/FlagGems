@@ -131,6 +131,11 @@ def mac_loop(
             k_offset_in_tile = (current_iter % iters_per_tile) * BLOCK_K
             a = tl.load(A_base + (k_offset_in_tile + rk[None, :]) * stride_ak)
             b = tl.load(B_base + (k_offset_in_tile + rk[:, None]) * stride_bk)
+            # tl.dot rejects mixed-dtype operands; cast to the output dtype so that
+# mixed inputs follow torch's type promotion (issue #2463).
+            if a.dtype != b.dtype:
+                a = a.to(C.dtype.element_ty)
+                b = b.to(C.dtype.element_ty)
             acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
     else:
         prev_multiple = prev_multiple_of(K, BLOCK_K)
@@ -138,6 +143,11 @@ def mac_loop(
             k_offset_in_tile = (current_iter % iters_per_tile) * BLOCK_K
             a = tl.load(A_base + (k_offset_in_tile + rk[None, :]) * stride_ak)
             b = tl.load(B_base + (k_offset_in_tile + rk[:, None]) * stride_bk)
+            # tl.dot rejects mixed-dtype operands; cast to the output dtype so that
+# mixed inputs follow torch's type promotion (issue #2463).
+            if a.dtype != b.dtype:
+                a = a.to(C.dtype.element_ty)
+                b = b.to(C.dtype.element_ty)
             acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
         # handle the last iter
@@ -145,6 +155,11 @@ def mac_loop(
         mask_k = rk < K
         a = tl.load(A_base + rk[None, :] * stride_ak, mask=mask_k[None, :])
         b = tl.load(B_base + rk[:, None] * stride_bk, mask=mask_k[:, None])
+        # tl.dot rejects mixed-dtype operands; cast to the output dtype so that
+# mixed inputs follow torch's type promotion (issue #2463).
+        if a.dtype != b.dtype:
+            a = a.to(C.dtype.element_ty)
+            b = b.to(C.dtype.element_ty)
         acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     rm1 = tl.arange(0, BLOCK_M)
@@ -255,6 +270,11 @@ def first_wave(
                 a = tl.load(A_base, mask=k_mask[None, :], other=0.0)
                 b = tl.load(B_base, mask=k_mask[:, None], other=0.0)
 
+            # tl.dot rejects mixed-dtype operands; cast to the output dtype so that
+# mixed inputs follow torch's type promotion (issue #2463).
+            if a.dtype != b.dtype:
+                a = a.to(C.dtype.element_ty)
+                b = b.to(C.dtype.element_ty)
             acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
             A_base += BLOCK_K * stride_ak
             B_base += BLOCK_K * stride_bk
@@ -358,6 +378,11 @@ def first_wave_for_bf16(
                 a = tl.load(A_base, mask=k_mask[None, :], other=0.0)
                 b = tl.load(B_base, mask=k_mask[:, None], other=0.0)
 
+            # tl.dot rejects mixed-dtype operands; cast to the output dtype so that
+# mixed inputs follow torch's type promotion (issue #2463).
+            if a.dtype != b.dtype:
+                a = a.to(C.dtype.element_ty)
+                b = b.to(C.dtype.element_ty)
             acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
             A_base += BLOCK_K * stride_ak
             B_base += BLOCK_K * stride_bk

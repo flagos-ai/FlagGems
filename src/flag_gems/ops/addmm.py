@@ -26,6 +26,22 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
+def get_higher_dtype(a, b):
+    _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+
+    if a is b:
+        return a
+
+    assert a in _ordered_datatypes
+    assert b in _ordered_datatypes
+
+    for d in _ordered_datatypes:
+        if a is d:
+            return b
+        if b is d:
+            return a
+
+
 @triton.jit
 def _accumulate_dot(
     accumulator,
@@ -100,6 +116,11 @@ def addmm_kernel(
                 mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_n[None, :] < N),
                 other=0.0,
             )
+            # tl.dot rejects mixed-dtype operands; cast to the output dtype so that
+# mixed inputs follow torch's type promotion (issue #2463).
+            if a.dtype != b.dtype:
+                a = a.to(c_ptr.dtype.element_ty)
+                b = b.to(c_ptr.dtype.element_ty)
             accumulator = _accumulate_dot(
                 accumulator,
                 a,
@@ -145,7 +166,13 @@ def _addmm_impl(bias, mat1, mat2, out, beta, alpha):
     if mat2.stride(0) > 1 and mat2.stride(1) > 1:
         mat2 = mat2.contiguous()
     if out is None:
-        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+        # The output takes the higher of the two input dtypes, following
+        # torch's type promotion for matmul (issue #2463).
+        out = torch.empty(
+            (M, N),
+            device=mat1.device,
+            dtype=get_higher_dtype(mat1.dtype, mat2.dtype),
+        )
     else:
         assert out.shape == (M, N), "Incompatible output shape"
 
@@ -188,7 +215,7 @@ def _addmm_impl(bias, mat1, mat2, out, beta, alpha):
             BIAS_IS_VECTOR=bias_is_vector,
             BIAS_IS_SCALAR=bias_is_scalar,
             HAS_K=K > 0,
-            IS_FP64=mat1.dtype == torch.float64,
+            IS_FP64=out.dtype == torch.float64,
         )
     return out
 

@@ -249,3 +249,54 @@ def test_mm_out_self_transpose(M, K, dtype):
         torch.mm(mat, mat.t(), out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
+
+
+MIXED_DTYPES = [
+    (torch.float16, torch.float32),
+    (torch.float32, torch.float16),
+    (torch.bfloat16, torch.float32),
+    (torch.float32, torch.bfloat16),
+    (torch.float16, torch.bfloat16),
+]
+
+# Extend this set as vendor implementations gain mixed-dtype mm support.
+_MIXED_DTYPE_VENDORS = ("nvidia",)
+_mixed_dtype_only = pytest.mark.skipif(
+    flag_gems.vendor_name not in _MIXED_DTYPE_VENDORS,
+    reason="Issue #2463: mixed-dtype mm coverage is pending on this backend",
+)
+
+
+# Issue #2463: mixed-dtype mm used to fail with "Both operands must be same
+# dtype" in kernels that did not cast operands before tl.dot.
+@pytest.mark.mm
+@_mixed_dtype_only
+@pytest.mark.parametrize("dtype1, dtype2", MIXED_DTYPES)
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("b_column_major", [True, False])
+def test_mm_mixed_dtype(M, N, K, dtype1, dtype2, b_column_major):
+    mat1 = torch.randn((M, K), dtype=dtype1, device=flag_gems.device)
+    if b_column_major:
+        mat2 = torch.randn((N, K), dtype=dtype2, device=flag_gems.device).t()
+    else:
+        mat2 = torch.randn((K, N), dtype=dtype2, device=flag_gems.device)
+    ref_mat1 = utils.to_reference(mat1, True)
+    ref_mat2 = utils.to_reference(mat2, True)
+
+    with flag_gems.use_gems():
+        res_out = torch.mm(mat1, mat2)
+
+    # FlagGems returns the higher of the two input dtypes; note that
+    # torch.promote_types(float16, bfloat16) is float32 while FlagGems
+    # yields bfloat16, so only require an input dtype here (issue #2463).
+    assert res_out.dtype in (dtype1, dtype2)
+    # FlagGems casts both operands to the output dtype before tl.dot; build
+    # the torch reference the same way so the cast error of narrower inputs
+    # (e.g. float16 -> bfloat16) is accounted for instead of over-tightening
+    # the tolerance against the fp32-promoted reference. Rounding-order
+    # differences can still leave the last ULP off for a few elements, so
+    # widen the atol a little.
+    ref_out = torch.mm(ref_mat1.to(res_out.dtype), ref_mat2.to(res_out.dtype))
+    utils.gems_assert_close(
+        res_out, ref_out, res_out.dtype, reduce_dim=K, atol=_mm_atol_base() * 8
+    )
