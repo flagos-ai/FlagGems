@@ -168,6 +168,7 @@ _FULL_CONFIG = (
         _weight_int4pack_mm_with_scales_and_zeros,
     ),
     ("alpha_dropout_", alpha_dropout_),
+    ("batch_norm_gather_stats_with_counts", batch_norm_gather_stats_with_counts),
     ("binary_cross_entropy_backward", binary_cross_entropy_backward),
     ("choose_qparams_optimized", choose_qparams_optimized),
     ("column_stack", column_stack),
