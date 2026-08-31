@@ -170,22 +170,37 @@ def _gdn_step(
     decay,
     beta_value,
     ACTIVATION_TYPE: tl.constexpr,
+    FP32_STATE_PRODUCTS: tl.constexpr,
+    FP32_UPDATE_PRODUCTS: tl.constexpr,
 ):
-    # Products use the activation dtype. Reductions and the recurrent state
-    # accumulator stay in FP32 to preserve long-sequence stability.
-    state_acc = (state_acc.to(ACTIVATION_TYPE) * decay.to(ACTIVATION_TYPE)).to(
-        tl.float32
-    )
-    prediction_product = (state_acc.to(ACTIVATION_TYPE) * k_low[:, None]).to(tl.float32)
+    if FP32_STATE_PRODUCTS:
+        state_acc *= decay.to(tl.float32)
+        prediction_product = state_acc * k_low.to(tl.float32)[:, None]
+    else:
+        state_acc = (state_acc.to(ACTIVATION_TYPE) * decay.to(ACTIVATION_TYPE)).to(
+            tl.float32
+        )
+        prediction_product = (state_acc.to(ACTIVATION_TYPE) * k_low[:, None]).to(
+            tl.float32
+        )
     residual = v_values.to(tl.float32) - tl.sum(prediction_product, axis=0)
-    residual = (residual.to(ACTIVATION_TYPE) * beta_value.to(ACTIVATION_TYPE)).to(
-        tl.float32
-    )
-    update_product = (k_low[:, None] * residual.to(ACTIVATION_TYPE)[None, :]).to(
-        tl.float32
-    )
+    if FP32_UPDATE_PRODUCTS:
+        residual *= beta_value.to(tl.float32)
+        update_product = k_low.to(tl.float32)[:, None] * residual[None, :]
+    else:
+        residual = (
+            residual.to(ACTIVATION_TYPE) * beta_value.to(ACTIVATION_TYPE)
+        ).to(tl.float32)
+        update_product = (
+            k_low[:, None] * residual.to(ACTIVATION_TYPE)[None, :]
+        ).to(tl.float32)
     state_acc += update_product
-    output_product = (state_acc.to(ACTIVATION_TYPE) * q_low[:, None]).to(tl.float32)
+    if FP32_STATE_PRODUCTS:
+        output_product = state_acc * q_low.to(tl.float32)[:, None]
+    else:
+        output_product = (state_acc.to(ACTIVATION_TYPE) * q_low[:, None]).to(
+            tl.float32
+        )
     output = tl.sum(output_product, axis=0)
     return state_acc, output
 
@@ -434,6 +449,8 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
     USE_STATE_INDICES: tl.constexpr,
     USE_QK_L2NORM: tl.constexpr,
     LOW_PRECISION_AMAX: tl.constexpr,
+    FP32_STATE_PRODUCTS: tl.constexpr,
+    FP32_UPDATE_PRODUCTS: tl.constexpr,
 ):
     i_v = tl.program_id(0)
     i_nh = tl.program_id(1)
@@ -517,6 +534,8 @@ def _fused_recurrent_gated_delta_rule_w8a16_fp8_kernel(
         exp(tl.load(g + g_offset).to(tl.float32)),
         tl.load(beta + beta_offset),
         ACTIVATION_TYPE=q.dtype.element_ty,
+        FP32_STATE_PRODUCTS=FP32_STATE_PRODUCTS,
+        FP32_UPDATE_PRODUCTS=FP32_UPDATE_PRODUCTS,
     )
 
     o_offsets = (
@@ -592,6 +611,8 @@ def _fused_recurrent_gated_delta_rule_sequence_w8a16_fp8_kernel(
     USE_STATE_INDICES: tl.constexpr,
     USE_QK_L2NORM: tl.constexpr,
     LOW_PRECISION_AMAX: tl.constexpr,
+    FP32_STATE_PRODUCTS: tl.constexpr,
+    FP32_UPDATE_PRODUCTS: tl.constexpr,
 ):
     i_v = tl.program_id(0)
     i_nh = tl.program_id(1)
@@ -683,6 +704,8 @@ def _fused_recurrent_gated_delta_rule_sequence_w8a16_fp8_kernel(
             exp(tl.load(g + g_offset).to(tl.float32)),
             tl.load(beta + beta_offset),
             ACTIVATION_TYPE=q.dtype.element_ty,
+            FP32_STATE_PRODUCTS=FP32_STATE_PRODUCTS,
+            FP32_UPDATE_PRODUCTS=FP32_UPDATE_PRODUCTS,
         )
         output_offsets = (
             i_b * stride_o_b + i_t * stride_o_t + i_hv * stride_o_h + o_v * stride_o_v
@@ -915,11 +938,13 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
 
     Packed inputs use shape ``[1, total_tokens, H, K]`` and ``cu_seqlens``
     describes each variable-length sequence. Non-packed inputs use shape
-    ``[N, T, H, K]``. Products use the BF16/FP16 activation dtype, while
-    reductions and the recurrent accumulator remain FP32. ``state_fp8`` and
-    its per-V-channel ``state_scale`` are updated in-place after each sequence.
-    Packed decode callers may pass ``max_sequence_length=1`` to select the
-    single-token fast path without synchronizing ``cu_seqlens`` back to CPU.
+    ``[N, T, H, K]``. Recurrent products select FP32 for sequence processing
+    and small decode grids, while large decode grids use the BF16/FP16
+    activation dtype. Reductions and the recurrent accumulator remain FP32.
+    ``state_fp8`` and its per-V-channel ``state_scale`` are updated in-place
+    after each sequence. Packed decode callers may pass
+    ``max_sequence_length=1`` to select the single-token fast path without
+    synchronizing ``cu_seqlens`` back to CPU.
     """
     if q.ndim != 4 or k.shape != q.shape or v.ndim != 4:
         raise ValueError("q/k/v must be 4D and q/k must have matching shapes")
@@ -1049,6 +1074,11 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
             T=T,
             BV=block_v,
             LOW_PRECISION_AMAX=False,
+            FP32_STATE_PRODUCTS=True,
+            FP32_UPDATE_PRODUCTS=not (
+                (N == 1 and average_sequence_length >= 16)
+                or (N == 4 and average_sequence_length >= 8)
+            ),
             num_warps=1,
             num_stages=2,
         )
@@ -1082,6 +1112,8 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
                 T=T,
                 BV=block_v,
                 LOW_PRECISION_AMAX=True,
+                FP32_STATE_PRODUCTS=False,
+                FP32_UPDATE_PRODUCTS=False,
                 num_warps=1,
                 num_stages=2,
             )
@@ -1093,6 +1125,8 @@ def fused_recurrent_gated_delta_rule_w8a16_fp8(
         **kernel_args,
         BV=block_v,
         LOW_PRECISION_AMAX=N >= 128,
+        FP32_STATE_PRODUCTS=N < 128 and N != 2,
+        FP32_UPDATE_PRODUCTS=N < 128 and N != 2,
         N=N,
         num_warps=1,
         num_stages=1,
