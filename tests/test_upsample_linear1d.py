@@ -20,6 +20,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from .accuracy_utils import (
     FLOAT_DTYPES,
     UPSAMPLE_SHAPES_1D,
@@ -160,6 +161,17 @@ def upsample_linear1d_backward_call(grad, input_size, align_corners):
     return out.reshape(orig_shape)
 
 
+def _upsample_linear1d_backward_reference(grad, input_size, align_corners):
+    dtype = grad.dtype
+    use_fp32 = not utils.TO_CPU and dtype in (torch.float16, torch.bfloat16)
+    if use_fp32:
+        # Native low-precision backward may use atomic accumulation.
+        grad = grad.float()
+
+    out = upsample_linear1d_backward_call(grad, input_size, align_corners)
+    return out.to(dtype) if use_fp32 else out
+
+
 @pytest.mark.upsample_linear1d_backward
 @pytest.mark.parametrize(
     "shape",
@@ -182,6 +194,10 @@ def upsample_linear1d_backward_call(grad, input_size, align_corners):
 @pytest.mark.parametrize("edge_case", [False, True])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads" and not utils.TO_CPU,
+    reason="MThreads native upsample_linear1d_backward reference is incorrect; run with --ref cpu.",
 )
 def test_upsample_linear1d_backward(
     shape, dtype, scale_factor, align_corners, layout, edge_case
@@ -210,7 +226,7 @@ def test_upsample_linear1d_backward(
     )
     ref_grad = to_reference(res_grad)
 
-    ref_out = upsample_linear1d_backward_call(
+    ref_out = _upsample_linear1d_backward_reference(
         ref_grad,
         shape,
         align_corners,
@@ -239,3 +255,31 @@ def test_upsample_linear1d_backward(
         reduce_dim = (out_w + input_w - 1) // input_w
 
     gems_assert_close(res_out, ref_out, dtype, atol=atol, reduce_dim=reduce_dim)
+
+
+@pytest.mark.upsample_linear1d_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(not utils.bf16_is_supported, reason="bfloat16 is not supported")
+def test_upsample_linear1d_backward_bfloat16_cancellation():
+    dtype = torch.bfloat16
+    shape = (1, 1, 64)
+    grad = torch.zeros((1, 1, 128), dtype=dtype, device=flag_gems.device)
+    grad[0, 0, 119:123] = torch.tensor(
+        [1.546875, 2.328125, -2.84375, 0.34765625],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+
+    ref_grad = grad.float().cpu()
+    ref_out = upsample_linear1d_backward_call(ref_grad, shape, align_corners=False).to(
+        dtype
+    )
+    if not utils.TO_CPU:
+        ref_out = ref_out.to(grad.device)
+
+    with flag_gems.use_gems():
+        res_out = upsample_linear1d_backward_call(grad, shape, align_corners=False)
+
+    gems_assert_close(res_out, ref_out, dtype, atol=2e-2)
