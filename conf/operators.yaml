@@ -5019,7 +5019,7 @@ ops:
   - id: geometric
     description: Draws random numbers from a geometric distribution.
     for:
-      - geometric.float
+      - geometric
     labels:
       - aten
     kind:
@@ -5029,7 +5029,7 @@ ops:
   - id: geometric_
     description: Fills self tensor with elements drawn from the geometric distribution.
     for:
-      - geometric_.float
+      - geometric_
     labels:
       - aten
     kind:
@@ -5109,7 +5109,7 @@ ops:
   - id: greater_out
     description: A variant of `greater` that saves the output to the specified `out`.
     for:
-      - greater.out
+      - greater.Tensor_out
     labels:
       - aten
     kind:
@@ -7151,7 +7151,7 @@ ops:
     description: |
       Performs int8 weight-only quantized matrix multiplication with per-channel scales.
     for:
-      - weight_int8pack_mm
+      - _weight_int8pack_mm
     labels:
       - aten
       - KernelGen
@@ -11267,7 +11267,7 @@ ops:
       A variant of `special_chebyshev_polynomial_w()` with output saved to
       provided `out`.
     for:
-      - special.chebyshev_polynomial_w.out
+      - special_chebyshev_polynomial_w.out
     labels:
       - aten
       - KernelGen
@@ -11539,6 +11539,19 @@ ops:
       of order 1, i1e(x) = i1(x) * exp(-|x|), for each element in the input tensor.
     for:
       - special_i1e
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: special_i1e_out
+    description: |
+      A variant of `special_i1e()` that saves the output to the provided `out` tensor.
+    for:
+      - special_i1e.out
     labels:
       - aten
       - pointwise
