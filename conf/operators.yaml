@@ -1235,6 +1235,30 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: column_stack
+    description: |
+      Creates a new tensor by horizontally stacking the tensors in tensors. Equivalent to
+      torch.hstack after 0-D and 1-D tensors have been reshaped into (numel, 1) columns.
+    for:
+      - column_stack
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: column_stack_out
+    description: A variant of column_stack() that writes the result into the out tensor.
+    for:
+      - column_stack.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: blackman_window
     description: Computes the Blackman window function.
     for:
@@ -1250,6 +1274,31 @@ ops:
     description: A variant of blackman_window() that takes an explicit periodic flag.
     for:
       - blackman_window.periodic
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: binomial
+    description: |
+      Draws samples from a binomial distribution with the number of trials
+      given by `count` and the success probability given by `prob`.
+    for:
+      - binomial
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
+  - id: binomial_out
+    description: |
+      A variant of binomial() that writes the result into the out tensor.
+    for:
+      - binomial.out
     labels:
       - aten
       - KernelGen
@@ -2316,6 +2365,23 @@ ops:
       - Tensor
     stages:
       - alpha: '5.4'
+  - id: coalesced_
+    description: |
+      Sets the `coalesced` flag of a sparse coordinate (COO) tensor in place
+      and returns `self`. This is a metadata-only mutation: the underlying
+      indices/values data is not modified, only the `is_coalesced` bit is
+      toggled. The flag flip is dispatched through the native backend kernel
+      (below the autograd key); a Triton identity kernel is provided over the
+      values data as the per-element implementation.
+    for:
+      - _coalesced_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: col2im
     description: |
       Rearranges column blocks back into a multidimensional tensor (inverse of im2col).
@@ -2471,6 +2537,19 @@ ops:
       - LinearAlg
     stages:
       - beta: '5.3'
+  - id: conj_physical_
+    description: |
+      In-place version of `conj_physical`.
+      Computes the element-wise conjugate of the given `input` tensor in place.
+      If `input` has a non-complex dtype, this function just returns `input`.
+    for:
+      - conj_physical_
+    labels:
+      - aten
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: constant_pad_nd
     description: |
       Pads the input tensor boundaries with a constant value.
@@ -3877,6 +3956,19 @@ ops:
       - Quantization
     stages:
       - alpha: '5.4'
+  - id: fake_quantize_per_tensor_affine
+    description: Applies per-tensor affine fake quantization using shared scale and zero-point parameters.
+    for:
+      - fake_quantize_per_tensor_affine
+      - fake_quantize_per_tensor_affine.tensor_qparams
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Quantization
+    stages:
+      - alpha: '5.4'
   - id: feature_dropout
     description: |
       Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.
@@ -3924,6 +4016,20 @@ ops:
       - KernelGen
     kind:
       - Quantization
+    stages:
+      - alpha: '5.4'
+  - id: fill_diagonal_
+    description: |
+      Fills the main diagonal of a tensor that has at least two dimensions
+      with the specified scalar value, in-place.
+    for:
+      - fill_diagonal_
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Tensor
     stages:
       - alpha: '5.4'
   - id: fill_scalar
@@ -4134,6 +4240,20 @@ ops:
       The input must have at least two dimensions.
     for:
       - fliplr
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
+  - id: flipud
+    description: |
+      Flips a tensor in the up-to-down direction by reversing dimension 0.
+      The input must have at least one dimension.
+    for:
+      - flipud
     labels:
       - aten
       - pointwise
@@ -5394,6 +5514,20 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: hsplit
+    description: |
+      Split a tensor into multiple sub-tensors horizontally (column-wise).
+      Equivalent to tensor_split with dim=1 for 2D+ tensors, or dim=0 for 1D tensors.
+    for:
+      - hsplit.array
+      - hsplit.int
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
+    stages:
+      - alpha: '5.4'
   - id: hstack
     description: |
       Stack tensors in sequence horizontally (column wise). This is equivalent to concatenation
@@ -6501,6 +6635,28 @@ ops:
       - LinearAlg
     stages:
       - alpha: '5.4'
+  - id: linalg_matrix_sqrth
+    description: Computes the principal square root of a symmetric or Hermitian positive-definite matrix.
+    for:
+      - linalg_matrix_sqrth
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
+  - id: linalg_matrix_sqrth_out
+    description: Writes the principal square root of a symmetric or Hermitian positive-definite matrix to an output tensor.
+    for:
+      - linalg_matrix_sqrth.out
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - LinearAlg
+    stages:
+      - alpha: '5.4'
   - id: linalg_slogdet
     description: |
       Computes the sign and natural logarithm of the absolute value of the determinant of a square matrix using LU decomposition with partial pivoting.
@@ -6862,6 +7018,20 @@ ops:
       - Math
     stages:
       - beta: '5.4'
+  - id: nested_sum_backward
+    description: |
+      Triton kernel implementation for `_nested_sum_backward`, the backward of
+      a (nested) tensor `sum` over a single dimension. It broadcasts the
+      gradient back to the shape of the original input along the reduced dim.
+    for:
+      - _nested_sum_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: scaled_dot_product_cudnn_attention
     description: |
       Computes scaled dot product attention using the cuDNN attention API
@@ -6934,6 +7104,20 @@ ops:
       - KernelGen
     kind:
       - Math
+    stages:
+      - alpha: '5.4'
+  - id: unsafe_split_with_sizes
+    description: |
+      Splits a tensor into sub-tensors along a given dimension, where each split
+      has a specified size. Returns views into the original tensor without safety
+      checks.
+    for:
+      - unsafe_split_with_sizes
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Tensor
     stages:
       - alpha: '5.4'
   - id: upsample_bilinear2d_aa_backward
@@ -11506,6 +11690,21 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: special_ndtri
+    description: |
+      Computes the argument `x` for which the area under the standard Gaussian
+      probability density function, integrated from minus infinity to `x`, equals
+      `input`. In other words it is the inverse of the standard normal CDF.
+    for:
+      - special_ndtri
+    labels:
+      - aten
+      - pointwise
+      - KernelGen
+    kind:
+      - Math
+    stages:
+      - alpha: '5.4'
   - id: special_round
     description: |
       Rounds a tensor to the nearest integer, with ties rounding to the nearest
@@ -12046,6 +12245,17 @@ ops:
       - Math
     stages:
       - alpha: '5.3'
+  - id: thnn_differentiable_gru_cell_backward
+    description: Computes differentiable gradients for a fused GRU cell.
+    for:
+      - _thnn_differentiable_gru_cell_backward
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: thnn_fused_lstm_cell
     description: Fused LSTM cell computation with optional input and hidden biases.
     for:
@@ -12591,6 +12801,42 @@ ops:
     labels:
       - aten
       - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: upsample_lanczos2d_aa
+    description: Resizes a 4D image tensor with antialiased Lanczos-3 interpolation.
+    for:
+      - _upsample_lanczos2d_aa
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: upsample_lanczos2d_aa_out
+    description: An out variant of `_upsample_lanczos2d_aa()`.
+    for:
+      - _upsample_lanczos2d_aa.out
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
+  - id: upsample_lanczos2d_aa_vec
+    description: A vector-parameter variant of `_upsample_lanczos2d_aa()`.
+    for:
+      - _upsample_lanczos2d_aa.vec
+    labels:
+      - aten
+      - KernelGen
+      - Reduction
     kind:
       - NeuralNetwork
     stages:
