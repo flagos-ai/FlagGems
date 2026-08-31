@@ -23,6 +23,7 @@ import flag_gems
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
+from flag_gems.utils.device_info import get_device_capability
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 logger = logging.getLogger(__name__)
@@ -1648,7 +1649,7 @@ def flash_varlen_fwd_kernel(
         k_len = k_len_cache
 
     # Noop CTA
-    if m_block * BLOCK_M > q_len:
+    if m_block * BLOCK_M >= q_len:
         return
 
     # is_even_mn = (q_len % BLOCK_M == 0) and (k_len % BLOCK_N == 0)
@@ -2303,6 +2304,78 @@ class fwd_params:
         return tuple(getattr(self, k) for k in self.__slots__)
 
 
+def _get_varlen_fwd_config(
+    args,
+    head_size,
+    use_varlen_split_d,
+    is_paged,
+    is_causal,
+    window_size_left,
+    window_size_right,
+    is_alibi,
+    is_softcap,
+    is_dropout,
+    total_q,
+    batch_size,
+    num_heads,
+):
+    total_rows = total_q * num_heads
+    num_sms = torch_device_fn.get_device_properties(
+        flag_gems.device
+    ).multi_processor_count
+    avg_rows_per_sm = total_rows / num_sms
+    avg_rows_per_batch = total_q / batch_size
+    avg_rows_per_cta = min(avg_rows_per_batch, avg_rows_per_sm)
+
+    if avg_rows_per_cta > 64:
+        varlen_fwd_config_str = "mha_block_128"
+    elif avg_rows_per_cta > 32:
+        varlen_fwd_config_str = "mha_block_64"
+    elif avg_rows_per_cta > 16:
+        varlen_fwd_config_str = "mha_block_32"
+    else:
+        varlen_fwd_config_str = "mha_block_16"
+    if flag_gems.vendor_name == "mthreads":
+        varlen_fwd_config_str = "mha_block_32"
+
+    cfg = runtime.get_heuristic_config(varlen_fwd_config_str)
+    cfg_params = {
+        "BLOCK_M": cfg["BLOCK_M"](args),
+        "BLOCK_N": cfg["BLOCK_N"](args),
+        "BLOCK_K": triton.next_power_of_2(head_size),
+        "BLOCK_D": 64 if use_varlen_split_d else triton.next_power_of_2(head_size),
+        "SPLIT_D": use_varlen_split_d,
+        "num_warps": cfg["num_warps"](args),
+        "num_stages": 1 if not is_paged else cfg["num_stages"](args),
+    }
+
+    # Hopper FP8 tuning favors wider KV tiles and eight warps. Keep unmeasured
+    # feature combinations on the generic runtime configuration.
+    is_standard_attention = (
+        not is_causal and window_size_left == -1 and window_size_right == -1
+    ) or (is_causal and window_size_left == -1 and window_size_right == 0)
+    is_hopper = flag_gems.vendor_name == "nvidia" and get_device_capability()[0] == 9
+    if (
+        is_hopper
+        and not is_paged
+        and is_standard_attention
+        and not is_alibi
+        and not is_softcap
+        and not is_dropout
+        and head_size in (64, 128)
+    ):
+        cfg_params.update(
+            {
+                "BLOCK_M": 128,
+                "BLOCK_N": 128 if head_size == 64 and not is_causal else 64,
+                "num_warps": 8,
+                "num_stages": 1,
+            }
+        )
+
+    return cfg_params
+
+
 def mha_varlan_fwd(
     q,
     k,
@@ -2638,39 +2711,21 @@ def mha_varlan_fwd(
         kernel = flash_varlen_fwd_kernel[grid]
         args = tuple(getattr(params, k) for k in params.__slots__)
 
-        # We assess which phase the requests are likely to be in and set the config accordingly.
-        total_rows = total_q * num_heads
-        num_sms = torch_device_fn.get_device_properties(
-            flag_gems.device
-        ).multi_processor_count
-        avg_rows_per_sm = total_rows / num_sms
-        avg_rows_per_batch = total_q / batch_size
-        avg_rows_per_cta = min(avg_rows_per_batch, avg_rows_per_sm)
-        # Heuristic: if avg_rows_per_sm >= 128, we are likely in prefill phase.
-        # This is a rough heuristic and may not be accurate for all scenarios.
-        if avg_rows_per_cta > 64:
-            varlen_fwd_config_str = "mha_block_128"
-        elif avg_rows_per_cta > 32:
-            varlen_fwd_config_str = "mha_block_64"
-        elif avg_rows_per_cta > 16:
-            varlen_fwd_config_str = "mha_block_32"
-        else:
-            varlen_fwd_config_str = "mha_block_16"
-        if flag_gems.vendor_name == "mthreads":
-            varlen_fwd_config_str = "mha_block_32"
-
-        cfg = runtime.get_heuristic_config(varlen_fwd_config_str)
-        cfg_params = {
-            "BLOCK_M": cfg["BLOCK_M"](args),
-            "BLOCK_N": cfg["BLOCK_N"](args),
-            "BLOCK_K": triton.next_power_of_2(head_size),
-            # QK still uses the full BLOCK_K; PV and output use BLOCK_D=64
-            # for D128 split-D.
-            "BLOCK_D": 64 if use_varlen_split_d else triton.next_power_of_2(head_size),
-            "SPLIT_D": use_varlen_split_d,
-            "num_warps": cfg["num_warps"](args),
-            "num_stages": 1 if not is_paged else cfg["num_stages"](args),
-        }
+        cfg_params = _get_varlen_fwd_config(
+            args,
+            head_size,
+            use_varlen_split_d,
+            is_paged,
+            is_causal,
+            window_size_left,
+            window_size_right,
+            is_alibi,
+            is_softcap,
+            is_dropout,
+            total_q,
+            batch_size,
+            num_heads,
+        )
 
         logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
         kernel(*args, **cfg_params)
@@ -3032,39 +3087,21 @@ def mha_varlan_fwd_opt(
         kernel = flash_varlen_fwd_kernel[grid]
         args = tuple(getattr(params, k) for k in params.__slots__)
 
-        # We assess which phase the requests are likely to be in and set the config accordingly.
-        total_rows = total_q * num_heads
-        num_sms = torch_device_fn.get_device_properties(
-            flag_gems.device
-        ).multi_processor_count
-        avg_rows_per_sm = total_rows / num_sms
-        avg_rows_per_batch = total_q / batch_size
-        avg_rows_per_cta = min(avg_rows_per_batch, avg_rows_per_sm)
-        # Heuristic: if avg_rows_per_sm >= 128, we are likely in prefill phase.
-        # This is a rough heuristic and may not be accurate for all scenarios.
-        if avg_rows_per_cta > 64:
-            varlen_fwd_config_str = "mha_block_128"
-        elif avg_rows_per_cta > 32:
-            varlen_fwd_config_str = "mha_block_64"
-        elif avg_rows_per_cta > 16:
-            varlen_fwd_config_str = "mha_block_32"
-        else:
-            varlen_fwd_config_str = "mha_block_16"
-        if flag_gems.vendor_name == "mthreads":
-            varlen_fwd_config_str = "mha_block_32"
-
-        cfg = runtime.get_heuristic_config(varlen_fwd_config_str)
-        cfg_params = {
-            "BLOCK_M": cfg["BLOCK_M"](args),
-            "BLOCK_N": cfg["BLOCK_N"](args),
-            "BLOCK_K": triton.next_power_of_2(head_size),
-            # QK still uses the full BLOCK_K; PV and output use BLOCK_D=64
-            # for D128 split-D.
-            "BLOCK_D": 64 if use_varlen_split_d else triton.next_power_of_2(head_size),
-            "SPLIT_D": use_varlen_split_d,
-            "num_warps": cfg["num_warps"](args),
-            "num_stages": 1 if not is_paged else cfg["num_stages"](args),
-        }
+        cfg_params = _get_varlen_fwd_config(
+            args,
+            head_size,
+            use_varlen_split_d,
+            is_paged,
+            is_causal,
+            window_size_left,
+            window_size_right,
+            is_alibi,
+            is_softcap,
+            is_dropout,
+            total_q,
+            batch_size,
+            num_heads,
+        )
 
         logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
         kernel(*args, **cfg_params)

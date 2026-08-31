@@ -1054,20 +1054,17 @@ def test_flash_attn_varlen_func_w8a8_fp8(
     reason="FP8 is not available",
 )
 @pytest.mark.parametrize(
-    ["head_size", "dtype", "is_causal"],
+    ["head_size", "dtype", "is_causal", "q_lengths", "kv_lengths"],
     [
-        (64, torch.float16, False),
-        (128, torch.bfloat16, True),
+        (64, torch.float16, False, [17, 129], [33, 257]),
+        (128, torch.bfloat16, True, [33, 257], [17, 129]),
+        (64, torch.float16, False, [128, 257], [257, 129]),
     ],
 )
-def test_flash_attn_varlen_func_w8a8_fp8_ragged(head_size, dtype, is_causal):
+def test_flash_attn_varlen_func_w8a8_fp8_ragged(
+    head_size, dtype, is_causal, q_lengths, kv_lengths
+):
     device = torch_device_fn.current_device()
-    if is_causal:
-        q_lengths = [33, 257]
-        kv_lengths = [17, 129]
-    else:
-        q_lengths = [17, 129]
-        kv_lengths = [33, 257]
     num_head = 8
     q, k, v = make_input(
         len(q_lengths),

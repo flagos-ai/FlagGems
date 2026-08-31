@@ -483,6 +483,13 @@ class FlashAttnVarlenFuncW8A8FP8Benchmark(base.GenericBenchmark):
                     ]
                 )
 
+        self.shapes.extend(
+            [
+                (8, 8192, 16, 128, True),
+                (8, 8192, 32, 64, True),
+            ]
+        )
+
     def set_more_shapes(self):
         return []
 
