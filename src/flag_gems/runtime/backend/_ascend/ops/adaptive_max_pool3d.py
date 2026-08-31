@@ -4,7 +4,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -249,20 +248,28 @@ def _fill_identity_indices_kernel(
 
 @triton.jit
 def _merge_d2h_indices_kernel(
-    d_argmax_ptr,
+    d_local_ptr,
     spatial_idx_ptr,
     out_idx_ptr,
     hw_in,
     out_hw,
+    win_d,
+    in_d,
+    out_d,
     total_elements,
     BLOCK_SIZE: tl.constexpr,
+    UNIFORM_D: tl.constexpr,
 ):
     """Merge D indices with spatial indices.
     For each output element:
       sidx = spatial_idx[pos]           # flattened h*W + w from 2D pool
-      d_idx = d_argmax[batch, sidx]     # D index at winning spatial position
-      full_idx = d_idx * hw_in + sidx
-    This replaces a slow torch.gather on NPU with a fused kernel."""
+      d_local = d_local[batch, sidx]    # D index within its window
+      d_global = (batch % out_d) * win_d + d_local      (UNIFORM_D)
+               = (batch % out_d) * in_d // out_d + d_local   (non-uniform)
+      full_idx = d_global * hw_in + sidx
+    Folding the per-out_d D offset here (instead of a host-side broadcast add
+    over the full (nc*out_d, hw) tensor) removes a slow torch op.  This
+    replaces a slow torch.gather on NPU with a fused kernel."""
     pid = tl.program_id(0) + tl.program_id(1) * tl.num_programs(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < total_elements
@@ -274,12 +281,17 @@ def _merge_d2h_indices_kernel(
     # Load spatial index
     sidx = tl.load(spatial_idx_ptr + offsets, mask=mask, other=0)
 
-    # Load D index from d_argmax at (batch, sidx)
+    # Load local D index from d_local at (batch, sidx)
     d_arg_pos = batch * hw_in + sidx
-    d_val = tl.load(d_argmax_ptr + d_arg_pos, mask=mask, other=0)
+    d_local = tl.load(d_local_ptr + d_arg_pos, mask=mask, other=0)
+
+    # Global D index = d_out * win_d + local index (uniform) or
+    # d_out * in_d // out_d + local index (non-uniform window start).
+    d_out = batch % out_d
+    d_global = d_local + tl.where(UNIFORM_D, d_out * win_d, d_out * in_d // out_d)
 
     # Full 3D index
-    tl.store(out_idx_ptr + offsets, d_val * hw_in + sidx, mask=mask)
+    tl.store(out_idx_ptr + offsets, d_global * hw_in + sidx, mask=mask)
 
 
 # ==============================================================================
@@ -1047,17 +1059,20 @@ def _pool2d_row_kernel(
         )
         m = (in_cols[None, :] >= w0[:, None]) & (in_cols[None, :] < w1[:, None])
         v = tl.where(m, row[None, :], min_val)
+        # NaN in the window must win (matches PyTorch).  tl.max drops NaN, so
+        # detect it first and force the row result to NaN.
+        has_nan = tl.max(tl.where(v != v, 1.0, 0.0), axis=1)
         if RETURN_INDICES:
             # row_argmax is the column index == w_in (in_cols runs 0..iw-1).
             row_max, row_argmax = tl.max(v, axis=1, return_indices=True)
-            row_max = row_max.to(dtype)
-            # NaN-aware max: a NaN in the window must win (matches PyTorch).
+            row_max = tl.where(has_nan > 0, float("nan"), row_max).to(dtype)
             better = (row_max > acc) | (row_max != row_max)
             acc = tl.where(better, row_max, acc)
             acc_idx = tl.where(better, h * iw + row_argmax, acc_idx)
         else:
             # Values-only: skip the argmax computation entirely.
             row_max = tl.max(v, axis=1).to(dtype)
+            row_max = tl.where(has_nan > 0, float("nan"), row_max)
             better = (row_max > acc) | (row_max != row_max)
             acc = tl.where(better, row_max, acc)
 
@@ -1114,7 +1129,10 @@ def _pool2d_batch_kernel(
             in_cols[None, None, :] < w1[None, :, None]
         )
         v = tl.where(wm, row[:, None, :], min_val)
+        # tl.max drops NaN; detect it and force row_max to NaN.
+        has_nan = tl.max(tl.where(v != v, 1.0, 0.0), axis=2)
         row_max = tl.max(v, axis=2).to(dtype)
+        row_max = tl.where(has_nan > 0, float("nan"), row_max)
         acc = _max_nan(acc, row_max).to(dtype)
 
     out_base = out_ptr + b_idx[:, None] * oh * ow + oh_pos * ow + ow_idx[None, :]
@@ -1430,6 +1448,105 @@ def _pool2d_uniform_pow2(input, oh, ow):
     return cur.view(batch, oh, ow)
 
 
+@libentry()
+@triton.jit
+def _wpool_flatidx_kernel(
+    in_ptr,
+    fidx_ptr,
+    out_ptr,
+    out_fidx_ptr,
+    OUT_SPATIAL: tl.constexpr,
+):
+    """Even/odd W-halve that also carries the winning element's flat index.
+
+    ``fidx_ptr`` holds, for every input position, the flat index of the element
+    that produced the current value (initially the position itself).  After each
+    halve the survivor's flat index is propagated, so at the end the index array
+    points at the original input element holding the pooled max."""
+    pid = tl.program_id(0)
+    offs = tl.arange(0, OUT_SPATIAL)
+    even_v = tl.load(in_ptr + pid * (2 * OUT_SPATIAL) + 2 * offs)
+    odd_v = tl.load(in_ptr + pid * (2 * OUT_SPATIAL) + 2 * offs + 1)
+    even_i = tl.load(fidx_ptr + pid * (2 * OUT_SPATIAL) + 2 * offs)
+    odd_i = tl.load(fidx_ptr + pid * (2 * OUT_SPATIAL) + 2 * offs + 1)
+    v = _max_nan(even_v, odd_v)
+    better = (odd_v > even_v) | (odd_v != odd_v)
+    tl.store(out_ptr + pid * OUT_SPATIAL + offs, v)
+    tl.store(out_fidx_ptr + pid * OUT_SPATIAL + offs, tl.where(better, odd_i, even_i))
+
+
+@libentry()
+@triton.jit
+def _hpool_flatidx_kernel(
+    in_ptr,
+    fidx_ptr,
+    out_ptr,
+    out_fidx_ptr,
+    TOTAL_OUT,
+    LOG_S: tl.constexpr,
+    S: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Strided H-halve that also carries the winning row's flat index."""
+    pid = tl.program_id(0)
+    out_idx = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = out_idx < TOTAL_OUT
+    m = out_idx >> LOG_S
+    s = out_idx & (S - 1)
+    even_off = (m << 1) * S + s
+    even_v = tl.load(in_ptr + even_off, mask=mask)
+    odd_v = tl.load(in_ptr + even_off + S, mask=mask)
+    even_i = tl.load(fidx_ptr + even_off, mask=mask)
+    odd_i = tl.load(fidx_ptr + even_off + S, mask=mask)
+    v = _max_nan(even_v, odd_v)
+    better = (odd_v > even_v) | (odd_v != odd_v)
+    tl.store(out_ptr + out_idx, v, mask=mask)
+    tl.store(out_fidx_ptr + out_idx, tl.where(better, odd_i, even_i), mask=mask)
+
+
+def _pool2d_uniform_pow2_idx(input, oh, ow):
+    """Uniform power-of-two window pool WITH indices via repeated even/odd
+    halving that carries the winner's flat input index.
+
+    Handles ih == (2**k) * oh and iw == (2**k) * ow with iw/ow (after the
+    W-halves) a power of two.  Each W/H halve propagates the flat index of the
+    element that produced the pooled value, so the final index points at the
+    original input element — matching torch.max's first-max tie-breaking (even /
+    earlier position wins ties)."""
+    batch, ih, iw = input.shape
+    flat = input.reshape(-1)
+    # Local flat index within each batch's (ih, iw) slice (matches torch's
+    # adaptive_max_pool2d indices, which are per-batch).
+    fidx = torch.arange(ih * iw, device=input.device, dtype=torch.int32).repeat(batch)
+    cur = flat
+    # Halve W: iw -> ow.
+    while iw > ow:
+        half = torch.empty(cur.numel() // 2, device=input.device, dtype=input.dtype)
+        half_fidx = torch.empty(
+            cur.numel() // 2, device=input.device, dtype=torch.int32
+        )
+        _wpool_flatidx_kernel[(triton.cdiv(half.numel(), 256),)](
+            cur, fidx, half, half_fidx, OUT_SPATIAL=256
+        )
+        cur = half
+        fidx = half_fidx
+        iw //= 2
+    # Halve H: ih -> oh (stride = current iw; pow2 for this path).
+    while ih > oh:
+        half = torch.empty(cur.numel() // 2, device=input.device, dtype=input.dtype)
+        half_fidx = torch.empty(
+            cur.numel() // 2, device=input.device, dtype=torch.int32
+        )
+        log_s = (iw - 1).bit_length()
+        _hpool_flatidx_kernel[(triton.cdiv(half.numel(), 1024),)](
+            cur, fidx, half, half_fidx, half.numel(), LOG_S=log_s, S=iw, BLOCK=1024
+        )
+        cur = half
+        fidx = half_fidx
+        ih //= 2
+    return cur.view(batch, oh, ow), fidx.to(torch.int64).view(batch, oh, ow)
+
+
 def _pool2d_triton(input, oh, ow, return_indices=False):
     """2D adaptive max pool via the FlagGems Triton kernel.
 
@@ -1512,12 +1629,21 @@ def _pool2d_triton(input, oh, ow, return_indices=False):
         )
         return output
 
-    # Indices path: exact win=2x2 uses the even/odd pool with index
-    # reconstruction (element-wise, ~3.6x faster than the row kernel's
-    # cross-lane tl.max(return_indices)).  Otherwise use the coalesced row
-    # kernel with argmax tracking.
-    if ih == 2 * oh and iw == 2 * ow and (batch * ih * ow) % 256 == 0:
-        return _pool2d_uniform_evenodd_idx(input, oh, ow)
+    # Indices path: uniform power-of-two windows use the even/odd halving with
+    # index tracking (element-wise, far faster than the row kernel's
+    # cross-lane tl.max(return_indices)); win=2x2 is a special case of it but
+    # keeps its dedicated kernel.  Otherwise use the coalesced row kernel.
+    if (
+        ih % oh == 0
+        and iw % ow == 0
+        and (ih // oh) & (ih // oh - 1) == 0  # pow2
+        and (iw // ow) & (iw // ow - 1) == 0  # pow2
+        and (ow & (ow - 1)) == 0  # pow2 row width for the strided H-halve
+        and (batch * ih * iw) % 256 == 0
+    ):
+        if ih == 2 * oh and iw == 2 * ow:
+            return _pool2d_uniform_evenodd_idx(input, oh, ow)
+        return _pool2d_uniform_pow2_idx(input, oh, ow)
     mwh = _compute_max_win(ih, oh)
     block_w = triton.next_power_of_2(ow)
     block_in = triton.next_power_of_2(iw)
@@ -2132,11 +2258,15 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
             pool_in = input.reshape(nc * in_d, in_h, in_w)
             pool_out = _pool2d_triton(pool_in, out_h, out_w, return_indices=False)
             d_reduced = pool_out.view(in_n, in_c, out_d, win_d, out_h, out_w)
-            # flag_gems.amax reduces dim=3 (win_d) — Triton kernel.
-            output = flag_gems.amax(d_reduced, dim=[3])
+            # NaN-aware D-reduce over win_d (dim=3) via the in-file Triton
+            # D-reduce kernel — no torch native max / NaN-mask ops.
+            d_vals = _d_reduce_unified(
+                d_reduced.reshape(nc * out_d, win_d, out_h * out_w),
+                return_indices=False,
+            ).view(in_n, in_c, out_d, out_h, out_w)
             if return_indices is False:
-                return output
-            return output, _dummy_indices
+                return d_vals
+            return d_vals, _dummy_indices
 
         if not return_indices:
             nc_out = in_n * in_c * out_d
@@ -2149,23 +2279,10 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
                 input.reshape(nc_out, win_d, in_hw), return_indices=True
             )
             d_reduced = d_vals_flat.view(in_n, in_c, out_d, in_h, in_w)
-            d_local = d_local.view(in_n, in_c, out_d, in_h, in_w)
-            # Global D index = d_out * win_d + local index.  A rank-5 broadcast
-            # add (d_local + d_off.view(1,1,out_d,1,1)) trips an Ascend
-            # "strides must not be zero" compile error for some shapes, so fold
-            # the offset via a rank-2 broadcast add instead (compiles cleanly).
-            d_argmax = (
-                d_local.reshape(in_n * in_c * out_d, in_h * in_w)
-                + (
-                    (
-                        torch.arange(
-                            in_n * in_c * out_d, device=input.device, dtype=torch.int64
-                        )
-                        % out_d
-                    )
-                    * win_d
-                ).view(-1, 1)
-            ).view(in_n, in_c, out_d, in_h, in_w)
+            # Keep the LOCAL D index (within its win_d window); the per-out_d
+            # offset d_out * win_d is folded into the merge kernel below so no
+            # host-side broadcast add over the huge (nc*out_d, hw) tensor runs.
+            d_argmax = d_local.view(in_n, in_c, out_d, in_h, in_w)
     else:
         # Non-uniform D windows: fall back to per-out_d loop.
         d_reduced = torch.empty(
@@ -2192,9 +2309,9 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
                 d_vals_flat, d_idxs_flat = _d_reduce_unified(
                     d_slice.reshape(nc, d_len, hw), return_indices=True
                 )
-                d_argmax[:, :, d_out, :, :] = (
-                    d_idxs_flat.view(in_n, in_c, in_h, in_w) + d_start
-                )
+                # Keep the LOCAL D index; the merge kernel adds the window
+                # start (d_out * in_d // out_d) — avoids a host-side add.
+                d_argmax[:, :, d_out, :, :] = d_idxs_flat.view(in_n, in_c, in_h, in_w)
                 d_vals = d_vals_flat.view(in_n, in_c, in_h, in_w)
             else:
                 d_vals = _d_reduce_unified(
@@ -2219,7 +2336,17 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
         spatial_flat = pool_spatial_idx.view(-1)
         indices = torch.empty(total_idx, device=input.device, dtype=torch.int64)
         _merge_d2h_indices_kernel[(triton.cdiv(total_idx, 1024),)](
-            d_arg_flat, spatial_flat, indices, hw_in, out_hw, total_idx, BLOCK_SIZE=1024
+            d_arg_flat,
+            spatial_flat,
+            indices,
+            hw_in,
+            out_hw,
+            win_d if in_d % out_d == 0 else 0,
+            in_d,
+            out_d,
+            total_idx,
+            BLOCK_SIZE=1024,
+            UNIFORM_D=(in_d % out_d == 0),
         )
         indices = indices.view(in_n, in_c, out_d, out_h, out_w)
         return output, indices
