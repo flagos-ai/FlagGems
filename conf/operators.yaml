@@ -8966,6 +8966,21 @@ ops:
       - NeuralNetwork
     stages:
       - stable: '2.1'
+  - id: pad_circular
+    description: |
+      Pads the last one to three dimensions of an N-D tensor using circular
+      (periodic wrap-around) boundary values. Negative padding crops.
+      This is an IR representation, not a public API.
+    for:
+      - _pad_circular
+    labels:
+      - aten
+      - IR
+      - KernelGen
+    kind:
+      - NeuralNetwork
+    stages:
+      - alpha: '5.4'
   - id: pairwise_distance
     description: |
       Computes the pairwise distance between input vectors, or between columns of input matrices.
