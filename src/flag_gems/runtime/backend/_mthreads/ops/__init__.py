@@ -35,6 +35,7 @@ from .div import (
 from .dropout import dropout, dropout_backward
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
+from .feature_dropout import feature_dropout_
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
 from .gather import gather, gather_backward
@@ -66,7 +67,7 @@ from .normal import normal_
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
-from .pad import constant_pad_nd
+from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
 from .prod import prod, prod_dim
 from .rand import rand
@@ -115,6 +116,7 @@ __all__ = [
     "dropout_backward",
     "erfinv",
     "erfinv_",
+    "feature_dropout_",
     "flip",
     "fmod_",
     "fmod_scalar_",
@@ -163,6 +165,7 @@ __all__ = [
     "ones",
     "ones_like",
     "constant_pad_nd",
+    "pad",
     "permute_copy",
     "prod",
     "prod_dim",
