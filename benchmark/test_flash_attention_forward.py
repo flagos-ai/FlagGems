@@ -19,9 +19,8 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems.ops.flash_attn_varlen_func_w8a8_fp8 import (
-    flash_attn_varlen_func_w8a8_fp8,
-)
+from flag_gems.ops import flash_attn_varlen_func_w8a8_fp8 as w8a8_varlen
+from flag_gems.ops.attention import flash_attn_varlen_func as fa2_varlen
 
 from . import base, utils
 
@@ -339,40 +338,49 @@ def _apply_incoherent_qk(x):
     return torch.matmul(x.float(), h).to(x.dtype)
 
 
-def _quantize_per_block_fp8(x, fp8_dtype, block_size=128):
-    batch, seq_len, num_head, _ = x.shape
+def _quantize_varlen_per_block_fp8(x, seq_lens, fp8_dtype, block_size=128):
+    total_tokens, num_head, _ = x.shape
+    assert total_tokens == sum(seq_lens)
+
     fp8_max = float(torch.finfo(fp8_dtype).max)
-    nblocks = triton.cdiv(seq_len, block_size)
+    nblocks = triton.cdiv(max(seq_lens), block_size)
 
     out = torch.empty_like(x, dtype=fp8_dtype)
-    descale = torch.empty(
-        (batch, num_head, nblocks),
+    descale = torch.ones(
+        (len(seq_lens), num_head, nblocks),
         device=x.device,
         dtype=torch.float32,
     )
 
-    for block_idx in range(nblocks):
-        lo = block_idx * block_size
-        hi = min(seq_len, lo + block_size)
-        tile = x[:, lo:hi, :, :].float()
-        scale = (tile.abs().amax(dim=(1, 3)) / fp8_max).clamp_min(
-            torch.finfo(torch.float32).tiny
-        )
-        out[:, lo:hi, :, :] = torch.clamp(
-            tile / scale[:, None, :, None],
-            -fp8_max,
-            fp8_max,
-        ).to(fp8_dtype)
-        descale[:, :, block_idx] = scale
+    token_offset = 0
+    for batch_idx, seq_len in enumerate(seq_lens):
+        for block_idx in range(triton.cdiv(seq_len, block_size)):
+            lo = token_offset + block_idx * block_size
+            hi = min(token_offset + seq_len, lo + block_size)
+            tile = x[lo:hi].float()
+            scale = (tile.abs().amax(dim=(0, 2)) / fp8_max).clamp_min(
+                torch.finfo(torch.float32).tiny
+            )
+            out[lo:hi] = torch.clamp(
+                tile / scale[None, :, None],
+                -fp8_max,
+                fp8_max,
+            ).to(fp8_dtype)
+            descale[batch_idx, :, block_idx] = scale
+        token_offset += seq_len
 
     return out.contiguous(), descale.contiguous()
 
 
-def _quantize_qkv_w8a8(q, k, v):
+def _quantize_qkv_w8a8(q, k, v, q_seq_lens, kv_seq_lens):
     fp8_dtype = _get_fp8_dtype()
-    q_fp8, q_descale = _quantize_per_block_fp8(_apply_incoherent_qk(q), fp8_dtype)
-    k_fp8, k_descale = _quantize_per_block_fp8(_apply_incoherent_qk(k), fp8_dtype)
-    v_fp8, v_descale = _quantize_per_block_fp8(v, fp8_dtype)
+    q_fp8, q_descale = _quantize_varlen_per_block_fp8(
+        _apply_incoherent_qk(q), q_seq_lens, fp8_dtype
+    )
+    k_fp8, k_descale = _quantize_varlen_per_block_fp8(
+        _apply_incoherent_qk(k), kv_seq_lens, fp8_dtype
+    )
+    v_fp8, v_descale = _quantize_varlen_per_block_fp8(v, kv_seq_lens, fp8_dtype)
     return (
         q_fp8,
         k_fp8,
@@ -383,7 +391,7 @@ def _quantize_qkv_w8a8(q, k, v):
     )
 
 
-def torch_flash_attn_varlen_func_w8a8_fp8(
+def baseline_flash_attn_varlen_func_w8a8_fp8(
     q,
     k,
     v,
@@ -393,23 +401,27 @@ def torch_flash_attn_varlen_func_w8a8_fp8(
     q_descale,
     k_descale,
     v_descale,
+    max_seqlen_q,
+    cu_seqlens_q,
+    max_seqlen_k,
+    cu_seqlens_k,
     scale,
     is_causal,
+    baseline_out,
+    w8a8_out,
 ):
-    result = torch.ops.aten._flash_attention_forward(
+    return fa2_varlen(
         q,
         k,
         v,
-        None,
-        None,
-        q.shape[-3],
-        k.shape[-3],
-        0.0,
-        is_causal,
-        False,
-        scale=scale,
+        max_seqlen_q,
+        cu_seqlens_q,
+        max_seqlen_k,
+        cu_seqlens_k,
+        softmax_scale=scale,
+        causal=is_causal,
+        out=baseline_out,
     )
-    return result[0]
 
 
 def gems_flash_attn_varlen_func_w8a8_fp8(
@@ -422,20 +434,29 @@ def gems_flash_attn_varlen_func_w8a8_fp8(
     q_descale,
     k_descale,
     v_descale,
+    max_seqlen_q,
+    cu_seqlens_q,
+    max_seqlen_k,
+    cu_seqlens_k,
     scale,
     is_causal,
+    baseline_out,
+    w8a8_out,
 ):
-    out = torch.empty_like(q, dtype=torch.float16)
-    return flash_attn_varlen_func_w8a8_fp8(
+    return w8a8_varlen(
         q_fp8,
         k_fp8,
         v_fp8,
-        q_descale,
-        k_descale,
-        v_descale,
+        max_seqlen_q,
+        cu_seqlens_q,
+        max_seqlen_k,
+        cu_seqlens_k,
         softmax_scale=scale,
-        is_causal=is_causal,
-        out=out,
+        causal=is_causal,
+        out=w8a8_out,
+        q_descale=q_descale,
+        k_descale=k_descale,
+        v_descale=v_descale,
     )
 
 
@@ -466,23 +487,41 @@ class FlashAttnVarlenFuncW8A8FP8Benchmark(base.GenericBenchmark):
         return []
 
 
+def _make_deterministic_ragged_lengths(batch, max_seq_len):
+    if batch == 1:
+        return (max_seq_len,), (max_seq_len,)
+
+    step = max(1, max_seq_len // (2 * batch))
+    q_seq_lens = tuple(
+        max(1, max_seq_len - batch_idx * step - batch_idx % 3)
+        for batch_idx in range(batch)
+    )
+    kv_seq_lens = q_seq_lens[1:] + q_seq_lens[:1]
+    return q_seq_lens, kv_seq_lens
+
+
+def _make_cu_seqlens(seq_lens, device):
+    return torch.tensor(
+        (0,) + seq_lens,
+        device=device,
+        dtype=torch.int32,
+    ).cumsum(dim=0, dtype=torch.int32)
+
+
 def flash_attn_varlen_func_w8a8_fp8_input_fn(config, dtype, device):
     batch, seq_len, num_head, head_size, is_causal = config
+    q_seq_lens, kv_seq_lens = _make_deterministic_ragged_lengths(batch, seq_len)
     q = torch.empty(
-        (batch, seq_len, num_head, head_size),
+        (sum(q_seq_lens), num_head, head_size),
         device=device,
         dtype=dtype,
     ).uniform_(-0.05, 0.05)
     k = torch.empty(
-        (batch, seq_len, num_head, head_size),
+        (sum(kv_seq_lens), num_head, head_size),
         device=device,
         dtype=dtype,
     ).uniform_(-0.05, 0.05)
-    v = torch.empty(
-        (batch, seq_len, num_head, head_size),
-        device=device,
-        dtype=dtype,
-    ).uniform_(-0.05, 0.05)
+    v = torch.empty_like(k).uniform_(-0.05, 0.05)
     scale = 1.0 / math.sqrt(head_size)
 
     (
@@ -492,7 +531,11 @@ def flash_attn_varlen_func_w8a8_fp8_input_fn(config, dtype, device):
         q_descale,
         k_descale,
         v_descale,
-    ) = _quantize_qkv_w8a8(q, k, v)
+    ) = _quantize_qkv_w8a8(q, k, v, q_seq_lens, kv_seq_lens)
+    cu_seqlens_q = _make_cu_seqlens(q_seq_lens, device)
+    cu_seqlens_k = _make_cu_seqlens(kv_seq_lens, device)
+    baseline_out = torch.empty_like(q)
+    w8a8_out = torch.empty_like(q)
 
     yield (
         q,
@@ -504,8 +547,14 @@ def flash_attn_varlen_func_w8a8_fp8_input_fn(config, dtype, device):
         q_descale,
         k_descale,
         v_descale,
+        max(q_seq_lens),
+        cu_seqlens_q,
+        max(kv_seq_lens),
+        cu_seqlens_k,
         scale,
         is_causal,
+        baseline_out,
+        w8a8_out,
     )
 
 
@@ -525,8 +574,8 @@ def test_flash_attn_varlen_func_w8a8_fp8():
     bench = FlashAttnVarlenFuncW8A8FP8Benchmark(
         op_name="flash_attn_varlen_func_w8a8_fp8",
         input_fn=flash_attn_varlen_func_w8a8_fp8_input_fn,
-        torch_op=torch_flash_attn_varlen_func_w8a8_fp8,
-        dtypes=[torch.float16],
+        torch_op=baseline_flash_attn_varlen_func_w8a8_fp8,
+        dtypes=[torch.float16, torch.bfloat16],
     )
     bench.set_gems(gems_flash_attn_varlen_func_w8a8_fp8)
     bench.run()

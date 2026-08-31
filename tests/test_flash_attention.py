@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import math
 
 import numpy as np
@@ -20,9 +21,8 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems.ops.flash_attn_varlen_func_w8a8_fp8 import (
-    flash_attn_varlen_func_w8a8_fp8,
-)
+from flag_gems.ops import flash_attn_varlen_func_w8a8_fp8 as w8a8_varlen
+from flag_gems.ops.attention import flash_attn_varlen_func as fa2_varlen
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import random_utils
 
@@ -808,52 +808,78 @@ def _apply_incoherent_qk(x):
     return torch.matmul(x.float(), h).to(x.dtype)
 
 
-def _quantize_per_block_fp8(x, fp8_dtype, block_size=128):
-    batch, seq_len, num_head, _ = x.shape
+def _cu_seqlens_from_lengths(lengths, device):
+    lengths_tensor = torch.tensor(lengths, dtype=torch.int32, device=device)
+    return torch.cat(
+        (
+            torch.zeros(1, dtype=torch.int32, device=device),
+            lengths_tensor.cumsum(0, dtype=torch.int32),
+        )
+    )
+
+
+def _pack_dense_by_lengths(x, lengths):
+    return torch.cat(
+        [x[batch_idx, :seq_len] for batch_idx, seq_len in enumerate(lengths)],
+        dim=0,
+    ).contiguous()
+
+
+def _quantize_varlen_per_block_fp8(x, lengths, fp8_dtype, block_size=128):
+    num_head = x.shape[1]
     fp8_max = float(torch.finfo(fp8_dtype).max)
-    nblocks = triton.cdiv(seq_len, block_size)
+    nblocks = triton.cdiv(max(lengths), block_size)
 
     out = torch.empty_like(x, dtype=fp8_dtype)
     descale = torch.empty(
-        (batch, num_head, nblocks),
+        (len(lengths), num_head, nblocks),
         device=x.device,
         dtype=torch.float32,
     )
 
-    for block_idx in range(nblocks):
-        lo = block_idx * block_size
-        hi = min(seq_len, lo + block_size)
-        tile = x[:, lo:hi, :, :].float()
-        scale = (tile.abs().amax(dim=(1, 3)) / fp8_max).clamp_min(
-            torch.finfo(torch.float32).tiny
-        )
-        out[:, lo:hi, :, :] = torch.clamp(
-            tile / scale[:, None, :, None],
-            -fp8_max,
-            fp8_max,
-        ).to(fp8_dtype)
-        descale[:, :, block_idx] = scale
+    token_offset = 0
+    for batch_idx, seq_len in enumerate(lengths):
+        for block_idx in range(triton.cdiv(seq_len, block_size)):
+            lo = token_offset + block_idx * block_size
+            hi = token_offset + min(seq_len, (block_idx + 1) * block_size)
+            tile = x[lo:hi].float()
+            scale = (tile.abs().amax(dim=(0, 2)) / fp8_max).clamp_min(
+                torch.finfo(torch.float32).tiny
+            )
+            out[lo:hi] = torch.clamp(
+                tile / scale[None, :, None],
+                -fp8_max,
+                fp8_max,
+            ).to(fp8_dtype)
+            descale[batch_idx, :, block_idx] = scale
+        token_offset += seq_len
 
     return out.contiguous(), descale.contiguous()
 
 
-def _dequantize_per_block_fp8(x, descale, dtype, block_size=128):
-    seq_len = x.shape[1]
+def _dequantize_varlen_per_block_fp8(x, lengths, descale, dtype, block_size=128):
     out = torch.empty_like(x, dtype=dtype)
-    for block_idx in range(descale.shape[-1]):
-        lo = block_idx * block_size
-        hi = min(seq_len, lo + block_size)
-        out[:, lo:hi, :, :] = (
-            x[:, lo:hi, :, :].float() * descale[:, :, block_idx][:, None, :, None]
-        ).to(dtype)
+    token_offset = 0
+    for batch_idx, seq_len in enumerate(lengths):
+        for block_idx in range(triton.cdiv(seq_len, block_size)):
+            lo = token_offset + block_idx * block_size
+            hi = token_offset + min(seq_len, (block_idx + 1) * block_size)
+            out[lo:hi] = (
+                x[lo:hi].float() * descale[batch_idx, :, block_idx][None, :, None]
+            ).to(dtype)
+        token_offset += seq_len
     return out.contiguous()
 
 
-def _quantize_qkv_w8a8(q, k, v):
+def _quantize_qkv_w8a8(q, k, v, q_lengths, kv_lengths):
     fp8_dtype = _get_fp8_dtype()
-    q_fp8, q_descale = _quantize_per_block_fp8(_apply_incoherent_qk(q), fp8_dtype)
-    k_fp8, k_descale = _quantize_per_block_fp8(_apply_incoherent_qk(k), fp8_dtype)
-    v_fp8, v_descale = _quantize_per_block_fp8(v, fp8_dtype)
+    q_fp8, q_descale = _quantize_varlen_per_block_fp8(
+        _apply_incoherent_qk(q), q_lengths, fp8_dtype
+    )
+    k_fp8, k_descale = _quantize_varlen_per_block_fp8(
+        _apply_incoherent_qk(k), kv_lengths, fp8_dtype
+    )
+    v_fp8, v_descale = _quantize_varlen_per_block_fp8(v, kv_lengths, fp8_dtype)
     return (
         q_fp8,
         k_fp8,
@@ -864,7 +890,9 @@ def _quantize_qkv_w8a8(q, k, v):
     )
 
 
-def gems_flash_attn_varlen_func_w8a8_fp8(q, k, v, scale, is_causal):
+def gems_flash_attn_varlen_func_w8a8_fp8(
+    q, k, v, q_lengths, kv_lengths, scale, is_causal
+):
     (
         q_fp8,
         k_fp8,
@@ -872,26 +900,51 @@ def gems_flash_attn_varlen_func_w8a8_fp8(q, k, v, scale, is_causal):
         q_descale,
         k_descale,
         v_descale,
-    ) = _quantize_qkv_w8a8(q, k, v)
+    ) = _quantize_qkv_w8a8(q, k, v, q_lengths, kv_lengths)
 
-    out = None if q.dtype == torch.bfloat16 else torch.empty_like(q)
-    result = flash_attn_varlen_func_w8a8_fp8(
+    cu_seqlens_q = _cu_seqlens_from_lengths(q_lengths, q.device)
+    cu_seqlens_k = _cu_seqlens_from_lengths(kv_lengths, q.device)
+    out = torch.empty_like(q)
+    result = w8a8_varlen(
         q_fp8,
         k_fp8,
         v_fp8,
-        q_descale,
-        k_descale,
-        v_descale,
+        max(q_lengths),
+        cu_seqlens_q,
+        max(kv_lengths),
+        cu_seqlens_k,
         softmax_scale=scale,
-        is_causal=is_causal,
+        causal=is_causal,
         out=out,
+        q_descale=q_descale,
+        k_descale=k_descale,
+        v_descale=v_descale,
     )
     reference_inputs = (
-        _dequantize_per_block_fp8(q_fp8, q_descale, q.dtype),
-        _dequantize_per_block_fp8(k_fp8, k_descale, k.dtype),
-        _dequantize_per_block_fp8(v_fp8, v_descale, v.dtype),
+        _dequantize_varlen_per_block_fp8(q_fp8, q_lengths, q_descale, q.dtype),
+        _dequantize_varlen_per_block_fp8(k_fp8, kv_lengths, k_descale, k.dtype),
+        _dequantize_varlen_per_block_fp8(v_fp8, kv_lengths, v_descale, v.dtype),
     )
-    return result, reference_inputs
+    return result, reference_inputs, cu_seqlens_q, cu_seqlens_k
+
+
+def _torch_varlen_reference(q, k, v, cu_seqlens_q, cu_seqlens_k, scale, is_causal):
+    outputs = []
+    batch = cu_seqlens_q.numel() - 1
+    for batch_idx in range(batch):
+        q_lo = cu_seqlens_q[batch_idx].item()
+        q_hi = cu_seqlens_q[batch_idx + 1].item()
+        k_lo = cu_seqlens_k[batch_idx].item()
+        k_hi = cu_seqlens_k[batch_idx + 1].item()
+        seq_out, _, _, _, _ = torch_flash_fwd(
+            q[q_lo:q_hi].transpose(0, 1).unsqueeze(0),
+            k[k_lo:k_hi].transpose(0, 1).unsqueeze(0),
+            v[k_lo:k_hi].transpose(0, 1).unsqueeze(0),
+            scale,
+            is_causal,
+        )
+        outputs.append(seq_out.squeeze(0))
+    return torch.cat(outputs, dim=0)
 
 
 def _assert_w8a8_attention_close(actual, expected):
@@ -910,6 +963,11 @@ def _assert_w8a8_attention_close(actual, expected):
     assert mse.item() < 1.0e-4, f"mse={mse.item():.6e}"
     assert rel_mse.item() < 2.0e-2, f"rel_mse={rel_mse.item():.6e}"
     assert cosine.item() > 0.99, f"cosine={cosine.item():.6f}"
+
+
+@pytest.mark.flash_attn_varlen_func_w8a8_fp8
+def test_flash_attn_varlen_func_w8a8_fp8_signature():
+    assert inspect.signature(w8a8_varlen) == inspect.signature(fa2_varlen)
 
 
 @pytest.mark.flash_attn_varlen_func_w8a8_fp8
@@ -951,18 +1009,101 @@ def test_flash_attn_varlen_func_w8a8_fp8(
         device,
     )
     scale = 1.0 / math.sqrt(head_size)
+    q_lengths = [q_seq_len] * batch
+    kv_lengths = [kv_seq_len] * batch
+    q = _pack_dense_by_lengths(q.transpose(1, 2), q_lengths)
+    k = _pack_dense_by_lengths(k.transpose(1, 2), kv_lengths)
+    v = _pack_dense_by_lengths(v.transpose(1, 2), kv_lengths)
 
-    gems_out, (ref_q, ref_k, ref_v) = gems_flash_attn_varlen_func_w8a8_fp8(
-        q.transpose(1, 2).contiguous(),
-        k.transpose(1, 2).contiguous(),
-        v.transpose(1, 2).contiguous(),
+    (
+        gems_out,
+        (ref_q, ref_k, ref_v),
+        cu_seqlens_q,
+        cu_seqlens_k,
+    ) = gems_flash_attn_varlen_func_w8a8_fp8(
+        q,
+        k,
+        v,
+        q_lengths,
+        kv_lengths,
         scale,
         is_causal,
     )
-    torch_out, _, _, _, _ = torch_flash_fwd(
-        ref_q.transpose(1, 2),
-        ref_k.transpose(1, 2),
-        ref_v.transpose(1, 2),
+    torch_out = _torch_varlen_reference(
+        ref_q,
+        ref_k,
+        ref_v,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        scale,
+        is_causal,
+    )
+
+    _assert_w8a8_attention_close(gems_out, torch_out)
+
+
+@pytest.mark.flash_attn_varlen_func_w8a8_fp8
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(flag_gems.vendor_name != "nvidia", reason="NVIDIA-only path")
+@pytest.mark.skipif(
+    not _supports_hopper_fp8(), reason="Requires NVIDIA Hopper or newer"
+)
+@pytest.mark.skipif(
+    getattr(torch, "float8_e4m3fn", None) is None,
+    reason="FP8 is not available",
+)
+@pytest.mark.parametrize(
+    ["head_size", "dtype", "is_causal"],
+    [
+        (64, torch.float16, False),
+        (128, torch.bfloat16, True),
+    ],
+)
+def test_flash_attn_varlen_func_w8a8_fp8_ragged(head_size, dtype, is_causal):
+    device = torch_device_fn.current_device()
+    if is_causal:
+        q_lengths = [33, 257]
+        kv_lengths = [17, 129]
+    else:
+        q_lengths = [17, 129]
+        kv_lengths = [33, 257]
+    num_head = 8
+    q, k, v = make_input(
+        len(q_lengths),
+        num_head,
+        num_head,
+        max(q_lengths),
+        max(kv_lengths),
+        head_size,
+        dtype,
+        device,
+    )
+    q = _pack_dense_by_lengths(q.transpose(1, 2), q_lengths)
+    k = _pack_dense_by_lengths(k.transpose(1, 2), kv_lengths)
+    v = _pack_dense_by_lengths(v.transpose(1, 2), kv_lengths)
+    scale = 1.0 / math.sqrt(head_size)
+
+    (
+        gems_out,
+        (ref_q, ref_k, ref_v),
+        cu_seqlens_q,
+        cu_seqlens_k,
+    ) = gems_flash_attn_varlen_func_w8a8_fp8(
+        q,
+        k,
+        v,
+        q_lengths,
+        kv_lengths,
+        scale,
+        is_causal,
+    )
+    torch_out = _torch_varlen_reference(
+        ref_q,
+        ref_k,
+        ref_v,
+        cu_seqlens_q,
+        cu_seqlens_k,
         scale,
         is_causal,
     )
@@ -984,11 +1125,23 @@ def test_flash_attn_varlen_func_w8a8_fp8(
 def test_flash_attn_varlen_func_w8a8_fp8_rejects_gqa():
     device = torch_device_fn.current_device()
     fp8_dtype = _get_fp8_dtype()
-    q = torch.empty((1, 128, 4, 64), dtype=fp8_dtype, device=device)
-    k = torch.empty((1, 128, 2, 64), dtype=fp8_dtype, device=device)
+    q = torch.empty((128, 4, 64), dtype=fp8_dtype, device=device)
+    k = torch.empty((128, 2, 64), dtype=fp8_dtype, device=device)
     v = torch.empty_like(k)
     q_descale = torch.ones((1, 4, 1), dtype=torch.float32, device=device)
     kv_descale = torch.ones((1, 2, 1), dtype=torch.float32, device=device)
+    cu_seqlens = torch.tensor([0, 128], dtype=torch.int32, device=device)
 
     with pytest.raises(NotImplementedError, match="GQA is not supported"):
-        flash_attn_varlen_func_w8a8_fp8(q, k, v, q_descale, kv_descale, kv_descale)
+        w8a8_varlen(
+            q,
+            k,
+            v,
+            128,
+            cu_seqlens,
+            128,
+            cu_seqlens,
+            q_descale=q_descale,
+            k_descale=kv_descale,
+            v_descale=kv_descale,
+        )

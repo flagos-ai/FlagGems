@@ -520,7 +520,8 @@ def flash_fwd_kernel(
 ):
     m_block = tl.program_id(0)
     bh = tl.program_id(1)
-    # 改动：D128 split-D 路径把输出维拆成两个 D64 CTA；D64 或未启用时只有一个 CTA。
+    # For D128, split the output dimension across two D64 CTAs. D64 or
+    # non-split-D uses a single CTA.
     d_split = tl.program_id(2)
     d_start = d_split * BLOCK_D
     hid = bh % h
@@ -593,8 +594,8 @@ def flash_fwd_kernel(
         )
         p_bp0 = p_ptr + p_offset
 
-    # 改动：PV accumulator 改为 [BLOCK_M, BLOCK_D]，D128 时 BLOCK_D=64，
-    # 避免单 CTA 同时持有 [BM,128] 的 acc/pv，降低寄存器压力。
+    # Use a [BLOCK_M, BLOCK_D] PV accumulator. For D128, BLOCK_D is 64,
+    # so one CTA does not hold a [BM, 128] accumulator, reducing register pressure.
     acc_ = tl.zeros((BLOCK_M, BLOCK_D), dtype=tl.float32)
     rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
     rowsum_ = tl.zeros([BLOCK_M], dtype=tl.float32)
@@ -610,7 +611,8 @@ def flash_fwd_kernel(
     k_offset = (
         tl.arange(0, BLOCK_N)[None, :] * k_row_stride + tl.arange(0, BLOCK_K)[:, None]
     )
-    # 改动：V 只加载当前 D split 对应的 64 维切片；QK 仍用完整 BLOCK_K=128。
+    # Load only the 64-wide V slice for the current D split; QK still uses
+    # the full BLOCK_K of 128.
     v_d = d_start + tl.arange(0, BLOCK_D)
     v_dmask = v_d < d
     v_offset = tl.arange(0, BLOCK_N)[:, None] * k_row_stride + v_d[None, :]
@@ -731,11 +733,13 @@ def flash_fwd_kernel(
                         BLOCK_N=BLOCK_N,
                     )
                     if IS_EVEN_MN:
-                        # 改动：split-D 两个 CTA 的 softmax tile 相同，只让第 0 个 D split 写调试用 P。
+                        # Both split-D CTAs produce the same softmax tile, so only
+                        # D split 0 writes the debug P tensor.
                         tl.store(p_bp0 + col_start, P_drop, mask=d_split == 0)
                     else:
                         kvmask = col_idx < seqlen_k
-                        # 改动：split-D 两个 CTA 的 softmax tile 相同，只让第 0 个 D split 写调试用 P。
+                        # Both split-D CTAs produce the same softmax tile, so only
+                        # D split 0 writes the debug P tensor.
                         tl.store(
                             p_bp0 + col_start,
                             P_drop,
@@ -871,11 +875,13 @@ def flash_fwd_kernel(
                     BLOCK_N=BLOCK_N,
                 )
                 if IS_EVEN_MN:
-                    # 改动：split-D 两个 CTA 的 softmax tile 相同，只让第 0 个 D split 写调试用 P。
+                    # Both split-D CTAs produce the same softmax tile, so only
+                    # D split 0 writes the debug P tensor.
                     tl.store(p_bp0 + col_start, P_drop, mask=d_split == 0)
                 else:
                     kvmask = col_idx < seqlen_k
-                    # 改动：split-D 两个 CTA 的 softmax tile 相同，只让第 0 个 D split 写调试用 P。
+                    # Both split-D CTAs produce the same softmax tile, so only
+                    # D split 0 writes the debug P tensor.
                     tl.store(
                         p_bp0 + col_start,
                         P_drop,
@@ -928,7 +934,7 @@ def flash_fwd_kernel(
     o_batch_stride = tl.multiple_of(o_batch_stride, d * h)
     o_ptr += bid * o_batch_stride
     o_ptr += hid * o_head_stride
-    # 改动：split-D CTA 只写回自己负责的 D64 输出片段。
+    # Each split-D CTA writes only its assigned D64 output slice.
     o_cols = d_start + tl.arange(0, BLOCK_D)
     o_dmask = o_cols < d
     o_offset = row_idx[:, None] * o_row_stride + o_cols[None, :]
@@ -944,7 +950,8 @@ def flash_fwd_kernel(
     p_lse = softmax_lse_ptr + (bid * h + hid) * seqlen_q
     row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
 
-    # 改动：split-D 两个 CTA 会得到相同 LSE，只让第 0 个 D split 写，避免重复写同一地址。
+    # Both split-D CTAs produce the same LSE, so only D split 0 writes it
+    # to avoid duplicate stores to the same address.
     lse_write_mask = d_split == 0
     if IS_EVEN_MN:
         tl.store(p_lse + row_idx, lse, mask=lse_write_mask)
@@ -1604,7 +1611,8 @@ def flash_varlen_fwd_kernel(
 ):
     m_block = tl.program_id(0)
     bid = tl.program_id(1)
-    # 改动：varlen 的 grid 只有 3 维，把 head 和 D split 合并到 program_id(2)。
+    # The varlen grid has only three dimensions, so encode both the head
+    # and D split in program_id(2).
     hd = tl.program_id(2)
     hid = hd % h
     d_split = hd // h
@@ -1688,7 +1696,8 @@ def flash_varlen_fwd_kernel(
     )
     bQ = tl.load(gQ.advance([m_block * BLOCK_M, 0]), boundary_check=(0, 1))
 
-    # 改动：varlen PV accumulator 也按 BLOCK_D 切分，D128 时每个 CTA 只持有 D64。
+    # Partition the varlen PV accumulator by BLOCK_D as well, so each CTA
+    # holds only D64 for D128.
     acc_ = tl.zeros((BLOCK_M, BLOCK_D), dtype=tl.float32)
     rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
     rowsum_ = tl.zeros([BLOCK_M], dtype=tl.float32)
@@ -1742,7 +1751,8 @@ def flash_varlen_fwd_kernel(
                 base=v_ptr_seq,
                 shape=(k_len, d),
                 strides=(k_row_stride, 1),
-                # 改动：非 paged varlen 的 V 只取当前 D split 对应的切片。
+                # For non-paged varlen attention, load only the V slice for
+                # the current D split.
                 offsets=(start_n, d_start),
                 block_shape=(BLOCK_N, BLOCK_D),
                 order=(0, 1),
@@ -1858,7 +1868,8 @@ def flash_varlen_fwd_kernel(
                 base=v_ptr_seq,
                 shape=(k_len, d),
                 strides=(k_row_stride, 1),
-                # 改动：非 paged varlen 的 V 只取当前 D split 对应的切片。
+                # For non-paged varlen attention, load only the V slice for
+                # the current D split.
                 offsets=(start_n, d_start),
                 block_shape=(BLOCK_N, BLOCK_D),
                 order=(0, 1),
@@ -1959,7 +1970,7 @@ def flash_varlen_fwd_kernel(
         base=o_ptr + o_offset + o_row_offset,
         shape=(q_len, d),
         strides=(o_row_stride, 1),
-        # 改动：varlen split-D CTA 只写当前 D64 输出切片。
+        # Each varlen split-D CTA writes only its current D64 output slice.
         offsets=(0, d_start),
         block_shape=(BLOCK_M, BLOCK_D),
         order=(1, 0),
@@ -1970,7 +1981,8 @@ def flash_varlen_fwd_kernel(
     # lse shape: [h, total_q]
     softmax_lse_ptr += hid * total_q
     lse_row_offset = lse_offset + m_block * BLOCK_M + tl.arange(0, BLOCK_M)
-    # 改动：varlen split-D 两个 CTA 的 LSE 相同，只让第 0 个 D split 写回。
+    # Both varlen split-D CTAs produce the same LSE, so only D split 0 writes
+    # it back.
     tl.store(
         softmax_lse_ptr + lse_row_offset,
         lse,
@@ -2615,7 +2627,8 @@ def mha_varlan_fwd(
             params.k_ptr = k.view(k.shape[0], k.shape[1], -1)
             params.v_ptr = v.view(v.shape[0], v.shape[1], -1)
         logger.debug("kernel: flash_varlen_fwd")
-        # 改动：D128 非 paged varlen 也启用 2-way split-D；paged cache loader 暂保持原 D 维完整加载。
+        # Enable two-way split-D for non-paged D128 varlen attention. The
+        # paged-cache loader continues to load the full D dimension.
         use_varlen_split_d = head_size == 128 and not is_paged
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
@@ -2651,7 +2664,8 @@ def mha_varlan_fwd(
             "BLOCK_M": cfg["BLOCK_M"](args),
             "BLOCK_N": cfg["BLOCK_N"](args),
             "BLOCK_K": triton.next_power_of_2(head_size),
-            # 改动：QK 仍使用完整 BLOCK_K；PV/output 在 D128 split-D 时使用 BLOCK_D=64。
+            # QK still uses the full BLOCK_K; PV and output use BLOCK_D=64
+            # for D128 split-D.
             "BLOCK_D": 64 if use_varlen_split_d else triton.next_power_of_2(head_size),
             "SPLIT_D": use_varlen_split_d,
             "num_warps": cfg["num_warps"](args),
@@ -3007,7 +3021,8 @@ def mha_varlan_fwd_opt(
             params.k_ptr = k.view(k.shape[0], k.shape[1], -1)
             params.v_ptr = v.view(v.shape[0], v.shape[1], -1)
         logger.debug("kernel: flash_varlen_fwd")
-        # 改动：D128 非 paged varlen 也启用 2-way split-D；paged cache loader 暂保持原 D 维完整加载。
+        # Enable two-way split-D for non-paged D128 varlen attention. The
+        # paged-cache loader continues to load the full D dimension.
         use_varlen_split_d = head_size == 128 and not is_paged
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
@@ -3043,7 +3058,8 @@ def mha_varlan_fwd_opt(
             "BLOCK_M": cfg["BLOCK_M"](args),
             "BLOCK_N": cfg["BLOCK_N"](args),
             "BLOCK_K": triton.next_power_of_2(head_size),
-            # 改动：QK 仍使用完整 BLOCK_K；PV/output 在 D128 split-D 时使用 BLOCK_D=64。
+            # QK still uses the full BLOCK_K; PV and output use BLOCK_D=64
+            # for D128 split-D.
             "BLOCK_D": 64 if use_varlen_split_d else triton.next_power_of_2(head_size),
             "SPLIT_D": use_varlen_split_d,
             "num_warps": cfg["num_warps"](args),
@@ -3268,11 +3284,13 @@ def mha_fwd(
             num_sms = torch_device_fn.get_device_properties(
                 "cuda"
             ).multi_processor_count
-            # 改动：D128 使用 split-D dense kernel，把输出维拆成两个 D64 CTA，
-            # 以降低 flash_fwd_kernel 的寄存器压力；splitkv 路径暂不启用 split-D。
+            # For D128, use the split-D dense kernel and partition the output
+            # dimension across two D64 CTAs to reduce register pressure in
+            # flash_fwd_kernel. The split-KV path does not use split-D.
             # use_split_d = D == 128
             use_split_d = D == 128
-            # 改动：短序列 splitkv 的 combine/临时张量开销通常大于收益，S512 强制走 dense。
+            # For short sequences, split-KV combine and temporary-tensor overhead
+            # usually outweigh the benefit, so S <= 512 uses the dense path.
             disable_splitkv1 = disable_splitkv or seqlen_q <= 512
 
             # Try bh parallel
@@ -3350,8 +3368,9 @@ def mha_fwd(
                 2 if use_split_d else 1,
             )
             kernel = flash_fwd_kernel[grid]
-            # 改动：D128 split-D 时 BLOCK_K 仍为完整 head_dim=128 供 QK 使用，
-            # BLOCK_D=64 只用于 PV 和输出写回；D64/非 split-D 则保持原 BLOCK_K。
+            # For D128 split-D, QK still uses the full BLOCK_K with head_dim=128.
+            # BLOCK_D=64 applies only to PV and output stores; D64 or non-split-D
+            # retains the original BLOCK_K.
             extra_args = {
                 "BLOCK_D": 64 if use_split_d else triton.next_power_of_2(D),
                 "SPLIT_D": use_split_d,
@@ -3481,60 +3500,117 @@ def flash_attn_varlen_func_w8a8_fp8(
     q,
     k,
     v,
-    q_descale,
-    k_descale,
-    v_descale,
+    max_seqlen_q,
+    cu_seqlens_q,
+    max_seqlen_k,
+    cu_seqlens_k=None,  # only used for non-paged prefill
+    seqused_k=None,
+    q_v=None,
+    dropout_p=0.0,
     softmax_scale=None,
-    is_causal=False,
+    causal=False,
+    window_size=None,
+    softcap=0.0,  # 0.0 means deactivated
+    alibi_slopes=None,
+    deterministic=False,
+    return_attn_probs=False,
+    block_table=None,
+    return_softmax_lse=False,
     out=None,
-    disable_splitkv=False,
+    # Dummy FA3 arguments
+    scheduler_metadata=None,
+    q_descale=None,
+    k_descale=None,
+    v_descale=None,
+    s_aux=None,
+    num_splits: int = 0,
+    cp_world_size: int = 1,
+    cp_rank: int = 0,
+    cp_tot_seqused_k=None,
+    fa_version: int = 2,
 ):
-    """Compute dense FlashAttention-2 with block-wise FP8 Q, K, and V.
+    """Compute variable-length FlashAttention-2 with block-wise FP8 Q/K/V.
 
     Args:
-        q: FP8 query tensor in ``[batch, seqlen_q, heads, head_dim]`` layout.
-        k: FP8 key tensor in ``[batch, seqlen_k, heads, head_dim]`` layout.
-        v: FP8 value tensor with the same shape as ``k``.
-        q_descale: Query descales, normalized to ``[batch, heads, q_blocks]``.
-        k_descale: Key descales, normalized to ``[batch, heads, kv_blocks]``.
-        v_descale: Value descales, normalized to ``[batch, heads, kv_blocks]``.
+        q: Packed FP8 query tensor in ``[total_q, heads, head_dim]`` layout.
+        k: Packed FP8 key tensor in ``[total_k, heads, head_dim]`` layout.
+        v: Packed FP8 value tensor with the same shape as ``k``.
+        max_seqlen_q: Maximum query sequence length in the batch.
+        cu_seqlens_q: Cumulative query sequence lengths with shape ``[batch + 1]``.
+        max_seqlen_k: Maximum key sequence length in the batch.
+        cu_seqlens_k: Cumulative key sequence lengths with shape ``[batch + 1]``.
+        q_descale: Query descales normalized to ``[batch, heads, q_blocks]``.
+        k_descale: Key descales normalized to ``[batch, heads, kv_blocks]``.
+        v_descale: Value descales normalized to ``[batch, heads, kv_blocks]``.
         softmax_scale: Score scale. Defaults to ``1 / sqrt(head_dim)``.
-        is_causal: Whether to apply a causal mask.
-        out: Optional FP16/BF16 output tensor.
-        disable_splitkv: Disable the split-KV dispatch path when true.
+        causal: Whether to apply a causal mask.
+        out: Optional packed FP16/BF16 output tensor.
 
-    Descales are applied per logical 128-token block. The returned tensor uses
-    ``out.dtype`` when supplied and BF16 otherwise.
+    The public signature matches ``flash_attn_varlen_func``. Descales are
+    applied per logical 128-token block. The returned tensor uses ``out.dtype``
+    when supplied and BF16 otherwise. This W8A8 path currently requires Q, K,
+    and V to have the same number of heads; MQA and GQA are not supported.
     """
-    assert q.ndim == k.ndim == v.ndim == 4, "q, k, and v must be 4D tensors"
-    assert k.shape == v.shape, "k and v must have the same shape"
-    assert k.stride() == v.stride(), "k and v must have the same layout"
-    assert q.shape[0] == k.shape[0], "q, k, and v must have the same batch size"
-    assert q.shape[-1] == k.shape[-1], "q, k, and v must have the same head dim"
-    assert q.shape[-1] in (64, 128), "head dim must be 64 or 128"
-    if q.shape[2] != k.shape[2]:
+    if fa_version != 2:
+        raise RuntimeError("Only FA2 is implemented.")
+    if num_splits > 0:
+        raise RuntimeError("num_splits > 0 is not implemented in GEMS.")
+    assert (
+        cu_seqlens_k is not None or seqused_k is not None
+    ), "cu_seqlens_k or seqused_k must be provided"
+    assert (
+        cu_seqlens_k is None or seqused_k is None
+    ), "cu_seqlens_k and seqused_k cannot be provided at the same time"
+    assert (
+        block_table is None or seqused_k is not None
+    ), "seqused_k must be provided if block_table is provided"
+
+    num_heads_k = k.shape[2] if block_table is not None else k.shape[1]
+    if q.shape[1] != num_heads_k:
         raise NotImplementedError("GQA is not supported by this W8A8 path")
 
     if softmax_scale is None:
         softmax_scale = 1.0 / math.sqrt(q.shape[-1])
+    if window_size is None:
+        real_window_size = (-1, -1)
+    else:
+        assert len(window_size) == 2
+        real_window_size = (window_size[0], window_size[1])
 
-    result = mha_fwd(
+    q, k, v = [x.contiguous() if x.stride(-1) != 1 else x for x in (q, k, v)]
+    dummy_cu_seqlens_k = torch.empty_like(cu_seqlens_q)
+    max_seqlen_q = (
+        max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
+    )
+    max_seqlen_k = (
+        max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
+    )
+
+    result = mha_varlan_fwd(
         q,
         k,
         v,
         out,
+        cu_seqlens_q,
+        dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
+        seqused_k,
         None,
-        0.0,
+        block_table,
+        alibi_slopes,
+        max_seqlen_q,
+        max_seqlen_k,
+        dropout_p,
         softmax_scale,
-        is_causal,
-        -1,
-        -1,
-        0.0,
         False,
-        disable_splitkv=disable_splitkv,
+        causal,
+        real_window_size[0],
+        real_window_size[1],
+        softcap,
+        return_softmax_lse and dropout_p > 0,
+        None,
         q_descale=q_descale,
         k_descale=k_descale,
         v_descale=v_descale,
         fp8_p_max=float(torch.finfo(q.dtype).max),
     )
-    return result[0]
+    return (result[0], result[4]) if return_softmax_lse else result[0]
