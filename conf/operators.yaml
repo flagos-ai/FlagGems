@@ -248,6 +248,726 @@ ops:
       - NeuralNetwork
     stages:
       - alpha: '5.1'
+  - id: _foreach_abs
+    description: |
+      Apply absolute value to each tensor in a list.
+    for:
+      - _foreach_abs
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_abs_
+    description: |
+      In-place absolute value for each tensor in a list.
+    for:
+      - _foreach_abs_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_acos
+    description: |
+      Apply arccosine to each tensor in a list.
+    for:
+      - _foreach_acos
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_acos_
+    description: |
+      In-place arccosine for each tensor in a list.
+    for:
+      - _foreach_acos_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_asin
+    description: |
+      Apply arcsine to each tensor in a list.
+    for:
+      - _foreach_asin
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_asin_
+    description: |
+      In-place arcsine for each tensor in a list.
+    for:
+      - _foreach_asin_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_atan
+    description: |
+      Apply arctangent to each tensor in a list.
+    for:
+      - _foreach_atan
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_atan_
+    description: |
+      In-place arctangent for each tensor in a list.
+    for:
+      - _foreach_atan_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_ceil
+    description: |
+      Apply ceiling to each tensor in a list.
+    for:
+      - _foreach_ceil
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_ceil_
+    description: |
+      In-place ceiling for each tensor in a list.
+    for:
+      - _foreach_ceil_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_cos
+    description: |
+      Apply cosine to each tensor in a list.
+    for:
+      - _foreach_cos
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_cos_
+    description: |
+      In-place cosine for each tensor in a list.
+    for:
+      - _foreach_cos_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_cosh
+    description: |
+      Apply hyperbolic cosine to each tensor in a list.
+    for:
+      - _foreach_cosh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_cosh_
+    description: |
+      In-place hyperbolic cosine for each tensor in a list.
+    for:
+      - _foreach_cosh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_erf
+    description: |
+      Apply error function to each tensor in a list.
+    for:
+      - _foreach_erf
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_erf_
+    description: |
+      In-place error function for each tensor in a list.
+    for:
+      - _foreach_erf_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_erfc
+    description: |
+      Apply complementary error function to each tensor in a list.
+    for:
+      - _foreach_erfc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_erfc_
+    description: |
+      In-place complementary error function for each tensor in a list.
+    for:
+      - _foreach_erfc_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_exp
+    description: |
+      Apply exponential to each tensor in a list.
+    for:
+      - _foreach_exp
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_exp_
+    description: |
+      In-place exponential for each tensor in a list.
+    for:
+      - _foreach_exp_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_expm1
+    description: |
+      Apply exp(x) - 1 to each tensor in a list.
+    for:
+      - _foreach_expm1
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_expm1_
+    description: |
+      In-place exp(x) - 1 for each tensor in a list.
+    for:
+      - _foreach_expm1_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_floor
+    description: |
+      Apply floor to each tensor in a list.
+    for:
+      - _foreach_floor
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_floor_
+    description: |
+      In-place floor for each tensor in a list.
+    for:
+      - _foreach_floor_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_frac
+    description: |
+      Apply fractional part to each tensor in a list.
+    for:
+      - _foreach_frac
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_frac_
+    description: |
+      In-place fractional part for each tensor in a list.
+    for:
+      - _foreach_frac_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_lgamma
+    description: |
+      Apply log absolute gamma to each tensor in a list.
+    for:
+      - _foreach_lgamma
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_lgamma_
+    description: |
+      In-place log absolute gamma for each tensor in a list.
+    for:
+      - _foreach_lgamma_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_log
+    description: |
+      Apply natural logarithm to each tensor in a list.
+    for:
+      - _foreach_log
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_log_
+    description: |
+      In-place natural logarithm for each tensor in a list.
+    for:
+      - _foreach_log_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_log10
+    description: |
+      Apply base-10 logarithm to each tensor in a list.
+    for:
+      - _foreach_log10
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_log10_
+    description: |
+      In-place base-10 logarithm for each tensor in a list.
+    for:
+      - _foreach_log10_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_log1p
+    description: |
+      Apply log(1 + x) to each tensor in a list.
+    for:
+      - _foreach_log1p
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_log1p_
+    description: |
+      In-place log(1 + x) for each tensor in a list.
+    for:
+      - _foreach_log1p_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_log2
+    description: |
+      Apply base-2 logarithm to each tensor in a list.
+    for:
+      - _foreach_log2
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_log2_
+    description: |
+      In-place base-2 logarithm for each tensor in a list.
+    for:
+      - _foreach_log2_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_neg
+    description: |
+      Apply negation to each tensor in a list.
+    for:
+      - _foreach_neg
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_neg_
+    description: |
+      In-place negation for each tensor in a list.
+    for:
+      - _foreach_neg_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_reciprocal
+    description: |
+      Apply reciprocal to each tensor in a list.
+    for:
+      - _foreach_reciprocal
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_reciprocal_
+    description: |
+      In-place reciprocal for each tensor in a list.
+    for:
+      - _foreach_reciprocal_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_round
+    description: |
+      Apply round to nearest integer to each tensor in a list.
+    for:
+      - _foreach_round
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_round_
+    description: |
+      In-place round to nearest integer for each tensor in a list.
+    for:
+      - _foreach_round_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_rsqrt
+    description: |
+      Apply reciprocal square root to each tensor in a list.
+    for:
+      - _foreach_rsqrt
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_rsqrt_
+    description: |
+      In-place reciprocal square root for each tensor in a list.
+    for:
+      - _foreach_rsqrt_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_sigmoid
+    description: |
+      Apply sigmoid to each tensor in a list.
+    for:
+      - _foreach_sigmoid
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_sigmoid_
+    description: |
+      In-place sigmoid for each tensor in a list.
+    for:
+      - _foreach_sigmoid_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_sign
+    description: |
+      Apply sign to each tensor in a list.
+    for:
+      - _foreach_sign
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_sign_
+    description: |
+      In-place sign for each tensor in a list.
+    for:
+      - _foreach_sign_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_sin
+    description: |
+      Apply sine to each tensor in a list.
+    for:
+      - _foreach_sin
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_sin_
+    description: |
+      In-place sine for each tensor in a list.
+    for:
+      - _foreach_sin_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_sinh
+    description: |
+      Apply hyperbolic sine to each tensor in a list.
+    for:
+      - _foreach_sinh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_sinh_
+    description: |
+      In-place hyperbolic sine for each tensor in a list.
+    for:
+      - _foreach_sinh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_sqrt
+    description: |
+      Apply square root to each tensor in a list.
+    for:
+      - _foreach_sqrt
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_sqrt_
+    description: |
+      In-place square root for each tensor in a list.
+    for:
+      - _foreach_sqrt_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_tan
+    description: |
+      Apply tangent to each tensor in a list.
+    for:
+      - _foreach_tan
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_tan_
+    description: |
+      In-place tangent for each tensor in a list.
+    for:
+      - _foreach_tan_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_tanh
+    description: |
+      Apply hyperbolic tangent to each tensor in a list.
+    for:
+      - _foreach_tanh
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_tanh_
+    description: |
+      In-place hyperbolic tangent for each tensor in a list.
+    for:
+      - _foreach_tanh_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_trunc
+    description: |
+      Apply truncate to each tensor in a list.
+    for:
+      - _foreach_trunc
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
+  - id: _foreach_trunc_
+    description: |
+      In-place truncate for each tensor in a list.
+    for:
+      - _foreach_trunc_
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - PointWise
+    stages:
+      - alpha: '5.4'
   - id: adaptive_avg_pool3d_backward
     description: |
       Computes the gradient of 3D adaptive average pooling.
