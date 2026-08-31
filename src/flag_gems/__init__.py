@@ -242,6 +242,10 @@ _FULL_CONFIG = (
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
+    (
+        "_thnn_differentiable_gru_cell_backward",
+        _thnn_differentiable_gru_cell_backward,
+    ),
     ("_thnn_fused_lstm_cell", _thnn_fused_lstm_cell),
     ("_thnn_fused_lstm_cell_backward_impl", _thnn_fused_lstm_cell_backward_impl),
     (
@@ -727,6 +731,16 @@ _FULL_CONFIG = (
     ("linalg_ldl_solve", linalg_ldl_solve),
     ("linalg_lstsq", linalg_lstsq),
     ("linalg_matrix_norm", linalg_matrix_norm),
+    (
+        "linalg_matrix_sqrth",
+        linalg_matrix_sqrth,
+        lambda: torch_ge("2.15.0.dev20260627"),
+    ),
+    (
+        "linalg_matrix_sqrth.out",
+        linalg_matrix_sqrth_out,
+        lambda: torch_ge("2.15.0.dev20260627"),
+    ),
     ("linalg_slogdet", linalg_slogdet),
     ("linalg_solve_triangular", linalg_solve_triangular),
     ("linalg_solve_triangular.out", linalg_solve_triangular_out),
