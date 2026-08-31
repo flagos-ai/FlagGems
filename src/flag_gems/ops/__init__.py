@@ -818,6 +818,7 @@ from flag_gems.ops.special_erfinv import (
 )
 from flag_gems.ops.special_exp2 import special_exp2
 from flag_gems.ops.special_expit import special_expit
+from flag_gems.ops.special_expm1 import special_expm1
 from flag_gems.ops.special_gammainc import special_gammainc
 from flag_gems.ops.special_gammaincc import special_gammaincc
 from flag_gems.ops.special_gammaln import special_gammaln, special_gammaln_out
@@ -1852,6 +1853,7 @@ __all__ = [
     "special_erfinv_out",
     "special_exp2",
     "special_expit",
+    "special_expm1",
     "special_gammainc",
     "special_gammaincc",
     "special_gammaln",
