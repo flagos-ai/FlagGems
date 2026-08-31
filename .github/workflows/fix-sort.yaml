@@ -59,12 +59,21 @@ jobs:
     if: needs.check-command.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
+      # First checkout trusted code from base branch (for sort_exports.py script)
+      - name: Checkout base branch (trusted code)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: main
+          path: trusted
+
+      # Then checkout PR branch (untrusted, but we only modify its files)
       - name: Checkout PR branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           repository: ${{ needs.check-command.outputs.pr_repo }}
           ref: ${{ needs.check-command.outputs.pr_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          path: pr
 
       - name: Set up Python
         uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d  # v5.1.0
@@ -74,12 +83,16 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml
 
-      - name: Run sort_exports.py
-        run: python tools/ci_checks/sort_exports.py --fix
+      # Run the trusted script against PR files
+      - name: Run sort_exports.py from trusted code
+        run: |
+          cd pr
+          python ../trusted/tools/ci_checks/sort_exports.py --fix
 
       - name: Check if files changed
         id: check-changes
         run: |
+          cd pr
           if git diff --quiet; then
             echo "changed=false" >> $GITHUB_OUTPUT
             echo "No changes needed"
@@ -92,6 +105,7 @@ jobs:
       - name: Commit and push changes
         if: steps.check-changes.outputs.changed == 'true'
         run: |
+          cd pr
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
