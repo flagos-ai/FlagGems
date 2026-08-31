@@ -382,7 +382,7 @@ def _w8a16_fp8_available() -> bool:
 
 
 requires_w8a16_fp8_gdn = pytest.mark.skipif(
-    not _w8a16_fp8_available(), reason="FP8 GDN decode requires SM90 or newer"
+    not _w8a16_fp8_available(), reason="FP8 GDN requires SM90 or newer"
 )
 
 
@@ -472,23 +472,131 @@ def _run_w8a16_fp8_reference(q, k, v, g, beta, state):
     return output.to(q.dtype), state
 
 
+def _make_w8a16_fp8_sequence_inputs(batch_size: int, sequence_length: int, dtype):
+    q = torch.randn(
+        batch_size,
+        sequence_length,
+        _FP8_H,
+        _FP8_K,
+        device=flag_gems.device,
+        dtype=dtype,
+    )
+    k = torch.randn_like(q)
+    v = 0.125 * torch.randn(
+        batch_size,
+        sequence_length,
+        _FP8_HV,
+        _FP8_V,
+        device=flag_gems.device,
+        dtype=dtype,
+    )
+    g = torch.empty(
+        batch_size,
+        sequence_length,
+        _FP8_HV,
+        device=flag_gems.device,
+        dtype=dtype,
+    ).uniform_(math.log(0.98), math.log(0.995))
+    beta = torch.rand(
+        batch_size,
+        sequence_length,
+        _FP8_HV,
+        device=flag_gems.device,
+        dtype=dtype,
+    )
+    return q, k, v, g, beta
+
+
+def _run_w8a16_fp8_sequence_reference(
+    q,
+    k,
+    v,
+    g,
+    beta,
+    state,
+    cu_seqlens=None,
+    state_indices=None,
+):
+    q_float = q.float()
+    k_float = k.float()
+    q_float *= torch.rsqrt((q_float * q_float).sum(dim=-1, keepdim=True) + 1e-6)
+    k_float *= torch.rsqrt((k_float * k_float).sum(dim=-1, keepdim=True) + 1e-6)
+    q_float *= _FP8_K**-0.5
+    heads_per_qk = _FP8_HV // _FP8_H
+    q_float = q_float.repeat_interleave(heads_per_qk, dim=2)
+    k_float = k_float.repeat_interleave(heads_per_qk, dim=2)
+
+    output = torch.empty_like(v)
+    final_state = state.float().clone()
+    num_sequences = q.shape[0] if cu_seqlens is None else cu_seqlens.numel() - 1
+    for sequence_id in range(num_sequences):
+        if cu_seqlens is None:
+            batch_id = sequence_id
+            begin = 0
+            end = q.shape[1]
+        else:
+            batch_id = 0
+            begin = int(cu_seqlens[sequence_id].item())
+            end = int(cu_seqlens[sequence_id + 1].item())
+        state_id = (
+            sequence_id
+            if state_indices is None
+            else int(state_indices[sequence_id].item())
+        )
+        state_tile = final_state[state_id]
+        for token_id in range(begin, end):
+            state_tile = state_tile * torch.exp(
+                g[batch_id, token_id].float()[:, None, None]
+            )
+            prediction = torch.einsum(
+                "hk,hkv->hv", k_float[batch_id, token_id], state_tile
+            )
+            residual = (v[batch_id, token_id].float() - prediction) * beta[
+                batch_id, token_id
+            ].float()[:, None]
+            state_tile = state_tile + k_float[batch_id, token_id, :, :, None] * (
+                residual[:, None, :]
+            )
+            output[batch_id, token_id] = torch.einsum(
+                "hk,hkv->hv", q_float[batch_id, token_id], state_tile
+            ).to(output.dtype)
+        final_state[state_id] = state_tile
+    return output, final_state
+
+
 @requires_w8a16_fp8_gdn
 @pytest.mark.fused_recurrent_gated_delta_rule
 def test_gdn_state_fp8_round_trip():
     torch.manual_seed(0)
-    state = 0.125 * torch.randn(
-        2,
-        _FP8_HV,
-        _FP8_K,
+    channel_range = torch.logspace(
+        -2,
+        3,
         _FP8_V,
         device=flag_gems.device,
-        dtype=torch.bfloat16,
+        dtype=torch.float32,
+    ).view(1, 1, 1, _FP8_V)
+    state = (
+        torch.randn(
+            2,
+            _FP8_HV,
+            _FP8_K,
+            _FP8_V,
+            device=flag_gems.device,
+            dtype=torch.float32,
+        )
+        * channel_range
     )
-    state_fp8 = flag_gems.quantize_gdn_state_fp8(state.contiguous())
-    actual = flag_gems.dequantize_gdn_state_fp8(state_fp8, output_dtype=torch.float32)
+    state = state.to(torch.bfloat16).contiguous()
+    state_fp8, state_scale = flag_gems.quantize_gdn_state_fp8(state)
+    actual = flag_gems.dequantize_gdn_state_fp8(
+        state_fp8, state_scale, output_dtype=torch.float32
+    )
     error = (actual - state.float()).abs()
-    assert error.max().item() < 0.04
-    assert error.mean().item() < 0.004
+    channel_amax = state.float().abs().amax(dim=2, keepdim=True).clamp_min(1e-6)
+    normalized_error = error / channel_amax
+    assert normalized_error.max().item() < 0.08
+    assert normalized_error.mean().item() < 0.02
+    assert actual.abs().max().item() > 448.0
 
 
 @requires_w8a16_fp8_gdn
@@ -509,25 +617,31 @@ def test_fused_recurrent_gated_delta_rule_w8a16_fp8_accuracy(
         device=flag_gems.device,
         dtype=torch.bfloat16,
     )
-    state_fp8 = flag_gems.quantize_gdn_state_fp8(initial_state.contiguous())
+    state_fp8, state_scale = flag_gems.quantize_gdn_state_fp8(
+        initial_state.contiguous()
+    )
     state_ref = flag_gems.dequantize_gdn_state_fp8(
-        state_fp8, output_dtype=torch.bfloat16
+        state_fp8, state_scale, output_dtype=torch.bfloat16
     )
 
     expected, state_ref = _run_w8a16_fp8_reference(q, k, v, g, beta, state_ref)
-    actual, state_fp8 = flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
-        q,
-        k,
-        v,
-        g,
-        beta,
-        state_fp8,
-        _FP8_K**-0.5,
-        cu_seqlens,
-        state_indices,
-        True,
+    actual, state_fp8, state_scale = (
+        flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
+            q,
+            k,
+            v,
+            g,
+            beta,
+            state_fp8,
+            state_scale,
+            _FP8_K**-0.5,
+            cu_seqlens,
+            state_indices,
+            True,
+            max_sequence_length=1,
+        )
     )
-    actual_state = flag_gems.dequantize_gdn_state_fp8(state_fp8)
+    actual_state = flag_gems.dequantize_gdn_state_fp8(state_fp8, state_scale)
 
     torch.testing.assert_close(actual.float(), expected.float(), atol=2e-3, rtol=5e-2)
     torch.testing.assert_close(actual_state, state_ref.float(), atol=2e-2, rtol=2.5e-1)
@@ -546,7 +660,7 @@ def test_fused_recurrent_gated_delta_rule_w8a16_fp8_repeated_updates():
         device=flag_gems.device,
         dtype=torch.bfloat16,
     )
-    state_fp8 = flag_gems.quantize_gdn_state_fp8(state_ref)
+    state_fp8, state_scale = flag_gems.quantize_gdn_state_fp8(state_ref)
     max_output_error = 0.0
     mean_output_error = 0.0
 
@@ -557,23 +671,27 @@ def test_fused_recurrent_gated_delta_rule_w8a16_fp8_repeated_updates():
         expected, state_ref = _run_w8a16_fp8_bf16(
             q, k, v, g, beta, state_ref, cu_seqlens, state_indices
         )
-        actual, state_fp8 = flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
-            q,
-            k,
-            v,
-            g,
-            beta,
-            state_fp8,
-            _FP8_K**-0.5,
-            cu_seqlens,
-            state_indices,
-            True,
+        actual, state_fp8, state_scale = (
+            flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
+                q,
+                k,
+                v,
+                g,
+                beta,
+                state_fp8,
+                state_scale,
+                _FP8_K**-0.5,
+                cu_seqlens,
+                state_indices,
+                True,
+                max_sequence_length=1,
+            )
         )
         error = (actual.float() - expected.float()).abs()
         max_output_error = max(max_output_error, error.max().item())
         mean_output_error += error.mean().item()
 
-    actual_state = flag_gems.dequantize_gdn_state_fp8(state_fp8)
+    actual_state = flag_gems.dequantize_gdn_state_fp8(state_fp8, state_scale)
     state_error = (actual_state - state_ref.float()).abs()
     assert max_output_error < 0.015
     assert mean_output_error / 64 < 0.002
@@ -598,20 +716,195 @@ def test_fused_recurrent_gated_delta_rule_w8a16_fp8_nonpacked_accuracy():
         device=flag_gems.device,
         dtype=torch.bfloat16,
     )
-    state_fp8 = flag_gems.quantize_gdn_state_fp8(initial_state.contiguous())
-    state_ref = flag_gems.dequantize_gdn_state_fp8(state_fp8)
+    state_fp8, state_scale = flag_gems.quantize_gdn_state_fp8(
+        initial_state.contiguous()
+    )
+    state_ref = flag_gems.dequantize_gdn_state_fp8(state_fp8, state_scale)
 
     expected, state_ref = _run_w8a16_fp8_reference(q, k, v, g, beta, state_ref)
-    actual, state_fp8 = flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
+    actual, state_fp8, state_scale = (
+        flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
+            q,
+            k,
+            v,
+            g,
+            beta,
+            state_fp8,
+            state_scale,
+            _FP8_K**-0.5,
+        )
+    )
+    actual_state = flag_gems.dequantize_gdn_state_fp8(state_fp8, state_scale)
+
+    torch.testing.assert_close(actual.float(), expected.float(), atol=2e-3, rtol=5e-2)
+    torch.testing.assert_close(actual_state, state_ref, atol=2e-2, rtol=2.5e-1)
+
+
+@requires_w8a16_fp8_gdn
+@pytest.mark.fused_recurrent_gated_delta_rule
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.parametrize("packed", [False, True])
+def test_fused_recurrent_gated_delta_rule_w8a16_fp8_prefill_accuracy(
+    dtype,
+    packed,
+):
+    torch.manual_seed(4)
+    if packed:
+        # total_tokens == num_sequences deliberately exercises the ambiguous
+        # varlen case that cannot be inferred from tensor shapes alone.
+        sequence_lengths = [0, 2]
+        q, k, v, g, beta = _make_w8a16_fp8_sequence_inputs(
+            1, sum(sequence_lengths), dtype
+        )
+        cu_seqlens = torch.tensor([0, 0, 2], device=flag_gems.device, dtype=torch.long)
+        state_indices = torch.tensor([1, 0], device=flag_gems.device, dtype=torch.long)
+        num_states = len(sequence_lengths)
+    else:
+        q, k, v, g, beta = _make_w8a16_fp8_sequence_inputs(3, 4, dtype)
+        cu_seqlens = None
+        state_indices = torch.tensor(
+            [2, 0, 1], device=flag_gems.device, dtype=torch.long
+        )
+        num_states = q.shape[0]
+
+    initial_state = 0.02 * torch.randn(
+        num_states,
+        _FP8_HV,
+        _FP8_K,
+        _FP8_V,
+        device=flag_gems.device,
+        dtype=dtype,
+    )
+    state_fp8, state_scale = flag_gems.quantize_gdn_state_fp8(
+        initial_state.contiguous()
+    )
+    state_ref = flag_gems.dequantize_gdn_state_fp8(
+        state_fp8, state_scale, output_dtype=dtype
+    )
+    expected, expected_state = _run_w8a16_fp8_sequence_reference(
+        q,
+        k,
+        v,
+        g,
+        beta,
+        state_ref,
+        cu_seqlens,
+        state_indices,
+    )
+    actual, state_fp8, state_scale = (
+        flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
+            q,
+            k,
+            v,
+            g,
+            beta,
+            state_fp8,
+            state_scale,
+            _FP8_K**-0.5,
+            cu_seqlens,
+            state_indices,
+            True,
+        )
+    )
+    actual_state = flag_gems.dequantize_gdn_state_fp8(state_fp8, state_scale)
+
+    torch.testing.assert_close(actual.float(), expected.float(), atol=3e-2, rtol=0.2)
+    torch.testing.assert_close(actual_state, expected_state, atol=4e-2, rtol=0.3)
+
+
+@requires_w8a16_fp8_gdn
+@pytest.mark.fused_recurrent_gated_delta_rule
+def test_fused_recurrent_gated_delta_rule_w8a16_fp8_chunk_prefill_accuracy():
+    torch.manual_seed(5)
+    num_sequences, sequence_length = 2, 192
+    total_tokens = num_sequences * sequence_length
+    q, k, v, g, beta = _make_w8a16_fp8_sequence_inputs(1, total_tokens, torch.bfloat16)
+    cu_seqlens = torch.arange(
+        0,
+        total_tokens + 1,
+        sequence_length,
+        device=flag_gems.device,
+        dtype=torch.long,
+    )
+    state_indices = torch.tensor([1, 0], device=flag_gems.device, dtype=torch.long)
+    bf16_state_indices = (
+        state_indices[:, None].expand(num_sequences, sequence_length).contiguous()
+    )
+    initial_state = 0.02 * torch.randn(
+        num_sequences,
+        _FP8_HV,
+        _FP8_K,
+        _FP8_V,
+        device=flag_gems.device,
+        dtype=torch.bfloat16,
+    )
+    state_fp8, state_scale = flag_gems.quantize_gdn_state_fp8(
+        initial_state.contiguous()
+    )
+    reference_state = flag_gems.dequantize_gdn_state_fp8(
+        state_fp8, state_scale, output_dtype=torch.bfloat16
+    )
+
+    expected, expected_state = _run_w8a16_fp8_bf16(
+        q,
+        k,
+        v,
+        g,
+        beta,
+        reference_state,
+        cu_seqlens,
+        bf16_state_indices,
+    )
+    actual, state_fp8, state_scale = (
+        flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
+            q,
+            k,
+            v,
+            g,
+            beta,
+            state_fp8,
+            state_scale,
+            _FP8_K**-0.5,
+            cu_seqlens,
+            state_indices,
+            True,
+        )
+    )
+    actual_state = flag_gems.dequantize_gdn_state_fp8(state_fp8, state_scale)
+    output_error = (actual.float() - expected.float()).abs()
+    state_error = (actual_state - expected_state.float()).abs()
+    assert output_error.max().item() < 0.02
+    assert output_error.mean().item() < 0.002
+    assert state_error.max().item() < 0.35
+    assert state_error.mean().item() < 0.05
+
+    q, k, v, g, beta, decode_cu_seqlens, _ = _make_w8a16_fp8_packed_inputs(
+        num_sequences
+    )
+    expected, _ = _run_w8a16_fp8_bf16(
+        q,
+        k,
+        v,
+        g,
+        beta,
+        expected_state,
+        decode_cu_seqlens,
+        state_indices[:, None],
+    )
+    actual, _, _ = flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
         q,
         k,
         v,
         g,
         beta,
         state_fp8,
+        state_scale,
         _FP8_K**-0.5,
+        decode_cu_seqlens,
+        state_indices,
+        True,
+        max_sequence_length=1,
     )
-    actual_state = flag_gems.dequantize_gdn_state_fp8(state_fp8)
-
-    torch.testing.assert_close(actual.float(), expected.float(), atol=2e-3, rtol=5e-2)
-    torch.testing.assert_close(actual_state, state_ref, atol=2e-2, rtol=2.5e-1)
+    decode_error = (actual.float() - expected.float()).abs()
+    assert decode_error.max().item() < 0.03
+    assert decode_error.mean().item() < 0.006

@@ -250,7 +250,7 @@ class FusedRecurrentGatedDeltaRuleW8A16FP8Benchmark(Benchmark):
             device=flag_gems.device,
             dtype=dtype,
         )
-        state_fp8 = flag_gems.quantize_gdn_state_fp8(state_bf16)
+        state_fp8, state_scale = flag_gems.quantize_gdn_state_fp8(state_bf16)
         cu_seqlens = torch.arange(
             num_sequences + 1, device=flag_gems.device, dtype=torch.long
         )
@@ -265,9 +265,114 @@ class FusedRecurrentGatedDeltaRuleW8A16FP8Benchmark(Benchmark):
             beta,
             state_bf16,
             state_fp8,
+            state_scale,
             K**-0.5,
             cu_seqlens,
             state_indices,
+            state_indices,
+        )
+
+
+class FusedRecurrentGatedDeltaRuleW8A16FP8PrefillBenchmark(
+    FusedRecurrentGatedDeltaRuleW8A16FP8Benchmark
+):
+    DEFAULT_SHAPES = [
+        (1, 2),
+        (1, 8),
+        (1, 32),
+        (4, 4),
+        (4, 16),
+        (16, 4),
+        (1, 256),
+        (1, 512),
+        (2, 192),
+        (4, 256),
+        (8, 128),
+        (16, 128),
+        (32, 64),
+        (64, 32),
+        (128, 24),
+    ]
+    DEFAULT_SHAPE_DESC = "num_sequences, sequence_length"
+
+    def get_input_iter(self, cur_dtype):
+        for num_sequences, sequence_length in self.shapes:
+            yield self._build_prefill_inputs(num_sequences, sequence_length, cur_dtype)
+
+    @staticmethod
+    def _build_prefill_inputs(
+        num_sequences: int,
+        sequence_length: int,
+        dtype: torch.dtype,
+    ):
+        H, HV, K, V = 4, 8, 128, 128
+        total_tokens = num_sequences * sequence_length
+        q = torch.randn(
+            1,
+            total_tokens,
+            H,
+            K,
+            device=flag_gems.device,
+            dtype=dtype,
+        )
+        k = torch.randn_like(q)
+        v = 0.125 * torch.randn(
+            1,
+            total_tokens,
+            HV,
+            V,
+            device=flag_gems.device,
+            dtype=dtype,
+        )
+        g = torch.empty(
+            1,
+            total_tokens,
+            HV,
+            device=flag_gems.device,
+            dtype=dtype,
+        ).uniform_(math.log(0.98), math.log(0.995))
+        beta = torch.rand(
+            1,
+            total_tokens,
+            HV,
+            device=flag_gems.device,
+            dtype=dtype,
+        )
+        state_bf16 = torch.zeros(
+            num_sequences,
+            HV,
+            K,
+            V,
+            device=flag_gems.device,
+            dtype=dtype,
+        )
+        state_fp8, state_scale = flag_gems.quantize_gdn_state_fp8(state_bf16)
+        cu_seqlens = torch.arange(
+            0,
+            total_tokens + 1,
+            sequence_length,
+            device=flag_gems.device,
+            dtype=torch.long,
+        )
+        state_indices = torch.arange(
+            num_sequences, device=flag_gems.device, dtype=torch.long
+        )
+        bf16_state_indices = (
+            state_indices[:, None].expand(num_sequences, sequence_length).contiguous()
+        )
+        return (
+            q,
+            k,
+            v,
+            g,
+            beta,
+            state_bf16,
+            state_fp8,
+            state_scale,
+            K**-0.5,
+            cu_seqlens,
+            state_indices,
+            bf16_state_indices,
         )
 
 
@@ -279,9 +384,11 @@ def _bf16_decode_wrapper(
     beta,
     state_bf16,
     _state_fp8,
+    _state_scale,
     scale,
     cu_seqlens,
     state_indices,
+    bf16_state_indices,
 ):
     return flag_gems.fused_recurrent_gated_delta_rule_fwd(
         q=q,
@@ -293,7 +400,7 @@ def _bf16_decode_wrapper(
         initial_state=state_bf16,
         inplace_final_state=True,
         cu_seqlens=cu_seqlens,
-        ssm_state_indices=state_indices,
+        ssm_state_indices=bf16_state_indices,
         num_accepted_tokens=None,
         use_qk_l2norm_in_kernel=True,
     )
@@ -307,9 +414,11 @@ def _w8a16_fp8_wrapper(
     beta,
     _state_bf16,
     state_fp8,
+    state_scale,
     scale,
     cu_seqlens,
     state_indices,
+    _bf16_state_indices,
 ):
     return flag_gems.fused_recurrent_gated_delta_rule_w8a16_fp8(
         q,
@@ -318,10 +427,12 @@ def _w8a16_fp8_wrapper(
         g,
         beta,
         state_fp8,
+        state_scale,
         scale,
         cu_seqlens,
         state_indices,
         True,
+        max_sequence_length=(1 if q.shape[1] == state_indices.numel() else None),
     )
 
 
@@ -334,13 +445,23 @@ def _w8a16_fp8_available():
     )
 
 
-@pytest.mark.skipif(
-    not _w8a16_fp8_available(), reason="FP8 GDN decode requires SM90 or newer"
-)
+@pytest.mark.skipif(not _w8a16_fp8_available(), reason="FP8 GDN requires SM90 or newer")
 @pytest.mark.fused_recurrent_gated_delta_rule
 def test_perf_fused_recurrent_gated_delta_rule_w8a16_fp8():
     torch.manual_seed(0)
     bench = FusedRecurrentGatedDeltaRuleW8A16FP8Benchmark(
+        op_name="fused_recurrent_gated_delta_rule",
+        torch_op=_bf16_decode_wrapper,
+    )
+    bench.set_gems(_w8a16_fp8_wrapper)
+    bench.run()
+
+
+@pytest.mark.skipif(not _w8a16_fp8_available(), reason="FP8 GDN requires SM90 or newer")
+@pytest.mark.fused_recurrent_gated_delta_rule
+def test_perf_fused_recurrent_gated_delta_rule_w8a16_fp8_prefill():
+    torch.manual_seed(0)
+    bench = FusedRecurrentGatedDeltaRuleW8A16FP8PrefillBenchmark(
         op_name="fused_recurrent_gated_delta_rule",
         torch_op=_bf16_decode_wrapper,
     )
