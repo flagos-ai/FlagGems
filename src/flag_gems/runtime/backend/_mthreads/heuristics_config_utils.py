@@ -453,6 +453,22 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": index_add_heur_block_m,
         "BLOCK_N": index_add_heur_block_n,
     },
+    "layer_norm_backward_resident_dx": {
+        "MIN_ROWS": lambda _args: 32768,
+        "MAX_RESIDENT_N": lambda _args: 512,
+        "TILE_ELEMENTS": lambda _args: 512,
+        "PROGRAM_WAVES": lambda _args: 8,
+        "FULL_ROW_GRID": lambda args: args["TILE_N"] >= 256,
+    },
+    "layer_norm_weight_bias_backward": {
+        "ROWS_PER_PROGRAM": lambda _args: 256,
+        "BLOCK_COL_SIZE": lambda args: (
+            16
+            if args["N"] <= 16 or (args["IS_LOW_PRECISION"] and args["N"] <= 32)
+            else 32
+        ),
+        "MIN_ROW_GROUPS": lambda _args: 64,
+    },
     "mm": {
         "EVEN_K": mm_heur_even_k,
     },

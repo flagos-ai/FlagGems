@@ -304,6 +304,15 @@ HEURISTICS_CONFIGS = {
         "TILE_M": softmax_heur_tile_m,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
     },
+    "layer_norm_backward_fused": {
+        "MIN_ELEMENTS": lambda _args: 1024 * 1024,
+        "MAX_RESIDENT_N": lambda _args: 512,
+        # Bound BLOCK_M * TILE_N to a stable two-dimensional reduction tile.
+        "TILE_ELEMENTS": lambda _args: 2048,
+        "MAX_BLOCK_M": lambda _args: 256,
+        "PROGRAM_WAVES": lambda _args: 1,
+        "DIRECT_LOWP_ATOMIC": lambda _args: False,
+    },
     "uniform": {
         "BLOCK": uniform_heur_block,
         "num_warps": uniform_heur_num_warps,

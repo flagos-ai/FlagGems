@@ -261,6 +261,28 @@ rms_norm_loop:
       - 4096
       - 8192
 layer_norm_backward:
+  # Keep at least two warps per row for the 2048-column tile on MUSA.
+  - gen: true
+    param_map:
+      META:
+        BLOCK_ROW_SIZE: block_r
+        BLOCK_COL_SIZE: 2048
+      num_warps: warps
+    warps:
+      - 16
+    block_r:
+      - 8
+  - gen: true
+    param_map:
+      META:
+        BLOCK_ROW_SIZE: block_r
+        BLOCK_COL_SIZE: 2048
+      num_warps: warps
+    warps:
+      - 8
+      - 16
+    block_r:
+      - 4
   - gen: true
     param_map:
       META:
@@ -274,8 +296,6 @@ layer_norm_backward:
     block_r:
       - 1
       - 2
-      - 4
-      - 8
 weight_bias_backward:
   - gen: true
     param_map:

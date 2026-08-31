@@ -304,6 +304,16 @@ HEURISTICS_CONFIGS = {
         "TILE_M": softmax_heur_tile_m,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
     },
+    "layer_norm_backward_fused": {
+        "MIN_ELEMENTS": lambda args: (
+            16 * 1024 * 1024 if args["IS_LOW_PRECISION"] else 1024 * 1024
+        ),
+        "MAX_RESIDENT_N": lambda _args: 512,
+        "TILE_ELEMENTS": lambda args: (512 if args["IS_LOW_PRECISION"] else 4096),
+        "MAX_BLOCK_M": lambda _args: 256,
+        "PROGRAM_WAVES": lambda args: 8 if args["IS_LOW_PRECISION"] else 1,
+        "DIRECT_LOWP_ATOMIC": lambda _args: False,
+    },
     "uniform": {
         "BLOCK": uniform_heur_block,
         "num_warps": uniform_heur_num_warps,

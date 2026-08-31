@@ -471,6 +471,14 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
     },
+    "layer_norm_backward_fused": {
+        "MIN_ELEMENTS": lambda _args: 1024 * 1024,
+        "MAX_RESIDENT_N": lambda _args: 512,
+        "TILE_ELEMENTS": lambda args: (512 if args["IS_LOW_PRECISION"] else 4096),
+        "MAX_BLOCK_M": lambda _args: 256,
+        "PROGRAM_WAVES": lambda args: 8 if args["IS_LOW_PRECISION"] else 1,
+        "DIRECT_LOWP_ATOMIC": lambda _args: False,
+    },
     "mm": {
         "EVEN_K": mm_heur_even_k,
     },
