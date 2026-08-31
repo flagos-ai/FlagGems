@@ -433,6 +433,8 @@ def randperm(
     pin_memory=False,
 ):
     logger.debug("GEMS RANDPERM")
+    if dtype is None:
+        dtype = torch.int64
     assert dtype == torch.int16 or dtype == torch.int32 or dtype == torch.int64
     assert n <= _MAX_INT64_VAL, "n exceeds maximum int64"
 
