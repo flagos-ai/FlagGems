@@ -16,13 +16,8 @@ from flag_gems.ops.__ilshift__ import __ilshift__
 from flag_gems.ops.__irshift__ import __irshift__
 from flag_gems.ops.__lshift__ import __lshift__
 from flag_gems.ops.__rshift__ import __rshift__
-from flag_gems.ops.__xor__ import (  # noqa: F401
-    xor,
-    xor_,
-    xor_scalar,
-    xor_scalar_,
-    xor_scalar_tensor,
-)
+from flag_gems.ops.__xor__ import xor_scalar  # noqa: F401
+from flag_gems.ops.__xor__ import xor, xor_, xor_scalar_, xor_scalar_tensor
 from flag_gems.ops._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from flag_gems.ops._add_relu import _add_relu
 from flag_gems.ops._add_relu_ import _add_relu_
@@ -419,6 +414,7 @@ from flag_gems.ops.fractional_max_pool2d import (
     fractional_max_pool2d,
     fractional_max_pool2d_backward,
 )
+from flag_gems.ops.fractional_max_pool3d import fractional_max_pool3d
 from flag_gems.ops.frexp import frexp
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
@@ -1371,6 +1367,7 @@ __all__ = [
     "frac_",
     "fractional_max_pool2d",
     "fractional_max_pool2d_backward",
+    "fractional_max_pool3d",
     "frexp",
     "full",
     "full_like",
