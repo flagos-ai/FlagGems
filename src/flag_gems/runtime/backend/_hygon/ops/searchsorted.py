@@ -124,9 +124,7 @@ def _searchsorted_scalar_kernel(
         value = value.to(tl.int32)
 
     sample_mask = offsets * bucket_size < sequence_len
-    sample_indices = tl.minimum(
-        (offsets + 1) * bucket_size - 1, sequence_len - 1
-    )
+    sample_indices = tl.minimum((offsets + 1) * bucket_size - 1, sequence_len - 1)
     sorted_indices = sample_indices
     if HAS_SORTER:
         sorted_indices = tl.load(
@@ -146,9 +144,7 @@ def _searchsorted_scalar_kernel(
         right, ~(value < sample_values), ~(value <= sample_values)
     )
 
-    completed_buckets = tl.sum(
-        tl.where(sample_mask & sample_go_right, 1, 0), axis=0
-    )
+    completed_buckets = tl.sum(tl.where(sample_mask & sample_go_right, 1, 0), axis=0)
     low = tl.minimum(completed_buckets * bucket_size, sequence_len)
     high = tl.minimum(low + bucket_size, sequence_len)
 

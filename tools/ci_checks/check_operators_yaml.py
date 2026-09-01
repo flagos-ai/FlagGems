@@ -45,7 +45,7 @@ def check_required_fields(ops: list[dict]) -> list[str]:
     """Check that all entries have required fields."""
     errors = []
     for i, op in enumerate(ops):
-        op_id = op.get("id", f"<entry #{i+1}>")
+        op_id = op.get("id", f"<entry #{i + 1}>")
         missing = REQUIRED_FIELDS - set(op.keys())
         if missing:
             errors.append(
@@ -54,7 +54,7 @@ def check_required_fields(ops: list[dict]) -> list[str]:
         # Validate field types
         if "id" in op:
             if not isinstance(op["id"], str) or not op["id"].strip():
-                errors.append(f"Entry #{i+1}: 'id' must be a non-empty string")
+                errors.append(f"Entry #{i + 1}: 'id' must be a non-empty string")
         if "labels" in op:
             if not isinstance(op["labels"], list) or len(op["labels"]) == 0:
                 errors.append(f"Operator '{op_id}': 'labels' must be a non-empty list")
@@ -74,7 +74,7 @@ def check_duplicate_ids(ops: list[dict]) -> list[str]:
             continue
         if op_id in seen:
             errors.append(
-                f"Duplicate id '{op_id}': appears at entry #{seen[op_id]+1} and #{i+1}"
+                f"Duplicate id '{op_id}': appears at entry #{seen[op_id] + 1} and #{i + 1}"
             )
         else:
             seen[op_id] = i
@@ -99,7 +99,7 @@ def check_sort_order(ops: list[dict]) -> list[str]:
         for i in range(first_mismatch, min(first_mismatch + 5, len(ids))):
             if ids[i] != sorted_ids[i]:
                 mismatches.append(
-                    f"  position {i+1}: got '{ids[i]}', expected '{sorted_ids[i]}'"
+                    f"  position {i + 1}: got '{ids[i]}', expected '{sorted_ids[i]}'"
                 )
         errors.append(
             "operators.yaml is not sorted by id.casefold(). First mismatches:\n"
