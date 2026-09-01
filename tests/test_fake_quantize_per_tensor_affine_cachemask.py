@@ -34,10 +34,9 @@ def test_accuracy_fake_quantize_per_tensor_affine_cachemask(
         utils.to_reference(input), scale, zero_point, quant_min, quant_max
     )
 
-    with flag_gems.use_gems():
-        output, cachemask = torch.ops.aten.fake_quantize_per_tensor_affine_cachemask(
-            input, scale, zero_point, quant_min, quant_max
-        )
+    output, cachemask = flag_gems.fake_quantize_per_tensor_affine_cachemask(
+        input, scale, zero_point, quant_min, quant_max
+    )
 
     utils.gems_assert_equal(output, ref_output)
     utils.gems_assert_equal(cachemask, ref_mask)
@@ -55,10 +54,9 @@ def test_accuracy_fake_quantize_per_tensor_affine_cachemask_boundaries(scale):
         utils.to_reference(input), scale, 0, -2, 2
     )
 
-    with flag_gems.use_gems():
-        output, cachemask = torch.ops.aten.fake_quantize_per_tensor_affine_cachemask(
-            input, scale, 0, -2, 2
-        )
+    output, cachemask = flag_gems.fake_quantize_per_tensor_affine_cachemask(
+        input, scale, 0, -2, 2
+    )
 
     utils.gems_assert_equal(output, ref_output)
     utils.gems_assert_equal(cachemask, ref_mask)
@@ -73,10 +71,9 @@ def test_accuracy_fake_quantize_per_tensor_affine_cachemask_out():
     out0 = torch.empty((16, 8), device=flag_gems.device).T
     out1 = torch.empty((16, 8), dtype=torch.bool, device=flag_gems.device).T
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.fake_quantize_per_tensor_affine_cachemask.out(
-            input, 0.03, 3, 0, 255, out0=out0, out1=out1
-        )
+    result = flag_gems.fake_quantize_per_tensor_affine_cachemask_out(
+        input, 0.03, 3, 0, 255, out0=out0, out1=out1
+    )
 
     assert result[0] is out0
     assert result[1] is out1
@@ -91,10 +88,9 @@ def test_accuracy_fake_quantize_per_tensor_affine_cachemask_noncontiguous():
         utils.to_reference(input), 0.1, 0, 0, 255
     )
 
-    with flag_gems.use_gems():
-        output, cachemask = torch.ops.aten.fake_quantize_per_tensor_affine_cachemask(
-            input, 0.1, 0, 0, 255
-        )
+    output, cachemask = flag_gems.fake_quantize_per_tensor_affine_cachemask(
+        input, 0.1, 0, 0, 255
+    )
 
     utils.gems_assert_equal(output, ref_output)
     utils.gems_assert_equal(cachemask, ref_mask)
@@ -104,10 +100,9 @@ def test_accuracy_fake_quantize_per_tensor_affine_cachemask_noncontiguous():
 def test_accuracy_fake_quantize_per_tensor_affine_cachemask_empty():
     input = torch.empty((2, 0, 3), device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        output, cachemask = torch.ops.aten.fake_quantize_per_tensor_affine_cachemask(
-            input, 0.1, 0, 0, 255
-        )
+    output, cachemask = flag_gems.fake_quantize_per_tensor_affine_cachemask(
+        input, 0.1, 0, 0, 255
+    )
 
     assert output.shape == input.shape
     assert output.dtype == input.dtype
@@ -122,7 +117,7 @@ def test_fake_quantize_per_tensor_affine_cachemask_invalid_qparams(
 ):
     input = torch.ones(2, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten.fake_quantize_per_tensor_affine_cachemask(
+    with pytest.raises(RuntimeError):
+        flag_gems.fake_quantize_per_tensor_affine_cachemask(
             input, 0.1, zero_point, quant_min, quant_max
         )
