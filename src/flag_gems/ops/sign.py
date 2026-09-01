@@ -97,3 +97,8 @@ def sign(x: torch.Tensor):
 def sign_out(x: torch.Tensor, *, out: torch.Tensor):
     logger.debug("GEMS SIGN_OUT")
     return _sign_impl(x, out)
+
+
+def sign_(x: torch.Tensor):
+    logger.debug("GEMS SIGN_")
+    return _sign_impl(x, x)

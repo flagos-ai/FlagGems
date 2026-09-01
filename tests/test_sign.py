@@ -63,6 +63,18 @@ def _assert_matches_torch(inp, out=None):
     utils.gems_assert_equal(result, ref_out, equal_nan=False)
 
 
+def _assert_inplace_matches_torch(inp):
+    ref_inp = _to_reference(inp.clone())
+    ref_out = ref_inp.sign_()
+    with flag_gems.use_gems():
+        result = inp.sign_()
+    assert result is inp
+    # torch.sign(nan) returns 0.0, not nan
+    utils.gems_assert_equal(result, ref_out, equal_nan=False)
+    # the input tensor itself must have been mutated in place
+    utils.gems_assert_equal(inp, ref_out, equal_nan=False)
+
+
 @pytest.mark.sign
 @pytest.mark.parametrize("dtype,shape", SIGN_CASES)
 def test_sign(dtype, shape):
@@ -76,6 +88,20 @@ def test_sign_out(dtype, shape):
     inp = _make_input(shape, dtype)
     out = torch.empty_like(inp)
     _assert_matches_torch(inp, out)
+
+
+@pytest.mark.sign_
+@pytest.mark.parametrize("dtype,shape", SIGN_CASES)
+def test_sign_(dtype, shape):
+    inp = _make_input(shape, dtype)
+    _assert_inplace_matches_torch(inp)
+
+
+@pytest.mark.sign_
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_sign__noncontiguous(dtype):
+    inp = _make_input((7, 11), dtype).transpose(0, 1)
+    _assert_inplace_matches_torch(inp)
 
 
 @pytest.mark.sign
