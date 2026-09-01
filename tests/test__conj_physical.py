@@ -1,6 +1,5 @@
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
@@ -8,21 +7,6 @@ from . import accuracy_utils as utils
 
 # Core shapes exercised by CONJ_PHYSICAL_SHAPES (mirrors worktree CI branch).
 CONJ_PHYSICAL_SHAPES = [(256,), (32, 64), (2, 3, 4)]
-
-# ``_conj_physical`` / ``_conj_physical_out`` start with an underscore, and
-# ``pytest.mark`` refuses to generate a marker via attribute access for such
-# names. Register them directly on the MarkGenerator so
-# ``@pytest.mark._conj_physical`` and ``-m _conj_physical`` both work.
-setattr(
-    pytest.mark,
-    "_conj_physical",
-    MarkDecorator(Mark("_conj_physical", (), {}, _ispytest=True), _ispytest=True),
-)
-setattr(
-    pytest.mark,
-    "_conj_physical_out",
-    MarkDecorator(Mark("_conj_physical_out", (), {}, _ispytest=True), _ispytest=True),
-)
 
 
 def _make_complex(shape, dtype, device):
@@ -32,7 +16,7 @@ def _make_complex(shape, dtype, device):
     return torch.complex(real, imag).to(dtype)
 
 
-@pytest.mark._conj_physical
+@pytest.mark.underscore_conj_physical
 @pytest.mark.parametrize("shape", CONJ_PHYSICAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
 def test__conj_physical(shape, dtype):
@@ -46,7 +30,7 @@ def test__conj_physical(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=1)
 
 
-@pytest.mark._conj_physical
+@pytest.mark.underscore_conj_physical
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__conj_physical_real(shape, dtype):
@@ -61,7 +45,7 @@ def test__conj_physical_real(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=1)
 
 
-@pytest.mark._conj_physical_out
+@pytest.mark.underscore_conj_physical_out
 @pytest.mark.parametrize("shape", CONJ_PHYSICAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
 def test__conj_physical_out(shape, dtype):
