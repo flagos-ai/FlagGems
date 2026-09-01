@@ -63,7 +63,7 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
 
     # Match __all__ = [ ... ]
     # Use MULTILINE and DOTALL to handle multi-line lists
-    pattern = r'^(__all__\s*=\s*\[)(.*?)(^\])'
+    pattern = r"^(__all__\s*=\s*\[)(.*?)(^\])"
     match = re.search(pattern, source, re.MULTILINE | re.DOTALL)
 
     if not match:
@@ -96,7 +96,7 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
         return False
 
     # Detect indent and quote style from first item
-    lines = content.strip().split('\n')
+    lines = content.strip().split("\n")
     if lines and lines[0].strip():
         first_line = lines[0]
         indent = len(first_line) - len(first_line.lstrip())
@@ -109,10 +109,12 @@ def sort_python_all(file_path: Path, fix: bool = False, dry_run: bool = False) -
     indent_str = " " * indent
 
     # Rebuild the __all__ content
-    new_items_lines = [f'{indent_str}{quote}{item}{quote},' for item in sorted_items]
+    new_items_lines = [f"{indent_str}{quote}{item}{quote}," for item in sorted_items]
     new_content = "\n" + "\n".join(new_items_lines) + "\n"
 
-    new_source = source[:match.start()] + prefix + new_content + suffix + source[match.end():]
+    new_source = (
+        source[: match.start()] + prefix + new_content + suffix + source[match.end() :]
+    )
 
     if dry_run:
         print(f"Would sort {file_path}: {len(items)} items")
@@ -150,15 +152,15 @@ def sort_operators_yaml(
         print(f"Warning: {file_path} not found")
         return True
 
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         data = yaml.safe_load(f)
 
-    ops = data.get('ops', [])
+    ops = data.get("ops", [])
     if not ops:
         return True
 
     # Extract ids
-    ids = [op['id'] for op in ops]
+    ids = [op["id"] for op in ops]
     sorted_ids = sorted(ids, key=str.casefold)
 
     if ids == sorted_ids:
@@ -174,7 +176,7 @@ def sort_operators_yaml(
         return False
 
     # Sort the ops list
-    sorted_ops = sorted(ops, key=lambda x: x['id'].casefold())
+    sorted_ops = sorted(ops, key=lambda x: x["id"].casefold())
 
     if dry_run:
         print(f"Would sort {file_path}: {len(ops)} operators")
@@ -189,7 +191,7 @@ def sort_operators_yaml(
     # Find the "ops:" line
     ops_line_idx = None
     for i, line in enumerate(lines):
-        if line.strip() == 'ops:':
+        if line.strip() == "ops:":
             ops_line_idx = i
             break
 
@@ -198,17 +200,19 @@ def sort_operators_yaml(
         return False
 
     # Preserve header (copyright + "ops:")
-    header = '\n'.join(lines[: ops_line_idx + 1]) + '\n'
+    header = "\n".join(lines[: ops_line_idx + 1]) + "\n"
 
     # Write sorted YAML
-    data['ops'] = sorted_ops
-    yaml_content = yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    data["ops"] = sorted_ops
+    yaml_content = yaml.dump(
+        data, default_flow_style=False, allow_unicode=True, sort_keys=False
+    )
 
     # Extract only the ops list from dumped YAML (skip "ops:" line)
     yaml_lines = yaml_content.splitlines()
     ops_start = None
     for i, line in enumerate(yaml_lines):
-        if line.strip() == 'ops:':
+        if line.strip() == "ops:":
             ops_start = i + 1
             break
 
@@ -216,9 +220,9 @@ def sort_operators_yaml(
         print(f"Error: Cannot parse dumped YAML", file=sys.stderr)
         return False
 
-    ops_body = '\n'.join(yaml_lines[ops_start:])
+    ops_body = "\n".join(yaml_lines[ops_start:])
 
-    new_content = header + ops_body + '\n'
+    new_content = header + ops_body + "\n"
     file_path.write_text(new_content)
     print(f"✅ {file_path}: sorted {len(ops)} operators")
     return False
@@ -272,7 +276,9 @@ def main():
 
     for file_path in files_to_check:
         if file_path.name == "operators.yaml":
-            sorted_ok = sort_operators_yaml(file_path, fix=args.fix, dry_run=args.dry_run)
+            sorted_ok = sort_operators_yaml(
+                file_path, fix=args.fix, dry_run=args.dry_run
+            )
         else:
             sorted_ok = sort_python_all(file_path, fix=args.fix, dry_run=args.dry_run)
 
