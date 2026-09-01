@@ -64,8 +64,7 @@ def _assert_feature_alpha_dropout_result(output, input, p, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_feature_alpha_dropout(shape, p, dtype):
     input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        output = torch.ops.aten.feature_alpha_dropout(input, p, True)
+    output = flag_gems.feature_alpha_dropout(input, p, True)
 
     assert output.shape == input.shape
     assert output.dtype == input.dtype
@@ -77,8 +76,7 @@ def test_feature_alpha_dropout(shape, p, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_feature_alpha_dropout_identity(p, train, dtype):
     input = torch.randn((2, 3, 4), dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        output = torch.ops.aten.feature_alpha_dropout(input, p, train)
+    output = flag_gems.feature_alpha_dropout(input, p, train)
 
     assert output.data_ptr() == input.data_ptr()
     utils.gems_assert_equal(output, utils.to_reference(input))
@@ -93,8 +91,7 @@ def test_feature_alpha_dropout_p_one_special_values():
     reference = torch.ops.aten.feature_alpha_dropout(
         utils.to_reference(input), 1.0, True
     )
-    with flag_gems.use_gems():
-        output = torch.ops.aten.feature_alpha_dropout(input, 1.0, True)
+    output = flag_gems.feature_alpha_dropout(input, 1.0, True)
 
     utils.gems_assert_equal(output, reference, equal_nan=True)
     # CPU and CUDA can produce NaNs with different sign bits for inf * 0. NaN
@@ -110,8 +107,7 @@ def test_feature_alpha_dropout_p_one_special_values():
 @pytest.mark.feature_alpha_dropout
 def test_feature_alpha_dropout_empty_returns_input():
     input = torch.empty((0,), device=flag_gems.device)
-    with flag_gems.use_gems():
-        output = torch.ops.aten.feature_alpha_dropout(input, 0.5, True)
+    output = flag_gems.feature_alpha_dropout(input, 0.5, True)
 
     assert output.data_ptr() == input.data_ptr()
     assert output.shape == input.shape
@@ -120,8 +116,7 @@ def test_feature_alpha_dropout_empty_returns_input():
 @pytest.mark.feature_alpha_dropout
 def test_feature_alpha_dropout_noncontiguous():
     input = torch.randn((16, 32, 8, 8), device=flag_gems.device).transpose(1, 2)
-    with flag_gems.use_gems():
-        output = torch.ops.aten.feature_alpha_dropout(input, 0.5, True)
+    output = flag_gems.feature_alpha_dropout(input, 0.5, True)
 
     assert output.stride() == input.stride()
     _assert_feature_alpha_dropout_result(output, input, 0.5, torch.float32)
@@ -132,17 +127,14 @@ def test_feature_alpha_dropout_noncontiguous():
 @pytest.mark.parametrize("train", [True, False])
 def test_feature_alpha_dropout_invalid_probability(p, train):
     input = torch.randn((2, 3), device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten.feature_alpha_dropout(input, p, train)
+    with pytest.raises(RuntimeError):
+        flag_gems.feature_alpha_dropout(input, p, train)
 
 
 @pytest.mark.feature_alpha_dropout
 def test_feature_alpha_dropout_requires_two_dimensions():
     input = torch.randn((8,), device=flag_gems.device)
-    with (
-        flag_gems.use_gems(),
-        pytest.raises(
-            RuntimeError, match="Feature dropout requires at least 2 dimensions"
-        ),
+    with pytest.raises(
+        RuntimeError, match="Feature dropout requires at least 2 dimensions"
     ):
-        torch.ops.aten.feature_alpha_dropout(input, 0.5, True)
+        flag_gems.feature_alpha_dropout(input, 0.5, True)
