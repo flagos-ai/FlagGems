@@ -538,6 +538,7 @@ def mhc_pre_generic_kernel(
         tl.store(post_mix_ptr + pid_n * HC + i, post_i)
 
     cb = 2 * HC
+    # Load scaled mix values into comb_mix
     for i in tl.static_range(HC):
         for j in tl.static_range(HC):
             idx = i * HC + j
@@ -546,19 +547,23 @@ def mhc_pre_generic_kernel(
             ) * rms_inv * scale_2 + tl.load(hc_base_ptr + cb + idx)
             tl.store(comb_mix_ptr + comb_base + idx, v)
 
+    # Step 1: Row-wise softmax, then add eps to each element
     for i in tl.static_range(HC):
+        # Find row max for numerical stability
         row_max = tl.load(comb_mix_ptr + comb_base + i * HC + 0)
         for j in tl.static_range(1, HC):
             row_max = tl.maximum(
                 row_max, tl.load(comb_mix_ptr + comb_base + i * HC + j)
             )
 
+        # Compute exp(x - row_max) and sum
         row_sum = 0.0
         for j in tl.static_range(HC):
             e = tl.exp(tl.load(comb_mix_ptr + comb_base + i * HC + j) - row_max)
             tl.store(comb_mix_ptr + comb_base + i * HC + j, e)
             row_sum += e
 
+        # Normalize and add eps to each element (matches reference: softmax(-1) + eps)
         inv_row_sum = 1.0 / row_sum
         for j in tl.static_range(HC):
             v = tl.load(comb_mix_ptr + comb_base + i * HC + j)
@@ -566,6 +571,7 @@ def mhc_pre_generic_kernel(
                 comb_mix_ptr + comb_base + i * HC + j, v * inv_row_sum + hc_sinkhorn_eps
             )
 
+    # Step 2: Divide by (column_sum + eps)
     for j in tl.static_range(HC):
         col_sum = 0.0
         for i in tl.static_range(HC):
@@ -575,7 +581,9 @@ def mhc_pre_generic_kernel(
             v = tl.load(comb_mix_ptr + comb_base + i * HC + j)
             tl.store(comb_mix_ptr + comb_base + i * HC + j, v * inv_col_sum)
 
+    # Step 3: Alternate row/column normalization for remaining iterations
     for _ in tl.static_range(sinkhorn_repeat - 1):
+        # Divide by (row_sum + eps)
         for i in tl.static_range(HC):
             row_sum = 0.0
             for j in tl.static_range(HC):
@@ -585,6 +593,7 @@ def mhc_pre_generic_kernel(
                 v = tl.load(comb_mix_ptr + comb_base + i * HC + j)
                 tl.store(comb_mix_ptr + comb_base + i * HC + j, v * inv_row_sum)
 
+        # Divide by (column_sum + eps)
         for j in tl.static_range(HC):
             col_sum = 0.0
             for i in tl.static_range(HC):
