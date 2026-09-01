@@ -1,9 +1,20 @@
 import pytest
 import torch
+from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
+
+# ``_linalg_svd`` starts with an underscore, and ``pytest.mark`` refuses to
+# generate a marker via attribute access for such names. Register it directly
+# on the MarkGenerator so ``@pytest.mark._linalg_svd`` and ``-m _linalg_svd``
+# both work.
+setattr(
+    pytest.mark,
+    "_linalg_svd",
+    MarkDecorator(Mark("_linalg_svd", (), {}, _ispytest=True), _ispytest=True),
+)
 
 
 def _make_spectrum_input(shape, singular_values, seed=0):
@@ -87,8 +98,8 @@ RECONSTRUCTION_ATOL = 5e-3
 
 # aten::_linalg_svd is the private primitive that torch.linalg.svd (compute_uv
 # True) and torch.linalg.svdvals (compute_uv False) decompose into, so calling
-# the public APIs under use_gems() exercises the registered kernel.
-@pytest.mark.underscore_linalg_svd
+# flag_gems._linalg_svd directly exercises the registered kernel.
+@pytest.mark._linalg_svd
 @pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
 @pytest.mark.parametrize("shape", LINALG_SVD_SHAPES)
 def test__linalg_svd_full_matrices(shape, dtype):
@@ -96,8 +107,7 @@ def test__linalg_svd_full_matrices(shape, dtype):
     ref_inp = utils.to_reference(inp, False)
 
     ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=True)
-    with flag_gems.use_gems():
-        res_u, res_s, res_vh = torch.linalg.svd(inp, full_matrices=True)
+    res_u, res_s, res_vh = flag_gems._linalg_svd(inp, full_matrices=True)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -114,7 +124,7 @@ def test__linalg_svd_full_matrices(shape, dtype):
     )
 
 
-@pytest.mark.underscore_linalg_svd
+@pytest.mark._linalg_svd
 @pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
 @pytest.mark.parametrize("shape", LINALG_SVD_REDUCED_SHAPES)
 def test__linalg_svd_reduced(shape, dtype):
@@ -122,8 +132,7 @@ def test__linalg_svd_reduced(shape, dtype):
     ref_inp = utils.to_reference(inp, False)
 
     ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
-    with flag_gems.use_gems():
-        res_u, res_s, res_vh = torch.linalg.svd(inp, full_matrices=False)
+    res_u, res_s, res_vh = flag_gems._linalg_svd(inp, full_matrices=False)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -136,7 +145,7 @@ def test__linalg_svd_reduced(shape, dtype):
     )
 
 
-@pytest.mark.underscore_linalg_svd
+@pytest.mark._linalg_svd
 @pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
 @pytest.mark.parametrize("shape", LINALG_SVD_BATCH_SHAPES)
 def test__linalg_svd_batched(shape, dtype):
@@ -144,8 +153,7 @@ def test__linalg_svd_batched(shape, dtype):
     ref_inp = utils.to_reference(inp, False)
 
     ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
-    with flag_gems.use_gems():
-        res_u, res_s, res_vh = torch.linalg.svd(inp, full_matrices=False)
+    res_u, res_s, res_vh = flag_gems._linalg_svd(inp, full_matrices=False)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -158,7 +166,7 @@ def test__linalg_svd_batched(shape, dtype):
     )
 
 
-@pytest.mark.underscore_linalg_svd
+@pytest.mark._linalg_svd
 @pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
 @pytest.mark.parametrize("shape", LINALG_SVD_REDUCED_SHAPES)
 def test__linalg_svd_compute_uv_false(shape, dtype):
@@ -168,14 +176,13 @@ def test__linalg_svd_compute_uv_false(shape, dtype):
     ref_inp = utils.to_reference(inp, False)
 
     ref_s = torch.linalg.svdvals(ref_inp)
-    with flag_gems.use_gems():
-        res_s = torch.linalg.svdvals(inp)
+    _, res_s, _ = flag_gems._linalg_svd(inp, compute_uv=False)
 
     _assert_same_shape(res_s, ref_s)
     utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
 
 
-@pytest.mark.underscore_linalg_svd
+@pytest.mark._linalg_svd
 @pytest.mark.parametrize("dtype", LINALG_SVD_DTYPES)
 @pytest.mark.parametrize("shape", LINALG_SVD_ORTHONORMAL_SHAPES)
 def test__linalg_svd_orthonormal(shape, dtype):
@@ -196,8 +203,7 @@ def test__linalg_svd_orthonormal(shape, dtype):
     ref_inp = utils.to_reference(inp, False)
 
     ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
-    with flag_gems.use_gems():
-        res_u, res_s, res_vh = torch.linalg.svd(inp, full_matrices=False)
+    res_u, res_s, res_vh = flag_gems._linalg_svd(inp, full_matrices=False)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)

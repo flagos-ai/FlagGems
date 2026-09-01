@@ -42,9 +42,24 @@ jobs:
           FEISHU_BITABLE_APP_SECRET: ${{ secrets.FEISHU_BITABLE_APP_SECRET }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python tools/ci_report_feishu.py \
-            --app-id "${FEISHU_BITABLE_APP_ID}" \
-            --app-secret "${FEISHU_BITABLE_APP_SECRET}" \
-            --github-token "${GITHUB_TOKEN}" \
-            --repo "${{ github.repository }}" \
-            --workflow "rule-check"
+          # Wait briefly for GitHub API to fully sync the completed run
+          sleep 5
+
+          # Retry up to 3 times with exponential backoff
+          for attempt in 1 2 3; do
+            if python tools/ci_report_feishu.py \
+              --app-id "${FEISHU_BITABLE_APP_ID}" \
+              --app-secret "${FEISHU_BITABLE_APP_SECRET}" \
+              --github-token "${GITHUB_TOKEN}" \
+              --repo "${{ github.repository }}" \
+              --workflow "rule-check"; then
+              exit 0
+            fi
+            if [ $attempt -lt 3 ]; then
+              echo "Attempt $attempt failed, retrying in $((attempt * 10))s..."
+              sleep $((attempt * 10))
+            fi
+          done
+
+          echo "All retry attempts failed"
+          exit 1
