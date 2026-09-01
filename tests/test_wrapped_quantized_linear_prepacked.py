@@ -101,19 +101,16 @@ def test_wrapped_quantized_linear_prepacked(leading_shape, N, K, noncontiguous):
         N,
     )
 
-    with flag_gems.use_gems():
-        packed = torch.ops.aten._wrapped_linear_prepack(
-            weight, weight_scale, weight_zp, bias
-        )
-        actual = torch.ops.aten._wrapped_quantized_linear_prepacked(
-            input,
-            input_scale,
-            input_zp,
-            packed,
-            output_scale,
-            output_zp,
-            N,
-        )
+    packed = flag_gems._wrapped_linear_prepack(weight, weight_scale, weight_zp, bias)
+    actual = flag_gems._wrapped_quantized_linear_prepacked(
+        input,
+        input_scale,
+        input_zp,
+        packed,
+        output_scale,
+        output_zp,
+        N,
+    )
 
     assert actual.shape == reference.shape
     torch.testing.assert_close(
@@ -132,19 +129,16 @@ def test_wrapped_quantized_linear_prepacked_empty_batch():
         _make_qparams(flag_gems.device)
     )
 
-    with flag_gems.use_gems():
-        packed = torch.ops.aten._wrapped_linear_prepack(
-            weight, weight_scale, weight_zp, bias
-        )
-        actual = torch.ops.aten._wrapped_quantized_linear_prepacked(
-            input,
-            input_scale,
-            input_zp,
-            packed,
-            output_scale,
-            output_zp,
-            N,
-        )
+    packed = flag_gems._wrapped_linear_prepack(weight, weight_scale, weight_zp, bias)
+    actual = flag_gems._wrapped_quantized_linear_prepacked(
+        input,
+        input_scale,
+        input_zp,
+        packed,
+        output_scale,
+        output_zp,
+        N,
+    )
 
     assert actual.shape == (2, 0, N)
     assert actual.numel() == 0
@@ -173,19 +167,16 @@ def test_wrapped_quantized_linear_prepacked_empty_weight_dimension(N, K):
         N,
     )
 
-    with flag_gems.use_gems():
-        packed = torch.ops.aten._wrapped_linear_prepack(
-            weight, weight_scale, weight_zp, bias
-        )
-        actual = torch.ops.aten._wrapped_quantized_linear_prepacked(
-            input,
-            input_scale,
-            input_zp,
-            packed,
-            output_scale,
-            output_zp,
-            N,
-        )
+    packed = flag_gems._wrapped_linear_prepack(weight, weight_scale, weight_zp, bias)
+    actual = flag_gems._wrapped_quantized_linear_prepacked(
+        input,
+        input_scale,
+        input_zp,
+        packed,
+        output_scale,
+        output_zp,
+        N,
+    )
 
     assert actual.shape == reference.shape
     if K == 0:
