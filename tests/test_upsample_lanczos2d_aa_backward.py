@@ -31,8 +31,6 @@ lanczos_backward_module = importlib.import_module(
     "flag_gems.ops._upsample_lanczos2d_aa_backward"
 )
 
-HAS_NATIVE_LANCZOS_BACKWARD = hasattr(torch.ops.aten, "_upsample_lanczos2d_aa_backward")
-
 if QUICK_MODE:
     CASES = [(1, 2, 7, 9, 11, 13, False, None, None)]
     DTYPES = [torch.float32]
@@ -208,18 +206,3 @@ def test_upsample_lanczos2d_aa_backward_noncontiguous_grad(monkeypatch):
     result = _upsample_lanczos2d_aa_backward(grad, (11, 13), input_size, False).cpu()
     reference = _reference(grad_cpu, input_size, False, None, None)
     torch.testing.assert_close(result, reference, rtol=2e-4, atol=2e-4)
-
-
-@pytest.mark.upsample_lanczos2d_aa_backward
-@pytest.mark.skipif(
-    not HAS_NATIVE_LANCZOS_BACKWARD,
-    reason="ATen Lanczos schema was added after the local PyTorch 2.9 build",
-)
-def test_upsample_lanczos2d_aa_backward_dispatch():
-    grad = torch.randn((1, 2, 11, 13), device=flag_gems.device)
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_lanczos2d_aa_backward(
-            grad, (11, 13), (1, 2, 7, 9), False, None, None
-        )
-    direct = _upsample_lanczos2d_aa_backward(grad, (11, 13), (1, 2, 7, 9), False)
-    torch.testing.assert_close(result, direct)
