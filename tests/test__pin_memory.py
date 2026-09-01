@@ -14,7 +14,6 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
@@ -23,18 +22,8 @@ from . import accuracy_utils as utils
 # Representative host buffers used for asynchronous host-to-device copies.
 PIN_MEMORY_SHAPES = [(1024,), (1024, 1024), (4096, 4096)]
 
-# ``_pin_memory`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._pin_memory`` and ``-m _pin_memory``
-# both work.
-setattr(
-    pytest.mark,
-    "_pin_memory",
-    MarkDecorator(Mark("_pin_memory", (), {}, _ispytest=True), _ispytest=True),
-)
 
-
-@pytest.mark._pin_memory
+@pytest.mark.underscore_pin_memory
 @pytest.mark.parametrize("shape", PIN_MEMORY_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__pin_memory(shape, dtype):
