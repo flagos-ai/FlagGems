@@ -26,7 +26,7 @@ ops:
     kind:
       - BLAS
     stages:
-      - beta: '5.4'
+      - alpha: '5.4'
   - id: addmm_activation_out
     description: A variant of `_addmm_activation()` that assigns the output to the provided `out` parameter.
     for:
