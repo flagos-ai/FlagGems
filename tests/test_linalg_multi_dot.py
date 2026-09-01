@@ -66,8 +66,7 @@ def test_accuracy_linalg_multi_dot(dimensions, first_vector, last_vector, dtype)
     reference_tensors = [utils.to_reference(tensor) for tensor in tensors]
 
     reference = _reference_multi_dot(reference_tensors)
-    with flag_gems.use_gems():
-        result = torch.linalg.multi_dot(tensors)
+    result = flag_gems.linalg_multi_dot(tensors)
 
     utils.gems_assert_close(result, reference, dtype, reduce_dim=max(dimensions))
 
@@ -81,8 +80,7 @@ def test_accuracy_linalg_multi_dot_out(dimensions, first_vector, last_vector, dt
     reference = _reference_multi_dot(reference_tensors)
 
     out = torch.empty(0, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        result = torch.linalg.multi_dot(tensors, out=out)
+    result = flag_gems.linalg_multi_dot_out(tensors, out=out)
 
     assert result is out
     assert tuple(out.shape) == tuple(reference.shape)
@@ -100,8 +98,7 @@ def test_accuracy_linalg_multi_dot_out_noncontiguous(dtype):
         dimensions[-1], dimensions[0], dtype=dtype, device=flag_gems.device
     ).t()
 
-    with flag_gems.use_gems():
-        result = torch.linalg.multi_dot(tensors, out=out)
+    result = flag_gems.linalg_multi_dot_out(tensors, out=out)
 
     assert result is out
     assert not out.is_contiguous()
@@ -111,5 +108,5 @@ def test_accuracy_linalg_multi_dot_out_noncontiguous(dtype):
 @pytest.mark.linalg_multi_dot
 def test_error_linalg_multi_dot_requires_two_tensors():
     tensor = torch.randn(4, 4, device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError, match="at least 2"):
-        torch.linalg.multi_dot([tensor])
+    with pytest.raises(RuntimeError, match="at least 2"):
+        flag_gems.linalg_multi_dot([tensor])
