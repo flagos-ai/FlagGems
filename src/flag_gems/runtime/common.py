@@ -48,14 +48,31 @@ DEFAULT_STRATEGIES = {
     "bmm": ["align32", "align32", "align32", "align32", "align32"],
     "bmm_sqmma": ["align32", "align32", "align32"],
     "compute_global_topk_indices_and_lens": ["align32", "align32"],
-    "fused_marlin_moe_mxfp4": [
+    "fused_marlin_moe_w4a16_int4": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "default",
+        "default",
+    ],
+    "fused_marlin_moe_w4a16_int4_gemm_silu": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "default",
+        "default",
+        "default",
+    ],
+    "fused_marlin_moe_w4a16_mxfp4": [
         "align32",
         "align32",
         "align32",
         "align32",
         "default",
     ],
-    "fused_marlin_moe_mxfp4_gemm_silu": [
+    "fused_marlin_moe_w4a16_mxfp4_gemm_silu": [
         "align32",
         "align32",
         "align32",
@@ -63,6 +80,8 @@ DEFAULT_STRATEGIES = {
     ],
     "gemv": ["align32", "align32", "align32", "default"],
     "mm": ["align32", "align32", "align32", "align32", "align32"],
+    "mm_nn": ["align32", "align32", "align32"],
+    "mm_nt": ["align32", "align32", "align32"],
     "mm_sqmma": ["align32", "align32", "align32", "default"],
     "mm_general_tma": [
         "align32",
@@ -72,6 +91,8 @@ DEFAULT_STRATEGIES = {
         "align32",
         "default",
     ],
+    "mm_tma_transposed_direct": ["default", "default", "default", "default"],
+    "mm_warp_specialized_tma": ["default", "default", "default", "default"],
     "mv": ["align32", "align32"],
     "mul": ["align32", "default"],
     "mul_broadcast_2d": ["align32", "default", "default"],
@@ -125,14 +146,31 @@ OP_KEY_ORDERS = {
     "bmm_sqmma": ["M", "N", "K"],
     "baddbmm": ["M", "N", "K"],
     "compute_global_topk_indices_and_lens": ["topk", "num_tokens"],
-    "fused_marlin_moe_mxfp4": [
+    "fused_marlin_moe_w4a16_int4": [
+        "N",
+        "K",
+        "EM",
+        "BLOCK_SIZE_M",
+        "MUL_ROUTED_WEIGHT",
+        "top_k",
+    ],
+    "fused_marlin_moe_w4a16_int4_gemm_silu": [
+        "N",
+        "K",
+        "EM",
+        "BLOCK_SIZE_M",
+        "APPLY_ROUTER_WEIGHT_BEFORE_SILU",
+        "APPLY_ROUTER_WEIGHT_AFTER_SILU",
+        "top_k",
+    ],
+    "fused_marlin_moe_w4a16_mxfp4": [
         "N",
         "K",
         "EM_BUCKET",
         "BLOCK_SIZE_M",
         "SWAP_AB",
     ],
-    "fused_marlin_moe_mxfp4_gemm_silu": [
+    "fused_marlin_moe_w4a16_mxfp4_gemm_silu": [
         "N",
         "K",
         "BLOCK_SIZE_M",
@@ -140,8 +178,12 @@ OP_KEY_ORDERS = {
     ],
     "gemv": ["M", "K", "stride_am", "stride_bk"],
     "mm": ["M", "N", "K", "stride_am", "stride_bk"],
+    "mm_nn": ["M", "N", "K"],
+    "mm_nt": ["M", "N", "K"],
     "mm_sqmma": ["M", "N", "K", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
+    "mm_tma_transposed_direct": ["M", "N", "K", "stride_bk"],
+    "mm_warp_specialized_tma": ["M", "N", "K", "stride_bk"],
     "mv": ["M", "N"],
     "mul": ["n_elements", "dtype"],
     "mul_broadcast_2d": ["n_elements", "n_cols", "dtype"],
@@ -165,6 +207,7 @@ _VENDOR_TORCH_ATTR = {
     "iluvatar": "corex",
     "mthreads": "musa",
     "sunrise": "ptpu",
+    "tsingmicro": "txda",
 }
 
 __all__ = [

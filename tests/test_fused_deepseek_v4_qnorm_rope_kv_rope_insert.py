@@ -16,7 +16,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused import fused_deepseek_v4_qnorm_rope_kv_rope_insert
+from flag_gems import fused_deepseek_v4_qnorm_rope_kv_rope_insert
 
 device = flag_gems.device
 

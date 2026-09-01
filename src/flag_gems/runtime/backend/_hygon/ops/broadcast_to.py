@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -212,8 +212,14 @@ def broadcast_to(x, size):
     Returns:
         Tensor: The broadcasted tensor.
     """
-    logger.debug("GEMS BROADCAST_TO")
+    logger.debug("GEMS_HYGON BROADCAST_TO")
 
+    # broadcast_to is a pure view (meta) operation: torch eager resolves it with
+    # near-zero overhead (~0.00016 ms) by merely adjusting shape/strides. Any
+    # Triton kernel launch is strictly more expensive than that, so a data-copy
+    # kernel always regresses on small/medium shapes (mean speedup ~0.27 in the
+    # previous round). The only specialization that can avoid a regression is one
+    # that performs no kernel launch at all and constructs a strided view instead.
     if not isinstance(size, (list, tuple, torch.Size)):
         raise TypeError("broadcast_to size must be a list/tuple/torch.Size of ints")
 
