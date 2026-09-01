@@ -54,10 +54,9 @@ def test_accuracy_nested_view_from_buffer(layout, dtype):
     ref_out = torch.ops.aten._nested_view_from_buffer.default(
         utils.to_reference(buffer), nested_size, nested_strides, offsets_t
     )
-    with flag_gems.use_gems():
-        res_out = flag_gems._nested_view_from_buffer(
-            buffer, nested_size, nested_strides, offsets_t
-        )
+    res_out = flag_gems._nested_view_from_buffer(
+        buffer, nested_size, nested_strides, offsets_t
+    )
 
     assert res_out.is_nested
     assert ref_out.is_nested
@@ -80,10 +79,9 @@ def test_nested_view_from_buffer_matches_slices(dtype):
         sizes, [[1], [1], [1]], offsets
     )
 
-    with flag_gems.use_gems():
-        out = flag_gems._nested_view_from_buffer(
-            buffer, nested_size, nested_strides, offsets_t
-        )
+    out = flag_gems._nested_view_from_buffer(
+        buffer, nested_size, nested_strides, offsets_t
+    )
 
     comps = torch.unbind(out)
     lengths = [s[0] for s in sizes]
@@ -104,10 +102,9 @@ def test_nested_view_from_buffer_is_zero_copy(dtype):
         [[40], [60]], [[1], [1]], [0, 40]
     )
 
-    with flag_gems.use_gems():
-        out = flag_gems._nested_view_from_buffer(
-            buffer, nested_size, nested_strides, offsets_t
-        )
+    out = flag_gems._nested_view_from_buffer(
+        buffer, nested_size, nested_strides, offsets_t
+    )
 
     # Storage identity between the buffer and the nested tensor's values.
     assert (
