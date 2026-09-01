@@ -61,7 +61,7 @@ def weight_norm_except_dim_kernel(
         n_idx = row_offset
         k_idx = col_offset % v_shape2
 
-        mask = m_idx < v_shape0 and row_mask
+        mask = (m_idx < v_shape0) & row_mask
 
         v_offsets = m_idx * v_shape1 * v_shape2 + n_idx * v_shape2 + k_idx
         v_value = tl.load(v + v_offsets, mask=mask)
@@ -77,7 +77,7 @@ def weight_norm_except_dim_kernel(
         n_idx = row_offset
         k_idx = col_offset % v_shape2
 
-        mask = m_idx < v_shape0 and row_mask
+        mask = (m_idx < v_shape0) & row_mask
 
         v_offsets = m_idx * v_shape1 * v_shape2 + n_idx * v_shape2 + k_idx
         v_value = tl.load(v + v_offsets, mask=mask)
@@ -122,7 +122,7 @@ def weight_norm_except_dim_bwd_kernel(
         n_idx = row_offset
         k_idx = col_offset % v_shape2
 
-        mask = m_idx < v_shape0 and row_mask
+        mask = (m_idx < v_shape0) & row_mask
 
         v_offsets = m_idx * v_shape1 * v_shape2 + n_idx * v_shape2 + k_idx
         v_value = tl.load(v + v_offsets, mask=mask).to(tl.float32)
@@ -136,7 +136,7 @@ def weight_norm_except_dim_bwd_kernel(
         n_idx = row_offset
         k_idx = col_offset % v_shape2
 
-        mask = m_idx < v_shape0 and row_mask
+        mask = (m_idx < v_shape0) & row_mask
 
         v_offsets = m_idx * v_shape1 * v_shape2 + n_idx * v_shape2 + k_idx
         v_value = tl.load(v + v_offsets, mask=mask).to(tl.float32)
