@@ -37,7 +37,6 @@ def test_replication_pad1d_backward(shape, padding, dtype):
     ref_grad = utils.to_reference(grad_output)
 
     ref_out = torch.ops.aten.replication_pad1d_backward(ref_grad, ref_inp, padding)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.replication_pad1d_backward(grad_output, inp, padding)
+    res_out = flag_gems.replication_pad1d_backward(grad_output, inp, padding)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
