@@ -1,13 +1,27 @@
 [
   {
     "backend": "ascend-cann850",
-    "runner_label": "ascend",
+    "runner_label": "cann850",
     "label": "vendor/Ascend",
     "gpu_check": "tools/gpu_check_ascend.sh",
     "enabled": true
   },
   {
-    "backend": "enflame",
+    "backend": "ascend-cann900",
+    "runner_label": "cann9",
+    "label": "vendor/Ascend",
+    "gpu_check": "tools/gpu_check_ascend.sh",
+    "enabled": true
+  },
+  {
+    "backend": "cambricon-neuware472",
+    "runner_label": "cambricon",
+    "label": "vendor/Cambricon",
+    "gpu_check": "tools/gpu_check_cambricon.sh",
+    "enabled": true
+  },
+  {
+    "backend": "enflame-tops1106",
     "runner_label": "enflame",
     "label": "vendor/Enflame",
     "gpu_check": "",
@@ -35,8 +49,15 @@
     "enabled": true
   },
   {
-    "backend": "metax",
-    "runner_label": "metax",
+    "backend": "metax-maca3720",
+    "runner_label": "maca372",
+    "label": "vendor/MetaX",
+    "gpu_check": "tools/gpu_check_metax.sh",
+    "enabled": true
+  },
+  {
+    "backend": "metax-maca3810",
+    "runner_label": "maca381",
     "label": "vendor/MetaX",
     "gpu_check": "tools/gpu_check_metax.sh",
     "enabled": true
@@ -79,7 +100,7 @@
   {
     "backend": "thead",
     "runner_label": "thead",
-    "label": "vendor/Thead",
+    "label": "vendor/THead",
     "gpu_check": "tools/gpu_check_thead.sh",
     "enabled": true
   },

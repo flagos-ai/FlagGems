@@ -18,8 +18,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
@@ -28,7 +28,7 @@ from flag_gems.utils.random_utils import (
 logger = logging.getLogger(__name__)
 
 
-@triton.heuristics(runtime.get_heuristic_config("dropout"))
+@libentry()
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
 def dropout_forward_kernel(
     X,
@@ -121,7 +121,7 @@ def dropout_forward_kernel(
     tl.store(dropout_mask + off_7, mask7, mask=off_7 < N)
 
 
-@triton.heuristics(runtime.get_heuristic_config("dropout"))
+@libentry()
 @triton.jit(do_not_specialize=["scale"])
 def dropout_backward_kernel(
     DY,
@@ -142,6 +142,19 @@ def dropout_backward_kernel(
 UNROLL = 8
 
 
+def _dropout_launch_config(N):
+    # Compute BLOCK / num_warps in Python and pass them EXPLICITLY. On XPU triton
+    # letting @triton.heuristics supply num_warps/BLOCK at launch triggers a
+    # per-launch recompile pathology (the same class as bernoulli_/std) that blows
+    # the IR up (8M+ lines) and makes do_bench measure 500-2000ms for some shapes.
+    if N <= 512:
+        return 512, 4
+    elif N <= 1024:
+        return 1024, 8
+    else:
+        return 1024, 16
+
+
 def dropout(input, p, train=True):
     logger.debug("GEMS_KUNLUNXIN NATIVE_DROPOUT_FORWARD")
     if not train or p == 0:
@@ -158,12 +171,21 @@ def dropout(input, p, train=True):
     out = torch.empty_like(input)
     mask = torch.empty_like(input, dtype=torch.bool)
     N = input.numel()
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
+    BLOCK, num_warps = _dropout_launch_config(N)
+    grid = (triton.cdiv(N, BLOCK * UNROLL),)
     increment = triton.cdiv(N, UNROLL)
     with torch_device_fn.device(device):
         philox_seed, philox_offset = philox_backend_seed_offset(increment)
-        dropout_forward_kernel[grid_fn](
-            input, out, mask, N, p, philox_seed, philox_offset
+        dropout_forward_kernel[grid](
+            input,
+            out,
+            mask,
+            N,
+            p,
+            philox_seed,
+            philox_offset,
+            BLOCK=BLOCK,
+            num_warps=num_warps,
         )
     return out, mask
 
@@ -173,7 +195,16 @@ def dropout_backward(grad_output, mask, scale):
     grad_output = grad_output.contiguous()
     grad_input = torch.empty_like(grad_output)
     N = grad_output.numel()
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"]),)
+    BLOCK, num_warps = _dropout_launch_config(N)
+    grid = (triton.cdiv(N, BLOCK),)
     with torch_device_fn.device(grad_output.device):
-        dropout_backward_kernel[grid_fn](grad_output, grad_input, mask, N, scale)
+        dropout_backward_kernel[grid](
+            grad_output,
+            grad_input,
+            mask,
+            N,
+            scale,
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
     return grad_input

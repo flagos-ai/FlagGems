@@ -115,7 +115,8 @@ def generate_scatter_kernel(
             code.writeline("IS_MUL: tl.constexpr,")
             code.writeline("BLOCK: tl.constexpr,")
             code.writeline("LOOP: tl.constexpr,")
-            code.writeline("INT32_OFFSET: tl.constexpr")
+            code.writeline("INT32_OFFSET: tl.constexpr,")
+            code.writeline("DENSE_SRC_IDX: tl.constexpr")
 
     code.writeline("):")
 
@@ -135,13 +136,27 @@ def generate_scatter_kernel(
             code.writeline("if INT32_OFFSET:")
             with code.indent():
                 code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-                code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
-                code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
             code.writeline("else:")
             with code.indent():
                 code.writeline("inp_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
-                code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
-                code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+            # Fast path: when src/index are contiguous over index.shape, the
+            # linear iteration offset IS the element offset. Using it directly
+            # keeps the src/index gm2lm contiguous (block DMA) instead of the
+            # modulo-based address math that forces discrete/scalar transfers.
+            code.writeline("if DENSE_SRC_IDX:")
+            with code.indent():
+                code.writeline("idx_offsets = offsets")
+                code.writeline("src_offsets = offsets")
+            code.writeline("else:")
+            with code.indent():
+                code.writeline("if INT32_OFFSET:")
+                with code.indent():
+                    code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                    code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int32)")
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline("idx_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
+                    code.writeline("src_offsets = tl.zeros((BLOCK, ), dtype=tl.int64)")
             for i in range(rank)[::-1]:
                 code.writeline("if INT32_OFFSET:")
                 with code.indent():
@@ -151,8 +166,10 @@ def generate_scatter_kernel(
                     code.writeline(f"src_stride_{i} = src_stride_{i}.to(tl.int32)")
                 code.writeline(f"mod = cur_idx % shape_{i}")
                 code.writeline(f"inp_offsets += mod * inp_stride_{i}")
-                code.writeline(f"idx_offsets += mod * index_stride_{i}")
-                code.writeline(f"src_offsets += mod * src_stride_{i}")
+                code.writeline("if not DENSE_SRC_IDX:")
+                with code.indent():
+                    code.writeline(f"idx_offsets += mod * index_stride_{i}")
+                    code.writeline(f"src_offsets += mod * src_stride_{i}")
                 if i != 0:
                     code.writeline(f"cur_idx = cur_idx // shape_{i}")
 
@@ -232,6 +249,19 @@ def generate_destination_passing_wrapper(
         code.writeline('IS_MUL = reduce == "multiply"')
         code.writeline("int32_offset = int32_offset or True")
 
+        # src/index are dense (row-major contiguous over index.shape) iff their
+        # strides equal the contiguous strides of index.shape. In that case the
+        # linear offset can be used directly for the src/index loads.
+        code.writeline("_cont = [1] * len(index_shapes)")
+        code.writeline("_acc = 1")
+        code.writeline("for _i in range(len(index_shapes) - 1, -1, -1):")
+        with code.indent():
+            code.writeline("_cont[_i] = _acc")
+            code.writeline("_acc *= index_shapes[_i]")
+        code.writeline(
+            "dense_src_idx = list(src_strides) == _cont and list(index_strides) == _cont"
+        )
+
         # kernel launch
         code.writeline("grid = lambda meta: (")
         with code.indent():
@@ -263,6 +293,7 @@ def generate_destination_passing_wrapper(
                 code.writeline("IS_ADD,")
                 code.writeline("IS_MUL,")
                 code.writeline("INT32_OFFSET=int32_offset,")
+                code.writeline("DENSE_SRC_IDX=dense_src_idx,")
                 # code.writeline("buffer_size_limit=512,")
                 # code.writeline("isCloseUnrollControl=True,")
 
