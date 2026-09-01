@@ -1,0 +1,135 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: "Fix Sort"
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  check-command:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.triggered }}
+      pr_ref: ${{ steps.get-pr.outputs.ref }}
+      pr_repo: ${{ steps.get-pr.outputs.repo }}
+    steps:
+      - name: Check if comment is /fix-sort
+        id: check
+        uses: khan/pull-request-comment-trigger@edab8d9ba7759221187ef7120592a6fbfada0d18  # v1.1.0
+        with:
+          trigger: '/fix-sort'
+          reaction: eyes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get PR info
+        id: get-pr
+        if: steps.check.outputs.triggered == 'true'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea  # v7.0.1
+        with:
+          script: |
+            const issue_number = context.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: issue_number,
+            });
+            core.setOutput('ref', pr.head.ref);
+            core.setOutput('repo', pr.head.repo.full_name);
+
+  fix-sort:
+    needs: check-command
+    if: needs.check-command.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # First checkout trusted code from base branch (for sort_exports.py script)
+      - name: Checkout base branch (trusted code)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: main
+          path: trusted
+
+      # Then checkout PR branch (untrusted, but we only modify its files)
+      - name: Checkout PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: ${{ needs.check-command.outputs.pr_repo }}
+          ref: ${{ needs.check-command.outputs.pr_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: pr
+
+      - name: Set up Python
+        uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d  # v5.1.0
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      # Run the trusted script against PR files
+      - name: Run sort_exports.py from trusted code
+        run: |
+          cd pr
+          python ../trusted/tools/ci_checks/sort_exports.py --fix
+
+      - name: Check if files changed
+        id: check-changes
+        run: |
+          cd pr
+          if git diff --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No changes needed"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Files changed:"
+            git diff --name-only
+          fi
+
+      - name: Commit and push changes
+        if: steps.check-changes.outputs.changed == 'true'
+        run: |
+          cd pr
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: auto-sort exports and operators.yaml
+
+          Triggered by /fix-sort command"
+          git push
+
+      - name: Comment result
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea  # v7.0.1
+        with:
+          script: |
+            const changed = '${{ steps.check-changes.outputs.changed }}';
+            let message;
+
+            if (changed === 'true') {
+              message = '✅ Sorting fixed! Changes have been pushed to this PR.';
+            } else {
+              message = '✅ All files are already sorted correctly. No changes needed.';
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: message
+            });

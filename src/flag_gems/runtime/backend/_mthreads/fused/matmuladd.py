@@ -12,18 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from backend_utils import VendorDescriptor
+import logging
 
-vendor_info = VendorDescriptor(
-    vendor_name="mthreads",
-    device_name="musa",
-    dispatch_key="PrivateUse1",
-    device_query_cmd="mthreads-gmi",
-    fp64_enabled=False,
-    tle_enabled=True,
-)
+from flag_gems.runtime.backend._mthreads.ops.addmm import _addmm_impl
 
-CUSTOMIZED_UNUSED_OPS = ()
+logger = logging.getLogger(__name__)
 
 
-__all__ = ["*"]
+def matmuladd(input, other, bias):
+    """
+    Matrix multiplication with addition: output = matmul(input, other) + bias
+
+    Routes to the mthreads addmm implementation: fp16/bf16 compatible
+    layouts go through the SQMMA TensorDescriptor kernel, and fp32 (or
+    non-SQMMA shapes) through the FMA kernel, with alpha=1, beta=1.
+    """
+    logger.debug("GEMS_MTHREADS MATMULADD")
+    return _addmm_impl(bias, input, other, out=None, beta=1, alpha=1)
