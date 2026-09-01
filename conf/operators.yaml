@@ -1320,6 +1320,19 @@ ops:
       - Math
     stages:
       - alpha: '5.4'
+  - id: frobenius_norm
+    description: |
+      Computes the Frobenius norm (L2 norm) of a tensor over specified dimensions.
+      Equivalent to sqrt(sum(x * x, dim=dim)).
+    for:
+      - frobenius_norm.dim
+    labels:
+      - aten
+      - KernelGen
+    kind:
+      - Reduction
+    stages:
+      - alpha: '5.4'
   - id: functional_assert_async
     description: |
       Functional version of _assert_async that takes a dependency token and returns a new token.
