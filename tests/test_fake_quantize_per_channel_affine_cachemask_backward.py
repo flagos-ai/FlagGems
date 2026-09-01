@@ -32,10 +32,7 @@ def test_fake_quantize_per_channel_affine_cachemask_backward(shape, dtype):
     ref_out = torch.ops.aten.fake_quantize_per_channel_affine_cachemask_backward(
         ref_grad, ref_mask
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.fake_quantize_per_channel_affine_cachemask_backward(
-            grad, mask
-        )
+    res_out = flag_gems.fake_quantize_per_channel_affine_cachemask_backward(grad, mask)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -51,10 +48,7 @@ def test_fake_quantize_per_channel_affine_cachemask_backward_mask_semantics():
         utils.to_reference(grad), utils.to_reference(mask)
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.fake_quantize_per_channel_affine_cachemask_backward(
-            grad, mask
-        )
+    res_out = flag_gems.fake_quantize_per_channel_affine_cachemask_backward(grad, mask)
 
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
 
@@ -69,10 +63,7 @@ def test_fake_quantize_per_channel_affine_cachemask_backward_noncontiguous():
         utils.to_reference(grad), utils.to_reference(mask)
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.fake_quantize_per_channel_affine_cachemask_backward(
-            grad, mask
-        )
+    res_out = flag_gems.fake_quantize_per_channel_affine_cachemask_backward(grad, mask)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)
 
@@ -82,10 +73,7 @@ def test_fake_quantize_per_channel_affine_cachemask_backward_empty():
     grad = torch.empty((2, 0, 3), device=flag_gems.device)
     mask = torch.empty((2, 0, 3), dtype=torch.bool, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        output = torch.ops.aten.fake_quantize_per_channel_affine_cachemask_backward(
-            grad, mask
-        )
+    output = flag_gems.fake_quantize_per_channel_affine_cachemask_backward(grad, mask)
 
     assert output.shape == grad.shape
     assert output.dtype == grad.dtype
